@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id            String   @id @default(uuid())
+  name          String
+  // Relations
+  users         User[]
+  leads         Lead[]
+  conversations Conversation[]
+  tasks         Task[]
+}
+
+model User {
+  id               String   @id @default(uuid())
+  tenant_id        String?
+  tenant           Tenant?  @relation(fields: [tenant_id], references: [id])
+  name             String
+  email            String   @unique
+  password_hash    String
+  role             String   // ADMIN, ADVOGADO, ESTAGIARIO, COMERCIAL, FINANCEIRO
+  created_at       DateTime @default(now())
+  
+  tasks            Task[]
+  assigned_convos  Conversation[]
+  audit_logs       AuditLog[]
+}
+
+model Lead {
+  id         String   @id @default(uuid())
+  tenant_id  String?
+  tenant     Tenant?  @relation(fields: [tenant_id], references: [id])
+  name       String?
+  phone      String   @unique
+  email      String?
+  origin     String?
+  stage      String   @default("NOVO")
+  tags       String[]
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  conversations Conversation[]
+  tasks         Task[]
+  memory        AiMemory?
+
+  @@index([tenant_id, phone])
+  @@index([stage])
+}
+
+model Conversation {
+  id               String   @id @default(uuid())
+  tenant_id        String?
+  tenant           Tenant?  @relation(fields: [tenant_id], references: [id])
+  lead_id          String
+  lead             Lead     @relation(fields: [lead_id], references: [id])
+  channel          String   @default("whatsapp")
+  external_id      String?  
+  status           String   @default("ABERTO")
+  ai_mode          Boolean  @default(true)
+  assigned_user_id String?
+  assigned_user    User?    @relation(fields: [assigned_user_id], references: [id])
+  last_message_at  DateTime @default(now())
+  
+  messages         Message[]
+  tasks            Task[]
+
+  @@index([lead_id])
+  @@index([last_message_at(sort: Desc)])
+}
+
+model Message {
+  id                  String   @id @default(uuid())
+  conversation_id     String
+  conversation        Conversation @relation(fields: [conversation_id], references: [id])
+  direction           String   // "in" ou "out"
+  type                String   // "text", "image", "audio", "document", "system"
+  text                String?
+  external_message_id String?  @unique
+  status              String   // "enviado", "entregue", "lido", "falhou", "recebido"
+  created_at          DateTime @default(now())
+
+  media               Media?
+  tasks               Task[]
+
+  @@index([conversation_id, created_at])
+  @@index([external_message_id])
+}
+
+model Media {
+  id           String   @id @default(uuid())
+  message_id   String   @unique
+  message      Message  @relation(fields: [message_id], references: [id])
+  s3_key       String
+  mime_type    String
+  size         Int?
+  duration     Int?
+  checksum     String?
+  original_url String?
+  created_at   DateTime @default(now())
+}
+
+model Task {
+  id               String   @id @default(uuid())
+  tenant_id        String?
+  tenant           Tenant?  @relation(fields: [tenant_id], references: [id])
+  lead_id          String?
+  lead             Lead?    @relation(fields: [lead_id], references: [id])
+  conversation_id  String?
+  conversation     Conversation? @relation(fields: [conversation_id], references: [id])
+  message_id       String?
+  message          Message? @relation(fields: [message_id], references: [id])
+  title            String
+  description      String?
+  due_at           DateTime?
+  status           String   @default("A_FAZER")
+  assigned_user_id String?
+  assigned_user    User?    @relation(fields: [assigned_user_id], references: [id])
+  created_at       DateTime @default(now())
+
+  @@index([assigned_user_id, due_at])
+  @@index([status])
+}
+
+model AiMemory {
+  id              String   @id @default(uuid())
+  lead_id         String   @unique
+  lead            Lead     @relation(fields: [lead_id], references: [id])
+  summary         String   @db.Text
+  facts_json      Json     @default("{}")
+  last_updated_at DateTime @default(now())
+  version         Int      @default(1)
+}
+
+model PromptSkill {
+  id                String   @id @default(uuid())
+  name              String
+  area              String   
+  system_prompt     String   @db.Text
+  tools_policy_json Json     @default("[]")
+  version           Int      @default(1)
+  active            Boolean  @default(true)
+}
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  actor_user_id String?
+  actor         User?    @relation(fields: [actor_user_id], references: [id])
+  action        String
+  entity        String
+  entity_id     String
+  meta_json     Json?
+  created_at    DateTime @default(now())
+}

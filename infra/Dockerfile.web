@@ -1,0 +1,42 @@
+FROM node:18-alpine AS base
+
+# Dependências necessárias para builds de web
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+# Instala todas as deps usando cache
+COPY package.json package-lock.json ./
+COPY apps/web/package.json ./apps/web/
+COPY packages/shared/package.json ./packages/shared/
+RUN npm ci
+
+# Agora copia fontes
+COPY . .
+
+# Faz o build do frontend Next.js indicando Next.js cache mode
+WORKDIR /app/apps/web
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npm run build
+
+# Imagem final hiper leve
+FROM node:18-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+COPY --from=base /app/apps/web/public ./public
+
+# Define permissões
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copia arquivos standalone do Next
+COPY --from=base --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
+COPY --from=base --chown=nextjs:nodejs /app/apps/web/.next/static ./.next/static
+
+USER nextjs
+
+EXPOSE 3000
+
+ENV PORT=3000
+CMD ["node", "server.js"]
