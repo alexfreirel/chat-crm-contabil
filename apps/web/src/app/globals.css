@@ -31,19 +31,19 @@
 
   --radius: 0.5rem;
 
-  /* === ANDRE LUSTOSA MODERN DARK THEME === */
+  /* === ANDRE LUSTOSA LOGO DARK THEME (Paridade Exata) === */
   --color-gray-50: #ffffff;
   --color-gray-100: #fafafa;
   --color-gray-200: #e4e4e7;
-  --color-gray-300: #d4d4d8;
+  --color-gray-300: #dcdcdc; /* text-secondary original */
   --color-gray-400: #a1a1aa;
-  --color-gray-500: #8b8b9e;
-  --color-gray-600: #55556a;
-  --color-gray-700: #1a1a24; 
-  --color-gray-800: #111118; 
-  --color-gray-900: #0a0a0f; 
+  --color-gray-500: #888888; /* text-muted original */
+  --color-gray-600: #333333; /* bg-hover original */
+  --color-gray-700: #1a1a1a;  /* bg-tertiary original */
+  --color-gray-800: #111111;  /* bg-secondary original */
+  --color-gray-900: #000000;  /* bg-primary original (Black Absoluto) */
   
-  --color-slate-50: #0a0a0f; 
+  --color-slate-50: #000000; 
 
   /* Brand Primary Gold */
   --color-blue-50: #fbf8f3;
