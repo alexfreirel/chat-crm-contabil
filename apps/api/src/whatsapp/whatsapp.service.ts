@@ -121,28 +121,55 @@ export class WhatsappService {
 
   async createInstance(instanceName: string) {
     const randomToken = crypto.randomBytes(12).toString('hex');
-    const result = await this.request('POST', 'instance/create', {
+    const config = await this.settingsService.getWhatsAppConfig();
+    
+    const payload: any = {
       instanceName,
       token: randomToken,
       integration: 'WHATSAPP-BAILEYS',
       qrcode: true,
-    });
+    };
 
-    // Automação: Configurar Webhook imediatamente após a criação
-    try {
-      const config = await this.settingsService.getWhatsAppConfig();
-      if (config.webhookUrl) {
-        this.logger.log(`Configurando webhook automático para ${instanceName}: ${config.webhookUrl}`);
-        await this.setWebhook(instanceName, config.webhookUrl);
-        this.logger.log(`✅ Webhook configurado com sucesso para ${instanceName}`);
-      } else {
-        this.logger.warn(`⚠️ Webhook não configurado: webhookUrl global está vazio.`);
-      }
-    } catch (error) {
-      this.logger.error(`❌ Falha ao configurar webhook automático para ${instanceName}: ${error.message}`);
-      // Não lançamos o erro aqui para não impedir que o usuário veja o QR Code da instância criada
+    // Automação: Configurar Webhook diretamente no create para Evolution v2
+    if (config.webhookUrl) {
+      this.logger.log(`Provisionando instância ${instanceName} com webhook automático: ${config.webhookUrl}`);
+      payload.webhook = {
+        enabled: true,
+        url: config.webhookUrl,
+        byEvents: false,
+        base64: false,
+        events: [
+          'APPLICATION_STARTUP',
+          'QRCODE_UPDATED',
+          'MESSAGES_SET',
+          'MESSAGES_UPSERT',
+          'MESSAGES_UPDATE',
+          'MESSAGES_DELETE',
+          'SEND_MESSAGE',
+          'CONTACTS_SET',
+          'CONTACTS_UPSERT',
+          'CONTACTS_UPDATE',
+          'PRESENCE_UPDATE',
+          'CHATS_SET',
+          'CHATS_UPSERT',
+          'CHATS_UPDATE',
+          'CHATS_DELETE',
+          'GROUP_PARTICIPANTS_UPDATE',
+          'GROUP_UPDATE',
+          'GROUPS_UPSERT',
+          'CONNECTION_UPDATE',
+          'CALL',
+          'TYPEBOT_START',
+          'TYPEBOT_CHANGE_STATUS'
+        ]
+      };
+    } else {
+      this.logger.warn(`⚠️ Webhook não configurado na criação de ${instanceName}: webhookUrl global está vazio.`);
     }
 
+    const result = await this.request('POST', 'instance/create', payload);
+    this.logger.log(`✅ Instância ${instanceName} criada com provisionamento automático.`);
+    
     return result;
   }
 
