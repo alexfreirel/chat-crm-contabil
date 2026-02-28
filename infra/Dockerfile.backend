@@ -26,5 +26,9 @@ COPY --from=builder /app/apps/${APP}/node_modules ./apps/${APP}/node_modules
 WORKDIR /app/apps/${APP}
 # Gera Cliente Prisma em PROD
 RUN cd ../../packages/shared && npx prisma generate
+# Entrypoint com auto-migracao
+COPY infra/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+ENV APP=${APP}
 
-CMD ["node", "dist/main.js"]
+ENTRYPOINT ["/app/entrypoint.sh"]

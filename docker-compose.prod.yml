@@ -11,6 +11,11 @@ services:
       - pgdata:/var/lib/postgresql/data
     ports:
       - "45432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-crm_user}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   # ------ Redis (Filas e Cache) ------
   redis:
@@ -20,6 +25,11 @@ services:
       - "46379:6379"
     volumes:
       - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   # ------ SeaweedFS (Mídias) ------
   seaweed-master:
@@ -65,6 +75,7 @@ services:
       - "${API_PORT:-3001}:3001"
     environment:
       - PORT=3001
+      - RUN_MIGRATIONS=true
       - DATABASE_URL=postgresql://${POSTGRES_USER:-crm_user}:${POSTGRES_PASSWORD:-crm_pass}@postgres:5432/${POSTGRES_DB:-lexcrm}?schema=public
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -74,8 +85,10 @@ services:
       - EVOLUTION_GLOBAL_APIKEY=${EVOLUTION_GLOBAL_APIKEY}
       - EVOLUTION_INSTANCE_NAME=${EVOLUTION_INSTANCE_NAME}
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   # ------ NestJS Worker (Mídias e IA) ------
   crm-worker:
@@ -100,9 +113,12 @@ services:
       - S3_SECRET_KEY=${S3_SECRET_KEY:-some_secret_key}
       - S3_BUCKET=${S3_BUCKET:-chat-crm-media}
     depends_on:
-      - redis
-      - postgres
-      - seaweed-filer
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      seaweed-filer:
+        condition: service_started
 
   # ------ Next.js Frontend ------
   crm-web:

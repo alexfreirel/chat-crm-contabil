@@ -1,4 +1,4 @@
-name: Build and Push Docker Images to GHCR
+name: Build, Push and Deploy to VPS
 
 on:
   push:
@@ -75,3 +75,9 @@ jobs:
           push: true
           tags: ${{ steps.meta-web.outputs.tags }}
           labels: ${{ steps.meta-web.outputs.labels }}
+
+      # Dispara redeploy automatico no Portainer (se webhook configurado)
+      - name: Trigger Portainer stack redeploy
+        if: ${{ vars.PORTAINER_WEBHOOK_URL != '' }}
+        run: |
+          curl -s -X POST "${{ vars.PORTAINER_WEBHOOK_URL }}" || echo "Portainer webhook falhou (stack sera atualizada manualmente)"
