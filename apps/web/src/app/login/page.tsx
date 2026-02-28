@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 
@@ -8,6 +8,28 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const router = useRouter();
+
+  useEffect(() => {
+    // Auto-Login Exclusivo para Desenvolvimento Local
+    if (process.env.NODE_ENV === 'development') {
+      const autoLogin = async () => {
+        try {
+          const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/auth/login`, {
+            email: 'admin@lexcrm.com.br',
+            password: 'admin123',
+          });
+          localStorage.setItem('token', res.data.access_token);
+          router.push('/');
+        } catch (e) {
+          console.error('Falha no auto-login local', e);
+        }
+      };
+      // Se não tiver token ainda, roda o script mágico
+      if (!localStorage.getItem('token')) {
+        autoLogin();
+      }
+    }
+  }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
