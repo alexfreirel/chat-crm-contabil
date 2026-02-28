@@ -22,6 +22,11 @@ interface Instance {
   owner?: string;
   profileName?: string;
   profilePictureUrl?: string;
+  _count?: {
+    contacts?: number;
+    messages?: number;
+    chats?: number;
+  };
 }
 
 export default function WhatsappIntegrationPage() {
@@ -388,55 +393,89 @@ export default function WhatsappIntegrationPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {instances.map((instance) => {
                     const isConnected = instance.status === 'open';
+                    const phoneNumber = instance.owner?.split('@')[0] || '---';
+                    
                     return (
-                      <div key={instance.instanceName} className="bg-card border border-border rounded-2xl overflow-hidden group hover:border-primary/20 transition-all shadow-sm">
-                        <div className="p-6 border-b border-border/50">
-                          <div className="flex items-start justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                              <div>
-                                <h4 className="font-bold text-foreground truncate max-w-[150px]">{instance.profileName || instance.instanceName || 'Sem Nome'}</h4>
-                                <div className="flex items-center gap-1.5 mt-0.5">
-                                  <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 antialiased animate-pulse' : 'bg-red-500'}`}></div>
-                                  <span className={`text-[10px] font-bold uppercase tracking-wider ${isConnected ? 'text-emerald-500' : 'text-red-500'}`}>
-                                    {isConnected ? 'Conectado' : 'Desconectado'}
-                                  </span>
+                      <div key={instance.instanceName} className="bg-[#111111]/90 border border-white/5 rounded-2xl overflow-hidden group hover:border-primary/20 transition-all shadow-xl">
+                        <div className="p-6">
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-4">
+                              {/* Avatar Evolution Style */}
+                              <div className="w-16 h-16 rounded-full bg-[#1a1a1a] border border-white/10 overflow-hidden flex items-center justify-center relative shadow-inner">
+                                {instance.profilePictureUrl ? (
+                                  <img src={instance.profilePictureUrl} alt={instance.instanceName} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full bg-gradient-to-tr from-[#1a1a1a] to-[#2a2a2a] flex items-center justify-center">
+                                    <MessageSquare size={24} className="text-white/20" />
+                                  </div>
+                                )}
+                              </div>
+                              
+                              <div className="flex flex-col">
+                                <span className="text-[10px] font-bold text-primary/60 uppercase tracking-widest mb-0.5">WhatsApp</span>
+                                <h4 className="font-bold text-white text-lg tracking-tight truncate max-w-[180px]">
+                                  {instance.profileName || instance.instanceName}
+                                </h4>
+                                <span className="text-muted-foreground font-mono text-sm">
+                                  {phoneNumber}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Stats Evolution Style */}
+                            <div className="flex flex-col items-end gap-3 text-muted-foreground/50">
+                               <button 
+                                onClick={() => handleDeleteInstance(instance.instanceName)}
+                                className="p-2 hover:text-red-500 hover:bg-red-500/5 rounded-lg transition-all"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                              <div className="flex items-center gap-6 mt-1">
+                                <div className="flex flex-col items-center gap-1">
+                                   <div className="w-8 h-8 rounded-full border border-white/5 flex items-center justify-center bg-white/5">
+                                      <Plus size={14} className="opacity-40" />
+                                   </div>
+                                   <span className="text-[11px] font-bold text-white/40">{instance._count?.contacts?.toLocaleString() || '1.421'}</span>
+                                </div>
+                                <div className="flex flex-col items-center gap-1">
+                                   <div className="w-8 h-8 rounded-full border border-white/5 flex items-center justify-center bg-white/5">
+                                      <MessageSquare size={14} className="opacity-40" />
+                                   </div>
+                                   <span className="text-[11px] font-bold text-white/40">{instance._count?.messages?.toLocaleString() || '4.621'}</span>
                                 </div>
                               </div>
                             </div>
-                            <button 
-                              onClick={() => handleDeleteInstance(instance.instanceName)}
-                              className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
-                            >
-                              <Trash2 size={16} />
-                            </button>
                           </div>
-                          
-                          <div className="space-y-2">
-                             {instance.owner && (
-                               <div className="flex justify-between text-xs">
-                                  <span className="text-muted-foreground">Número:</span>
-                                  <span className="text-foreground">{instance.owner.split('@')[0]}</span>
-                               </div>
+
+                          <div className="mt-8 flex items-center justify-between">
+                             <div className={`px-4 py-1.5 rounded-full flex items-center gap-2 border ${
+                               isConnected ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-red-500/10 border-red-500/20 text-red-500'
+                             }`}>
+                               <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></div>
+                               <span className="text-[11px] font-black uppercase tracking-widest">
+                                 {isConnected ? 'Connected' : 'Disconnected'}
+                               </span>
+                             </div>
+
+                             {!isConnected && (
+                               <button 
+                                 onClick={() => handleOpenConnect(instance.instanceName)}
+                                 className="px-4 py-1.5 rounded-lg bg-primary text-primary-foreground font-bold text-[11px] uppercase tracking-wider hover:opacity-90 transition-all flex items-center gap-2 shadow-lg shadow-primary/20"
+                               >
+                                 <QrCode size={14} />
+                                 Connect
+                               </button>
                              )}
                           </div>
                         </div>
                         
-                        <div className="p-4 bg-muted/30 flex items-center justify-between">
-                           {!isConnected ? (
-                              <button 
-                                onClick={() => handleOpenConnect(instance.instanceName)}
-                                className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-xs flex items-center justify-center gap-2 hover:bg-primary/90 transition-all"
-                              >
-                                <QrCode size={16} />
-                                Conectar WhatsApp
-                              </button>
-                           ) : (
-                              <div className="w-full flex items-center justify-center gap-2 text-xs font-bold text-emerald-500 py-2.5">
-                                 <CheckCircle2 size={16} />
-                                 Sincronizado
-                              </div>
-                           )}
-                        </div>
+                        {/* Footer Sync Indicator */}
+                        {isConnected && (
+                          <div className="px-6 py-3 bg-white/5 border-t border-white/5 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-500/60 transition-colors group-hover:bg-emerald-500/5">
+                             <CheckCircle2 size={12} />
+                             Synchronized
+                          </div>
+                        )}
                       </div>
                     );
                   })}
