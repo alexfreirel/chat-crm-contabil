@@ -11,6 +11,23 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [dbStatus, setDbStatus] = useState<'online' | 'offline' | 'checking'>('checking');
+
+  useEffect(() => {
+    const checkDb = async () => {
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005'}/health/db`);
+        const data = await res.json();
+        setDbStatus(data.status === 'ok' ? 'online' : 'offline');
+      } catch (error) {
+        setDbStatus('offline');
+      }
+    };
+
+    checkDb();
+    const interval = setInterval(checkDb, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -173,7 +190,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="group relative flex items-center justify-center font-semibold text-black transition-all disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer"
+            className="group relative flex items-center justify-center font-semibold text-black transition-all disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer mb-6"
             style={{ 
               width: '100%', 
               height: '48px',
@@ -207,6 +224,19 @@ export default function LoginPage() {
               </>
             )}
           </button>
+
+          <div className="flex items-center justify-center gap-2 pt-2 border-t border-white/5 mt-2">
+            <div className={`w-2.5 h-2.5 rounded-full transition-all duration-500 ${
+              dbStatus === 'online' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 
+              dbStatus === 'offline' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)] animate-pulse' : 
+              'bg-amber-500 animate-pulse'
+            }`} />
+            <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/60">
+              Banco de Dados: <span className={dbStatus === 'online' ? 'text-emerald-500/80' : 'text-red-500/80'}>
+                {dbStatus === 'online' ? 'Online' : dbStatus === 'offline' ? 'Offline' : 'Verificando...'}
+              </span>
+            </span>
+          </div>
         </form>
       </div>
     </div>

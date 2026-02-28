@@ -393,13 +393,6 @@ export default function WhatsappIntegrationPage() {
                         <div className="p-6 border-b border-border/50">
                           <div className="flex items-start justify-between mb-4">
                             <div className="flex items-center gap-3">
-                              <div className="w-12 h-12 rounded-full bg-muted border border-border overflow-hidden flex items-center justify-center bg-gradient-to-tr from-accent to-background">
-                                {instance.profilePictureUrl ? (
-                                  <img src={instance.profilePictureUrl} alt={instance.instanceName || 'Instância'} className="w-full h-full object-cover" />
-                                ) : (
-                                  <span className="font-bold text-muted-foreground">{(instance.instanceName?.[0] || 'W').toUpperCase()}</span>
-                                )}
-                              </div>
                               <div>
                                 <h4 className="font-bold text-foreground truncate max-w-[150px]">{instance.profileName || instance.instanceName || 'Sem Nome'}</h4>
                                 <div className="flex items-center gap-1.5 mt-0.5">
@@ -419,10 +412,6 @@ export default function WhatsappIntegrationPage() {
                           </div>
                           
                           <div className="space-y-2">
-                             <div className="flex justify-between text-xs">
-                                <span className="text-muted-foreground">ID:</span>
-                                <span className="text-foreground font-mono">{instance.instanceName}</span>
-                             </div>
                              {instance.owner && (
                                <div className="flex justify-between text-xs">
                                   <span className="text-muted-foreground">Número:</span>

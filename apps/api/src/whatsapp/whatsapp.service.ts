@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SettingsService } from '../settings/settings.service';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class WhatsappService {
@@ -82,18 +83,36 @@ export class WhatsappService {
 
   async listInstances() {
     const data = await this.request('GET', 'instance/fetchInstances');
+    this.logger.log(`Evolution API Response structure: ${Object.keys(data || {}).join(', ')}`);
+    this.logger.log(`Evolution API Raw Data: ${JSON.stringify(data)}`);
     
-    // Na v2, a Evolution retorna [{ instance: { ... } }] em vez de [{ ... }]
-    if (Array.isArray(data)) {
-      return data.map(item => {
-        if (item.instance) {
-          return {
-            ...item.instance,
-            // Garante que o status seja mapeado corretamente se estiver em outro lugar
-            status: item.instance.status || item.instance.state || 'connecting'
-          };
-        }
-        return item;
+    // Na v2, a Evolution retorna [{ instance: { ... } }] ou um objeto com { data: [...] }
+    let instancesArray = (data as any)?.instances || (data as any)?.data || data;
+    
+    if (Array.isArray(instancesArray)) {
+      return instancesArray.map(item => {
+        const inst = item.instance || item;
+        
+        // Tenta encontrar o status em vários lugares comuns na v2 e v1
+        const rawStatus = (
+          inst.status || 
+          inst.state || 
+          inst.connectionStatus || 
+          inst.connection?.state || 
+          'connecting'
+        ).toString().toLowerCase();
+        
+        // Mapeamento extra-robusto para 'open' (o que o front espera)
+        const isOnline = ['open', 'connected', 'online', 'authenticated'].includes(rawStatus);
+        const finalStatus = isOnline ? 'open' : rawStatus;
+
+        this.logger.log(`Instance: ${inst.instanceName || inst.name} | Raw: ${rawStatus} | Final: ${finalStatus}`);
+
+        return {
+          ...inst,
+          instanceName: inst.instanceName || inst.name || inst.id || 'Instância sem Nome',
+          status: finalStatus
+        };
       });
     }
     
@@ -101,9 +120,10 @@ export class WhatsappService {
   }
 
   async createInstance(instanceName: string) {
+    const randomToken = crypto.randomBytes(12).toString('hex');
     return this.request('POST', 'instance/create', {
       instanceName,
-      token: 'lexcrm_token', // Usar um token fixo para evitar problemas de geração dinâmica
+      token: randomToken,
       integration: 'WHATSAPP-BAILEYS',
       qrcode: true,
     });

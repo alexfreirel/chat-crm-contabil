@@ -19,6 +19,7 @@ export function Sidebar() {
   const { theme, setTheme } = useTheme();
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement>(null);
+  const [dbStatus, setDbStatus] = useState<'online' | 'offline' | 'checking'>('checking');
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -28,6 +29,22 @@ export function Sidebar() {
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const checkDb = async () => {
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005'}/health/db`);
+        const data = await res.json();
+        setDbStatus(data.status === 'ok' ? 'online' : 'offline');
+      } catch (error) {
+        setDbStatus('offline');
+      }
+    };
+
+    checkDb();
+    const interval = setInterval(checkDb, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const navItems = [
@@ -64,6 +81,20 @@ export function Sidebar() {
         </nav>
 
         <div className="mt-auto flex flex-col gap-4 w-full px-3 relative" ref={themeMenuRef}>
+          <div className="relative group w-full flex justify-center py-1">
+            <div className={`w-3 h-3 rounded-full transition-all duration-500 shadow-sm ${
+              dbStatus === 'online' ? 'bg-emerald-500 shadow-emerald-500/20' : 
+              dbStatus === 'offline' ? 'bg-red-500 shadow-red-500/20 animate-pulse' : 
+              'bg-amber-500 shadow-amber-500/20 animate-spin-slow'
+            }`} />
+            
+            <div className="absolute left-[64px] px-3 py-2 bg-card text-foreground text-[11px] font-bold uppercase tracking-widest rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap shadow-xl border border-border flex items-center z-[200] before:content-[''] before:absolute before:-left-[5px] before:top-1/2 before:-translate-y-1/2 before:border-y-[5px] before:border-y-transparent before:border-r-[5px] before:border-r-border">
+              Banco: <span className={dbStatus === 'online' ? 'text-emerald-500 ml-1' : 'text-red-500 ml-1'}>
+                {dbStatus === 'online' ? 'Online' : dbStatus === 'offline' ? 'Offline' : 'Verificando...'}
+              </span>
+            </div>
+          </div>
+
           <button 
             onClick={() => setShowThemeMenu(!showThemeMenu)}
             className={`w-full aspect-square rounded-xl flex items-center justify-center relative shadow-sm group transition-colors ${showThemeMenu ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'}`}
@@ -95,8 +126,6 @@ export function Sidebar() {
               ))}
             </div>
           )}
-
-          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)] absolute right-[22px] bottom-[68px]"></div>
 
           <button 
             onClick={() => { localStorage.removeItem('token'); router.push('/login'); }}
