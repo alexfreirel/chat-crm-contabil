@@ -121,12 +121,29 @@ export class WhatsappService {
 
   async createInstance(instanceName: string) {
     const randomToken = crypto.randomBytes(12).toString('hex');
-    return this.request('POST', 'instance/create', {
+    const result = await this.request('POST', 'instance/create', {
       instanceName,
       token: randomToken,
       integration: 'WHATSAPP-BAILEYS',
       qrcode: true,
     });
+
+    // Automação: Configurar Webhook imediatamente após a criação
+    try {
+      const config = await this.settingsService.getWhatsAppConfig();
+      if (config.webhookUrl) {
+        this.logger.log(`Configurando webhook automático para ${instanceName}: ${config.webhookUrl}`);
+        await this.setWebhook(instanceName, config.webhookUrl);
+        this.logger.log(`✅ Webhook configurado com sucesso para ${instanceName}`);
+      } else {
+        this.logger.warn(`⚠️ Webhook não configurado: webhookUrl global está vazio.`);
+      }
+    } catch (error) {
+      this.logger.error(`❌ Falha ao configurar webhook automático para ${instanceName}: ${error.message}`);
+      // Não lançamos o erro aqui para não impedir que o usuário veja o QR Code da instância criada
+    }
+
+    return result;
   }
 
   async deleteInstance(instanceName: string) {
