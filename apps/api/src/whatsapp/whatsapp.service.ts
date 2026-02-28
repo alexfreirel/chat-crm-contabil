@@ -97,4 +97,23 @@ export class WhatsappService {
   async getConnectionStatus(instanceName: string) {
     return this.request('GET', `instance/connectionStatus/${instanceName}`);
   }
+
+  async setWebhook(instanceName: string, url: string) {
+    return this.request('POST', `webhook/set/${instanceName}`, {
+      url,
+      enabled: true,
+      webhook_by_events: false,
+      events: [
+        'MESSAGES_UPSERT',
+        'MESSAGES_UPDATE',
+        'MESSAGES_DELETE',
+        'SEND_MESSAGE',
+        'CONNECTION_UPDATE',
+        'PRESENCE_UPDATE',
+        'CHATS_UPSERT',
+        'CHATS_UPDATE',
+        'CHATS_DELETE',
+      ],
+    });
+  }
 }

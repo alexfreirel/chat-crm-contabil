@@ -21,14 +21,24 @@ export class SettingsService {
   }
 
   async getWhatsAppConfig() {
+    const dbApiUrl = await this.get('EVOLUTION_API_URL');
+    const dbApiKey = await this.get('EVOLUTION_GLOBAL_APIKEY');
+    const dbWebhookUrl = await this.get('WEBHOOK_URL');
+
+    console.log('Configurações carregadas do Banco:', { dbApiUrl, dbApiKey, dbWebhookUrl });
+
     return {
-      apiUrl: await this.get('EVOLUTION_API_URL') || process.env.EVOLUTION_API_URL,
-      apiKey: await this.get('EVOLUTION_GLOBAL_APIKEY') || process.env.EVOLUTION_GLOBAL_APIKEY,
+      apiUrl: dbApiUrl || process.env.EVOLUTION_API_URL,
+      apiKey: dbApiKey || process.env.EVOLUTION_GLOBAL_APIKEY,
+      webhookUrl: dbWebhookUrl || 'https://atendimento.andrelustosaadvogados.com.br/api/webhooks/evolution',
     };
   }
 
-  async setWhatsAppConfig(apiUrl: string, apiKey: string) {
+  async setWhatsAppConfig(apiUrl: string, apiKey: string, webhookUrl?: string) {
     await this.set('EVOLUTION_API_URL', apiUrl);
     await this.set('EVOLUTION_GLOBAL_APIKEY', apiKey);
+    if (webhookUrl) {
+      await this.set('WEBHOOK_URL', webhookUrl);
+    }
   }
 }

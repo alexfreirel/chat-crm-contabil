@@ -37,21 +37,47 @@ export default function WhatsappIntegrationPage() {
   // Configurações Globais
   const [apiUrl, setApiUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [isEditingConfig, setIsEditingConfig] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
+
+  const checkApiHealth = async () => {
+    try {
+      const res = await api.get('/settings/whatsapp-config/health');
+      setApiStatus(res.data.status === 'online' ? 'online' : 'offline');
+    } catch (error) {
+      setApiStatus('offline');
+    }
+  };
 
   const fetchInstances = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/whatsapp/instances');
-      setInstances(Array.isArray(res.data) ? res.data : (res.data?.data || []));
+      // 1. Carrega as configs primeiro (Sempre deve funcionar se o nosso back estiver online)
+      try {
+        const configRes = await api.get('/settings/whatsapp-config');
+        setApiUrl(configRes.data.apiUrl || '');
+        setApiKey(configRes.data.apiKey || '');
+        setWebhookUrl(configRes.data.webhookUrl || '');
+        // Checa a saúde da API em paralelo
+        checkApiHealth();
+      } catch (err) {
+        console.error('Erro ao carregar configurações de API:', err);
+      }
+
+      // 2. Tenta buscar instâncias (Pode falhar se a URL for inválida)
+      try {
+        const res = await api.get('/whatsapp/instances');
+        setInstances(Array.isArray(res.data) ? res.data : (res.data?.data || []));
+      } catch (err) {
+        console.error('Erro ao carregar instâncias (URL possivelmente inválida):', err);
+        setInstances([]);
+        setApiStatus('offline');
+      }
       
-      // Carrega as configs atuais
-      const configRes = await api.get('/settings/whatsapp-config');
-      setApiUrl(configRes.data.apiUrl || '');
-      setApiKey(configRes.data.apiKey || '');
     } catch (error) {
-      console.error('Erro ao buscar instâncias/configurações:', error);
+      console.error('Erro geral no fetchInstances:', error);
     } finally {
       setLoading(false);
     }
@@ -64,10 +90,10 @@ export default function WhatsappIntegrationPage() {
   const handleSaveConfig = async () => {
     setSavingConfig(true);
     try {
-      await api.post('/settings/whatsapp-config', { apiUrl, apiKey });
+      await api.post('/settings/whatsapp-config', { apiUrl, apiKey, webhookUrl });
       setIsEditingConfig(false);
       alert('Configurações atualizadas com sucesso!');
-      fetchInstances();
+      fetchInstances(); // Isso já chama o checkApiHealth
     } catch (error) {
       console.error('Erro ao salvar configurações:', error);
       alert('Erro ao salvar. Verifique se você é um administrador.');
@@ -213,6 +239,16 @@ export default function WhatsappIntegrationPage() {
                     className="w-full bg-muted/50 border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary/50 transition-all font-mono"
                   />
                 </div>
+                <div className="md:col-span-2 space-y-2">
+                  <label className="text-xs font-bold text-muted-foreground uppercase ml-1">Webhook URL (Recebimento de Mensagens)</label>
+                  <input 
+                    type="text" 
+                    value={webhookUrl}
+                    onChange={(e) => setWebhookUrl(e.target.value)}
+                    placeholder="https://seu-dominio.com/api/webhooks/evolution"
+                    className="w-full bg-muted/50 border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary/50 transition-all font-mono"
+                  />
+                </div>
                 <div className="md:col-span-2 flex justify-end">
                   <button 
                     disabled={savingConfig}
@@ -225,25 +261,41 @@ export default function WhatsappIntegrationPage() {
                 </div>
               </div>
             ) : (
-              <div className="p-4 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-6">
+              <div className="p-4 flex flex-wrap items-center justify-between gap-4 text-xs">
+                <div className="flex flex-wrap items-center gap-6">
                    <div className="flex flex-col">
-                      <span className="text-muted-foreground font-semibold uppercase tracking-tighter text-[9px]">URL do Endpoint</span>
-                      <span className="text-foreground font-mono truncate max-w-[200px]">{apiUrl || 'Não configurado'}</span>
+                      <span className="text-muted-foreground font-semibold uppercase tracking-tighter text-[9px]">URL da Evolution</span>
+                      <span className="text-foreground font-mono truncate max-w-[180px]">{apiUrl || 'Não configurado'}</span>
                    </div>
                    <div className="flex flex-col">
                       <span className="text-muted-foreground font-semibold uppercase tracking-tighter text-[9px]">Chave Global</span>
-                      <span className="text-foreground font-mono">{apiKey ? '••••••••••••••••' : 'Não configurada'}</span>
+                      <span className="text-foreground font-mono">{apiKey ? '••••••••••••' : 'Não configurada'}</span>
+                   </div>
+                   <div className="flex flex-col">
+                      <span className="text-muted-foreground font-semibold uppercase tracking-tighter text-[9px]">Webhook (Sistema)</span>
+                      <span className="text-foreground font-mono truncate max-w-[180px]">{webhookUrl || 'André Lustosa (Padrão)'}</span>
                    </div>
                 </div>
-                <div className="flex items-center gap-2 text-emerald-500 font-bold bg-emerald-500/10 px-3 py-1.5 rounded-full">
-                   <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                   ATIVO
-                </div>
+                {apiStatus === 'online' ? (
+                  <div className="flex items-center gap-2 text-emerald-500 font-bold bg-emerald-500/10 px-3 py-1.5 rounded-full border border-emerald-500/20">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                    CONECTADO
+                  </div>
+                ) : apiStatus === 'offline' ? (
+                  <div className="flex items-center gap-2 text-rose-500 font-bold bg-rose-500/10 px-3 py-1.5 rounded-full border border-rose-500/20">
+                    <div className="w-2 h-2 rounded-full bg-rose-500"></div>
+                    SEM CONEXÃO
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-muted-foreground font-bold bg-muted px-3 py-1.5 rounded-full">
+                    <RefreshCw className="animate-spin" size={12} />
+                    VERIFICANDO
+                  </div>
+                )}
               </div>
             )}
           </div>
-
+创新性
           {activeTab === 'guide' ? (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

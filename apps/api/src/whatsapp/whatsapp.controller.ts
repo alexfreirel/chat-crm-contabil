@@ -1,11 +1,15 @@
-import { Controller, Get, Post, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { WhatsappService } from './whatsapp.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { SettingsService } from '../settings/settings.service';
 
 @Controller('whatsapp')
 @UseGuards(JwtAuthGuard)
 export class WhatsappController {
-  constructor(private readonly whatsappService: WhatsappService) {}
+  constructor(
+    private readonly whatsappService: WhatsappService,
+    private readonly settingsService: SettingsService,
+  ) {}
 
   @Get('instances')
   async listInstances() {
@@ -14,7 +18,20 @@ export class WhatsappController {
 
   @Post('instances')
   async createInstance(@Body('name') name: string) {
-    return this.whatsappService.createInstance(name);
+    const instance = await this.whatsappService.createInstance(name);
+    
+    // Autoconfigura o webhook assim que a instância é criada
+    try {
+      const config = await this.settingsService.getWhatsAppConfig();
+      if (config.webhookUrl) {
+        await this.whatsappService.setWebhook(name, config.webhookUrl);
+        console.log(`Webhook configurado automaticamente para instância: ${name}`);
+      }
+    } catch (e) {
+      console.error(`Falha ao configurar webhook automático para ${name}:`, e);
+    }
+
+    return instance;
   }
 
   @Delete('instances/:name')
