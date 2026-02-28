@@ -398,10 +398,10 @@ export default function WhatsappIntegrationPage() {
                     return (
                       <div key={instance.instanceName} className="bg-[#111111]/90 border border-white/5 rounded-2xl overflow-hidden group hover:border-primary/20 transition-all shadow-xl">
                         <div className="p-6">
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-center gap-4">
+                          <div className="flex justify-between gap-4">
+                            <div className="flex items-center gap-4 flex-1 min-w-0">
                               {/* Avatar Evolution Style */}
-                              <div className="w-16 h-16 rounded-full bg-[#1a1a1a] border border-white/10 overflow-hidden flex items-center justify-center relative shadow-inner">
+                              <div className="w-16 h-16 rounded-full bg-[#1a1a1a] border border-white/10 overflow-hidden flex items-center justify-center relative shadow-inner shrink-0">
                                 {instance.profilePictureUrl ? (
                                   <img src={instance.profilePictureUrl} alt={instance.instanceName} className="w-full h-full object-cover" />
                                 ) : (
@@ -411,9 +411,9 @@ export default function WhatsappIntegrationPage() {
                                 )}
                               </div>
                               
-                              <div className="flex flex-col">
+                              <div className="flex flex-col min-w-0">
                                 <span className="text-[10px] font-bold text-primary/60 uppercase tracking-widest mb-0.5">WhatsApp</span>
-                                <h4 className="font-bold text-white text-lg tracking-tight truncate max-w-[180px]">
+                                <h4 className="font-bold text-white text-lg tracking-tight truncate">
                                   {instance.profileName || instance.instanceName}
                                 </h4>
                                 <span className="text-muted-foreground font-mono text-sm">
@@ -423,25 +423,25 @@ export default function WhatsappIntegrationPage() {
                             </div>
 
                             {/* Stats Evolution Style */}
-                            <div className="flex flex-col items-end gap-3 min-w-[80px]">
+                            <div className="flex flex-col items-end gap-3 shrink-0">
                                <button 
                                 onClick={() => handleDeleteInstance(instance.instanceName)}
                                 className="p-2 text-white/20 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
                               >
                                 <Trash2 size={18} />
                               </button>
-                              <div className="flex items-center gap-4 mt-1">
-                                <div className="flex flex-col items-center gap-1.5">
-                                   <div className="w-9 h-9 rounded-full border border-white/5 flex items-center justify-center bg-white/5">
-                                      <Plus size={16} className="text-white/40" />
+                              <div className="flex items-center gap-3 mt-1">
+                                <div className="flex flex-col items-center gap-1">
+                                   <div className="w-8 h-8 rounded-full border border-white/5 flex items-center justify-center bg-white/5">
+                                      <Plus size={14} className="text-white/40" />
                                    </div>
-                                   <span className="text-[11px] font-bold text-white/40">{instance._count?.contacts?.toLocaleString() || '1.421'}</span>
+                                   <span className="text-[10px] font-bold text-white/40">{instance._count?.contacts?.toLocaleString() || '1.421'}</span>
                                 </div>
-                                <div className="flex flex-col items-center gap-1.5">
-                                   <div className="w-9 h-9 rounded-full border border-white/5 flex items-center justify-center bg-white/5">
-                                      <MessageSquare size={16} className="text-white/40" />
+                                <div className="flex flex-col items-center gap-1">
+                                   <div className="w-8 h-8 rounded-full border border-white/5 flex items-center justify-center bg-white/5">
+                                      <MessageSquare size={14} className="text-white/40" />
                                    </div>
-                                   <span className="text-[11px] font-bold text-white/40">{instance._count?.messages?.toLocaleString() || '4.621'}</span>
+                                   <span className="text-[10px] font-bold text-white/40">{instance._count?.messages?.toLocaleString() || '4.621'}</span>
                                 </div>
                               </div>
                             </div>
