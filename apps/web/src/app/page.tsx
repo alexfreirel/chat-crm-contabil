@@ -32,9 +32,9 @@ export default function Dashboard() {
   }, [router]);
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden">
+    <div className="flex h-screen overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-64 bg-white dark:bg-gray-800 border-r dark:border-gray-700 flex flex-col justify-between hidden md:flex">
+      <aside className="w-64 border-r dark:border-gray-800 flex flex-col justify-between hidden md:flex">
         <div className="p-6">
           <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-500 mb-8">LexCRM</h2>
           <nav className="space-y-2">
