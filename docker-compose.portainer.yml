@@ -131,8 +131,13 @@ services:
         - "traefik.http.services.crm-web.loadbalancer.server.port=3000"
         - "traefik.http.routers.crm-web.entrypoints=websecure"
         - "traefik.http.routers.crm-web.tls.certresolver=letsencrypt" # Mude se o nome do seu resolver for outro
+        - "traefik.docker.network=OrionNet"
 
-networks:\n  OrionNet:\n    external: true\n\nvolumes:
+networks:
+  OrionNet:
+    external: true
+
+volumes:
   pgdata_v2:
   redisdata:
   seaweed_master_data:
