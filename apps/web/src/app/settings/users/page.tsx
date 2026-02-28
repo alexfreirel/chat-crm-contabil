@@ -208,7 +208,7 @@ export default function UsersSettingsPage() {
 
       {/* Modal Criar/Editar */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in duration-200 dark">
           <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between px-6 py-5 border-b border-border bg-foreground/[0.02]">
               <h2 className="text-lg font-bold text-foreground tracking-tight">
@@ -234,7 +234,7 @@ export default function UsersSettingsPage() {
                   required
                   value={form.name}
                   onChange={e => setForm({ ...form, name: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-border rounded-xl bg-foreground/[0.03] text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all placeholder:text-muted-foreground/50"
+                  className="w-full px-4 py-2.5 border border-border rounded-xl bg-background text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all placeholder:text-muted-foreground/50"
                   placeholder="Nome completo"
                 />
               </div>
@@ -245,7 +245,7 @@ export default function UsersSettingsPage() {
                   required
                   value={form.email}
                   onChange={e => setForm({ ...form, email: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-border rounded-xl bg-foreground/[0.03] text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all placeholder:text-muted-foreground/50"
+                  className="w-full px-4 py-2.5 border border-border rounded-xl bg-background text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all placeholder:text-muted-foreground/50"
                   placeholder="email@exemplo.com"
                 />
               </div>
@@ -258,7 +258,7 @@ export default function UsersSettingsPage() {
                   required={!editingId}
                   value={form.password}
                   onChange={e => setForm({ ...form, password: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-border rounded-xl bg-foreground/[0.03] text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all placeholder:text-muted-foreground/50"
+                  className="w-full px-4 py-2.5 border border-border rounded-xl bg-background text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all placeholder:text-muted-foreground/50"
                   placeholder="••••••••"
                 />
               </div>
@@ -267,10 +267,10 @@ export default function UsersSettingsPage() {
                 <select
                   value={form.role}
                   onChange={e => setForm({ ...form, role: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-border rounded-xl bg-foreground/[0.03] text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                  className="w-full px-4 py-2.5 border border-border rounded-xl bg-background text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                 >
                   {ROLES.map(r => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
+                    <option key={r.value} value={r.value} className="bg-card text-foreground">{r.label}</option>
                   ))}
                 </select>
               </div>
