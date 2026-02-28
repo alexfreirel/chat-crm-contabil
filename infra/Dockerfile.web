@@ -24,7 +24,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-COPY --from=base /app/apps/web/public ./public
+COPY --from=base /app/apps/web/public ./apps/web/public
 
 # Define permissões
 RUN addgroup --system --gid 1001 nodejs
@@ -32,7 +32,7 @@ RUN adduser --system --uid 1001 nextjs
 
 # Copia arquivos standalone do Next
 COPY --from=base --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
-COPY --from=base --chown=nextjs:nodejs /app/apps/web/.next/static ./.next/static
+COPY --from=base --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
 
 USER nextjs
 
