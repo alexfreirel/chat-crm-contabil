@@ -81,10 +81,8 @@ services:
       - EVOLUTION_GLOBAL_APIKEY=${EVOLUTION_GLOBAL_APIKEY}
       - EVOLUTION_INSTANCE_NAME=${EVOLUTION_INSTANCE_NAME}
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - postgres
+      - redis
 
   # ------ NestJS Worker (Mídias e IA) ------
   crm-worker:
@@ -105,12 +103,9 @@ services:
       - S3_SECRET_KEY=${S3_SECRET_KEY:-some_secret_key}
       - S3_BUCKET=${S3_BUCKET:-chat-crm-media}
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      seaweed-filer:
-        condition: service_started
+      - postgres
+      - redis
+      - seaweed-filer
 
   # ------ Next.js Frontend ------
   crm-web:
