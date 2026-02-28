@@ -81,13 +81,30 @@ export class WhatsappService {
   // --- GESTÃO DE INSTÂNCIAS ---
 
   async listInstances() {
-    return this.request('GET', 'instance/fetchInstances');
+    const data = await this.request('GET', 'instance/fetchInstances');
+    
+    // Na v2, a Evolution retorna [{ instance: { ... } }] em vez de [{ ... }]
+    if (Array.isArray(data)) {
+      return data.map(item => {
+        if (item.instance) {
+          return {
+            ...item.instance,
+            // Garante que o status seja mapeado corretamente se estiver em outro lugar
+            status: item.instance.status || item.instance.state || 'connecting'
+          };
+        }
+        return item;
+      });
+    }
+    
+    return data;
   }
 
   async createInstance(instanceName: string) {
     return this.request('POST', 'instance/create', {
       instanceName,
-      token: '', // Evolution gera dinamicamente se vazio
+      token: 'lexcrm_token', // Usar um token fixo para evitar problemas de geração dinâmica
+      integration: 'WHATSAPP-BAILEYS',
       qrcode: true,
     });
   }

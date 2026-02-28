@@ -108,7 +108,10 @@ export default function WhatsappIntegrationPage() {
   };
 
   const handleCreateInstance = async () => {
-    if (!newInstanceName.trim()) return;
+    if (!newInstanceName.trim()) {
+      alert('Por favor, digite um nome para a instância antes de criar.');
+      return;
+    }
     setCreating(true);
     try {
       await api.post('/whatsapp/instances', { name: newInstanceName });
@@ -360,7 +363,6 @@ export default function WhatsappIntegrationPage() {
                   </div>
                 </div>
                 <button 
-                  disabled={creating || !newInstanceName.trim()}
                   onClick={handleCreateInstance}
                   className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-primary/90 transition-all disabled:opacity-50"
                 >
@@ -393,13 +395,13 @@ export default function WhatsappIntegrationPage() {
                             <div className="flex items-center gap-3">
                               <div className="w-12 h-12 rounded-full bg-muted border border-border overflow-hidden flex items-center justify-center bg-gradient-to-tr from-accent to-background">
                                 {instance.profilePictureUrl ? (
-                                  <img src={instance.profilePictureUrl} alt={instance.instanceName} className="w-full h-full object-cover" />
+                                  <img src={instance.profilePictureUrl} alt={instance.instanceName || 'Instância'} className="w-full h-full object-cover" />
                                 ) : (
-                                  <span className="font-bold text-muted-foreground">{instance.instanceName[0].toUpperCase()}</span>
+                                  <span className="font-bold text-muted-foreground">{(instance.instanceName?.[0] || 'W').toUpperCase()}</span>
                                 )}
                               </div>
                               <div>
-                                <h4 className="font-bold text-foreground truncate max-w-[150px]">{instance.profileName || instance.instanceName}</h4>
+                                <h4 className="font-bold text-foreground truncate max-w-[150px]">{instance.profileName || instance.instanceName || 'Sem Nome'}</h4>
                                 <div className="flex items-center gap-1.5 mt-0.5">
                                   <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 antialiased animate-pulse' : 'bg-red-500'}`}></div>
                                   <span className={`text-[10px] font-bold uppercase tracking-wider ${isConnected ? 'text-emerald-500' : 'text-red-500'}`}>
