@@ -62,8 +62,7 @@ export class WhatsappService {
     const targetInstance = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'crm_instance';
     return this.request('POST', `message/sendText/${targetInstance}`, {
       number,
-      options: { delay: 1200, presence: 'composing' },
-      textMessage: { text },
+      text,
     });
   }
 
@@ -75,23 +74,20 @@ export class WhatsappService {
     instanceName?: string,
   ) {
     const targetInstance = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'crm_instance';
-    let endpoint = `message/sendMedia/${targetInstance}`;
-    let body: any = {
-      number,
-      options: { delay: 1200 },
-      mediaMessage: { mediatype: mediaType, media: mediaUrl, caption },
-    };
 
     if (mediaType === 'audio') {
-      endpoint = `message/sendWhatsAppAudio/${targetInstance}`;
-      body = {
+      return this.request('POST', `message/sendWhatsAppAudio/${targetInstance}`, {
         number,
-        options: { delay: 1200 },
-        audioMessage: { audio: mediaUrl },
-      };
+        audio: mediaUrl,
+      });
     }
 
-    return this.request('POST', endpoint, body);
+    return this.request('POST', `message/sendMedia/${targetInstance}`, {
+      number,
+      mediatype: mediaType,
+      media: mediaUrl,
+      caption: caption || '',
+    });
   }
 
   // --- GESTÃO DE INSTÂNCIAS ---

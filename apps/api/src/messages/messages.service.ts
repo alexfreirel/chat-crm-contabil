@@ -38,15 +38,21 @@ export class MessagesService {
     }
 
     // 1. Send via Evolution API
-    let externalMsg;
+    let externalMsg: any;
+    let sendStatus = 'enviado';
     try {
       externalMsg = await this.whatsapp.sendText(
         convo.lead.phone,
         text,
         convo.instance_name || undefined
       );
+      if (externalMsg?.statusCode >= 400 || externalMsg?.error) {
+        this.logger.error(`Evolution API erro ao enviar texto: ${JSON.stringify(externalMsg)}`);
+        sendStatus = 'erro';
+      }
     } catch (e) {
-      throw new BadRequestException('Falha ao enviar webhook WhatsApp');
+      this.logger.error(`Exceção ao enviar texto: ${e.message}`);
+      sendStatus = 'erro';
     }
 
     // 2. Persist in DB
@@ -58,9 +64,15 @@ export class MessagesService {
         type: 'text',
         text,
         external_message_id: externalId,
-        status: 'enviado'
+        status: sendStatus,
       }
     });
+
+    if (sendStatus === 'erro') {
+      this.chatGateway.emitNewMessage(convo.id, msg);
+      this.chatGateway.emitConversationsUpdate(null);
+      throw new BadRequestException('Falha ao enviar mensagem via WhatsApp');
+    }
 
     // 3. Update Convo
     await this.prisma.conversation.update({
@@ -122,6 +134,7 @@ export class MessagesService {
     this.logger.log(`[AUDIO] Enviando áudio via Evolution: ${mediaUrl}`);
 
     // 5. Enviar via Evolution API
+    let audioSendStatus = 'enviado';
     try {
       const result = await this.whatsapp.sendMedia(
         convo.lead.phone,
@@ -130,15 +143,28 @@ export class MessagesService {
         undefined,
         convo.instance_name || undefined,
       );
-      const extId = result?.key?.id;
-      if (extId) {
-        await this.prisma.message.update({
-          where: { id: msg.id },
-          data: { external_message_id: extId },
-        });
+      if (result?.statusCode >= 400 || result?.error) {
+        this.logger.error(`Evolution API erro ao enviar áudio: ${JSON.stringify(result)}`);
+        audioSendStatus = 'erro';
+      } else {
+        const extId = result?.key?.id;
+        if (extId) {
+          await this.prisma.message.update({
+            where: { id: msg.id },
+            data: { external_message_id: extId },
+          });
+        }
       }
     } catch (e) {
-      this.logger.warn(`Falha ao enviar áudio via WhatsApp: ${e.message}`);
+      this.logger.error(`Exceção ao enviar áudio: ${e.message}`);
+      audioSendStatus = 'erro';
+    }
+
+    if (audioSendStatus === 'erro') {
+      await this.prisma.message.update({
+        where: { id: msg.id },
+        data: { status: 'erro' },
+      });
     }
 
     // 6. Atualizar conversa
