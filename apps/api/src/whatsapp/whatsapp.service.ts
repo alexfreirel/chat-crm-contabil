@@ -228,53 +228,30 @@ export class WhatsappService {
 
   async fetchContacts(instanceName: string) {
     try {
-      // 1. Tenta o endpoint POST /chat/findContacts (Versão v2.1.0+)
+      // POST /chat/findContacts com { where: {} } para trazer TODOS os contatos
       let data = await this.request(
         'POST',
         `chat/findContacts/${instanceName}`,
-        {},
+        { where: {} },
       );
 
-      // 2. Fallback: Se falhar (404), tenta o GET principal da v2 (Chat)
+      // Fallback: GET endpoints antigos
       if (!data || (data as any).statusCode === 404 || (data as any).error) {
-        this.logger.log(
-          `chat/findContacts (POST) indisponível para ${instanceName}, tentando chat/fetchContacts (GET)...`,
-        );
+        this.logger.log(`findContacts indisponível para ${instanceName}, tentando fetchContacts...`);
         data = await this.request('GET', `chat/fetchContacts/${instanceName}`);
       }
-
-      // 3. Fallback: GET contact/find
-      if (
-        !data ||
-        (data as any).statusCode === 404 ||
-        (data as any).error ||
-        !((data as any).data || (Array.isArray(data) && data.length > 0))
-      ) {
-        this.logger.log(
-          `chat/fetchContacts (GET) indisponível para ${instanceName}, tentando contact/find (GET)...`,
-        );
+      if (!data || (data as any).statusCode === 404 || (data as any).error ||
+          !((data as any).data || (Array.isArray(data) && data.length > 0))) {
+        this.logger.log(`fetchContacts indisponível para ${instanceName}, tentando contact/find...`);
         data = await this.request('GET', `contact/find/${instanceName}`);
       }
 
-      this.logger.log(
-        `Evolution API Contacts Response (Instance: ${instanceName}): ${JSON.stringify(
-          data,
-        ).substring(0, 500)}...`,
-      );
-
-      if (!data || (data as any).statusCode >= 400 || (data as any).error) {
-        this.logger.error(
-          `Falha definitiva ao buscar contatos para ${instanceName}: ${JSON.stringify(
-            data,
-          )}`,
-        );
-        return { data: [] };
-      }
-
-      return data;
+      const list = Array.isArray(data) ? data : (data as any)?.data || [];
+      this.logger.log(`fetchContacts ${instanceName}: ${list.length} contatos retornados`);
+      return list;
     } catch (e) {
       this.logger.error(`Erro ao buscar contatos para ${instanceName}: ${e}`);
-      return { data: [] };
+      return [];
     }
   }
 
@@ -285,63 +262,77 @@ export class WhatsappService {
         `chat/fetchProfilePicture/${instanceName}`,
         { number },
       );
-      this.logger.log(`Profile picture for ${number}: ${JSON.stringify(data)}`);
       return data?.profilePictureUrl || data?.profile_picture || data?.data?.profile_picture || data?.url || null;
     } catch (e) {
-      this.logger.error(`Erro ao buscar foto de perfil para ${number}: ${e}`);
       return null;
     }
   }
 
   async fetchChats(instanceName: string) {
     try {
-      // 1. Tenta POST /chat/findChats (v2.1.0+ com fix PR#1384: inclui contatos NÃO salvos)
+      // POST /chat/findChats com { where: {} } para trazer TODOS os chats (incluindo não salvos)
       let data = await this.request(
         'POST',
         `chat/findChats/${instanceName}`,
-        {},
+        { where: {} },
       );
 
-      // 2. Fallback: GET /chat/fetchChats (versões mais antigas, pode não incluir não salvos)
+      // Fallback: GET /chat/fetchChats
       if (!data || (data as any).statusCode === 404 || (data as any).error) {
-        this.logger.log(
-          `chat/findChats (POST) indisponível para ${instanceName}, tentando chat/fetchChats (GET)...`,
-        );
+        this.logger.log(`findChats indisponível para ${instanceName}, tentando fetchChats (GET)...`);
         data = await this.request('GET', `chat/fetchChats/${instanceName}`);
       }
 
-      this.logger.log(
-        `Evolution API Chats Response (Instance: ${instanceName}): ${JSON.stringify(
-          data,
-        ).substring(0, 500)}...`,
-      );
-
       if (!data || (data as any).statusCode >= 400 || (data as any).error) {
-        this.logger.error(
-          `Falha ao buscar chats para ${instanceName}: ${JSON.stringify(data)}`,
-        );
-        return { data: [] };
+        this.logger.error(`Falha ao buscar chats para ${instanceName}: ${JSON.stringify(data)}`);
+        return [];
       }
 
-      return data;
+      const list = Array.isArray(data) ? data : (data as any)?.data || [];
+      this.logger.log(`fetchChats ${instanceName}: ${list.length} chats retornados`);
+
+      // Se poucos resultados, tentar paginar (algumas versões limitam por padrão)
+      if (list.length > 0) {
+        let allChats = [...list];
+        let page = 2;
+        const pageSize = list.length; // usar o tamanho da primeira página como referência
+
+        // Se a primeira página retornou um número "redondo" (múltiplo de 50/100), provavelmente há mais
+        while (pageSize >= 50 && page <= 20) {
+          try {
+            const moreData = await this.request(
+              'POST',
+              `chat/findChats/${instanceName}?page=${page}&limit=${pageSize}`,
+              { where: {} },
+            );
+            const moreList = Array.isArray(moreData) ? moreData : (moreData as any)?.data || [];
+            if (moreList.length === 0) break;
+            allChats = [...allChats, ...moreList];
+            this.logger.log(`fetchChats ${instanceName} page ${page}: +${moreList.length} chats`);
+            if (moreList.length < pageSize) break; // última página
+            page++;
+          } catch {
+            break; // paginação não suportada nesta versão
+          }
+        }
+
+        if (allChats.length > list.length) {
+          this.logger.log(`fetchChats ${instanceName}: total ${allChats.length} chats após paginação`);
+        }
+        return allChats;
+      }
+
+      return list;
     } catch (e) {
       this.logger.error(`Erro ao buscar chats para ${instanceName}: ${e}`);
-      return { data: [] };
+      return [];
     }
   }
 
   async syncContacts(instanceName: string, tenantId?: string) {
-    const rawContacts = await this.fetchContacts(instanceName);
-    const rawChats = await this.fetchChats(instanceName);
-
-    // Ambas APIs podem retornar array direto OU { data: [...] }
-    const contactsList = Array.isArray(rawContacts)
-      ? rawContacts
-      : (rawContacts as any).data || (rawContacts as any).contacts || [];
-
-    const chatsList = Array.isArray(rawChats)
-      ? rawChats
-      : (rawChats as any).data || (rawChats as any).chats || [];
+    // fetchContacts e fetchChats agora retornam arrays diretamente
+    const contactsList = await this.fetchContacts(instanceName);
+    const chatsList = await this.fetchChats(instanceName);
 
     this.logger.log(`Sync ${instanceName}: ${contactsList.length} contatos, ${chatsList.length} chats`);
 
