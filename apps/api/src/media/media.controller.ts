@@ -1,0 +1,49 @@
+import {
+  Controller,
+  Get,
+  Param,
+  Res,
+  NotFoundException,
+  Logger,
+} from '@nestjs/common';
+import { Response } from 'express';
+import { PrismaService } from '../prisma/prisma.service';
+import { MediaS3Service } from './s3.service';
+
+@Controller('media')
+export class MediaController {
+  private readonly logger = new Logger(MediaController.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private s3: MediaS3Service,
+  ) {}
+
+  // Rota pública (sem JWT) para que a Evolution API possa baixar o áudio
+  @Get(':messageId')
+  async getMedia(
+    @Param('messageId') messageId: string,
+    @Res() res: Response,
+  ) {
+    const media = await this.prisma.media.findUnique({
+      where: { message_id: messageId },
+    });
+
+    if (!media) throw new NotFoundException('Mídia não encontrada');
+
+    try {
+      const { stream, contentType, contentLength } =
+        await this.s3.getObjectStream(media.s3_key);
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      res.setHeader('Accept-Ranges', 'bytes');
+      if (contentLength) res.setHeader('Content-Length', String(contentLength));
+
+      stream.pipe(res);
+    } catch (e) {
+      this.logger.error(`Erro ao servir mídia ${messageId}: ${e.message}`);
+      throw new NotFoundException('Arquivo não encontrado no storage');
+    }
+  }
+}

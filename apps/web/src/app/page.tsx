@@ -4,6 +4,8 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { MessageSquare, Send } from 'lucide-react';
 import { Sidebar } from '@/components/Sidebar';
+import { AudioPlayer } from '@/components/AudioPlayer';
+import { AudioRecorder } from '@/components/AudioRecorder';
 import api from '@/lib/api';
 import { io, Socket } from 'socket.io-client';
 
@@ -399,6 +401,16 @@ export default function Dashboard() {
                         }`}>
                           {msg.type === 'text' || !msg.type ? (
                             <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                          ) : msg.type === 'audio' ? (
+                            msg.media ? (
+                              <AudioPlayer
+                                src={`/api/media/${msg.id}`}
+                                duration={msg.media.duration}
+                                isOutgoing={isOut}
+                              />
+                            ) : (
+                              <p className="text-sm italic opacity-70">🎙️ Áudio processando...</p>
+                            )
                           ) : (
                             <div>
                               <p className="text-sm italic mb-1">Anexo: {msg.type}</p>
@@ -446,7 +458,7 @@ export default function Dashboard() {
             </div>
 
             <footer className="p-6 bg-background shrink-0">
-               <div className="max-w-4xl mx-auto flex gap-3">
+               <div className="max-w-4xl mx-auto flex gap-3 items-center">
                   <input
                     ref={inputRef}
                     type="text"
@@ -462,6 +474,18 @@ export default function Dashboard() {
                     disabled={!isRealConvo || sending}
                     className="flex-1 bg-card border border-border rounded-xl px-5 py-4 focus:outline-none focus:ring-2 focus:ring-primary shadow-sm text-foreground disabled:opacity-50"
                   />
+                  {isRealConvo && !text.trim() && (
+                    <AudioRecorder
+                      conversationId={selectedId!}
+                      disabled={!isRealConvo}
+                      onSent={(msg) => {
+                        setMessages((prev) => {
+                          if (prev.find((m) => m.id === msg.id)) return prev;
+                          return [...prev, msg];
+                        });
+                      }}
+                    />
+                  )}
                   <button
                     onClick={handleSend}
                     disabled={!isRealConvo || !text.trim() || sending}

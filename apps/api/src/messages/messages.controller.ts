@@ -1,4 +1,16 @@
-import { Controller, Get, Param, Post, Body, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Post,
+  Body,
+  UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  Req,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Request } from 'express';
 import { MessagesService } from './messages.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
@@ -18,5 +30,20 @@ export class MessagesController {
     @Body('text') text: string
   ) {
     return this.messagesService.sendMessage(conversationId, text);
+  }
+
+  @Post('send-audio')
+  @UseInterceptors(FileInterceptor('audio', { limits: { fileSize: 25 * 1024 * 1024 } }))
+  sendAudio(
+    @Body('conversationId') conversationId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
+  ) {
+    // Construir URL pública: usa env var ou deriva dos headers do Traefik
+    const publicApiUrl =
+      process.env.PUBLIC_API_URL ||
+      `${(req.headers['x-forwarded-proto'] as string) || req.protocol}://${(req.headers['x-forwarded-host'] as string) || req.headers['host']}/api`;
+
+    return this.messagesService.sendAudio(conversationId, file, publicApiUrl);
   }
 }

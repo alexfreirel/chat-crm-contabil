@@ -21,7 +21,7 @@ export class MediaProcessor extends WorkerHost {
     this.logger.log(`Iniciando job de mídia: ${job.id}`);
     
     // Obter URL ou Base64 dependendo de como a Evolution entrega o anexo ou usar a rota base64
-    const { message_id, remote_jid, msg_id } = job.data;
+    const { message_id, remote_jid, msg_id, media_data } = job.data;
     
     try {
       // 1. Chamar a Evolution para baixar o content (base64)
@@ -55,6 +55,11 @@ export class MediaProcessor extends WorkerHost {
       this.logger.log(`Mídia subida com sucesso: ${s3Key}`);
       
       // 4. Update Prisma (Database)
+      // Extrair duração do payload da Evolution API (campo "seconds" em audioMessage)
+      const duration: number | null = media_data?.seconds ?? null;
+      // Extrair original_url do payload (campo "url" em audioMessage/imageMessage/etc)
+      const originalUrl: string | null = media_data?.url ?? null;
+
       await this.prisma.media.create({
         data: {
           message_id: message_id,
@@ -62,6 +67,8 @@ export class MediaProcessor extends WorkerHost {
           mime_type: mimeType,
           size,
           checksum,
+          duration,
+          original_url: originalUrl,
         }
       });
       
