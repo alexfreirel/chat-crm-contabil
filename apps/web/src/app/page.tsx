@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { MessageSquare, Send, Download, Mic, FileText } from 'lucide-react';
+import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle } from 'lucide-react';
 import { Sidebar } from '@/components/Sidebar';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { AudioRecorder } from '@/components/AudioRecorder';
@@ -44,6 +44,14 @@ function getWsUrl(): string {
   return typeof window !== 'undefined' ? window.location.origin : '';
 }
 
+function StatusIcon({ status, isOut }: { status: string; isOut: boolean }) {
+  if (!isOut) return null;
+  const cls = 'text-primary-foreground/60';
+  if (status === 'lido') return <Eye size={12} className={cls} />;
+  if (status === 'entregue') return <CheckCheck size={12} className={cls} />;
+  return <Check size={12} className={cls} />;
+}
+
 export default function Dashboard() {
   const router = useRouter();
   const [leadFilter, setLeadFilter] = useState('');
@@ -58,15 +66,24 @@ export default function Dashboard() {
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [docPreview, setDocPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const [transcribing, setTranscribing] = useState<Record<string, boolean>>({});
+  const [aiMode, setAiMode] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const selectedInboxIdRef = useRef<string | null>(selectedInboxId);
   const selectedIdRef = useRef<string | null>(selectedId);
 
   // Keep refs in sync
   useEffect(() => { selectedInboxIdRef.current = selectedInboxId; }, [selectedInboxId]);
   useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
+
+  // Sync aiMode when conversation changes
+  useEffect(() => {
+    const conv = conversations.find(c => c.id === selectedId);
+    if (conv) setAiMode(!!conv.aiMode);
+  }, [selectedId, conversations]);
 
   const fetchConversations = useCallback(async (inboxId?: string | null) => {
     try {
@@ -230,12 +247,50 @@ export default function Dashboard() {
 
   const handleClose = async () => {
     if (!selectedId || selectedId.startsWith('demo-')) return;
+    if (!confirm('Fechar esta conversa?')) return;
     try {
       await api.patch(`/conversations/${selectedId}/close`);
       setSelectedId(null);
       fetchConversations();
     } catch (e) {
       console.error('Failed to close', e);
+    }
+  };
+
+  const handleToggleAiMode = async () => {
+    if (!selectedId || selectedId.startsWith('demo-')) return;
+    const newMode = !aiMode;
+    try {
+      await api.patch(`/conversations/${selectedId}/ai-mode`, { ai_mode: newMode });
+      setAiMode(newMode);
+      fetchConversations();
+    } catch (e) {
+      console.error('Erro ao alterar modo IA', e);
+    }
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedId || selectedId.startsWith('demo-')) return;
+    e.target.value = '';
+    setUploadingFile(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('conversationId', selectedId);
+      const res = await api.post('/messages/send-file', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (res.data?.id) {
+        setMessages(prev => {
+          if (prev.find(m => m.id === res.data.id)) return prev;
+          return [...prev, res.data];
+        });
+      }
+    } catch (e) {
+      console.error('Falha ao enviar arquivo', e);
+    } finally {
+      setUploadingFile(false);
     }
   };
 
@@ -246,6 +301,7 @@ export default function Dashboard() {
   const selected = conversations.find((c) => c.id === selectedId);
   const isDemo = selectedId?.startsWith('demo-');
   const isRealConvo = selectedId && !isDemo;
+  const isClosed = selected?.status === 'CLOSED';
 
   const handleImageDownload = async (src: string) => {
     try {
@@ -453,7 +509,21 @@ export default function Dashboard() {
                    </div>
                  </div>
                </div>
-               <div className="flex gap-3">
+               <div className="flex gap-2 items-center">
+                 {isRealConvo && (
+                   <button
+                     onClick={handleToggleAiMode}
+                     title={aiMode ? 'Desativar IA' : 'Ativar IA'}
+                     className={`px-4 py-2 text-sm font-semibold border rounded-xl transition-colors flex items-center gap-2 ${
+                       aiMode
+                         ? 'text-primary bg-primary/10 border-primary/20 hover:bg-primary/20'
+                         : 'text-muted-foreground bg-muted/30 border-border hover:bg-muted/60'
+                     }`}
+                   >
+                     {aiMode ? <Bot size={16} /> : <BotOff size={16} />}
+                     {aiMode ? 'IA Ativa' : 'IA Inativa'}
+                   </button>
+                 )}
                  {selected.status === 'WAITING' && isRealConvo && (
                    <button
                      onClick={handleAccept}
@@ -462,12 +532,14 @@ export default function Dashboard() {
                      Aceitar Atendimento
                    </button>
                  )}
-                 {selected.status !== 'CLOSED' && isRealConvo && (
+                 {!isClosed && isRealConvo && (
                    <button
                      onClick={handleClose}
-                     className="px-5 py-2.5 rounded-xl bg-transparent border border-border text-foreground font-semibold text-sm hover:bg-accent transition-colors"
+                     title="Fechar conversa"
+                     className="px-3 py-2 text-sm font-semibold text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl hover:bg-red-500/20 transition-colors flex items-center gap-2"
                    >
-                     Encerrar
+                     <XCircle size={16} />
+                     Fechar
                    </button>
                  )}
                </div>
@@ -590,9 +662,9 @@ export default function Dashboard() {
                           ) : (
                             <p className="text-sm italic opacity-70">📎 Anexo: {msg.type}</p>
                           )}
-                          <div className={`text-[10px] mt-2 flex justify-end gap-2 ${isOut ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
+                          <div className={`text-[10px] mt-2 flex justify-end items-center gap-1.5 ${isOut ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
                             <span>{formatTime(msg.created_at)}</span>
-                            <span>• {msg.status}</span>
+                            <StatusIcon status={msg.status} isOut={isOut} />
                           </div>
                         </div>
                       </div>
@@ -629,7 +701,31 @@ export default function Dashboard() {
             </div>
 
             <footer className="p-6 bg-background shrink-0">
-               <div className="max-w-4xl mx-auto flex gap-3 items-center">
+              {isClosed ? (
+                <div className="max-w-4xl mx-auto text-center text-sm text-muted-foreground py-3 border border-border rounded-xl bg-card/50">
+                  Conversa encerrada. Não é possível enviar mensagens.
+                </div>
+              ) : (
+                <div className="max-w-4xl mx-auto flex gap-3 items-center">
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!isRealConvo || uploadingFile}
+                    title="Enviar arquivo"
+                    className="p-3 rounded-xl bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50 shrink-0"
+                  >
+                    {uploadingFile ? (
+                      <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Paperclip size={20} />
+                    )}
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
                   <input
                     ref={inputRef}
                     type="text"
@@ -662,9 +758,10 @@ export default function Dashboard() {
                     disabled={!isRealConvo || !text.trim() || sending}
                     className="bg-gradient-to-r from-primary to-ring p-4 rounded-xl shadow-lg disabled:opacity-50 hover:-translate-y-1 transition-transform"
                   >
-                     <Send size={20} className="text-primary-foreground" />
+                    <Send size={20} className="text-primary-foreground" />
                   </button>
-               </div>
+                </div>
+              )}
             </footer>
           </>
         ) : (
