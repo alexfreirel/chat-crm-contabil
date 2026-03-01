@@ -8,15 +8,24 @@ import axios from 'axios';
 @Processor('ai-jobs')
 export class AiProcessor extends WorkerHost {
   private readonly logger = new Logger(AiProcessor.name);
-  private ai: GoogleGenAI;
+  private ai: GoogleGenAI | null = null;
 
   constructor(private prisma: PrismaService) {
     super();
-    this.ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const key = process.env.GEMINI_API_KEY;
+    if (key) {
+      this.ai = new GoogleGenAI({ apiKey: key });
+    } else {
+      this.logger.warn('GEMINI_API_KEY não definida — IA desativada');
+    }
   }
 
   async process(job: Job<any, any, string>): Promise<any> {
     this.logger.log(`Iniciando job de IA: ${job.id}`);
+    if (!this.ai) {
+      this.logger.warn('IA desativada (sem GEMINI_API_KEY), ignorando job');
+      return;
+    }
     const { message_id, conversation_id } = job.data;
 
     try {
