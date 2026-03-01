@@ -36,8 +36,8 @@ export class MediaController {
       const { stream, contentType, contentLength } =
         await this.s3.getObjectStream(media.s3_key);
 
-      // Extrai extensão da s3_key (ex: media/abc.ogg → ogg)
-      const ext = media.s3_key.split('.').pop() || 'bin';
+      // Extrai extensão da s3_key, limpando possíveis parâmetros residuais
+      const ext = (media.s3_key.split('.').pop() || 'bin').split(';')[0].trim();
 
       // Nome do arquivo: usa original_name se disponível (documentos),
       // caso contrário deriva do mime_type

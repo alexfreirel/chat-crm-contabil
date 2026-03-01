@@ -56,7 +56,9 @@ export class MediaProcessor extends WorkerHost {
       const size = buffer.length;
 
       // 4. Upload S3
-      const ext = mimeType.split('/')[1] || 'bin';
+      // Limpa parâmetros do mimetype: "audio/ogg; codecs=opus" → "ogg"
+      const mimeBase = mimeType.split(';')[0].trim();
+      const ext = mimeBase.split('/')[1] || 'bin';
       const s3Key = `media/${message_id}.${ext}`;
       await this.s3Service.uploadBuffer(s3Key, buffer, mimeType);
 
