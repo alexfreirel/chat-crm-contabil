@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { MessageSquare, Send, Download, Mic } from 'lucide-react';
+import { MessageSquare, Send, Download, Mic, FileText } from 'lucide-react';
 import { Sidebar } from '@/components/Sidebar';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { AudioRecorder } from '@/components/AudioRecorder';
@@ -56,6 +56,7 @@ export default function Dashboard() {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [docPreview, setDocPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const [transcribing, setTranscribing] = useState<Record<string, boolean>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -273,6 +274,39 @@ export default function Dashboard() {
     }
   };
 
+  const getDocLabel = (mime: string, name?: string) => {
+    if (name) { const p = name.split('.'); if (p.length > 1) return p.pop()!.toUpperCase(); }
+    const map: Record<string, string> = {
+      'application/pdf': 'PDF',
+      'application/msword': 'DOC',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+      'application/vnd.ms-excel': 'XLS',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+    };
+    return map[mime] || 'FILE';
+  };
+
+  const handleDocDownload = async (url: string, name: string) => {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      if ('showSaveFilePicker' in window) {
+        const handle = await (window as any).showSaveFilePicker({ suggestedName: name });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+      } else {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
+    } catch (e: any) {
+      if (e.name !== 'AbortError') console.error('Erro ao baixar documento', e);
+    }
+  };
+
   const handleTranscribe = async (msgId: string) => {
     setTranscribing(prev => ({ ...prev, [msgId]: true }));
     try {
@@ -485,7 +519,7 @@ export default function Dashboard() {
                                 <img
                                   src={`/api/media/${msg.id}`}
                                   alt="Imagem"
-                                  className="max-w-[180px] max-h-[180px] object-cover rounded-lg cursor-pointer"
+                                  className="max-w-[220px] max-h-[220px] object-cover rounded-lg cursor-pointer"
                                   onClick={() => setLightbox(`/api/media/${msg.id}`)}
                                 />
                                 <button
@@ -511,14 +545,25 @@ export default function Dashboard() {
                             )
                           ) : msg.type === 'document' ? (
                             msg.media ? (
-                              <a
-                                href={`/api/media/${msg.id}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-2 text-sm underline opacity-80 hover:opacity-100"
+                              <div
+                                className={`flex items-center gap-3 cursor-pointer rounded-xl p-3 min-w-[200px] transition-colors ${isOut ? 'bg-white/10 hover:bg-white/20' : 'bg-muted/60 hover:bg-muted'}`}
+                                onClick={() => setDocPreview({ url: `/api/media/${msg.id}`, name: msg.media!.original_name || 'documento', mime: msg.media!.mime_type || '' })}
                               >
-                                📄 Abrir documento
-                              </a>
+                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${isOut ? 'bg-white/20' : 'bg-primary/10'}`}>
+                                  <FileText size={20} className={isOut ? 'text-white' : 'text-primary'} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium truncate">{msg.media!.original_name || 'Documento'}</p>
+                                  <p className={`text-[11px] uppercase font-semibold mt-0.5 ${isOut ? 'text-white/50' : 'text-muted-foreground'}`}>{getDocLabel(msg.media!.mime_type || '', msg.media!.original_name || '')}</p>
+                                </div>
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleDocDownload(`/api/media/${msg.id}`, msg.media!.original_name || 'documento'); }}
+                                  className={`p-1.5 rounded-lg transition-colors shrink-0 ${isOut ? 'hover:bg-white/20 text-white/70' : 'hover:bg-primary/10 text-muted-foreground'}`}
+                                  title="Baixar"
+                                >
+                                  <Download size={14} />
+                                </button>
+                              </div>
                             ) : (
                               <p className="text-sm italic opacity-70">📄 Documento processando...</p>
                             )
@@ -641,6 +686,63 @@ export default function Dashboard() {
                 ✕
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Document Preview */}
+      {docPreview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={() => setDocPreview(null)}
+        >
+          <div
+            className="relative w-[92vw] h-[90vh] bg-card rounded-2xl overflow-hidden flex flex-col shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText size={18} className="text-primary shrink-0" />
+                <span className="text-sm font-semibold truncate">{docPreview.name}</span>
+                <span className="text-[11px] text-muted-foreground uppercase font-medium shrink-0">{getDocLabel(docPreview.mime, docPreview.name)}</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => handleDocDownload(docPreview.url, docPreview.name)}
+                  className="bg-muted hover:bg-muted/80 text-foreground rounded-lg p-2 transition-colors"
+                  title="Baixar"
+                >
+                  <Download size={16} />
+                </button>
+                <button
+                  onClick={() => setDocPreview(null)}
+                  className="bg-muted hover:bg-muted/80 text-foreground rounded-lg p-2 transition-colors text-base leading-none"
+                  title="Fechar"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            {/* Content */}
+            {docPreview.mime.includes('pdf') ? (
+              <iframe
+                src={docPreview.url}
+                className="flex-1 w-full"
+                title={docPreview.name}
+              />
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center p-8">
+                <FileText size={64} className="text-muted-foreground/30" />
+                <p className="text-muted-foreground font-medium">Visualização não disponível para este tipo de arquivo.</p>
+                <button
+                  onClick={() => handleDocDownload(docPreview.url, docPreview.name)}
+                  className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity"
+                >
+                  <Download size={15} /> Baixar arquivo
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
