@@ -49,10 +49,12 @@ export default function ChatPage({ params }: { params: { id: string } }) {
 
            console.log('[SOCKET] Connecting to ChatRoom:', convo.id, 'at', wsUrl);
            socketRef.current = io(wsUrl, {
-             transports: ['websocket', 'polling'],
+             path: '/socket.io/',
+             transports: ['polling', 'websocket'],
              reconnection: true,
-             reconnectionAttempts: 10,
-             reconnectionDelay: 2000,
+             reconnectionAttempts: Infinity,
+             reconnectionDelay: 1000,
+             timeout: 10000,
            });
 
            socketRef.current.on('connect', () => {
