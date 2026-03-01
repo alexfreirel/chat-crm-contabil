@@ -47,6 +47,7 @@ async function bootstrap() {
   const io = new SocketIOServer(httpServer, {
     cors: { origin: '*' },
     path: '/socket.io',
+    addTrailingSlash: false,
     transports: ['polling', 'websocket'],
   });
 
