@@ -334,82 +334,93 @@ export class WhatsappService {
     const rawContacts = await this.fetchContacts(instanceName);
     const rawChats = await this.fetchChats(instanceName);
 
+    // Ambas APIs podem retornar array direto OU { data: [...] }
     const contactsList = Array.isArray(rawContacts)
       ? rawContacts
       : (rawContacts as any).data || (rawContacts as any).contacts || [];
-    
+
     const chatsList = Array.isArray(rawChats)
       ? rawChats
       : (rawChats as any).data || (rawChats as any).chats || [];
 
-    this.logger.log(`Sync ${instanceName}: ${contactsList.length} contatos, ${chatsList.length} chats encontrados`);
+    this.logger.log(`Sync ${instanceName}: ${contactsList.length} contatos, ${chatsList.length} chats`);
 
-    // Combinar ambos para garantir que pegamos contatos salvos e conversas ativas
+    // Log amostra da estrutura para debug
+    if (chatsList.length > 0) {
+      this.logger.log(`Amostra chat[0] keys: ${Object.keys(chatsList[0]).join(', ')}`);
+      this.logger.log(`Amostra chat[0]: ${JSON.stringify(chatsList[0]).substring(0, 300)}`);
+    }
+    if (contactsList.length > 0) {
+      this.logger.log(`Amostra contact[0] keys: ${Object.keys(contactsList[0]).join(', ')}`);
+      this.logger.log(`Amostra contact[0]: ${JSON.stringify(contactsList[0]).substring(0, 300)}`);
+    }
+
+    // Combinar contacts + chats (chats inclui contatos não salvos na agenda)
     const allEntries = [...contactsList, ...chatsList];
 
     if (allEntries.length === 0) {
       return { total: 0, synced: 0, error: 'Nenhum contato ou chat encontrado' };
     }
 
-    // Deduplicar por phone para evitar processar o mesmo contato 2x (pode estar em contacts E chats)
     const seenPhones = new Set<string>();
-
     let updatedCount = 0;
-    for (const contact of allEntries) {
+    let skippedGroups = 0;
+    let skippedInvalid = 0;
+
+    for (const entry of allEntries) {
       try {
-        // Extrair jid de múltiplas fontes:
-        // - Contatos: remoteJid = '55829...@s.whatsapp.net', id = hash interno (cmm...)
-        // - Chats (findChats): id = '55829...@s.whatsapp.net', remoteJid pode não existir
-        const rawJid = contact.remoteJid || '';
+        // findChats retorna: { remoteJid, isGroup, pushName, profilePicUrl, ... }
+        // findContacts retorna: { remoteJid, pushName, number, ... }
+        const remoteJid: string = entry.remoteJid || '';
+
+        // ---- FILTRAR GRUPOS, BROADCASTS, STATUS ----
+        if (entry.isGroup === true) { skippedGroups++; continue; }
+        if (remoteJid.includes('@g.us'))        { skippedGroups++; continue; }
+        if (remoteJid.includes('@broadcast'))   { skippedGroups++; continue; }
+        if (remoteJid.includes('status@'))      { skippedGroups++; continue; }
+        if (remoteJid === 'status@broadcast')   { skippedGroups++; continue; }
+
+        // ---- EXTRAIR PHONE ----
         let phone = '';
 
-        if (rawJid && rawJid.includes('@s.whatsapp.net')) {
-          phone = rawJid.split('@')[0];
-        } else if (contact.id && typeof contact.id === 'string' && contact.id.includes('@s.whatsapp.net')) {
-          // Para chats: o campo 'id' é o jid (não um hash interno)
-          phone = contact.id.split('@')[0];
-        } else if (contact.number) {
-          phone = contact.number;
+        if (remoteJid && remoteJid.includes('@s.whatsapp.net')) {
+          phone = remoteJid.split('@')[0];
+        } else if (entry.number) {
+          phone = String(entry.number);
         }
 
-        // Remover qualquer caractere que não seja dígito
         phone = phone.replace(/\D/g, '');
 
-        // Se o número for inválido, grupo, broadcast ou ID interno da Evolution
-        if (!phone ||
-            phone.startsWith('cmm') ||
-            phone.includes('broadcast') ||
-            phone.includes('status') ||
-            phone.length < 8 ||
-            phone.length > 20) {
+        // Descartar inválidos
+        if (!phone || phone.length < 10 || phone.length > 15) {
+          skippedInvalid++;
           continue;
         }
 
-        // Evitar processar o mesmo phone 2x (contato + chat podem ter o mesmo número)
+        // Dedup: mesmo phone de contacts e chats
         if (seenPhones.has(phone)) continue;
         seenPhones.add(phone);
 
-        // Determinar o jid completo para usar como external_id
-        const jid = rawJid ||
-          (contact.id && typeof contact.id === 'string' && contact.id.includes('@') ? contact.id : '') ||
-          `${phone}@s.whatsapp.net`;
+        // Jid para external_id da conversa
+        const jid = remoteJid || `${phone}@s.whatsapp.net`;
 
-        // Busca foto de perfil se não tiver
-        const profilePictureUrl = await this.fetchProfilePicture(instanceName, phone);
+        // Foto de perfil (usa profilePicUrl do findChats se disponível)
+        const profilePictureUrl = entry.profilePicUrl ||
+          await this.fetchProfilePicture(instanceName, phone);
 
         const lead = await this.leadsService.upsert({
-          name: (contact.name ||
-            contact.pushName ||
-            contact.verifiedName ||
+          name: (entry.pushName ||
+            entry.name ||
+            entry.verifiedName ||
             `Contato ${phone}`) as string,
           phone: phone as string,
-          profile_picture_url: profilePictureUrl,
+          profile_picture_url: profilePictureUrl || null,
           origin: 'whatsapp',
           tenant: tenantId ? { connect: { id: tenantId } } : undefined,
           stage: 'NOVO',
         });
 
-        // Para paridade local/produção: cria conversa inicial para que apareça no Chat/CRM
+        // Cria conversa se não existir
         const existingConv = await this.prisma.conversation.findFirst({
           where: {
             lead_id: lead.id,
@@ -427,21 +438,22 @@ export class WhatsappService {
               external_id: jid,
             },
           });
-          this.logger.log(`Conversa inicial criada para ${phone}`);
         }
 
         updatedCount++;
       } catch (e) {
         this.logger.error(
-          `Erro ao sincronizar contato ${contact.id || contact.jid}: ${
-            e.message
-          }`,
+          `Erro ao sincronizar entrada: ${JSON.stringify(entry).substring(0, 200)} - ${e.message}`,
         );
       }
     }
 
-    this.logger.log(`Sync ${instanceName} concluído: ${updatedCount} sincronizados de ${allEntries.length} entradas (${seenPhones.size} phones únicos)`);
-    return { total: allEntries.length, synced: updatedCount, uniquePhones: seenPhones.size };
+    this.logger.log(
+      `Sync ${instanceName} concluído: ${updatedCount} sincronizados, ` +
+      `${skippedGroups} grupos ignorados, ${skippedInvalid} inválidos, ` +
+      `${seenPhones.size} phones únicos de ${allEntries.length} entradas`,
+    );
+    return { total: allEntries.length, synced: updatedCount, skippedGroups, skippedInvalid, uniquePhones: seenPhones.size };
   }
 
 }
