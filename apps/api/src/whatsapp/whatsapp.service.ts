@@ -226,23 +226,22 @@ export class WhatsappService {
 
   async fetchContacts(instanceName: string) {
     try {
-      // 1. Tenta o endpoint principal da v2 (Chat)
-      let data = await this.request('GET', `chat/fetchContacts/${instanceName}`);
+      // 1. Tenta o endpoint POST /chat/findContacts (Versão v2.1.0+)
+      let data = await this.request(
+        'POST',
+        `chat/findContacts/${instanceName}`,
+        {},
+      );
 
-      // 2. Se falhar, tenta o fallback (Contact)
-      if (
-        !data ||
-        (data as any).statusCode === 404 ||
-        (data as any).error ||
-        !((data as any).data || (Array.isArray(data) && data.length > 0))
-      ) {
+      // 2. Fallback: Se falhar (404), tenta o GET principal da v2 (Chat)
+      if (!data || (data as any).statusCode === 404 || (data as any).error) {
         this.logger.log(
-          `chat/fetchContacts indisponível para ${instanceName}, tentando contact/find...`,
+          `chat/findContacts (POST) indisponível para ${instanceName}, tentando chat/fetchContacts (GET)...`,
         );
-        data = await this.request('GET', `contact/find/${instanceName}`);
+        data = await this.request('GET', `chat/fetchContacts/${instanceName}`);
       }
 
-      // 3. Terceira tentativa (v2 específica às vezes usa contact/fetchContacts)
+      // 3. Fallback: GET contact/find
       if (
         !data ||
         (data as any).statusCode === 404 ||
@@ -250,12 +249,9 @@ export class WhatsappService {
         !((data as any).data || (Array.isArray(data) && data.length > 0))
       ) {
         this.logger.log(
-          `contact/find indisponível para ${instanceName}, tentando contact/fetchContacts...`,
+          `chat/fetchContacts (GET) indisponível para ${instanceName}, tentando contact/find (GET)...`,
         );
-        data = await this.request(
-          'GET',
-          `contact/fetchContacts/${instanceName}`,
-        );
+        data = await this.request('GET', `contact/find/${instanceName}`);
       }
 
       this.logger.log(
@@ -282,31 +278,65 @@ export class WhatsappService {
 
   async syncContacts(instanceName: string, tenantId?: string) {
     const rawData = await this.fetchContacts(instanceName);
-    const contacts = (rawData as any).data || (rawData as any).instances || (Array.isArray(rawData) ? rawData : []);
-    
+
+    // O retorno do chat/findContacts (POST) parece ser um array direto
+    // enquanto outros podem vir em { data: [] }
+    const contacts = Array.isArray(rawData)
+      ? rawData
+      : (rawData as any).data ||
+        (rawData as any).instances ||
+        (rawData as any).contacts ||
+        [];
+
     if (!Array.isArray(contacts)) {
-      return { total: 0, updated: 0, error: 'Resposta inválida da Evolution API' };
+      this.logger.error(`Formato de contatos inválido: ${JSON.stringify(rawData).substring(0, 200)}`);
+      return {
+        total: 0,
+        synced: 0,
+        error: 'Resposta inválida da Evolution API',
+      };
     }
 
     let updatedCount = 0;
     for (const contact of contacts) {
       try {
-        const fullId = contact.id || contact.jid || '';
-        const phone = fullId.split('@')[0] || contact.number || contact.phone || '';
-        
-        if (!phone) continue;
+        // Na v2, remoteJid costuma ter o formato 55829... @s.whatsapp.net
+        // O campo 'id' às vezes é um hash interno da Evolution v2
+        const rawJid = contact.remoteJid || contact.jid || '';
+        let phone = '';
+
+        if (rawJid && rawJid.includes('@')) {
+          phone = rawJid.split('@')[0];
+        } else {
+          phone =
+            contact.number ||
+            contact.phone ||
+            (typeof contact.id === 'string' && !contact.id.includes('-')
+              ? contact.id
+              : '');
+        }
+
+        if (!phone || phone.includes('broadcast') || phone.includes('status'))
+          continue;
 
         await this.leadsService.upsert({
-          name: (contact.name || contact.pushName || contact.verifiedName || 'Sem Nome') as string,
+          name: (contact.name ||
+            contact.pushName ||
+            contact.verifiedName ||
+            'Sem Nome') as string,
           phone: phone as string,
           origin: 'whatsapp',
           tenant: tenantId ? { connect: { id: tenantId } } : undefined,
-          stage: 'NOVO', // Valor padrão para novos contatos sincronizados
+          stage: 'NOVO',
         });
-        
+
         updatedCount++;
       } catch (e) {
-        this.logger.error(`Erro ao sincronizar contato ${contact.id}: ${e.message}`);
+        this.logger.error(
+          `Erro ao sincronizar contato ${contact.id || contact.jid}: ${
+            e.message
+          }`,
+        );
       }
     }
 
