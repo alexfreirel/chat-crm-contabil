@@ -25,17 +25,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('join_conversation')
   handleJoinConversation(@MessageBody() conversationId: string, @ConnectedSocket() client: Socket) {
     client.join(conversationId);
-    this.logger.log(`Client ${client.id} joined conversation ${conversationId}`);
+    this.logger.log(`[SOCKET] Client ${client.id} joined room: ${conversationId}`);
   }
   
   // Method to be called by other modules (e.g. MessagesService/EvolutionService) 
   // to emit new messages to connected UI clients
   emitNewMessage(conversationId: string, message: any) {
+    this.logger.log(`[SOCKET] Emitting newMessage to room ${conversationId}`);
     this.server.to(conversationId).emit('newMessage', message);
   }
 
   emitConversationsUpdate(tenantId: string | null) {
-    // TBD: use tenant-based rooms for inbox updates
+    this.logger.log(`[SOCKET] Emitting inboxUpdate to all clients`);
     this.server.emit('inboxUpdate'); 
   }
 }

@@ -27,7 +27,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
       return;
     }
 
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001';
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001';
 
     const fetchData = async () => {
        try {
@@ -38,12 +38,24 @@ export default function ChatPage({ params }: { params: { id: string } }) {
            setConvoId(convo.id);
            setMessages(convo.messages || []);
 
+           console.log('[SOCKET] Connecting to ChatRoom:', convo.id, 'at', wsUrl);
            socketRef.current = io(wsUrl, { 
              transports: ['websocket', 'polling'],
              path: '/api/socket.io'
            });
+
+           socketRef.current.on('connect', () => {
+             console.log('[SOCKET] ChatRoom Connected ID:', socketRef.current?.id);
+           });
+
+           socketRef.current.on('connect_error', (err) => {
+             console.error('[SOCKET] ChatRoom error:', err);
+           });
+
            socketRef.current.emit('join_conversation', convo.id);
+
            socketRef.current.on('newMessage', (msg: any) => {
+             console.log('[SOCKET] New message received for room:', convo.id, msg);
              setMessages(prev => {
                if (prev.find((m: any) => m.id === msg.id)) return prev;
                return [...prev, msg];

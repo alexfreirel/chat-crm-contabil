@@ -82,14 +82,24 @@ export default function Dashboard() {
     fetchInboxes();
     fetchConversations(selectedInboxId);
 
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001';
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001';
+    console.log('[SOCKET] Connecting to:', wsUrl, 'with path /api/socket.io');
     const socket = io(wsUrl, { 
       transports: ['websocket', 'polling'],
       path: '/api/socket.io'
     });
+
+    socket.on('connect', () => {
+      console.log('[SOCKET] Connected with ID:', socket.id);
+    });
+
+    socket.on('connect_error', (err) => {
+      console.error('[SOCKET] Connection error:', err);
+    });
     socketRef.current = socket;
 
     socket.on('inboxUpdate', () => {
+      console.log('[SOCKET] inboxUpdate received, fetching conversations...');
       fetchConversations(selectedInboxId);
     });
 
