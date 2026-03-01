@@ -67,7 +67,7 @@ export class EvolutionService {
           lead_id: lead.id, 
           channel: 'whatsapp', 
           status: 'ABERTO',
-          inbox_id: inboxId 
+          instance_name: instanceName // Prioriza pelo nome da instância
         },
       });
       if (!conv) {
@@ -78,7 +78,14 @@ export class EvolutionService {
             status: 'ABERTO',
             external_id: remoteJid,
             inbox_id: inboxId,
+            instance_name: instanceName,
           },
+        });
+      } else if (!conv.inbox_id && inboxId) {
+        // Se a conversa existe mas não tem setor, vincula ao setor da instância
+        await this.prisma.conversation.update({
+          where: { id: conv.id },
+          data: { inbox_id: inboxId, instance_name: instanceName }
         });
       }
 

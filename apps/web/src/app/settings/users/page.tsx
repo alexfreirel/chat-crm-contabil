@@ -26,13 +26,15 @@ interface UserForm {
   email: string;
   password: string;
   role: string;
+  inboxIds: string[];
 }
 
-const emptyForm: UserForm = { name: '', email: '', password: '', role: 'ADVOGADO' };
+const emptyForm: UserForm = { name: '', email: '', password: '', role: 'ADVOGADO', inboxIds: [] };
 
 export default function UsersSettingsPage() {
   const router = useRouter();
   const [users, setUsers] = useState<any[]>([]);
+  const [inboxes, setInboxes] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<UserForm>(emptyForm);
@@ -45,8 +47,22 @@ export default function UsersSettingsPage() {
       router.push('/login');
       return;
     }
-    fetchUsers();
+    fetchData();
   }, [router]);
+
+  const fetchData = async () => {
+    fetchUsers();
+    fetchInboxes();
+  };
+
+  const fetchInboxes = async () => {
+    try {
+      const res = await api.get('/inboxes');
+      setInboxes(res.data);
+    } catch (e) {
+      console.error('Erro ao buscar setores:', e);
+    }
+  };
 
   const fetchUsers = async () => {
     try {
@@ -75,7 +91,13 @@ export default function UsersSettingsPage() {
 
   const openEdit = (user: any) => {
     setEditingId(user.id);
-    setForm({ name: user.name, email: user.email, password: '', role: user.role });
+    setForm({ 
+      name: user.name, 
+      email: user.email, 
+      password: '', 
+      role: user.role,
+      inboxIds: user.inboxes?.map((i: any) => i.id) || []
+    });
     setError('');
     setShowModal(true);
   };
@@ -87,7 +109,12 @@ export default function UsersSettingsPage() {
 
     try {
       if (editingId) {
-        const payload: any = { name: form.name, email: form.email, role: form.role };
+        const payload: any = { 
+          name: form.name, 
+          email: form.email, 
+          role: form.role,
+          inboxIds: form.inboxIds
+        };
         if (form.password) payload.password = form.password;
         await api.patch(`/users/${editingId}`, payload);
       } else {
@@ -154,7 +181,7 @@ export default function UsersSettingsPage() {
                   <tr className="bg-foreground/[0.02] border-b border-border">
                     <th className="px-6 py-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Nome</th>
                     <th className="px-6 py-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Email</th>
-                    <th className="px-6 py-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Perfil</th>
+                    <th className="px-6 py-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Setores</th>
                     <th className="px-6 py-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Criado em</th>
                     <th className="px-6 py-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider text-right">Ações</th>
                   </tr>
@@ -172,9 +199,14 @@ export default function UsersSettingsPage() {
                       </td>
                       <td className="px-6 py-4 text-[13px] text-muted-foreground">{user.email}</td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${roleBadgeColors[user.role] || 'bg-muted text-muted-foreground border border-border'}`}>
-                          {ROLES.find(r => r.value === user.role)?.label || user.role}
-                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {user.inboxes?.map((inbox: any) => (
+                            <span key={inbox.id} className="px-2 py-0.5 bg-primary/5 text-primary text-[10px] font-bold rounded-lg border border-primary/10">
+                              {inbox.name}
+                            </span>
+                          ))}
+                          {!user.inboxes?.length && <span className="text-[10px] text-muted-foreground opacity-50">Nenhum</span>}
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-[13px] text-muted-foreground opacity-70">
                         {new Date(user.created_at).toLocaleDateString('pt-BR')}
@@ -273,6 +305,31 @@ export default function UsersSettingsPage() {
                     <option key={r.value} value={r.value} className="bg-card text-foreground">{r.label}</option>
                   ))}
                 </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider ml-1">Setores (Acesso ao Chat)</label>
+                <div className="grid grid-cols-2 gap-2 p-3 border border-border rounded-xl bg-background/50">
+                  {inboxes.map(inbox => (
+                    <label key={inbox.id} className="flex items-center gap-2 cursor-pointer group">
+                      <input 
+                        type="checkbox"
+                        checked={form.inboxIds.includes(inbox.id)}
+                        onChange={(e) => {
+                          const ids = e.target.checked 
+                            ? [...form.inboxIds, inbox.id]
+                            : form.inboxIds.filter(id => id !== inbox.id);
+                          setForm({ ...form, inboxIds: ids });
+                        }}
+                        className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20"
+                      />
+                      <span className="text-[13px] text-foreground group-hover:text-primary transition-colors">{inbox.name}</span>
+                    </label>
+                  ))}
+                  {inboxes.length === 0 && (
+                    <p className="col-span-2 text-[11px] text-muted-foreground italic text-center py-2">Nenhum setor cadastrado.</p>
+                  )}
+                </div>
               </div>
               <div className="flex justify-end space-x-3 pt-4">
                 <button

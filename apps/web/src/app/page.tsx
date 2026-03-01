@@ -32,14 +32,6 @@ interface MessageItem {
   media?: { original_url?: string; mime_type?: string } | null;
 }
 
-const DEMO_CONVERSATIONS: ConversationSummary[] = [
-  { id: 'demo-1', leadId: 'd1', contactName: 'João Silva', contactPhone: '82999001122', channel: 'WEB', status: 'ACTIVE', lastMessage: 'Preciso de orientação sobre meu caso trabalhista', lastMessageAt: new Date().toISOString(), assignedAgentName: 'André Lustosa', aiMode: false },
-  { id: 'demo-2', leadId: 'd2', contactName: 'Maria Santos', contactPhone: '82998776655', channel: 'WHATSAPP', status: 'WAITING', lastMessage: 'Boa tarde, vocês atendem direito de família?', lastMessageAt: new Date(Date.now() - 300000).toISOString(), assignedAgentName: null, aiMode: false },
-  { id: 'demo-3', leadId: 'd3', contactName: 'Carlos Oliveira', contactPhone: '82997654321', channel: 'WEB', status: 'BOT', lastMessage: 'Quero saber sobre consulta previdenciária', lastMessageAt: new Date(Date.now() - 600000).toISOString(), assignedAgentName: null, aiMode: true },
-  { id: 'demo-4', leadId: 'd4', contactName: 'Ana Pereira', contactPhone: '82996543210', channel: 'INSTAGRAM', status: 'BOT', lastMessage: 'Olá, preciso de um advogado', lastMessageAt: new Date(Date.now() - 1200000).toISOString(), assignedAgentName: null, aiMode: true },
-  { id: 'demo-5', leadId: 'd5', contactName: 'Roberto Lima', contactPhone: '82995432109', channel: 'WEB', status: 'CLOSED', lastMessage: 'Muito obrigado pelo atendimento!', lastMessageAt: new Date(Date.now() - 86400000).toISOString(), assignedAgentName: null, aiMode: false },
-];
-
 export default function Dashboard() {
   const router = useRouter();
   const [filter, setFilter] = useState('');
@@ -63,18 +55,14 @@ export default function Dashboard() {
         params: { inboxId: inboxId || undefined }
       });
       const data = res.data;
-      if (data && data.length > 0) {
-        setConversations(data);
-      } else {
-        setConversations(DEMO_CONVERSATIONS);
-      }
+      setConversations(data || []);
     } catch (e: any) {
       if (e.response?.status === 401) {
         localStorage.removeItem('token');
         router.push('/login');
         return;
       }
-      setConversations(DEMO_CONVERSATIONS);
+      setConversations([]);
     } finally {
       setLoading(false);
     }

@@ -5,8 +5,8 @@ import { UserCog, Bot, Building2, Shield, ChevronLeft, MessageSquare, Layout } f
 import { Sidebar } from '@/components/Sidebar';
 
 const settingsMenu = [
-  { label: 'Usuários & Perfis', href: '/settings/users', icon: UserCog },
   { label: 'Setores (Inboxes)', href: '/settings/inboxes', icon: Layout },
+  { label: 'Usuários & Perfis', href: '/settings/users', icon: UserCog },
   { label: 'Ajustes IA', href: '/settings/ai', icon: Bot },
   { label: 'Integração WhatsApp', href: '/settings/whatsapp', icon: MessageSquare },
   { label: 'Escritório', href: '/settings/office', icon: Building2 },

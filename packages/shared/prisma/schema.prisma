@@ -64,6 +64,7 @@ model Conversation {
   ai_mode          Boolean   @default(true)
   assigned_user_id String?
   inbox_id         String?
+  instance_name    String?   // Nome da instância de origem (ex: wa1)
   last_message_at  DateTime  @default(now())
   assigned_user    User?     @relation(fields: [assigned_user_id], references: [id])
   lead             Lead      @relation(fields: [lead_id], references: [id])
@@ -74,6 +75,7 @@ model Conversation {
 
   @@index([lead_id])
   @@index([last_message_at(sort: Desc)])
+  @@index([instance_name])
 }
 
 model Message {

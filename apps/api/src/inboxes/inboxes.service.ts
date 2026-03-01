@@ -89,7 +89,8 @@ export class InboxesService {
   // --- Gestão de Instâncias ---
 
   async addInstance(inboxId: string, instanceName: string, type: 'whatsapp' | 'instagram') {
-    return this.instance.upsert({
+    // 1. Vincula a instância ao setor
+    const instance = await this.instance.upsert({
       where: { name: instanceName },
       update: { inbox_id: inboxId, type },
       create: {
@@ -98,6 +99,15 @@ export class InboxesService {
         inbox_id: inboxId
       }
     });
+
+    // 2. MIGRACAO: Vincula todas as conversas existentes desta instancia ao novo setor
+    // Isso garante que contatos antigos "apareçam" no novo setor imediatamente
+    await (this.prisma as any).conversation.updateMany({
+      where: { instance_name: instanceName },
+      data: { inbox_id: inboxId }
+    });
+
+    return instance;
   }
 
   async findByInstanceName(instanceName: string) {
