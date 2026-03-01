@@ -18,7 +18,7 @@ export class ConversationsService {
       where,
       orderBy: { last_message_at: 'desc' },
       include: {
-        lead: { select: { id: true, name: true, phone: true, email: true, stage: true } },
+        lead: { select: { id: true, name: true, phone: true, email: true, stage: true, profile_picture_url: true } },
         messages: { orderBy: { created_at: 'desc' }, take: 1, include: { media: true } },
         assigned_user: { select: { id: true, name: true } },
       },
@@ -36,6 +36,7 @@ export class ConversationsService {
       lastMessageAt: c.last_message_at?.toISOString() || '',
       assignedAgentName: c.assigned_user?.name || null,
       aiMode: c.ai_mode,
+      profile_picture_url: c.lead?.profile_picture_url || null,
     }));
   }
 
@@ -43,7 +44,7 @@ export class ConversationsService {
     return this.prisma.conversation.findUnique({
       where: { id },
       include: {
-        lead: { select: { id: true, name: true, phone: true, email: true } },
+        lead: { select: { id: true, name: true, phone: true, email: true, profile_picture_url: true } },
         messages: { orderBy: { created_at: 'asc' }, include: { media: true } },
         assigned_user: { select: { id: true, name: true } },
       },

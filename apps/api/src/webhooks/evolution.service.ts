@@ -61,6 +61,15 @@ export class EvolutionService {
         },
       });
 
+      // Tenta buscar a foto em background se ainda não tiver (opcional: a Evolution às vezes manda no payload agora)
+      if (!lead.profile_picture_url) {
+        // Como o EvolutionService não tem acesso direto ao WhatsappService (evitar circular dependency), 
+        // poderíamos emitir um job ou apenas deixar o sync principal resolver.
+        // Mas para agilizar, vamos tentar injetar o WhatsappService se não houver circularidade 
+        // OU fazer a requisição manual se soubermos a URL.
+        // Por ora, vamos focar no Sync principal solicitado pelo usuário.
+      }
+
       // 2. Find or Create Conversation
       let conv = await this.prisma.conversation.findFirst({
         where: { lead_id: lead.id, channel: 'whatsapp', status: 'ABERTO' },

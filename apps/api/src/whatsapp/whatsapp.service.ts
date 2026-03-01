@@ -279,6 +279,20 @@ export class WhatsappService {
     }
   }
 
+  async fetchProfilePicture(instanceName: string, number: string) {
+    try {
+      const data = await this.request(
+        'GET',
+        `chat/fetchProfilePicture/${instanceName}?number=${number}`,
+      );
+      this.logger.log(`Profile picture for ${number}: ${JSON.stringify(data)}`);
+      return data?.profile_picture || data?.data?.profile_picture || data?.url || null;
+    } catch (e) {
+      this.logger.error(`Erro ao buscar foto de perfil para ${number}: ${e}`);
+      return null;
+    }
+  }
+
   async fetchChats(instanceName: string) {
     try {
       const data = await this.request('GET', `chat/fetchChats/${instanceName}`);
@@ -337,12 +351,16 @@ export class WhatsappService {
           continue;
         }
 
+        // Busca foto de perfil se não tiver
+        const profilePictureUrl = await this.fetchProfilePicture(instanceName, phone);
+
         const lead = await this.leadsService.upsert({
           name: (contact.name ||
             contact.pushName ||
             contact.verifiedName ||
             `Contato ${phone}`) as string,
           phone: phone as string,
+          profile_picture_url: profilePictureUrl,
           origin: 'whatsapp',
           tenant: tenantId ? { connect: { id: tenantId } } : undefined,
           stage: 'NOVO',

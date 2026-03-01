@@ -18,6 +18,7 @@ interface ConversationSummary {
   lastMessageAt: string;
   assignedAgentName: string | null;
   aiMode: boolean;
+  profile_picture_url?: string | null;
 }
 
 interface MessageItem {
@@ -234,8 +235,12 @@ export default function Dashboard() {
                 `}
               >
                 {selectedId === conv.id && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />}
-                <div className="w-11 h-11 rounded-full bg-[#2a2a2a] border border-[#3a3a3a] text-white flex items-center justify-center font-bold text-lg shrink-0">
-                  {getInitial(conv.contactName)}
+                <div className="w-11 h-11 rounded-full bg-accent border border-border flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
+                  {conv.profile_picture_url ? (
+                    <img src={conv.profile_picture_url} alt={conv.contactName} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-foreground font-bold text-lg">{getInitial(conv.contactName)}</span>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start mb-1">
@@ -259,8 +264,12 @@ export default function Dashboard() {
           <>
             <header className="h-[80px] px-8 border-b border-border bg-card/50 backdrop-blur-md flex items-center justify-between z-30 shrink-0">
                <div className="flex items-center gap-4">
-                 <div className="w-12 h-12 rounded-full bg-[#2a2a2a] border border-[#3a3a3a] text-white flex items-center justify-center font-bold text-xl shadow-sm">
-                   {getInitial(selected.contactName)}
+                 <div className="w-12 h-12 rounded-full bg-accent border border-border flex items-center justify-center overflow-hidden shadow-sm">
+                   {selected.profile_picture_url ? (
+                     <img src={selected.profile_picture_url} alt={selected.contactName} className="w-full h-full object-cover" />
+                   ) : (
+                     <span className="text-foreground font-bold text-xl">{getInitial(selected.contactName)}</span>
+                   )}
                  </div>
                  <div>
                    <h3 className="font-bold text-lg leading-tight">{selected.contactName}</h3>

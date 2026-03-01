@@ -109,11 +109,23 @@ export default function CrmPage() {
                         onClick={() => router.push(`/chat/${lead.id}`)} 
                         className="p-3.5 bg-foreground/[0.03] border border-foreground/[0.06] rounded-xl cursor-pointer hover:bg-foreground/[0.08] hover:border-foreground/10 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/5 transition-all backdrop-blur-md"
                       >
-                        <h4 className="text-[13px] font-semibold text-foreground mb-2 leading-tight">
-                          {lead.title || lead.name || 'Negócio sem título'}
-                        </h4>
-                        
-                          <span>{lead.contactName || formatPhone(lead.phone) || 'Sem contato'}</span>
+                        <div className="flex items-center gap-3 mb-2.5">
+                          <div className="w-8 h-8 rounded-full bg-foreground/[0.05] border border-foreground/[0.1] flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
+                            {lead.profile_picture_url ? (
+                              <img src={lead.profile_picture_url} alt={lead.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <User size={14} className="text-muted-foreground opacity-50" />
+                            )}
+                          </div>
+                          <div>
+                            <h4 className="text-[13px] font-semibold text-foreground leading-tight">
+                              {lead.title || lead.name || 'Negócio sem título'}
+                            </h4>
+                            <span className="text-[11px] text-muted-foreground opacity-70">
+                              {lead.contactName || formatPhone(lead.phone) || 'Sem contato'}
+                            </span>
+                          </div>
+                        </div>
 
                         {lead.value && (
                            <div className="text-[13px] font-bold text-[#34d399] mt-2.5 tracking-tight">

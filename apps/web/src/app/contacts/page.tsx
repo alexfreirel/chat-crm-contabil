@@ -15,6 +15,7 @@ interface Contact {
   lastMessage: string;
   origin: string; // 'whatsapp' | 'crm'
   instanceName?: string;
+  profile_picture_url?: string;
 }
 
 export default function ContactsPage() {
@@ -37,6 +38,7 @@ export default function ContactsPage() {
         conversations: lead._count?.conversations || 0,
         lastMessage: lead.conversations?.[0]?.messages?.[0]?.text || '-',
         origin: lead.origin || 'crm',
+        profile_picture_url: lead.profile_picture_url,
       }));
 
       mappedContacts.sort((a, b) => a.name.localeCompare(b.name));
@@ -155,8 +157,12 @@ export default function ContactsPage() {
                     <tr key={contact.id} className="hover:bg-foreground/[0.02] transition-colors group">
                       <td className="px-6 py-5">
                         <div className="flex items-center gap-4">
-                          <div className="w-9 h-9 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-xs shadow-sm">
-                            {contact.name.charAt(0).toUpperCase()}
+                          <div className="w-9 h-9 rounded-full bg-primary/10 border border-border flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
+                            {contact.profile_picture_url ? (
+                              <img src={contact.profile_picture_url} alt={contact.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-primary font-bold text-xs">{contact.name.charAt(0).toUpperCase()}</span>
+                            )}
                           </div>
                           <span className="text-[14px] font-semibold text-foreground tracking-tight">{contact.name}</span>
                         </div>

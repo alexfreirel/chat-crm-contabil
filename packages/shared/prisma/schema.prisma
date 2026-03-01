@@ -37,8 +37,9 @@ model Lead {
   phone         String         @unique
   email         String?
   origin        String?
-  stage         String         @default("NOVO")
-  tags          String[]
+  stage              String         @default("NOVO")
+  profile_picture_url String?
+  tags               String[]
   created_at    DateTime       @default(now())
   updated_at    DateTime       @updatedAt
   memory        AiMemory?
