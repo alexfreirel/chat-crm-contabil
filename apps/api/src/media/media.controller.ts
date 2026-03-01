@@ -38,7 +38,24 @@ export class MediaController {
 
       // Extrai extensão da s3_key (ex: media/abc.ogg → ogg)
       const ext = media.s3_key.split('.').pop() || 'bin';
-      const filename = `audio.${ext}`;
+
+      // Nome do arquivo: usa original_name se disponível (documentos),
+      // caso contrário deriva do mime_type
+      let filename: string;
+      if (media.original_name) {
+        filename = media.original_name;
+      } else {
+        const mime = (media.mime_type || '').toLowerCase();
+        if (mime.startsWith('image/')) {
+          filename = `imagem.${ext}`;
+        } else if (mime.startsWith('audio/')) {
+          filename = `audio.${ext}`;
+        } else if (mime.startsWith('video/')) {
+          filename = `video.${ext}`;
+        } else {
+          filename = `arquivo.${ext}`;
+        }
+      }
 
       const disposition = dl === '1' ? 'attachment' : 'inline';
       res.setHeader('Content-Type', contentType);

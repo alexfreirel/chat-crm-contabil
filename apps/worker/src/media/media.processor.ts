@@ -65,6 +65,8 @@ export class MediaProcessor extends WorkerHost {
       // 5. Update Prisma (Database)
       const duration: number | null = media_data?.seconds ?? null;
       const originalUrl: string | null = media_data?.url ?? null;
+      // Para documentos, a Evolution API fornece o nome original do arquivo
+      const originalName: string | null = media_data?.fileName ?? null;
 
       await this.prisma.media.create({
         data: {
@@ -75,6 +77,7 @@ export class MediaProcessor extends WorkerHost {
           checksum,
           duration,
           original_url: originalUrl,
+          original_name: originalName,
         }
       });
 

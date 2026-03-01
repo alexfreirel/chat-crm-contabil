@@ -96,16 +96,17 @@ model Message {
 }
 
 model Media {
-  id           String   @id @default(uuid())
-  message_id   String   @unique
-  s3_key       String
-  mime_type    String
-  size         Int?
-  duration     Int?
-  checksum     String?
-  original_url String?
-  created_at   DateTime @default(now())
-  message      Message  @relation(fields: [message_id], references: [id])
+  id            String   @id @default(uuid())
+  message_id    String   @unique
+  s3_key        String
+  mime_type     String
+  size          Int?
+  duration      Int?
+  checksum      String?
+  original_url  String?
+  original_name String?
+  created_at    DateTime @default(now())
+  message       Message  @relation(fields: [message_id], references: [id])
 }
 
 model Task {
