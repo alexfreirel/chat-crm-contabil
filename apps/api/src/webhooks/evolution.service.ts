@@ -26,7 +26,8 @@ export class EvolutionService {
   ) {}
 
   async handleMessagesUpsert(payload: EvolutionWebhookPayload) {
-    this.logger.log(`Recebendo webhook: ${JSON.stringify(payload)}`);
+    this.logger.log(`[WEBHOOK] messages.upsert received from ${payload?.instanceId}`);
+    this.logger.debug(`Payload: ${JSON.stringify(payload)}`);
     const dataPayload = payload?.data as any;
     const instanceName = payload?.instanceId; // Na Evolution API v2, instanceId é o nome da instância
     const inbox = instanceName ? await this.inboxesService.findByInstanceName(instanceName) : null;

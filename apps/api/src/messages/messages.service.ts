@@ -32,7 +32,11 @@ export class MessagesService {
     // 1. Send via Evolution API
     let externalMsg;
     try {
-      externalMsg = await this.whatsapp.sendText(convo.lead.phone, text);
+      externalMsg = await this.whatsapp.sendText(
+        convo.lead.phone, 
+        text, 
+        convo.instance_name || undefined
+      );
     } catch (e) {
       throw new BadRequestException('Falha ao enviar webhook WhatsApp');
     }
