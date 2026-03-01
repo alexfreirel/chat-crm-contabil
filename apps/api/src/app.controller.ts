@@ -22,11 +22,14 @@ export class AppController {
   @Get('debug/socket')
   debugSocket() {
     const server = this.chatGateway?.server;
+    const engine = (server as any)?.engine;
     return {
       initialized: !!server,
-      path: (server as any)?.opts?.path || 'unknown',
-      connectedClients: (server as any)?.engine?.clientsCount ?? -1,
-      transports: (server as any)?.opts?.transports || 'unknown',
+      engineAttached: !!engine,
+      path: (server as any)?._opts?.path || (server as any)?.opts?.path || 'unknown',
+      connectedClients: engine?.clientsCount ?? -1,
+      transports: (server as any)?._opts?.transports || (server as any)?.opts?.transports || 'unknown',
+      httpServerAttached: !!(server as any)?.httpServer,
     };
   }
 }
