@@ -3,6 +3,8 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { Play, Pause } from 'lucide-react';
 
+const SPEEDS = [1, 1.5, 2];
+
 interface AudioPlayerProps {
   src: string;
   duration?: number | null;
@@ -14,6 +16,7 @@ export function AudioPlayer({ src, duration, isOutgoing }: AudioPlayerProps) {
   const [playing, setPlaying] = useState(false);
   const [current, setCurrent] = useState(0);
   const [total, setTotal] = useState(duration || 0);
+  const [speedIdx, setSpeedIdx] = useState(0);
 
   const fmt = (secs: number) => {
     const s = Math.floor(secs || 0);
@@ -32,6 +35,12 @@ export function AudioPlayer({ src, duration, isOutgoing }: AudioPlayerProps) {
     }
   }, [playing]);
 
+  const cycleSpeed = useCallback(() => {
+    const next = (speedIdx + 1) % SPEEDS.length;
+    setSpeedIdx(next);
+    if (audioRef.current) audioRef.current.playbackRate = SPEEDS[next];
+  }, [speedIdx]);
+
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
@@ -49,6 +58,7 @@ export function AudioPlayer({ src, duration, isOutgoing }: AudioPlayerProps) {
   }, [duration]);
 
   const progress = total > 0 ? (current / total) * 100 : 0;
+  const speed = SPEEDS[speedIdx];
 
   const btnClass = isOutgoing
     ? 'bg-white/20 hover:bg-white/30 text-white'
@@ -56,9 +66,12 @@ export function AudioPlayer({ src, duration, isOutgoing }: AudioPlayerProps) {
   const barBg = isOutgoing ? 'bg-white/30' : 'bg-primary/20';
   const barFill = isOutgoing ? 'bg-white' : 'bg-primary';
   const timeClass = isOutgoing ? 'text-white/60' : 'text-muted-foreground';
+  const speedClass = isOutgoing
+    ? 'text-white/80 hover:bg-white/20'
+    : 'text-primary/80 hover:bg-primary/10';
 
   return (
-    <div className="flex items-center gap-3 min-w-[200px] max-w-[280px]">
+    <div className="flex items-center gap-3 min-w-[200px] max-w-[300px]">
       <audio ref={audioRef} src={src} preload="metadata" />
       <button
         onClick={toggle}
@@ -81,9 +94,18 @@ export function AudioPlayer({ src, duration, isOutgoing }: AudioPlayerProps) {
             style={{ width: `${progress}%` }}
           />
         </div>
-        <span className={`text-[10px] ${timeClass}`}>
-          {fmt(current)} / {fmt(total)}
-        </span>
+        <div className="flex items-center justify-between">
+          <span className={`text-[10px] ${timeClass}`}>
+            {fmt(current)} / {fmt(total)}
+          </span>
+          <button
+            onClick={cycleSpeed}
+            className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors ${speedClass}`}
+            title="Velocidade de reprodução"
+          >
+            {speed === 1 ? '1×' : `${speed}×`}
+          </button>
+        </div>
       </div>
     </div>
   );
