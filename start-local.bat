@@ -5,16 +5,24 @@ echo =========================================================
 echo  INICIANDO AMBIENTE LOCAL FRONTAL E API - LEXCRM
 echo =========================================================
 
-:: Mata processos anteriores para evitar conflitos de porta
+:: Mata processos node anteriores de forma mais agressiva
+echo [0/3] Limpando processos antigos...
+taskkill /F /IM node.exe /T /FI "WINDOWTITLE eq LexCRM*" 2>nul
 taskkill /F /IM node.exe /T 2>nul
+timeout /t 2 /nobreak >nul
 
-echo [1/3] Limpando cache e preparando...
+echo [1/3] Verificando dependencias e preparando...
+:: Verifica se o dist existe, se nao existir builda
+if not exist "apps\api\dist\main.js" (
+    echo [!] Build da API nao encontrado. Gerando...
+    cmd /c "npm run build --workspace=apps/api"
+)
+
 echo.
 
 :: Tenta iniciar a API em uma nova janela
 echo [2/3] Iniciando API (Porta 3005) em segundo plano...
-:: Usamos 'node dist' para evitar problemas de política do PowerShell com 'npm run start:dev'
-start "LexCRM - API" cmd /c "echo Iniciando API (Producao/Dist)... & :loop & node apps/api/dist/main.js & echo API caiu em %time%. Reiniciando em 5 segundos... & timeout /t 5 & goto loop"
+start "LexCRM - API" cmd /c "echo === LOG DA API LEXCRM === & :loop & node apps/api/dist/main.js & echo. & echo [!] API caiu em %time%. Reiniciando em 5 segundos... & timeout /t 5 & goto loop"
 
 :: Espera um pouco para a API subir antes do Web
 timeout /t 5 /nobreak >nul
