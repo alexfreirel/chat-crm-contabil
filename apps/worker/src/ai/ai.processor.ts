@@ -2,28 +2,28 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { GoogleGenAI } from '@google/genai';
+import OpenAI from 'openai';
 import axios from 'axios';
 
 @Processor('ai-jobs')
 export class AiProcessor extends WorkerHost {
   private readonly logger = new Logger(AiProcessor.name);
-  private ai: GoogleGenAI | null = null;
+  private ai: OpenAI | null = null;
 
   constructor(private prisma: PrismaService) {
     super();
-    const key = process.env.GEMINI_API_KEY;
+    const key = process.env.OPENAI_API_KEY;
     if (key) {
-      this.ai = new GoogleGenAI({ apiKey: key });
+      this.ai = new OpenAI({ apiKey: key });
     } else {
-      this.logger.warn('GEMINI_API_KEY não definida — IA desativada');
+      this.logger.warn('OPENAI_API_KEY não definida — IA desativada');
     }
   }
 
   async process(job: Job<any, any, string>): Promise<any> {
     this.logger.log(`Iniciando job de IA: ${job.id}`);
     if (!this.ai) {
-      this.logger.warn('IA desativada (sem GEMINI_API_KEY), ignorando job');
+      this.logger.warn('IA desativada (sem OPENAI_API_KEY), ignorando job');
       return;
     }
     const { message_id, conversation_id } = job.data;
@@ -37,29 +37,29 @@ export class AiProcessor extends WorkerHost {
 
       if (!convo || !convo.ai_mode) return;
 
-      // 2. Format history for Google Gemini
-      const historyText = convo.messages.map(m => 
+      // 2. Format history for OpenAI
+      const historyText = convo.messages.map(m =>
         `${m.direction === 'in' ? 'Lead' : 'IA/Atendente'}: ${m.text || '[Anexo]'}`
       ).join('\n');
 
-      const prompt = `
-        Você é um agente de pré-atendimento de um escritório de advocacia (LexCRM).
-        Seu objetivo é extrair informações do caso do lead, classificar a área do direito (civil, criminal, trabalhista, etc) 
-        e coletar dados para o advogado.
-        
-        Histórico recente da conversa:
-        ${historyText}
+      const systemPrompt = `Você é um agente de pré-atendimento de um escritório de advocacia (LexCRM).
+Seu objetivo é extrair informações do caso do lead, classificar a área do direito (civil, criminal, trabalhista, etc)
+e coletar dados para o advogado.
+Responda de forma empática e curta (adequado para WhatsApp).`;
 
-        Responda à última mensagem do Lead de forma empática e curta (adequado para WhatsApp).
-      `;
+      const userPrompt = `Histórico recente da conversa:\n${historyText}\n\nResponda à última mensagem do Lead.`;
 
-      // 3. Call LLM
-      const response = await this.ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
+      // 3. Call OpenAI
+      const completion = await this.ai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: 300,
       });
 
-      const aiText = response.text || 'Desculpe, estou com instabilidade no momento.';
+      const aiText = completion.choices[0]?.message?.content || 'Desculpe, estou com instabilidade no momento.';
 
       // 4. Send back via Evolution API
       const apiBaseUrl = process.env.EVOLUTION_API_URL;
@@ -70,7 +70,7 @@ export class AiProcessor extends WorkerHost {
       await axios.post(url, {
         number: convo.lead.phone,
         textMessage: { text: aiText },
-        options: { delay: 1500, presence: 'composing' } // realistic typing delay
+        options: { delay: 1500, presence: 'composing' }
       }, {
         headers: { 'Content-Type': 'application/json', apikey: apiKey || '' }
       });
@@ -86,7 +86,7 @@ export class AiProcessor extends WorkerHost {
           status: 'enviado'
         }
       });
-      
+
       this.logger.log(`Resposta da IA enviada com sucesso para ${convo.lead.phone}`);
     } catch (e: any) {
       this.logger.error(`Erro no processamento da IA: ${e.message}`);
