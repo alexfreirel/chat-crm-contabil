@@ -3,7 +3,6 @@ import { LeadsService } from './leads.service';
 import { LeadsCleanupService } from './leads-cleanup.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Prisma } from '@crm/shared';
-import { normalizeBrazilianPhone } from '../common/utils/phone';
 
 @UseGuards(JwtAuthGuard)
 @Controller('leads')
@@ -18,9 +17,6 @@ export class LeadsController {
     // Associar ao tenant do usuário logado se existir
     if (req.user?.tenant_id) {
        createLeadDto.tenant = { connect: { id: req.user.tenant_id } };
-    }
-    if (createLeadDto.phone) {
-      createLeadDto.phone = normalizeBrazilianPhone(createLeadDto.phone);
     }
     return this.leadsService.create(createLeadDto);
   }

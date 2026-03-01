@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { SettingsService } from '../settings/settings.service';
 import { LeadsService } from '../leads/leads.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { normalizeBrazilianPhone } from '../common/utils/phone';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -373,11 +372,8 @@ export class WhatsappService {
           phone = contact.number;
         }
 
-        // Normalização: remover qualquer caractere que não seja dígito
+        // Remover qualquer caractere que não seja dígito
         phone = phone.replace(/\D/g, '');
-
-        // Normalização Especial Brasil: Nono Dígito (Remoção)
-        phone = normalizeBrazilianPhone(phone);
 
         // Se o número for inválido, grupo, broadcast ou ID interno da Evolution
         if (!phone ||

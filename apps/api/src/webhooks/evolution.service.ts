@@ -4,7 +4,6 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ChatGateway } from '../gateway/chat.gateway';
 import { LeadsService } from '../leads/leads.service';
-import { normalizeBrazilianPhone } from '../common/utils/phone';
 
 interface EvolutionWebhookPayload {
   event: string;
@@ -39,9 +38,7 @@ export class EvolutionService {
       const remoteJid = key.remoteJid as string;
       if (!remoteJid || remoteJid.includes('@g.us')) continue;
 
-      let phone = remoteJid.split('@')[0];
-      phone = normalizeBrazilianPhone(phone);
-
+      const phone = remoteJid.split('@')[0];
       const pushName = (data.pushName as string) || 'Desconhecido';
       const externalMessageId = key.id as string;
       const messageContent =
@@ -148,9 +145,7 @@ export class EvolutionService {
       const remoteJid = (data.id as string) || (data.remoteJid as string);
       if (!remoteJid || remoteJid.includes('@g.us')) continue;
 
-      let phone = remoteJid.split('@')[0];
-      phone = normalizeBrazilianPhone(phone);
-
+      const phone = remoteJid.split('@')[0];
       const name =
         (data.pushName as string) ||
         (data.name as string) ||
