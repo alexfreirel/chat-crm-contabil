@@ -45,8 +45,8 @@ services:
 
   # ------ SeaweedFS (Mídias) ------
   seaweed-master:
-    image: chrislusf/seaweedfs
-    command: "master -ip=seaweed-master -port=9333"
+    image: chrislusf/seaweedfs:3.73
+    command: "master -ip=seaweed-master -ip.bind=0.0.0.0 -port=9333 -mdir=/data -volumeSizeLimitMB=100000 -defaultReplication=000"
     ports:
       - '49333:9333'
     networks:
@@ -59,8 +59,8 @@ services:
         condition: any
 
   seaweed-volume:
-    image: chrislusf/seaweedfs
-    command: "volume -mserver=seaweed-master:9333 -port=8080 -dir=/data"
+    image: chrislusf/seaweedfs:3.73
+    command: "volume -mserver=seaweed-master:9333 -port=8080 -dir=/data -ip.bind=0.0.0.0"
     ports:
       - '48080:8080'
     networks:
@@ -73,14 +73,16 @@ services:
         condition: any
 
   seaweed-filer:
-    image: chrislusf/seaweedfs
-    command: "filer -master=seaweed-master:9333 -s3"
+    image: chrislusf/seaweedfs:3.73
+    command: "filer -master=seaweed-master:9333 -ip.bind=0.0.0.0 -s3"
     ports:
       - '48888:8888'
       - '48333:8333'
     networks:
       - default
       - OrionNet
+    volumes:
+      - seaweed_filer_data:/data
     deploy:
       restart_policy:
         condition: any
@@ -188,3 +190,4 @@ volumes:
   redisdata:
   seaweed_master_data:
   seaweed_volume_data:
+  seaweed_filer_data:
