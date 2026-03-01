@@ -21,7 +21,7 @@ export function formatPhone(phone: string | null | undefined) {
     // Celular com 9 dígitos: (XX) 9 XXXX-XXXX
     return `(${cleaned.substring(0, 2)}) ${cleaned.substring(2, 3)} ${cleaned.substring(3, 7)}-${cleaned.substring(7)}`;
   } else if (cleaned.length === 10) {
-    // Fixo ou Celular antigo: (XX) XXXX-XXXX
+    // Celular sem o 9 ou Fixo: (XX) XXXX-XXXX
     return `(${cleaned.substring(0, 2)}) ${cleaned.substring(2, 6)}-${cleaned.substring(6)}`;
   }
 

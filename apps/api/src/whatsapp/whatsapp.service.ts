@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { SettingsService } from '../settings/settings.service';
 import { LeadsService } from '../leads/leads.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { normalizeBrazilianPhone } from '../common/utils/phone';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -324,8 +325,8 @@ export class WhatsappService {
         // Normalização: remover qualquer caractere que não seja dígito
         phone = phone.replace(/\D/g, '');
 
-        // Normalização Especial Brasil: Nono Dígito
-        phone = this.normalizeBrazilianPhone(phone);
+        // Normalização Especial Brasil: Nono Dígito (Remoção)
+        phone = normalizeBrazilianPhone(phone);
 
         // Se o número for inválido ou for um ID interno da Evolution (cmm...)
         if (!phone || 
@@ -381,24 +382,4 @@ export class WhatsappService {
     return { total: allEntries.length, synced: updatedCount };
   }
 
-  private normalizeBrazilianPhone(phone: string): string {
-    // Se não é Brasil (55), não mexe
-    if (!phone.startsWith('55')) return phone;
-
-    // Formato esperado Br: 55 + DDD (2 digitos) + Numero
-    // Mobile com 9 digitos: 55 + DD + 9 + 8 digitos = 13 digitos
-    // Mobile com 8 digitos (legado): 55 + DD + 8 digitos = 12 digitos
-
-    if (phone.length === 12) {
-      const ddd = phone.substring(2, 4);
-      const number = phone.substring(4);
-
-      // Se o numero começa com [6, 7, 8, 9], é um celular que precisa de nono dígito
-      if (['6', '7', '8', '9'].includes(number[0])) {
-        return `55${ddd}9${number}`;
-      }
-    }
-
-    return phone;
-  }
 }

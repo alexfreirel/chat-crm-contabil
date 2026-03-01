@@ -145,7 +145,7 @@ export default function ContactsPage() {
                     <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Nome</th>
                     <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Telefone</th>
                     <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Email</th>
-                    <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-center">Conversas</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-center">ID</th>
                     <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Última Mensagem</th>
                     <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Origem</th>
                   </tr>
@@ -166,8 +166,8 @@ export default function ContactsPage() {
                       </td>
                       <td className="px-6 py-5 text-[13px] text-muted-foreground font-medium">{contact.email || '-'}</td>
                       <td className="px-6 py-5 text-center">
-                        <span className="inline-flex items-center justify-center min-w-[24px] h-[24px] px-1.5 rounded-full bg-primary/10 text-primary text-[11px] font-bold border border-primary/20">
-                          {contact.conversations}
+                        <span className="inline-flex items-center justify-center px-2 py-1 rounded-md bg-foreground/[0.03] text-muted-foreground text-[10px] font-mono border border-border/50">
+                          {contact.id.slice(0, 8)}...
                         </span>
                       </td>
                       <td className="px-6 py-5 text-[13px] text-muted-foreground opacity-70 font-medium">{contact.lastMessage}</td>

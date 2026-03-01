@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ChatGateway } from '../gateway/chat.gateway';
+import { normalizeBrazilianPhone } from '../common/utils/phone';
 
 interface EvolutionWebhookPayload {
   event: string;
@@ -38,7 +39,7 @@ export class EvolutionService {
 
       let phone = remoteJid.split('@')[0];
       // Normalização Especial Brasil: Nono Dígito
-      phone = this.normalizeBrazilianPhone(phone);
+      phone = normalizeBrazilianPhone(phone);
 
       const pushName = (data.pushName as string) || 'Desconhecido';
       const externalMessageId = key.id as string;
@@ -152,7 +153,7 @@ export class EvolutionService {
 
       let phone = remoteJid.split('@')[0];
       // Normalização Especial Brasil: Nono Dígito
-      phone = this.normalizeBrazilianPhone(phone);
+      phone = normalizeBrazilianPhone(phone);
 
       const name =
         (data.pushName as string) ||
@@ -182,19 +183,4 @@ export class EvolutionService {
     }
   }
 
-  private normalizeBrazilianPhone(phone: string): string {
-    // Se não é Brasil (55), não mexe
-    if (!phone.startsWith('55')) return phone;
-
-    // Mobile com 8 digitos (legado): 55 + DD + 8 digitos = 12 digitos
-    if (phone.length === 12) {
-      const ddd = phone.substring(2, 4);
-      const number = phone.substring(4);
-      // Se o numero começa com [6, 7, 8, 9], é um celular que precisa de nono dígito
-      if (['6', '7', '8', '9'].includes(number[0])) {
-        return `55${ddd}9${number}`;
-      }
-    }
-    return phone;
-  }
 }
