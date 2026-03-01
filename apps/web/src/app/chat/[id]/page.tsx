@@ -219,11 +219,18 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                         <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{msg.text}</p>
                       ) : msg.type === 'audio' ? (
                         msg.media ? (
-                          <AudioPlayer
-                            src={`/api/media/${msg.id}`}
-                            duration={msg.media.duration}
-                            isOutgoing={isOut}
-                          />
+                          <div>
+                            <AudioPlayer
+                              src={`/api/media/${msg.id}`}
+                              duration={msg.media.duration}
+                              isOutgoing={isOut}
+                            />
+                            {msg.text && (
+                              <p className={`text-[12px] mt-2 leading-snug italic ${isOut ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                                {msg.text}
+                              </p>
+                            )}
+                          </div>
                         ) : (
                           <div className="flex items-center gap-3 w-48 animate-pulse">
                             <div className="w-8 h-8 rounded-full bg-current opacity-20 shrink-0" />
