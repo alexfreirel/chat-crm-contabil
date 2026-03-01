@@ -13,7 +13,8 @@ echo.
 
 :: Tenta iniciar a API em uma nova janela
 echo [2/3] Iniciando API (Porta 3005) em segundo plano...
-start "LexCRM - API" cmd /c "echo Iniciando API com auto-reconexão... & :loop & npm run start:dev --workspace=apps/api & echo API caiu em %time%. Reiniciando em 5 segundos... & timeout /t 5 & goto loop"
+:: Usamos 'node dist' para evitar problemas de política do PowerShell com 'npm run start:dev'
+start "LexCRM - API" cmd /c "echo Iniciando API (Producao/Dist)... & :loop & node apps/api/dist/main.js & echo API caiu em %time%. Reiniciando em 5 segundos... & timeout /t 5 & goto loop"
 
 :: Espera um pouco para a API subir antes do Web
 timeout /t 5 /nobreak >nul

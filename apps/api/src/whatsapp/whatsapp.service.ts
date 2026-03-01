@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SettingsService } from '../settings/settings.service';
 import { LeadsService } from '../leads/leads.service';
+import { PrismaService } from '../prisma/prisma.service';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -10,6 +11,7 @@ export class WhatsappService {
   constructor(
     private readonly settingsService: SettingsService,
     private readonly leadsService: LeadsService,
+    private readonly prisma: PrismaService,
   ) {}
 
   private normalizeUrl(url: string): string {
@@ -300,26 +302,27 @@ export class WhatsappService {
     let updatedCount = 0;
     for (const contact of contacts) {
       try {
-        // Na v2, remoteJid costuma ter o formato 55829... @s.whatsapp.net
-        // O campo 'id' às vezes é um hash interno da Evolution v2
-        const rawJid = contact.remoteJid || contact.jid || '';
+        // Evolution v2: remoteJid costuma ser '55829...@s.whatsapp.net'
+        // O campo 'id' na v2 é um hash interno (ex: cmm...) e NÃO deve ser usado como telefone.
+        const rawJid = contact.remoteJid || '';
         let phone = '';
 
         if (rawJid && rawJid.includes('@')) {
           phone = rawJid.split('@')[0];
-        } else {
-          phone =
-            contact.number ||
-            contact.phone ||
-            (typeof contact.id === 'string' && !contact.id.includes('-')
-              ? contact.id
-              : '');
+        } else if (contact.number) {
+          phone = contact.number;
         }
 
-        if (!phone || phone.includes('broadcast') || phone.includes('status'))
+        // Se o número for inválido ou for um ID interno da Evolution (cmm...)
+        if (!phone || 
+            phone.startsWith('cmm') || 
+            phone.includes('broadcast') || 
+            phone.includes('status') ||
+            phone.length > 20) {
           continue;
+        }
 
-        await this.leadsService.upsert({
+        const lead = await this.leadsService.upsert({
           name: (contact.name ||
             contact.pushName ||
             contact.verifiedName ||
@@ -329,6 +332,27 @@ export class WhatsappService {
           tenant: tenantId ? { connect: { id: tenantId } } : undefined,
           stage: 'NOVO',
         });
+
+        // Para paridade local/produção: cria conversa inicial para que apareça no Chat/CRM
+        const existingConv = await this.prisma.conversation.findFirst({
+          where: {
+            lead_id: lead.id,
+            channel: 'whatsapp',
+            status: 'ABERTO',
+          },
+        });
+
+        if (!existingConv) {
+          await this.prisma.conversation.create({
+            data: {
+              lead_id: lead.id,
+              channel: 'whatsapp',
+              status: 'ABERTO',
+              external_id: rawJid || `${phone}@s.whatsapp.net`,
+            },
+          });
+          this.logger.log(`Conversa inicial criada para ${phone}`);
+        }
 
         updatedCount++;
       } catch (e) {
