@@ -40,8 +40,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
 
            console.log('[SOCKET] Connecting to ChatRoom:', convo.id, 'at', wsUrl);
            socketRef.current = io(wsUrl, { 
-             transports: ['websocket', 'polling'],
-             path: '/api/socket.io'
+             transports: ['websocket', 'polling']
            });
 
            socketRef.current.on('connect', () => {

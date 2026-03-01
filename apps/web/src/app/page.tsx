@@ -83,10 +83,9 @@ export default function Dashboard() {
     fetchConversations(selectedInboxId);
 
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001';
-    console.log('[SOCKET] Connecting to:', wsUrl, 'with path /api/socket.io');
+    console.log('[SOCKET] Connecting to:', wsUrl);
     const socket = io(wsUrl, { 
-      transports: ['websocket', 'polling'],
-      path: '/api/socket.io'
+      transports: ['websocket', 'polling']
     });
 
     socket.on('connect', () => {

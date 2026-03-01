@@ -3,10 +3,10 @@ import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 
 @WebSocketGateway({
-  path: '/api/socket.io',
   cors: {
     origin: '*',
   },
+  // path: '/socket.io' is default
 })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()

@@ -28,7 +28,6 @@ async function bootstrap() {
   logger.log(`DATABASE_URL carregada: ${dbUrl ? 'SIM (inicia com ' + dbUrl.substring(0, 20) + '...)' : 'NAO'}`);
 
   const app = await NestFactory.create(AppModule);
-  app.setGlobalPrefix('api');
   app.enableCors({
     origin: '*',
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
