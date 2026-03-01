@@ -43,46 +43,21 @@ services:
       restart_policy:
         condition: any
 
-  # ------ SeaweedFS (Mídias) ------
-  seaweed-master:
-    image: chrislusf/seaweedfs:3.73
-    command: "master -ip=seaweed-master -ip.bind=0.0.0.0 -port=9333 -mdir=/data -volumeSizeLimitMB=100000 -defaultReplication=000"
+  # ------ MinIO (Mídias S3) ------
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
     ports:
-      - '49333:9333'
+      - '49000:9000'
+      - '49001:9001'
+    environment:
+      - MINIO_ROOT_USER=${S3_ACCESS_KEY:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${S3_SECRET_KEY:-minioadmin}
     networks:
       - default
       - OrionNet
     volumes:
-      - seaweed_master_data:/data
-    deploy:
-      restart_policy:
-        condition: any
-
-  seaweed-volume:
-    image: chrislusf/seaweedfs:3.73
-    command: "volume -mserver=seaweed-master:9333 -port=8080 -dir=/data -ip.bind=0.0.0.0"
-    ports:
-      - '48080:8080'
-    networks:
-      - default
-      - OrionNet
-    volumes:
-      - seaweed_volume_data:/data
-    deploy:
-      restart_policy:
-        condition: any
-
-  seaweed-filer:
-    image: chrislusf/seaweedfs:3.73
-    command: "filer -master=seaweed-master:9333 -ip.bind=0.0.0.0 -s3"
-    ports:
-      - '48888:8888'
-      - '48333:8333'
-    networks:
-      - default
-      - OrionNet
-    volumes:
-      - seaweed_filer_data:/data
+      - minio_data:/data
     deploy:
       restart_policy:
         condition: any
@@ -104,10 +79,10 @@ services:
       - EVOLUTION_GLOBAL_APIKEY=${EVOLUTION_GLOBAL_APIKEY}
       - EVOLUTION_INSTANCE_NAME=${EVOLUTION_INSTANCE_NAME}
       - PUBLIC_API_URL=${PUBLIC_API_URL:-https://atendimento.andrelustosaadvogados.com.br/api}
-      - S3_ENDPOINT=${S3_ENDPOINT:-http://seaweed-filer:8333}
+      - S3_ENDPOINT=${S3_ENDPOINT:-http://minio:9000}
       - S3_REGION=${S3_REGION:-us-east-1}
-      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-some_access_key}
-      - S3_SECRET_KEY=${S3_SECRET_KEY:-some_secret_key}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
       - S3_BUCKET=${S3_BUCKET:-chat-crm-media}
     networks:
       - default
@@ -147,10 +122,10 @@ services:
       - EVOLUTION_API_URL=${EVOLUTION_API_URL}
       - EVOLUTION_GLOBAL_APIKEY=${EVOLUTION_GLOBAL_APIKEY}
       - EVOLUTION_INSTANCE_NAME=${EVOLUTION_INSTANCE_NAME}
-      - S3_ENDPOINT=http://seaweed-filer:8333
+      - S3_ENDPOINT=http://minio:9000
       - S3_REGION=us-east-1
-      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-some_access_key}
-      - S3_SECRET_KEY=${S3_SECRET_KEY:-some_secret_key}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
       - S3_BUCKET=${S3_BUCKET:-chat-crm-media}
     networks:
       - default
@@ -188,6 +163,4 @@ networks:
 volumes:
   pgdata_v2:
   redisdata:
-  seaweed_master_data:
-  seaweed_volume_data:
-  seaweed_filer_data:
+  minio_data:
