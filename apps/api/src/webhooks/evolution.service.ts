@@ -42,9 +42,10 @@ export class EvolutionService {
       if (!key || key.fromMe) continue;
 
       const remoteJid = key.remoteJid as string;
+      const remoteJidAlt = key.remoteJidAlt as string;
       if (!remoteJid || remoteJid.includes('@g.us')) continue;
 
-      const phone = remoteJid.split('@')[0];
+      const phone = (remoteJidAlt || remoteJid).split('@')[0];
       const pushName = (data.pushName as string) || 'Desconhecido';
       const externalMessageId = key.id as string;
       const messageContent =
@@ -79,6 +80,7 @@ export class EvolutionService {
             external_id: remoteJid,
             inbox_id: inboxId,
             instance_name: instanceName,
+            tenant_id: inbox?.tenant_id || lead.tenant_id,
           },
         });
       } else if (!conv.inbox_id && inboxId) {
@@ -166,7 +168,7 @@ export class EvolutionService {
     for (const data of chats) {
       if (!data) continue;
 
-      const remoteJid = data.remoteJid as string;
+      const remoteJid = (data.remoteJidAlt || data.remoteJid) as string;
       if (!remoteJid || remoteJid.includes('@g.us')) continue;
 
       const phone = remoteJid.split('@')[0];
@@ -178,6 +180,7 @@ export class EvolutionService {
         name: pushName,
         origin: 'whatsapp',
         stage: 'NOVO',
+        tenant: inbox?.tenant_id ? { connect: { id: inbox.tenant_id } } : undefined,
       });
 
       // 2. Find or Create Conversation
@@ -191,7 +194,7 @@ export class EvolutionService {
       });
 
       if (!conv) {
-        await this.prisma.conversation.create({
+        conv = await this.prisma.conversation.create({
           data: {
             lead_id: lead.id,
             channel: 'whatsapp',
@@ -199,14 +202,52 @@ export class EvolutionService {
             external_id: remoteJid,
             inbox_id: inboxId,
             instance_name: instanceName,
+            tenant_id: inbox?.tenant_id || lead.tenant_id,
           },
         });
         this.logger.log(`Nova conversa criada via chat webhook: ${phone} no setor ${inbox?.inbox?.name || 'Nenhum'}`);
-      } else if (!conv.inbox_id && inboxId) {
-        await this.prisma.conversation.update({
+      } else {
+        conv = await this.prisma.conversation.update({
           where: { id: conv.id },
-          data: { inbox_id: inboxId, instance_name: instanceName }
+          data: { 
+            inbox_id: inboxId, 
+            instance_name: instanceName,
+            tenant_id: inbox?.tenant_id || conv.tenant_id || lead.tenant_id
+          }
         });
+      }
+
+      // 3. Sync Last Message if available
+      if (data.lastMessage && conv) {
+        const lm = data.lastMessage;
+        const msgId = lm.key?.id || lm.id;
+        const msgText = lm.message?.conversation || 
+                        lm.message?.extendedTextMessage?.text || 
+                        lm.message?.imageMessage?.caption || 
+                        (lm.messageType !== 'conversation' ? `[${lm.messageType}]` : '');
+
+        if (msgId && msgText) {
+          await this.prisma.message.upsert({
+            where: { external_message_id: msgId },
+            update: {
+              status: lm.status || 'recebido',
+            },
+            create: {
+              conversation_id: conv.id,
+              direction: lm.key?.fromMe ? 'out' : 'in',
+              type: 'text',
+              text: msgText,
+              external_message_id: msgId,
+              status: lm.status || 'recebido',
+              created_at: lm.messageTimestamp ? new Date(lm.messageTimestamp * 1000) : new Date(),
+            },
+          });
+
+          await this.prisma.conversation.update({
+            where: { id: conv.id },
+            data: { last_message_at: lm.messageTimestamp ? new Date(lm.messageTimestamp * 1000) : new Date() }
+          });
+        }
       }
     }
   }

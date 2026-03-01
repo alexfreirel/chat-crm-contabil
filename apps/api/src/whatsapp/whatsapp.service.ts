@@ -381,8 +381,10 @@ export class WhatsappService {
         // ---- EXTRAIR PHONE ----
         let phone = '';
 
-        if (remoteJid && remoteJid.includes('@s.whatsapp.net')) {
-          phone = remoteJid.split('@')[0];
+        const finalRemoteJid = entry.remoteJidAlt || entry.remoteJid || '';
+
+        if (finalRemoteJid.includes('@s.whatsapp.net')) {
+          phone = finalRemoteJid.split('@')[0];
         } else if (entry.number) {
           phone = String(entry.number);
         }
@@ -419,7 +421,7 @@ export class WhatsappService {
         });
 
         // Cria conversa se não existir ou atualiza metadados se faltarem
-        const existingConv = await this.prisma.conversation.findFirst({
+        let existingConv = await this.prisma.conversation.findFirst({
           where: {
             lead_id: lead.id,
             channel: 'whatsapp',
@@ -430,7 +432,7 @@ export class WhatsappService {
         });
 
         if (!existingConv) {
-          await this.prisma.conversation.create({
+          existingConv = await this.prisma.conversation.create({
             data: {
               lead_id: lead.id,
               channel: 'whatsapp',
@@ -438,18 +440,55 @@ export class WhatsappService {
               external_id: jid,
               instance_name: instanceName,
               inbox_id: inboxId,
+              tenant_id: tenantId,
             },
           });
-        } else if (!existingConv.instance_name || !existingConv.inbox_id) {
-          // Garante que conversas antigas ganhem os metadados corretos durante o sync
-          await this.prisma.conversation.update({
+        } else {
+          // Garante que a conversa tenha os metadados corretos
+          existingConv = await this.prisma.conversation.update({
             where: { id: existingConv.id },
             data: {
               instance_name: instanceName,
               inbox_id: inboxId,
-              external_id: jid // Garante que o JID esteja correto
+              external_id: jid,
+              tenant_id: tenantId || existingConv.tenant_id,
             },
           });
+        }
+
+        // 3. Sincronizar a Última Mensagem (para a conversa aparecer no Chat)
+        if (entry.lastMessage && existingConv) {
+          const lm = entry.lastMessage;
+          const msgId = lm.key?.id || lm.id;
+          const msgText = lm.message?.conversation || 
+                          lm.message?.extendedTextMessage?.text || 
+                          lm.message?.imageMessage?.caption || 
+                          (lm.messageType !== 'conversation' ? `[${lm.messageType}]` : '');
+
+          if (msgId && msgText) {
+            await this.prisma.message.upsert({
+              where: { external_message_id: msgId },
+              update: {
+                status: lm.status || 'recebido',
+                text: msgText,
+              },
+              create: {
+                conversation_id: existingConv.id,
+                direction: lm.key?.fromMe ? 'out' : 'in',
+                type: 'text', // Simplificado para o sync inicial
+                text: msgText,
+                external_message_id: msgId,
+                status: lm.status || 'recebido',
+                created_at: lm.messageTimestamp ? new Date(lm.messageTimestamp * 1000) : new Date(),
+              },
+            });
+
+            // Atualiza o timestamp da conversa
+            await this.prisma.conversation.update({
+              where: { id: existingConv.id },
+              data: { last_message_at: lm.messageTimestamp ? new Date(lm.messageTimestamp * 1000) : new Date() }
+            });
+          }
         }
 
         updatedCount++;
