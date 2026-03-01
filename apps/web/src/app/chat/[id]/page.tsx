@@ -28,7 +28,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
       return;
     }
 
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001';
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || `${window.location.protocol}//${window.location.hostname}:3001`;
 
     const fetchData = async () => {
        try {
@@ -40,8 +40,11 @@ export default function ChatPage({ params }: { params: { id: string } }) {
            setMessages(convo.messages || []);
 
            console.log('[SOCKET] Connecting to ChatRoom:', convo.id, 'at', wsUrl);
-           socketRef.current = io(wsUrl, { 
-             transports: ['websocket', 'polling']
+           socketRef.current = io(wsUrl, {
+             transports: ['websocket', 'polling'],
+             reconnection: true,
+             reconnectionAttempts: 10,
+             reconnectionDelay: 2000,
            });
 
            socketRef.current.on('connect', () => {
@@ -60,13 +63,19 @@ export default function ChatPage({ params }: { params: { id: string } }) {
              setSocketConnected(false);
            });
 
-           socketRef.current.on('newMessage', (msg: any) => {
-             console.log('[SOCKET] New message received for room:', convo.id, msg);
-             setMessages(prev => {
-               if (prev.find((m: any) => m.id === msg.id)) return prev;
-               return [...prev, msg];
-             });
-           });
+            socketRef.current.on('newMessage', (msg: any) => {
+              console.log('[SOCKET] New message received:', msg);
+              // Use functional update to always have the latest messages state
+              setMessages(prev => {
+                const exists = prev.some((m: any) => m.id === msg.id || m.external_message_id === msg.external_message_id);
+                if (exists) return prev;
+                return [...prev, msg];
+              });
+            });
+
+            socketRef.current.on('joined_room', (data: any) => {
+              console.log('[SOCKET] Confirmed joined room:', data);
+            });
          }
        } catch (e: any) {
          console.error(e);
@@ -92,13 +101,22 @@ export default function ChatPage({ params }: { params: { id: string } }) {
 
   const handleSend = async () => {
     if (!text.trim() || !convoId || sending) return;
+    const msgText = text;
     setSending(true);
+    setText('');
     try {
-      await api.post('/messages/send', { conversationId: convoId, text });
-      setText('');
+      const res = await api.post('/messages/send', { conversationId: convoId, text: msgText });
+      // Exibição imediata: adiciona a mensagem retornada pelo backend
+      if (res.data?.id) {
+        setMessages(prev => {
+          if (prev.some((m: any) => m.id === res.data.id)) return prev;
+          return [...prev, res.data];
+        });
+      }
       inputRef.current?.focus();
     } catch (e) {
       console.error('Falha ao enviar mensagem', e);
+      setText(msgText); // Restaura o texto em caso de erro
     } finally {
       setSending(false);
     }

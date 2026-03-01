@@ -83,10 +83,13 @@ export default function Dashboard() {
     fetchInboxes();
     fetchConversations(selectedInboxId);
 
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001';
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || `${window.location.protocol}//${window.location.hostname}:3001`;
     console.log('[SOCKET] Connecting to:', wsUrl);
-    const socket = io(wsUrl, { 
-      transports: ['websocket', 'polling']
+    const socket = io(wsUrl, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
     });
 
     socket.on('connect', () => {
@@ -155,13 +158,22 @@ export default function Dashboard() {
 
   const handleSend = async () => {
     if (!text.trim() || !selectedId || selectedId.startsWith('demo-') || sending) return;
+    const msgText = text;
     setSending(true);
+    setText('');
     try {
-      await api.post('/messages/send', { conversationId: selectedId, text });
-      setText('');
+      const res = await api.post('/messages/send', { conversationId: selectedId, text: msgText });
+      // Exibição imediata: adiciona a mensagem retornada pelo backend
+      if (res.data?.id) {
+        setMessages(prev => {
+          if (prev.find(m => m.id === res.data.id)) return prev;
+          return [...prev, res.data];
+        });
+      }
       inputRef.current?.focus();
     } catch (e) {
       console.error('Failed to send message', e);
+      setText(msgText); // Restaura o texto em caso de erro
     } finally {
       setSending(false);
     }

@@ -9,6 +9,7 @@ import { InboxesService } from '../inboxes/inboxes.service';
 interface EvolutionWebhookPayload {
   event: string;
   instanceId: string;
+  instance?: string;
   data: any;
 }
 
@@ -29,8 +30,13 @@ export class EvolutionService {
     this.logger.log(`[WEBHOOK] messages.upsert received from ${payload?.instanceId}`);
     this.logger.debug(`Payload: ${JSON.stringify(payload)}`);
     const dataPayload = payload?.data as any;
-    const instanceName = payload?.instanceId; // Na Evolution API v2, instanceId é o nome da instância
+    const instanceName = payload?.instance || payload?.instanceId;
     const inbox = instanceName ? await this.inboxesService.findByInstanceName(instanceName) : null;
+    
+    if (!inbox) {
+      this.logger.warn(`[WEBHOOK] No inbox found for instanceName: ${instanceName}. Message might be lost or assigned to no tenant.`);
+    }
+
     const inboxId = inbox?.inbox_id || null;
 
     const messages = Array.isArray(dataPayload?.messages)
@@ -158,7 +164,7 @@ export class EvolutionService {
   async handleChatsUpsert(payload: EvolutionWebhookPayload) {
     this.logger.log(`Recebendo webhook de chats: ${JSON.stringify(payload)}`);
     const dataPayload = payload?.data as any;
-    const instanceName = payload?.instanceId;
+    const instanceName = payload?.instance || payload?.instanceId;
     const inbox = instanceName ? await this.inboxesService.findByInstanceName(instanceName) : null;
     const inboxId = inbox?.inbox_id || null;
 

@@ -125,12 +125,12 @@ services:
     build:
       context: .
       dockerfile: infra/Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: /api
+        NEXT_PUBLIC_WS_URL: ""
     restart: always
     ports:
       - "${WEB_PORT:-3000}:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:3001}
-      - NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL:-ws://localhost:3001}
     depends_on:
       - crm-api
 

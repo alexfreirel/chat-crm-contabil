@@ -26,6 +26,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   handleJoinConversation(@MessageBody() conversationId: string, @ConnectedSocket() client: Socket) {
     client.join(conversationId);
     this.logger.log(`[SOCKET] Client ${client.id} joined room: ${conversationId}`);
+    this.server.to(client.id).emit('joined_room', { room: conversationId });
   }
   
   // Method to be called by other modules (e.g. MessagesService/EvolutionService) 
