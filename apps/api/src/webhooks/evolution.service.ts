@@ -114,6 +114,7 @@ export class EvolutionService {
           'audioMessage',
           'documentMessage',
           'videoMessage',
+          'stickerMessage',
         ].includes(messageType)
       ) {
         msgType = messageType.replace('Message', '');
