@@ -1,36 +1,51 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  S3Client,
+  GetObjectCommand,
+  PutObjectCommand,
+  CreateBucketCommand,
+} from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
-import * as fs from 'fs';
-import * as path from 'path';
-
-const CONTENT_TYPES: Record<string, string> = {
-  ogg: 'audio/ogg',
-  webm: 'audio/webm',
-  mp4: 'audio/mp4',
-  m4a: 'audio/mp4',
-  opus: 'audio/opus',
-  mp3: 'audio/mpeg',
-};
 
 @Injectable()
 export class MediaS3Service implements OnModuleInit {
   private readonly logger = new Logger(MediaS3Service.name);
-  private readonly storagePath: string;
+  private client: S3Client;
+  private bucket = process.env.S3_BUCKET || 'chat-crm-media';
 
   constructor() {
-    this.storagePath = process.env.MEDIA_PATH || '/app/uploads';
+    this.client = new S3Client({
+      endpoint: process.env.S3_ENDPOINT || 'http://minio:9000',
+      region: process.env.S3_REGION || 'us-east-1',
+      credentials: {
+        accessKeyId: process.env.S3_ACCESS_KEY || 'minioadmin',
+        secretAccessKey: process.env.S3_SECRET_KEY || 'minioadmin',
+      },
+      forcePathStyle: true,
+    });
   }
 
   async onModuleInit() {
-    await fs.promises.mkdir(this.storagePath, { recursive: true });
-    this.logger.log(`Media storage ready: ${this.storagePath}`);
+    try {
+      await this.client.send(new CreateBucketCommand({ Bucket: this.bucket }));
+      this.logger.log(`Bucket "${this.bucket}" criado`);
+    } catch (e: any) {
+      const code = e?.Code || e?.name || '';
+      if (!code.includes('BucketAlready') && !code.includes('OwnedByYou')) {
+        this.logger.warn(`Bucket init: ${e?.message}`);
+      }
+    }
   }
 
   async uploadBuffer(key: string, buffer: Buffer, mimeType: string): Promise<void> {
-    const filePath = path.join(this.storagePath, key);
-    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.promises.writeFile(filePath, buffer);
-    this.logger.log(`Saved: ${key} (${buffer.length} bytes)`);
+    const command = new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      Body: buffer,
+      ContentType: mimeType,
+    });
+    await this.client.send(command);
+    this.logger.log(`Uploaded: ${key}`);
   }
 
   async getObjectStream(key: string): Promise<{
@@ -38,11 +53,12 @@ export class MediaS3Service implements OnModuleInit {
     contentType: string;
     contentLength?: number;
   }> {
-    const filePath = path.join(this.storagePath, key);
-    const stat = await fs.promises.stat(filePath);
-    const ext = path.extname(key).slice(1).toLowerCase();
-    const contentType = CONTENT_TYPES[ext] || 'application/octet-stream';
-    const stream = fs.createReadStream(filePath);
-    return { stream, contentType, contentLength: stat.size };
+    const command = new GetObjectCommand({ Bucket: this.bucket, Key: key });
+    const response = await this.client.send(command);
+    return {
+      stream: response.Body as Readable,
+      contentType: response.ContentType || 'application/octet-stream',
+      contentLength: response.ContentLength,
+    };
   }
 }
