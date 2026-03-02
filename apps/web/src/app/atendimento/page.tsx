@@ -100,6 +100,8 @@ export default function Dashboard() {
   // Pending transfers waiting for current user to accept/decline
   const [pendingTransfers, setPendingTransfers] = useState<{ conversationId: string; contactName: string; fromUserName: string; reason: string | null }[]>([]);
   const [inboxOpen, setInboxOpen] = useState(true);
+  // Unread message counts per conversation (reset when conversation is opened)
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   // Current user ID decoded from JWT (lazy init, never changes)
   const [currentUserId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -205,8 +207,15 @@ export default function Dashboard() {
     });
 
     // Incoming message notification for the assigned operator (background conversations)
-    socket.on('incoming_message_notification', () => {
+    socket.on('incoming_message_notification', (data: { conversationId: string }) => {
       playNotificationSound();
+      // Only mark unread when the user is NOT currently viewing that conversation
+      if (data?.conversationId && data.conversationId !== selectedIdRef.current) {
+        setUnreadCounts(prev => ({
+          ...prev,
+          [data.conversationId]: (prev[data.conversationId] || 0) + 1,
+        }));
+      }
     });
 
     // Transfer request: incoming popup + sound for target operator
@@ -789,7 +798,11 @@ export default function Dashboard() {
             filteredConversations.map((conv) => (
               <div
                 key={conv.id}
-                onClick={() => setSelectedId(conv.id)}
+                onClick={() => {
+                  setSelectedId(conv.id);
+                  // Clear unread count when opening the conversation
+                  setUnreadCounts(prev => { const n = { ...prev }; delete n[conv.id]; return n; });
+                }}
                 className={`flex gap-4 p-4 border-b border-border/50 cursor-pointer transition-colors relative
                   ${selectedId === conv.id ? 'bg-accent/50' : 'hover:bg-accent/30'}
                 `}
@@ -804,8 +817,17 @@ export default function Dashboard() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start mb-0.5">
-                    <span className="font-semibold text-foreground truncate pl-0.5">{conv.contactName || conv.contactPhone}</span>
-                    <span className="text-[11px] text-muted-foreground shrink-0">{formatTime(conv.lastMessageAt)}</span>
+                    <span className={`font-semibold truncate pl-0.5 ${(unreadCounts[conv.id] || 0) > 0 ? 'text-foreground' : 'text-foreground'}`}>
+                      {conv.contactName || conv.contactPhone}
+                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0 ml-1">
+                      {(unreadCounts[conv.id] || 0) > 0 && (
+                        <span className="bg-primary text-primary-foreground text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
+                          {unreadCounts[conv.id] > 99 ? '99+' : unreadCounts[conv.id]}
+                        </span>
+                      )}
+                      <span className="text-[11px] text-muted-foreground">{formatTime(conv.lastMessageAt)}</span>
+                    </div>
                   </div>
                   {conv.contactPhone && conv.contactName !== conv.contactPhone && (
                     <p className="text-[11px] text-muted-foreground truncate pl-0.5 mb-0.5">{conv.contactPhone}</p>
@@ -824,7 +846,9 @@ export default function Dashboard() {
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-muted-foreground truncate">{conv.lastMessage}</p>
+                  <p className={`text-sm truncate ${(unreadCounts[conv.id] || 0) > 0 ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                    {conv.lastMessage}
+                  </p>
                 </div>
               </div>
             ))
