@@ -496,7 +496,7 @@ function SkillEditor({
 }: {
   form: SkillForm;
   setForm: React.Dispatch<React.SetStateAction<SkillForm>>;
-  textareaRef: React.RefObject<HTMLTextAreaElement>;
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   saving: boolean;
   onSave: () => void;
   onCancel: () => void;
