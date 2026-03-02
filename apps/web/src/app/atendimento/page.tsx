@@ -118,10 +118,12 @@ export default function Dashboard() {
   const dragCounterRef = useRef(0);
   const selectedInboxIdRef = useRef<string | null>(selectedInboxId);
   const selectedIdRef = useRef<string | null>(selectedId);
+  const currentUserIdRef = useRef<string | null>(currentUserId);
 
   // Keep refs in sync
   useEffect(() => { selectedInboxIdRef.current = selectedInboxId; }, [selectedInboxId]);
   useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
+  useEffect(() => { currentUserIdRef.current = currentUserId; }, [currentUserId]);
 
   // Sync aiMode when conversation changes
   useEffect(() => {
@@ -206,8 +208,10 @@ export default function Dashboard() {
       fetchConversations(selectedInboxIdRef.current);
     });
 
-    // Incoming message notification for the assigned operator (background conversations)
-    socket.on('incoming_message_notification', (data: { conversationId: string }) => {
+    // Incoming message notification — broadcast to all; each client filters by assignedUserId
+    socket.on('incoming_message_notification', (data: { conversationId: string; assignedUserId?: string }) => {
+      // Only act if this notification is meant for the current user (or unassigned)
+      if (data?.assignedUserId && data.assignedUserId !== currentUserIdRef.current) return;
       playNotificationSound();
       // Only mark unread when the user is NOT currently viewing that conversation
       if (data?.conversationId && data.conversationId !== selectedIdRef.current) {
