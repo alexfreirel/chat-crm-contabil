@@ -645,16 +645,14 @@ export class AiProcessor extends WorkerHost {
       // Fire-and-forget (sem await): dispara o indicador e imediatamente começa
       // a contar os 5s em paralelo — evita dupla espera (API delay + setTimeout).
       const TYPING_DELAY_MS = 5000;
+      // Formato flat (sem wrapper "options") — conforme comportamento real da API
       axios
         .post(
           `${apiUrl}/chat/sendPresence/${instanceName}`,
           {
             number: convo.lead.phone,
-            options: {
-              delay: TYPING_DELAY_MS,
-              presence: 'composing',
-              number: convo.lead.phone,
-            },
+            delay: TYPING_DELAY_MS,
+            presence: 'composing',
           },
           { headers: { 'Content-Type': 'application/json', apikey: apiKey }, timeout: 10000 },
         )

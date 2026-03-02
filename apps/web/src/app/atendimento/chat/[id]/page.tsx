@@ -632,6 +632,15 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                       )}
                       {msg.type !== 'deleted' && (
                         <div className={`text-[10px] mt-2 flex justify-end items-center gap-1.5 ${isOut ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
+                          {isOut && (msg.type === 'text' || !msg.type) && !editingMsg && (
+                            <button
+                              onClick={() => setEditingMsg({ id: msg.id, text: msg.text || '' })}
+                              className="opacity-40 hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-white/20"
+                              title="Editar mensagem"
+                            >
+                              <Pencil size={10} />
+                            </button>
+                          )}
                           <span>{formatTime(msg.created_at)}</span>
                           <StatusIcon status={msg.status} isOut={isOut} />
                         </div>
