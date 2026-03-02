@@ -74,6 +74,20 @@ export class WhatsappService {
     });
   }
 
+  async editMessage(instanceName: string, number: string, externalMessageId: string, newText: string) {
+    const targetInstance = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'crm_instance';
+    const remoteJid = `${number}@s.whatsapp.net`;
+    return this.request('POST', `message/editText/${targetInstance}`, {
+      number,
+      key: {
+        id: externalMessageId,
+        fromMe: true,
+        remoteJid,
+      },
+      text: newText,
+    });
+  }
+
   async sendMedia(
     number: string,
     mediaType: 'image' | 'audio' | 'document' | 'video',

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Send, Bot, BotOff, Download, Mic, FileText, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply } from 'lucide-react';
+import { ArrowLeft, Send, Bot, BotOff, Download, Mic, FileText, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, Pencil } from 'lucide-react';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { AudioRecorder } from '@/components/AudioRecorder';
 import { EmojiPickerButton } from '@/components/EmojiPickerButton';
@@ -44,6 +44,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [docPreview, setDocPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const [transcribing, setTranscribing] = useState<Record<string, boolean>>({});
+  const [editingMsg, setEditingMsg] = useState<{ id: string; text: string } | null>(null);
 
   // Decode current user ID once from JWT (never changes during session)
   const [currentUserId] = useState<string | null>(() => {
@@ -232,6 +233,17 @@ export default function ChatPage({ params }: { params: { id: string } }) {
       setMessages(prev => prev.map((m: any) => m.id === msgId ? { ...m, ...res.data } : m));
     } catch (e) {
       console.error('Erro ao apagar mensagem', e);
+    }
+  };
+
+  const handleEditMessage = async (msgId: string, newText: string) => {
+    if (!newText.trim()) return;
+    try {
+      const res = await api.patch(`/messages/${msgId}`, { text: newText.trim() });
+      setMessages(prev => prev.map((m: any) => m.id === msgId ? { ...m, ...res.data } : m));
+      setEditingMsg(null);
+    } catch (e) {
+      console.error('Erro ao editar mensagem', e);
     }
   };
 
@@ -485,7 +497,25 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                       {msg.type === 'deleted' ? (
                         <p className="text-sm italic opacity-50">🚫 Mensagem apagada</p>
                       ) : msg.type === 'text' || !msg.type ? (
-                        (() => {
+                        editingMsg?.id === msg.id ? (
+                          <div className="flex flex-col gap-2 min-w-[200px]">
+                            <textarea
+                              autoFocus
+                              className="w-full bg-white/10 text-primary-foreground rounded-lg px-3 py-2 text-[14px] leading-relaxed resize-none border border-white/20 focus:outline-none focus:border-white/50"
+                              rows={3}
+                              value={editingMsg!.text}
+                              onChange={e => setEditingMsg(prev => prev ? { ...prev, text: e.target.value } : null)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleEditMessage(editingMsg!.id, editingMsg!.text); }
+                                if (e.key === 'Escape') setEditingMsg(null);
+                              }}
+                            />
+                            <div className="flex justify-end gap-2">
+                              <button onClick={() => setEditingMsg(null)} className="text-[11px] px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-primary-foreground/70">Cancelar</button>
+                              <button onClick={() => handleEditMessage(editingMsg!.id, editingMsg!.text)} className="text-[11px] px-2 py-1 rounded bg-white/25 hover:bg-white/35 text-primary-foreground font-medium">Salvar</button>
+                            </div>
+                          </div>
+                        ) : (() => {
                           const t = msg.text || '';
                           const url = extractFirstUrl(t);
                           const isOnlyUrl = url && t.trim() === url;
@@ -616,6 +646,15 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                         >
                           <Reply size={13} />
                         </button>
+                        {msg.type === 'text' && msg.type !== 'deleted' && (
+                          <button
+                            onClick={() => setEditingMsg({ id: msg.id, text: msg.text || '' })}
+                            className="p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary"
+                            title="Editar mensagem"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                        )}
                         <button
                           onClick={() => handleDeleteMessage(msg.id)}
                           className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"

@@ -395,6 +395,45 @@ export class MessagesService {
     return msgWithMedia;
   }
 
+  async editMessage(messageId: string, newText: string) {
+    if (!newText?.trim()) throw new BadRequestException('Texto não pode ser vazio');
+
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      include: { conversation: { include: { lead: true } } },
+    });
+
+    if (!message) throw new NotFoundException('Mensagem não encontrada');
+    if (message.direction !== 'out') throw new BadRequestException('Só é possível editar mensagens enviadas');
+    if (message.type === 'deleted') throw new BadRequestException('Mensagem apagada não pode ser editada');
+    if (message.type !== 'text') throw new BadRequestException('Só é possível editar mensagens de texto');
+
+    // Tentar editar no WhatsApp (best-effort — mesma abordagem do delete)
+    if (message.external_message_id && message.conversation.lead?.phone) {
+      try {
+        await this.whatsapp.editMessage(
+          message.conversation.instance_name || '',
+          message.conversation.lead.phone,
+          message.external_message_id,
+          newText.trim(),
+        );
+      } catch (e) {
+        this.logger.warn(`Falha ao editar no WhatsApp: ${e.message}`);
+      }
+    }
+
+    // Atualizar texto no banco
+    const updated = await this.prisma.message.update({
+      where: { id: messageId },
+      data: { text: newText.trim() },
+    });
+
+    // Emitir atualização via WebSocket
+    this.chatGateway.emitMessageUpdate(message.conversation_id, updated);
+
+    return updated;
+  }
+
   async deleteMessage(messageId: string) {
     const message = await this.prisma.message.findUnique({
       where: { id: messageId },
