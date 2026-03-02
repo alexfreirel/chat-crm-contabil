@@ -46,4 +46,11 @@ export class SettingsService {
   async getMemoryModel(): Promise<string> {
     return (await this.get('AI_MEMORY_MODEL')) || 'gpt-4.1';
   }
+
+  /** Cooldown em ms entre respostas da IA na mesma conversa (padrão: 8s) */
+  async getCooldownMs(): Promise<number> {
+    const val = await this.get('AI_COOLDOWN_SECONDS');
+    const seconds = val ? parseInt(val, 10) : 8;
+    return (isNaN(seconds) ? 8 : seconds) * 1000;
+  }
 }

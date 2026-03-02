@@ -333,12 +333,13 @@ export class AiProcessor extends WorkerHost {
       // 3. Verificar ai_mode ativo
       if (!convo || !convo.ai_mode) return;
 
-      // Guard: cooldown de 8s — evita resposta duplicada quando o lead manda
+      // Guard: cooldown configurável — evita resposta duplicada quando o lead manda
       // várias mensagens em sequência rápida (cada uma dispara um job)
+      const cooldownMs = await this.settings.getCooldownMs();
       const lastOutMsg = convo.messages.find((m) => m.direction === 'out');
-      if (lastOutMsg && Date.now() - lastOutMsg.created_at.getTime() < 8000) {
+      if (cooldownMs > 0 && lastOutMsg && Date.now() - lastOutMsg.created_at.getTime() < cooldownMs) {
         this.logger.log(
-          `[AI] Cooldown ativo (${Date.now() - lastOutMsg.created_at.getTime()}ms desde última resposta) — job ignorado`,
+          `[AI] Cooldown ativo (${Date.now() - lastOutMsg.created_at.getTime()}ms < ${cooldownMs}ms) — job ignorado`,
         );
         return;
       }

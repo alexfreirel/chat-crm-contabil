@@ -65,6 +65,7 @@ export default function AiSettingsPage() {
   // Config global
   const [apiKey, setApiKey] = useState('');
   const [defaultModel, setDefaultModel] = useState('gpt-4o-mini');
+  const [cooldownSeconds, setCooldownSeconds] = useState(8);
   const [isConfigured, setIsConfigured] = useState(false);
   const [isEditingKey, setIsEditingKey] = useState(false);
   const [showKey, setShowKey] = useState(false);
@@ -89,6 +90,7 @@ export default function AiSettingsPage() {
       ]);
       setIsConfigured(configRes.data.isConfigured);
       setDefaultModel(configRes.data.defaultModel || 'gpt-4o-mini');
+      setCooldownSeconds(configRes.data.cooldownSeconds ?? 8);
       setSkills(skillsRes.data);
     } catch (e) {
       console.error('Erro ao carregar dados:', e);
@@ -104,7 +106,7 @@ export default function AiSettingsPage() {
     if (!apiKey.trim() && !defaultModel) return;
     setSavingConfig(true);
     try {
-      const payload: any = { defaultModel };
+      const payload: any = { defaultModel, cooldownSeconds };
       if (apiKey.trim()) payload.apiKey = apiKey.trim();
       await api.post('/settings/ai-config', payload);
       if (apiKey.trim()) setIsConfigured(true);
@@ -276,6 +278,28 @@ export default function AiSettingsPage() {
                   ))}
                 </select>
                 <p className="text-[11px] text-muted-foreground">Modelo usado quando a skill não define um modelo específico.</p>
+              </div>
+
+              {/* Cooldown entre respostas da IA */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">
+                  Cooldown entre respostas:{' '}
+                  <span className="text-foreground">
+                    {cooldownSeconds === 0 ? 'desativado' : `${cooldownSeconds}s`}
+                  </span>
+                </label>
+                <input
+                  type="range" min={0} max={60} step={1}
+                  value={cooldownSeconds}
+                  onChange={(e) => setCooldownSeconds(Number(e.target.value))}
+                  className="w-full accent-primary"
+                />
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                  <span>desativado</span><span>60s</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Tempo mínimo entre respostas da IA na mesma conversa. Evita resposta duplicada quando o cliente envia várias mensagens em sequência rápida.
+                </p>
               </div>
 
               {/* API Key (só editável quando aberto) */}
