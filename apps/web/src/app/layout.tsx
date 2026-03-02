@@ -1,6 +1,12 @@
 import type { Metadata } from 'next';
+import { Ubuntu_Sans } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers';
+
+const ubuntuSans = Ubuntu_Sans({
+  subsets: ['latin'],
+  variable: '--font-ubuntu',
+});
 
 export const metadata: Metadata = {
   title: 'André Lustosa Advogados | Advocacia Especializada',
@@ -13,7 +19,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR" suppressHydrationWarning>
+    <html lang="pt-BR" suppressHydrationWarning className={ubuntuSans.variable}>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
