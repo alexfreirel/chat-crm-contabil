@@ -545,12 +545,14 @@ export default function Dashboard() {
               <button
                 key={tab.value}
                 onClick={() => setLeadFilter(tab.value)}
-                className={`flex-1 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all flex flex-col items-center gap-0.5 ${leadFilter === tab.value ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-background/50'}`}
+                className={`flex-1 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all relative ${leadFilter === tab.value ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-background/50'}`}
               >
                 {tab.label}
-                <span className={`text-[10px] font-bold leading-none ${leadFilter === tab.value ? 'text-primary' : 'text-muted-foreground/60'}`}>
-                  {tab.count}
-                </span>
+                {tab.count > 0 && (
+                  <span className="absolute -top-1 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold leading-4 text-center shadow-sm">
+                    {tab.count > 99 ? '99+' : tab.count}
+                  </span>
+                )}
               </button>
             ))}
           </div>
