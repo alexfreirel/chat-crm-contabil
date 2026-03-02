@@ -1278,7 +1278,7 @@ export default function Dashboard() {
             <img
               src="/landing/LOGO SEM FUNDO 01.png"
               alt="André Lustosa Advogados"
-              style={{ width: '380px', height: 'auto', opacity: 0.85 }}
+              style={{ width: '620px', height: 'auto', opacity: 0.85 }}
               className="select-none pointer-events-none"
               draggable={false}
             />
