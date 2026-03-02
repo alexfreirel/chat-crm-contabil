@@ -641,18 +641,34 @@ export class AiProcessor extends WorkerHost {
       // Assinatura "Sophia:" em negrito no WhatsApp (salva sem assinatura no DB)
       const textToSend = `*Sophia:* ${finalText}`;
 
+      // Exibe "digitando..." por 5s via endpoint dedicado da Evolution API,
+      // depois aguarda o mesmo intervalo para enviar a mensagem.
+      const TYPING_DELAY_MS = 5000;
+      await axios
+        .post(
+          `${apiUrl}/chat/sendPresence/${instanceName}`,
+          {
+            number: convo.lead.phone,
+            options: {
+              delay: TYPING_DELAY_MS,
+              presence: 'composing',
+              number: convo.lead.phone,
+            },
+          },
+          { headers: { 'Content-Type': 'application/json', apikey: apiKey }, timeout: 10000 },
+        )
+        .catch((e) =>
+          this.logger.warn(`[AI] sendPresence falhou (não-fatal): ${e.message}`),
+        );
+      await new Promise((resolve) => setTimeout(resolve, TYPING_DELAY_MS));
+
       // Captura o ID real da mensagem retornado pela Evolution API
       // para que o webhook echo seja corretamente deduplicado e não gere registro duplicado.
-      // options.delay + presence:"composing" exibe o balão "digitando..." por 5s antes de entregar.
       const sendResult = await axios.post(
         `${apiUrl}/message/sendText/${instanceName}`,
         {
           number: convo.lead.phone,
           text: textToSend,
-          options: {
-            delay: 5000,
-            presence: 'composing',
-          },
         },
         {
           headers: { 'Content-Type': 'application/json', apikey: apiKey },
