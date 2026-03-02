@@ -45,7 +45,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
 
@@ -243,6 +243,8 @@ export default function ChatPage({ params }: { params: { id: string } }) {
     setSending(true);
     setText('');
     setReplyingTo(null);
+    // Reset textarea height after clearing
+    if (inputRef.current) { inputRef.current.style.height = '56px'; }
     try {
       const res = await api.post('/messages/send', {
         conversationId: convoId,
@@ -461,7 +463,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                         isEmojiOnly(msg.text || '') ? (
                           <p className="text-4xl leading-tight">{msg.text}</p>
                         ) : (
-                          <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                          <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{msg.text}</p>
                         )
                       ) : msg.type === 'audio' ? (
                         msg.media ? (
@@ -632,11 +634,16 @@ export default function ChatPage({ params }: { params: { id: string } }) {
               />
 
               <div className="relative flex-1">
-                <input
+                <textarea
                   ref={inputRef}
-                  type="text"
+                  rows={1}
                   value={text}
-                  onChange={e => setText(e.target.value)}
+                  onChange={e => {
+                    setText(e.target.value);
+                    const el = e.target;
+                    el.style.height = 'auto';
+                    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+                  }}
                   onKeyDown={e => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
@@ -645,7 +652,8 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                   }}
                   placeholder="Digite sua mensagem..."
                   disabled={sending}
-                  className="w-full bg-card border border-border rounded-xl pl-5 pr-24 py-4 focus:outline-none focus:ring-2 focus:ring-primary shadow-sm text-foreground disabled:opacity-50"
+                  className="w-full bg-card border border-border rounded-xl pl-5 pr-24 py-4 focus:outline-none focus:ring-2 focus:ring-primary shadow-sm text-foreground disabled:opacity-50 resize-none overflow-y-auto leading-relaxed"
+                  style={{ minHeight: '56px', maxHeight: '160px' }}
                 />
                 <div className="absolute inset-y-0 right-3 flex items-center gap-1">
                   <EmojiPickerButton onEmojiSelect={handleEmojiSelect} compact />
