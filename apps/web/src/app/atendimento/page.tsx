@@ -538,9 +538,9 @@ export default function Dashboard() {
           <div className="flex bg-muted rounded-xl p-1 w-full relative">
             {[
               { value: '', label: 'Tudo' },
-              { value: 'ACTIVE', label: 'Ativas' },
-              { value: 'WAITING', label: 'Espera' },
               { value: 'BOT', label: 'Bot' },
+              { value: 'WAITING', label: 'Espera' },
+              { value: 'ACTIVE', label: 'Ativas' },
             ].map((tab) => (
               <button
                 key={tab.value}
