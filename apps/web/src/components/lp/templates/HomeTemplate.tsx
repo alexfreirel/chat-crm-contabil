@@ -222,7 +222,7 @@ export function HomeTemplate({
                   Portal do Cliente
                 </a>
                 <a
-                  href="/login"
+                  href="/atendimento/login"
                   className="text-[11px] font-bold text-[#A89048] hover:text-[#e3c788] transition-colors uppercase tracking-widest px-3 py-1.5 border border-[#A89048]/30 hover:border-[#A89048] rounded-md flex items-center gap-2"
                 >
                   <Briefcase size={14} />
@@ -299,7 +299,7 @@ export function HomeTemplate({
               Portal do Cliente
             </a>
             <a
-              href="/login"
+              href="/atendimento/login"
               className="text-sm font-bold text-[#A89048] border-b border-[#A89048]/10 pb-2 text-left uppercase tracking-widest flex items-center gap-2"
             >
               <Briefcase size={16} />
