@@ -51,9 +51,11 @@ export class LandingPagesService {
   }
 
   create(dto: CreateLandingPageDto, tenant_id?: string) {
+    const { content, ...rest } = dto;
     return this.prisma.landingPage.create({
       data: {
-        ...dto,
+        ...rest,
+        content: content as object,
         tenant_id: tenant_id || null,
       },
     });
@@ -61,7 +63,14 @@ export class LandingPagesService {
 
   async update(id: string, dto: Partial<CreateLandingPageDto>) {
     await this.findOne(id);
-    return this.prisma.landingPage.update({ where: { id }, data: dto });
+    const { content, ...rest } = dto;
+    return this.prisma.landingPage.update({
+      where: { id },
+      data: {
+        ...rest,
+        ...(content !== undefined && { content: content as object }),
+      },
+    });
   }
 
   async remove(id: string) {
