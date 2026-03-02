@@ -62,6 +62,9 @@ async function bootstrap() {
     socket.on('leave_conversation', (conversationId) =>
       chatGateway.handleLeaveConversation(conversationId, socket),
     );
+    socket.on('join_user', (userId) =>
+      chatGateway.handleJoinUser(userId, socket),
+    );
   });
 
   logger.log(`[SOCKET] Socket.IO attached to HTTP server on port ${port}, path /socket.io`);

@@ -78,6 +78,17 @@ export default function Dashboard() {
   const [transferring, setTransferring] = useState(false);
   const [loadingOperators, setLoadingOperators] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
+  const [selectedTransferUserId, setSelectedTransferUserId] = useState<string | null>(null);
+  const [transferReason, setTransferReason] = useState('');
+  // Incoming transfer popup (for receiving operator)
+  const [incomingTransfer, setIncomingTransfer] = useState<{
+    conversationId: string; fromUserName: string; contactName: string; reason: string | null;
+  } | null>(null);
+  const [showDeclineInput, setShowDeclineInput] = useState(false);
+  const [declineReason, setDeclineReason] = useState('');
+  const [processingTransfer, setProcessingTransfer] = useState(false);
+  // Response notification (for sender)
+  const [transferResponseMsg, setTransferResponseMsg] = useState<string | null>(null);
   const [inboxOpen, setInboxOpen] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -147,6 +158,14 @@ export default function Dashboard() {
       if (currentConvoId && !currentConvoId.startsWith('demo-')) {
         socket.emit('join_conversation', currentConvoId);
       }
+      // Join personal user room for transfer notifications
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+          if (payload?.sub) socket.emit('join_user', payload.sub);
+        } catch {}
+      }
     });
 
     socket.on('disconnect', () => {
@@ -160,6 +179,24 @@ export default function Dashboard() {
     socket.on('inboxUpdate', () => {
       console.log('[SOCKET] inboxUpdate received, fetching conversations...');
       fetchConversations(selectedInboxIdRef.current);
+    });
+
+    // Transfer request: incoming popup for target operator
+    socket.on('transfer_request', (data: { conversationId: string; fromUserName: string; contactName: string; reason: string | null }) => {
+      setIncomingTransfer(data);
+      setShowDeclineInput(false);
+      setDeclineReason('');
+    });
+
+    // Transfer response: notification for the sender
+    socket.on('transfer_response', (data: { accepted: boolean; userName?: string; reason?: string; contactName: string }) => {
+      if (data.accepted) {
+        setTransferResponseMsg(`✅ ${data.userName} aceitou a transferência de "${data.contactName}"`);
+      } else {
+        setTransferResponseMsg(`❌ Transferência de "${data.contactName}" recusada${data.reason ? ': ' + data.reason : '.'}`);
+      }
+      fetchConversations(selectedInboxIdRef.current);
+      setTimeout(() => setTransferResponseMsg(null), 6000);
     });
 
     socketRef.current = socket;
@@ -283,6 +320,8 @@ export default function Dashboard() {
   const handleOpenTransferModal = async () => {
     if (!selectedId || selectedId.startsWith('demo-')) return;
     setTransferError(null);
+    setSelectedTransferUserId(null);
+    setTransferReason('');
     setLoadingOperators(true);
     setTransferModal(true);
     try {
@@ -296,20 +335,53 @@ export default function Dashboard() {
     }
   };
 
-  const handleTransfer = async (userId: string) => {
-    if (!selectedId || selectedId.startsWith('demo-')) return;
+  const handleTransfer = async () => {
+    if (!selectedId || selectedId.startsWith('demo-') || !selectedTransferUserId) return;
     setTransferError(null);
     try {
       setTransferring(true);
-      await api.patch(`/conversations/${selectedId}/transfer`, { userId });
+      await api.post(`/conversations/${selectedId}/transfer-request`, {
+        toUserId: selectedTransferUserId,
+        reason: transferReason.trim() || undefined,
+      });
       setTransferModal(false);
-      fetchConversations(selectedInboxIdRef.current);
+      setSelectedTransferUserId(null);
+      setTransferReason('');
     } catch (e: any) {
-      const msg = e?.response?.data?.message || 'Erro ao transferir. Tente novamente.';
+      const msg = e?.response?.data?.message || 'Erro ao solicitar transferência. Tente novamente.';
       setTransferError(msg);
       console.error('Failed to transfer', e);
     } finally {
       setTransferring(false);
+    }
+  };
+
+  const handleAcceptTransfer = async () => {
+    if (!incomingTransfer) return;
+    setProcessingTransfer(true);
+    try {
+      await api.patch(`/conversations/${incomingTransfer.conversationId}/transfer-accept`);
+      setIncomingTransfer(null);
+      fetchConversations(selectedInboxIdRef.current);
+    } catch (e) {
+      console.error('Failed to accept transfer', e);
+    } finally {
+      setProcessingTransfer(false);
+    }
+  };
+
+  const handleDeclineTransfer = async () => {
+    if (!incomingTransfer) return;
+    setProcessingTransfer(true);
+    try {
+      await api.patch(`/conversations/${incomingTransfer.conversationId}/transfer-decline`, { reason: declineReason.trim() || undefined });
+      setIncomingTransfer(null);
+      setDeclineReason('');
+      setShowDeclineInput(false);
+    } catch (e) {
+      console.error('Failed to decline transfer', e);
+    } finally {
+      setProcessingTransfer(false);
     }
   };
 
@@ -1113,7 +1185,7 @@ export default function Dashboard() {
           >
             <div className="flex items-center gap-2 mb-4 shrink-0">
               <UserCheck size={18} className="text-sky-400" />
-              <h3 className="font-bold text-base">Transferir Conversa</h3>
+              <h3 className="font-bold text-base">Solicitar Transferência</h3>
             </div>
             {transferError && (
               <p className="text-red-400 text-sm mb-3 px-1">{transferError}</p>
@@ -1123,33 +1195,134 @@ export default function Dashboard() {
             ) : transferGroups.every(g => g.users.length === 0) || transferGroups.length === 0 ? (
               <p className="text-muted-foreground text-sm py-2">Nenhum operador cadastrado.</p>
             ) : (
-              <div className="flex flex-col gap-4 overflow-y-auto custom-scrollbar">
-                {transferGroups.filter(g => g.users.length > 0).map(group => (
-                  <div key={group.inboxId}>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5 px-1">{group.inboxName}</p>
-                    <div className="flex flex-col gap-1">
-                      {group.users.map(user => (
-                        <button
-                          key={user.id}
-                          onClick={() => handleTransfer(user.id)}
-                          disabled={transferring}
-                          className="w-full text-left px-4 py-2.5 rounded-xl bg-muted/30 hover:bg-sky-500/10 hover:text-sky-400 border border-border hover:border-sky-500/30 transition-colors font-medium text-sm disabled:opacity-50"
-                        >
-                          {user.name}
-                        </button>
-                      ))}
+              <>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 px-1 shrink-0">Selecione o operador</p>
+                <div className="flex flex-col gap-4 overflow-y-auto custom-scrollbar flex-1 min-h-0">
+                  {transferGroups.filter(g => g.users.length > 0).map(group => (
+                    <div key={group.inboxId}>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5 px-1">{group.inboxName}</p>
+                      <div className="flex flex-col gap-1">
+                        {group.users.map(user => (
+                          <button
+                            key={user.id}
+                            onClick={() => setSelectedTransferUserId(user.id)}
+                            className={`w-full text-left px-4 py-2.5 rounded-xl border transition-colors font-medium text-sm ${
+                              selectedTransferUserId === user.id
+                                ? 'bg-sky-500/20 text-sky-400 border-sky-500/40'
+                                : 'bg-muted/30 hover:bg-sky-500/10 hover:text-sky-400 border-border hover:border-sky-500/30'
+                            }`}
+                          >
+                            {selectedTransferUserId === user.id && <span className="mr-2">✓</span>}
+                            {user.name}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+                <div className="mt-3 shrink-0">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5 px-1">Motivo (obrigatório)</p>
+                  <textarea
+                    value={transferReason}
+                    onChange={e => setTransferReason(e.target.value)}
+                    placeholder="Explique o motivo da transferência..."
+                    className="w-full bg-muted border border-border rounded-xl px-3 py-2 text-sm resize-none outline-none focus:border-sky-500/50"
+                    rows={2}
+                  />
+                </div>
+                <button
+                  onClick={handleTransfer}
+                  disabled={transferring || !selectedTransferUserId || !transferReason.trim()}
+                  className="mt-3 shrink-0 w-full py-2.5 bg-sky-500 text-white rounded-xl font-bold text-sm hover:bg-sky-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {transferring ? 'Enviando...' : 'Solicitar Transferência'}
+                </button>
+              </>
             )}
             <button
               onClick={() => setTransferModal(false)}
-              className="mt-4 shrink-0 w-full py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="mt-2 shrink-0 w-full py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               Cancelar
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Incoming Transfer Popup */}
+      {incomingTransfer && (
+        <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center backdrop-blur-sm">
+          <div className="bg-card border-2 border-amber-500/40 rounded-2xl p-6 w-96 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-2xl">📨</span>
+              <div>
+                <h3 className="font-bold text-base">Pedido de Transferência</h3>
+                <p className="text-xs text-muted-foreground">De: <strong className="text-foreground">{incomingTransfer.fromUserName}</strong></p>
+              </div>
+            </div>
+            <div className="bg-muted/50 rounded-xl p-4 mb-4 space-y-2 text-sm">
+              <p><span className="text-muted-foreground">Contato:</span> <strong>{incomingTransfer.contactName}</strong></p>
+              {incomingTransfer.reason && (
+                <p><span className="text-muted-foreground">Motivo:</span> {incomingTransfer.reason}</p>
+              )}
+            </div>
+            {showDeclineInput && (
+              <textarea
+                value={declineReason}
+                onChange={e => setDeclineReason(e.target.value)}
+                placeholder="Justificativa para recusa (opcional)..."
+                className="w-full bg-muted border border-border rounded-xl px-3 py-2 text-sm mb-3 resize-none outline-none focus:border-red-500/50"
+                rows={2}
+                autoFocus
+              />
+            )}
+            <div className="flex gap-2">
+              {!showDeclineInput ? (
+                <>
+                  <button
+                    onClick={handleAcceptTransfer}
+                    disabled={processingTransfer}
+                    className="flex-1 py-2.5 bg-emerald-500 text-white rounded-xl font-bold text-sm hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                  >
+                    ✓ Aceitar
+                  </button>
+                  <button
+                    onClick={() => setShowDeclineInput(true)}
+                    disabled={processingTransfer}
+                    className="flex-1 py-2.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl font-bold text-sm hover:bg-red-500/20 transition-colors"
+                  >
+                    ✗ Recusar
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setShowDeclineInput(false)}
+                    className="py-2.5 px-4 text-muted-foreground text-sm rounded-xl hover:bg-accent transition-colors"
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    onClick={handleDeclineTransfer}
+                    disabled={processingTransfer}
+                    className="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold text-sm hover:bg-red-600 transition-colors disabled:opacity-50"
+                  >
+                    {processingTransfer ? 'Enviando...' : 'Confirmar Recusa'}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transfer Response Banner (for sender) */}
+      {transferResponseMsg && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[90] bg-card border border-border rounded-2xl px-5 py-3 shadow-2xl text-sm font-medium flex items-center gap-3 animate-in slide-in-from-bottom-4 duration-300">
+          {transferResponseMsg}
+          <button onClick={() => setTransferResponseMsg(null)} className="text-muted-foreground hover:text-foreground ml-2">
+            <X size={14} />
+          </button>
         </div>
       )}
     </div>

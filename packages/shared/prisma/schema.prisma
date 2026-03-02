@@ -62,10 +62,13 @@ model Conversation {
   external_id      String?
   status           String    @default("ABERTO")
   ai_mode          Boolean   @default(true)
-  assigned_user_id String?
-  inbox_id         String?
-  instance_name    String?   // Nome da instância de origem (ex: wa1)
-  last_message_at  DateTime  @default(now())
+  assigned_user_id             String?
+  inbox_id                     String?
+  instance_name                String?   // Nome da instância de origem (ex: wa1)
+  pending_transfer_to_id       String?
+  pending_transfer_from_id     String?
+  pending_transfer_reason      String?
+  last_message_at              DateTime  @default(now())
   assigned_user    User?     @relation(fields: [assigned_user_id], references: [id])
   lead             Lead      @relation(fields: [lead_id], references: [id])
   tenant           Tenant?   @relation(fields: [tenant_id], references: [id])

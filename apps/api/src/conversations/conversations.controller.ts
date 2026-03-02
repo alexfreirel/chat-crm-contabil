@@ -47,6 +47,25 @@ export class ConversationsController {
     return this.conversationsService.assign(id, userId);
   }
 
+  @Post(':id/transfer-request')
+  transferRequest(
+    @Param('id') id: string,
+    @Body() body: { toUserId: string; reason?: string },
+    @Request() req: any,
+  ) {
+    return this.conversationsService.requestTransfer(id, body.toUserId, req.user.id, body.reason || null);
+  }
+
+  @Patch(':id/transfer-accept')
+  transferAccept(@Param('id') id: string, @Request() req: any) {
+    return this.conversationsService.acceptTransfer(id, req.user.id);
+  }
+
+  @Patch(':id/transfer-decline')
+  transferDecline(@Param('id') id: string, @Body('reason') reason: string) {
+    return this.conversationsService.declineTransfer(id, reason || null);
+  }
+
   @Patch(':id/close')
   close(@Param('id') id: string) {
     return this.conversationsService.close(id);

@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ChatGateway } from '../gateway/chat.gateway';
 import { Prisma, Conversation } from '@crm/shared';
 
 @Injectable()
 export class ConversationsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private chatGateway: ChatGateway,
+  ) {}
 
   async create(data: Prisma.ConversationCreateInput): Promise<Conversation> {
     return this.prisma.conversation.create({ data });
@@ -103,5 +107,87 @@ export class ConversationsService {
       where: { id },
       data: { status: 'FECHADO' },
     });
+  }
+
+  async requestTransfer(id: string, toUserId: string, fromUserId: string, reason: string | null) {
+    const [fromUser, conv] = await Promise.all([
+      this.prisma.user.findUnique({ where: { id: fromUserId }, select: { name: true } }),
+      (this.prisma as any).conversation.update({
+        where: { id },
+        data: {
+          pending_transfer_to_id: toUserId,
+          pending_transfer_from_id: fromUserId,
+          pending_transfer_reason: reason,
+        },
+        include: { lead: { select: { name: true, phone: true } } },
+      }),
+    ]);
+
+    this.chatGateway.emitTransferRequest(toUserId, {
+      conversationId: id,
+      fromUserId,
+      fromUserName: fromUser?.name || 'Operador',
+      contactName: conv.lead?.name || conv.lead?.phone || 'Contato',
+      reason,
+    });
+
+    return conv;
+  }
+
+  async acceptTransfer(id: string, userId: string) {
+    const current = await (this.prisma as any).conversation.findUnique({
+      where: { id },
+      select: { pending_transfer_from_id: true, lead: { select: { name: true, phone: true } } },
+    });
+
+    const [acceptingUser, conv] = await Promise.all([
+      this.prisma.user.findUnique({ where: { id: userId }, select: { name: true } }),
+      (this.prisma as any).conversation.update({
+        where: { id },
+        data: {
+          assigned_user_id: userId,
+          ai_mode: false,
+          pending_transfer_to_id: null,
+          pending_transfer_from_id: null,
+          pending_transfer_reason: null,
+        },
+      }),
+    ]);
+
+    if (current?.pending_transfer_from_id) {
+      this.chatGateway.emitTransferResponse(current.pending_transfer_from_id, {
+        accepted: true,
+        userName: acceptingUser?.name || 'Operador',
+        contactName: current.lead?.name || current.lead?.phone || 'Contato',
+      });
+    }
+    this.chatGateway.emitConversationsUpdate(null);
+    return conv;
+  }
+
+  async declineTransfer(id: string, reason: string | null) {
+    const current = await (this.prisma as any).conversation.findUnique({
+      where: { id },
+      select: { pending_transfer_from_id: true, lead: { select: { name: true, phone: true } } },
+    });
+
+    await (this.prisma as any).conversation.update({
+      where: { id },
+      data: {
+        pending_transfer_to_id: null,
+        pending_transfer_from_id: null,
+        pending_transfer_reason: null,
+      },
+    });
+
+    if (current?.pending_transfer_from_id) {
+      this.chatGateway.emitTransferResponse(current.pending_transfer_from_id, {
+        accepted: false,
+        reason,
+        contactName: current.lead?.name || current.lead?.phone || 'Contato',
+      });
+    }
+
+    return { success: true };
   }
 }
