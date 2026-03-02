@@ -1,8 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Bot, KeyRound, CheckCircle2, RefreshCw, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { Bot, KeyRound, CheckCircle2, RefreshCw, Eye, EyeOff } from 'lucide-react';
 import api from '@/lib/api';
+
+interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  isActive: boolean;
+}
 
 export default function AiSettingsPage() {
   const [apiKey, setApiKey] = useState('');
@@ -12,21 +19,35 @@ export default function AiSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState(false);
+  const [skills, setSkills] = useState<Skill[]>([]);
 
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        const res = await api.get('/settings/ai-config');
-        setIsConfigured(res.data.isConfigured);
-        // Never pre-fill the key for security; only show configured status
+        const [configRes, skillsRes] = await Promise.all([
+          api.get('/settings/ai-config'),
+          api.get('/settings/skills')
+        ]);
+        setIsConfigured(configRes.data.isConfigured);
+        setSkills(skillsRes.data);
       } catch (e) {
-        console.error('Erro ao carregar config IA:', e);
+        console.error('Erro ao carregar dados:', e);
       } finally {
         setLoading(false);
       }
     };
     fetchConfig();
   }, []);
+
+  const toggleSkill = async (id: string, currentStatus: boolean) => {
+    try {
+      await api.patch(`/settings/skills/${id}/toggle`, { isActive: !currentStatus });
+      setSkills((prev: Skill[]) => prev.map((s: Skill) => s.id === id ? { ...s, isActive: !currentStatus } : s));
+    } catch (e) {
+      console.error('Erro ao alternar skill:', e);
+      alert('Erro ao alterar status da skill.');
+    }
+  };
 
   const handleSave = async () => {
     if (!apiKey.trim()) return;
@@ -147,8 +168,8 @@ export default function AiSettingsPage() {
           )}
         </div>
 
-        {/* Info Card */}
-        <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+        {/* Info Card - Como funciona */}
+        <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden mb-6">
           <div className="p-4 border-b border-border flex items-center gap-3 bg-primary/5">
             <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
               <Bot size={16} />
@@ -163,7 +184,7 @@ export default function AiSettingsPage() {
               <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5 text-xs font-bold">1</div>
               <div>
                 <p className="text-sm font-semibold text-foreground">Ative o Modo IA na conversa</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Dentro de qualquer conversa, clique no botão "Modo IA" para que o agente assuma o atendimento automaticamente.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Dentro de qualquer conversa, clique no botão &quot;Modo IA&quot; para que o agente assuma o atendimento automaticamente.</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
@@ -173,20 +194,68 @@ export default function AiSettingsPage() {
                 <p className="text-xs text-muted-foreground mt-0.5">A IA responde no WhatsApp com empatia, coleta informações do caso e classifica a área do direito (civil, criminal, trabalhista, etc.).</p>
               </div>
             </div>
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5 text-xs font-bold">3</div>
-              <div>
-                <p className="text-sm font-semibold text-foreground">Advogado assume quando pronto</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Ao atribuir a conversa para um advogado, o Modo IA é desativado automaticamente.</p>
-              </div>
-            </div>
           </div>
-          <div className="px-6 pb-6">
-            <div className="bg-muted/50 border border-border rounded-xl p-4 flex items-center gap-3">
-              <Sparkles size={16} className="text-primary shrink-0" />
-              <p className="text-xs text-muted-foreground">
-                Modelo utilizado: <span className="font-mono font-bold text-foreground">gpt-4o-mini</span> — rápido, econômico e ideal para pré-atendimento.
-              </p>
+        </div>
+
+        {/* Skills da IA */}
+        <div className="space-y-4 mb-8">
+          <div className="flex items-center gap-2 mb-2">
+            <Bot size={18} className="text-primary" />
+            <h3 className="text-sm font-bold text-foreground uppercase tracking-tight">Skills da IA</h3>
+          </div>
+          <p className="text-xs text-muted-foreground mb-4">Ative ou desative habilidades do assistente virtual. Skills controlam quais ações a IA pode executar automaticamente.</p>
+
+          <div className="grid grid-cols-1 gap-3">
+            {skills.map((skill: Skill) => (
+              <div key={skill.id} className="bg-card/50 backdrop-blur-md border border-border rounded-xl p-4 flex items-center justify-between hover:bg-card/80 transition-all">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-foreground">{skill.name}</span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${skill.isActive ? 'bg-emerald-500/10 text-emerald-500' : 'bg-muted text-muted-foreground'}`}>
+                      {skill.isActive ? 'ATIVO' : 'INATIVO'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground max-w-md">{skill.description}</p>
+                </div>
+                <button
+                  onClick={() => toggleSkill(skill.id, skill.isActive)}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                    skill.isActive
+                      ? 'bg-muted text-foreground hover:bg-muted/80'
+                      : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20'
+                  }`}
+                >
+                  {skill.isActive ? 'Desativar' : 'Ativar'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Sobre o Sistema */}
+        <div className="space-y-4 mb-8">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-5 h-5 bg-blue-500 text-white rounded flex items-center justify-center text-[10px] font-bold">i</div>
+            <h3 className="text-sm font-bold text-foreground uppercase tracking-tight">Sobre o Sistema</h3>
+          </div>
+          <div className="bg-card/30 backdrop-blur-xl border border-border rounded-2xl p-6 shadow-xl">
+            <div className="grid grid-cols-2 gap-y-6 gap-x-12">
+              <div className="space-y-1">
+                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Versão</p>
+                <p className="text-sm font-bold text-foreground">1.0.0</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Modelo IA</p>
+                <p className="text-sm font-bold text-foreground">GPT-4.1</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Escritório</p>
+                <p className="text-sm font-bold text-foreground">André Lustosa Advogados</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Localização</p>
+                <p className="text-sm font-bold text-foreground">Arapiraca - AL</p>
+              </div>
             </div>
           </div>
         </div>

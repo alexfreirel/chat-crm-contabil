@@ -56,6 +56,38 @@ export class SettingsService {
   }
 
   async setAiConfig(apiKey: string) {
-    await this.set('OPENAI_API_KEY', apiKey);
+    await this.set('OPENAI_KEY', apiKey);
+  }
+
+  async getSkills() {
+    let skills = await this.prisma.promptSkill.findMany();
+
+    if (skills.length === 0) {
+      const defaultSkills = [
+        { name: 'Triagem Inicial', area: 'Coleta informações do cliente, identifica o tipo de caso e urgência. Cria leads automaticamente no CRM.', system_prompt: '...', active: true },
+        { name: 'FAQ - Perguntas Frequentes', area: 'Responde perguntas comuns sobre áreas de atuação, horários, localização e processo de contratação.', system_prompt: '...', active: true },
+        { name: 'Agendamento', area: 'Permite que clientes agendem consultas diretamente pelo chat, verificando disponibilidade na agenda.', system_prompt: '...', active: false },
+        { name: 'Solicitação de Documentos', area: 'Solicita e recebe documentos do cliente via chat (fotos, PDFs) para análise prévia do caso.', system_prompt: '...', active: false },
+      ];
+
+      for (const s of defaultSkills) {
+        await this.prisma.promptSkill.create({ data: s });
+      }
+      skills = await this.prisma.promptSkill.findMany();
+    }
+
+    return skills.map(s => ({
+      id: s.id,
+      name: s.name,
+      description: s.area,
+      isActive: s.active
+    }));
+  }
+
+  async toggleSkill(id: string, active: boolean) {
+    return this.prisma.promptSkill.update({
+      where: { id },
+      data: { active }
+    });
   }
 }

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Request, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, UseGuards, Request, ForbiddenException, Param } from '@nestjs/common';
 import { SettingsService } from './settings.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
@@ -66,5 +66,23 @@ export class SettingsController {
     }
     await this.settingsService.setAiConfig(data.apiKey);
     return { message: 'Chave OpenAI salva com sucesso' };
+  }
+
+  @Get('skills')
+  async getSkills() {
+    return this.settingsService.getSkills();
+  }
+
+  @Patch('skills/:id/toggle')
+  async toggleSkill(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() data: { isActive: boolean }
+  ) {
+    if (req.user.role !== 'ADMIN') {
+      throw new ForbiddenException('Apenas administradores podem gerenciar skills');
+    }
+    await this.settingsService.toggleSkill(id, data.isActive);
+    return { message: 'Skill atualizada com sucesso' };
   }
 }
