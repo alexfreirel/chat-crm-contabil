@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, User, Phone, Loader2, RefreshCw, Inbox } from 'lucide-react';
+import { Search, User, Phone, Loader2, RefreshCw } from 'lucide-react';
 import api from '@/lib/api';
 import { formatPhone } from '@/lib/utils';
 
@@ -17,28 +17,16 @@ interface Contact {
   profile_picture_url?: string;
 }
 
-interface InboxOption {
-  id: string;
-  name: string;
-}
-
 export default function ContactsPage() {
   const [search, setSearch] = useState('');
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [inboxes, setInboxes] = useState<InboxOption[]>([]);
-  const [selectedInboxId, setSelectedInboxId] = useState<string>('');
 
-  useEffect(() => {
-    api.get('/inboxes').then((r) => setInboxes(r.data)).catch(console.error);
-  }, []);
-
-  const fetchAllContacts = async (inboxId?: string) => {
+  const fetchAllContacts = async () => {
     try {
       setLoading(true);
-      const params = inboxId ? { inboxId } : {};
-      const response = await api.get('/leads', { params });
+      const response = await api.get('/leads');
       const leads = response.data;
       
       const mappedContacts: Contact[] = leads.map((lead: any) => ({
@@ -62,8 +50,8 @@ export default function ContactsPage() {
   };
 
   useEffect(() => {
-    fetchAllContacts(selectedInboxId || undefined);
-  }, [selectedInboxId]);
+    fetchAllContacts();
+  }, []);
 
   const handleSync = async () => {
     try {
@@ -115,24 +103,7 @@ export default function ContactsPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Filtro por Caixa de Entrada */}
-            {inboxes.length > 0 && (
-              <div className="relative">
-                <Inbox className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                <select
-                  value={selectedInboxId}
-                  onChange={(e) => setSelectedInboxId(e.target.value)}
-                  className="pl-8 pr-8 py-2.5 bg-background border border-border rounded-xl text-[13px] focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all appearance-none cursor-pointer text-foreground"
-                >
-                  <option value="">Todas as caixas</option>
-                  {inboxes.map((inbox) => (
-                    <option key={inbox.id} value={inbox.id}>{inbox.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            <div className="relative w-72 group">
+            <div className="relative w-80 group">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
               <input
                 type="text"
