@@ -45,6 +45,16 @@ export default function ChatPage({ params }: { params: { id: string } }) {
   const [docPreview, setDocPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const [transcribing, setTranscribing] = useState<Record<string, boolean>>({});
 
+  // Decode current user ID once from JWT (never changes during session)
+  const [currentUserId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const token = localStorage.getItem('token');
+    if (!token) return null;
+    try {
+      return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub || null;
+    } catch { return null; }
+  });
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -313,6 +323,13 @@ export default function ChatPage({ params }: { params: { id: string } }) {
 
           socketRef.current.on('connect', () => {
             socketRef.current?.emit('join_conversation', convo.id);
+            // Join personal user room so incoming_message_notification reaches this page too
+            if (currentUserId) socketRef.current?.emit('join_user', currentUserId);
+          });
+
+          // Sound: only plays when the backend targets this specific operator
+          socketRef.current.on('incoming_message_notification', () => {
+            playNotificationSound();
           });
 
           socketRef.current.on('newMessage', (msg: any) => {
@@ -321,7 +338,6 @@ export default function ChatPage({ params }: { params: { id: string } }) {
               if (exists) return prev;
               return [...prev, msg];
             });
-            if (msg.direction === 'in') playNotificationSound();
           });
 
           socketRef.current.on('messageUpdate', (updatedMsg: any) => {
