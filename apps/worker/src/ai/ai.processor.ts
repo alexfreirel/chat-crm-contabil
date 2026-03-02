@@ -495,8 +495,7 @@ export class AiProcessor extends WorkerHost {
         `${apiUrl}/message/sendText/${instanceName}`,
         {
           number: convo.lead.phone,
-          textMessage: { text: textToSend },
-          options: { delay: 1500, presence: 'composing' },
+          text: textToSend,
         },
         {
           headers: { 'Content-Type': 'application/json', apikey: apiKey },
