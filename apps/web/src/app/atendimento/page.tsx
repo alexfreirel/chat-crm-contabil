@@ -146,24 +146,19 @@ export default function Dashboard() {
 
   const fetchConversations = useCallback(async (inboxId?: string | null) => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) { router.push('/atendimento/login'); return; }
       const res = await api.get('/conversations', {
         params: { inboxId: inboxId || undefined }
       });
-      const data = res.data;
-      setConversations(data || []);
+      setConversations(res.data || []);
     } catch (e: any) {
-      if (e.response?.status === 401) {
-        localStorage.removeItem('token');
-        router.push('/atendimento/login');
-        return;
+      // 401 is handled globally by api.ts interceptor
+      if (e.response?.status !== 401) {
+        setConversations([]);
       }
-      setConversations([]);
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, []);
 
   const fetchInboxes = async () => {
     try {

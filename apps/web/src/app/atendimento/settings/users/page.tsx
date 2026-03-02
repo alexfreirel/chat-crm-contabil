@@ -75,15 +75,9 @@ export default function UsersSettingsPage() {
       const res = await api.get('/users');
       setUsers(res.data);
     } catch (e: any) {
-      if (e.response?.status === 401) {
-        localStorage.removeItem('token');
-        router.push('/atendimento/login');
-      }
+      // 401 is handled globally by api.ts interceptor
       if (e.response?.status === 403) {
         setError('Você não tem permissão para acessar esta página.');
-      }
-      if (!e.response) {
-         console.warn('Backend offline - Mock Mode ativado (sem usuários reais)');
       }
     }
   };

@@ -313,11 +313,8 @@ export default function ChatPage({ params }: { params: { id: string } }) {
           });
         }
       } catch (e: any) {
-        console.error(e);
-        if (e.response?.status === 401) {
-          localStorage.removeItem('token');
-          router.push('/atendimento/login');
-        }
+        // 401 handled globally by api.ts interceptor
+        console.error('Erro ao inicializar chat:', e);
       }
     };
 

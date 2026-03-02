@@ -43,12 +43,9 @@ export default function CrmPage() {
         // Map actual leads if they come from the API, else use DEMO
         setLeads(res.data.length > 0 ? res.data : DEMO_LEADS);
       } catch (e: any) {
-        console.warn('Backend offline - Mock Mode ativado (sem leads reais)');
+        // 401 handled globally by api.ts interceptor
+        console.warn('Erro ao buscar leads', e);
         setLeads(DEMO_LEADS);
-        if (e.response?.status === 401 && process.env.NODE_ENV !== 'development') {
-           localStorage.removeItem('token');
-           router.push('/atendimento/login');
-        }
       }
     };
     fetchLeads();

@@ -25,11 +25,8 @@ export default function TasksPage() {
       const res = await api.get('/tasks');
       setTasks(res.data);
     } catch (e: any) {
-      console.warn('Backend offline - Mock Mode ativado (sem tarefas reais)');
-      if (e.response?.status === 401 && process.env.NODE_ENV !== 'development') {
-        localStorage.removeItem('token');
-        router.push('/atendimento/login');
-      }
+      // 401 handled globally by api.ts interceptor
+      console.warn('Erro ao buscar tarefas', e);
     }
   };
 
