@@ -189,27 +189,23 @@ export default function LoginPage() {
           </div>
 
           <div className="flex items-center justify-between mb-6">
-            <label className="flex items-center cursor-pointer group">
-              <div className="relative">
-                <input
-                  type="checkbox"
-                  className="sr-only"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
+            <label className="flex items-center gap-3 cursor-pointer group select-none">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={rememberMe}
+                onClick={() => setRememberMe(v => !v)}
+                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none ${
+                  rememberMe ? 'bg-[#a1773d]' : 'bg-white/10'
+                }`}
+              >
+                <span
+                  className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200 ${
+                    rememberMe ? 'translate-x-[18px]' : 'translate-x-[3px]'
+                  }`}
                 />
-                <div className={`w-5 h-5 rounded-md border transition-all flex items-center justify-center ${
-                  rememberMe 
-                    ? 'bg-[#a1773d] border-[#a1773d]' 
-                    : 'bg-[#1a1a1a] border-white/10 group-hover:border-[#a1773d]/50'
-                }`}>
-                  {rememberMe && (
-                    <svg className="w-3.5 h-3.5 text-black font-bold" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
-                    </svg>
-                  )}
-                </div>
-              </div>
-              <span className="ml-2.5 text-[13px] text-[#dcdcdc] font-medium select-none">Lembrar-me</span>
+              </button>
+              <span className="text-[13px] text-[#dcdcdc] font-medium group-hover:text-white transition-colors">Lembrar-me</span>
             </label>
             
             <button 
