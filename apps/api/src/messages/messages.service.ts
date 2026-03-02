@@ -156,7 +156,7 @@ export class MessagesService {
 
     // 1. Send via Evolution API (com assinatura em negrito se houver atendente)
     // O DB salva o texto limpo; o WhatsApp recebe com assinatura
-    const textToSend = senderName ? `*${senderName}:*\n${text}` : text;
+    const textToSend = senderName ? `*${senderName}:* ${text}` : text;
 
     let externalMsg: any;
     let sendStatus = 'enviado';

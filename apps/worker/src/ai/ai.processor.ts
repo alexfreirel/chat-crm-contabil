@@ -489,7 +489,7 @@ export class AiProcessor extends WorkerHost {
         convo.instance_name || process.env.EVOLUTION_INSTANCE_NAME || '';
 
       // Assinatura "Sophia:" em negrito no WhatsApp (salva sem assinatura no DB)
-      const textToSend = `*Sophia:*\n${finalText}`;
+      const textToSend = `*Sophia:* ${finalText}`;
 
       await axios.post(
         `${apiUrl}/message/sendText/${instanceName}`,
