@@ -76,6 +76,8 @@ export default function Dashboard() {
   const [transferModal, setTransferModal] = useState(false);
   const [transferGroups, setTransferGroups] = useState<{ inboxId: string; inboxName: string; users: { id: string; name: string }[] }[]>([]);
   const [transferring, setTransferring] = useState(false);
+  const [loadingOperators, setLoadingOperators] = useState(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
   const [inboxOpen, setInboxOpen] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -280,23 +282,31 @@ export default function Dashboard() {
 
   const handleOpenTransferModal = async () => {
     if (!selectedId || selectedId.startsWith('demo-')) return;
+    setTransferError(null);
+    setLoadingOperators(true);
+    setTransferModal(true);
     try {
       const res = await api.get('/inboxes/operators');
       setTransferGroups(res.data || []);
-      setTransferModal(true);
-    } catch (e) {
+    } catch (e: any) {
+      setTransferError('Erro ao carregar operadores. Tente novamente.');
       console.error('Failed to load operators', e);
+    } finally {
+      setLoadingOperators(false);
     }
   };
 
   const handleTransfer = async (userId: string) => {
     if (!selectedId || selectedId.startsWith('demo-')) return;
+    setTransferError(null);
     try {
       setTransferring(true);
       await api.patch(`/conversations/${selectedId}/transfer`, { userId });
       setTransferModal(false);
-      fetchConversations();
-    } catch (e) {
+      fetchConversations(selectedInboxIdRef.current);
+    } catch (e: any) {
+      const msg = e?.response?.data?.message || 'Erro ao transferir. Tente novamente.';
+      setTransferError(msg);
       console.error('Failed to transfer', e);
     } finally {
       setTransferring(false);
@@ -1105,7 +1115,12 @@ export default function Dashboard() {
               <UserCheck size={18} className="text-sky-400" />
               <h3 className="font-bold text-base">Transferir Conversa</h3>
             </div>
-            {transferGroups.every(g => g.users.length === 0) || transferGroups.length === 0 ? (
+            {transferError && (
+              <p className="text-red-400 text-sm mb-3 px-1">{transferError}</p>
+            )}
+            {loadingOperators ? (
+              <p className="text-muted-foreground text-sm py-4 text-center">Carregando operadores...</p>
+            ) : transferGroups.every(g => g.users.length === 0) || transferGroups.length === 0 ? (
               <p className="text-muted-foreground text-sm py-2">Nenhum operador cadastrado.</p>
             ) : (
               <div className="flex flex-col gap-4 overflow-y-auto custom-scrollbar">
