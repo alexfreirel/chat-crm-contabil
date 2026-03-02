@@ -495,7 +495,7 @@ export default function Dashboard() {
 
   const statusBadge = (status: string) => {
     const map: Record<string, { class: string; label: string }> = {
-      BOT: { class: 'bg-slate-500/15 text-slate-400 border border-slate-500/20', label: '🤖 Bot' },
+      BOT: { class: 'bg-slate-500/15 text-slate-400 border border-slate-500/20', label: '🤖 SophIA' },
       MONITORING: { class: 'bg-purple-500/15 text-purple-400 border border-purple-500/20', label: '👁 Monitorando' },
       WAITING: { class: 'bg-amber-500/15 text-amber-500 border border-amber-500/20 shadow-[0_0_10px_rgba(251,191,36,0.15)]', label: '⏳ Aguardando' },
       ACTIVE: { class: 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/20', label: '🟢 Ativo' },
@@ -546,7 +546,7 @@ export default function Dashboard() {
           <div className="flex bg-muted rounded-xl p-1 w-full relative">
             {[
               { value: '', label: 'Tudo', count: conversations.length },
-              { value: 'BOT', label: 'Bot', count: conversations.filter(c => c.status === 'BOT').length },
+              { value: 'BOT', label: 'SophIA', count: conversations.filter(c => c.status === 'BOT').length },
               { value: 'WAITING', label: 'Espera', count: conversations.filter(c => c.status === 'WAITING').length },
               { value: 'ACTIVE', label: 'Ativas', count: conversations.filter(c => c.status === 'ACTIVE' || c.status === 'MONITORING').length },
             ].map((tab) => (
