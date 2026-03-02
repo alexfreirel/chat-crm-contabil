@@ -27,6 +27,78 @@ export class MessagesService {
     });
   }
 
+  /**
+   * Fetches message history from Evolution API and imports missing messages.
+   * Idempotent — already-saved messages (matched by external_message_id) are skipped.
+   * Only runs when explicitly triggered (on chat open), never for inactive contacts.
+   */
+  async syncHistoryFromWhatsApp(conversationId: string): Promise<{ imported: number; total: number }> {
+    const convo = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: { lead: true },
+    });
+
+    if (!convo?.lead?.phone || !convo?.instance_name) {
+      return { imported: 0, total: 0 };
+    }
+
+    const remoteJid = `${convo.lead.phone}@s.whatsapp.net`;
+    const rawMessages = await this.whatsapp.fetchMessages(convo.instance_name, remoteJid, 200);
+
+    if (!rawMessages.length) return { imported: 0, total: 0 };
+
+    let imported = 0;
+    for (const msg of rawMessages) {
+      try {
+        const externalId: string | undefined = msg.key?.id || msg.id;
+        if (!externalId) continue;
+
+        const exists = await this.prisma.message.findUnique({
+          where: { external_message_id: externalId },
+        });
+        if (exists) continue;
+
+        const text: string =
+          msg.message?.conversation ||
+          msg.message?.extendedTextMessage?.text ||
+          msg.message?.imageMessage?.caption ||
+          (msg.messageType && msg.messageType !== 'conversation' ? `[${msg.messageType}]` : '') ||
+          '';
+
+        const fromMe: boolean = msg.key?.fromMe === true;
+        const ts: Date = msg.messageTimestamp
+          ? new Date(Number(msg.messageTimestamp) * 1000)
+          : new Date();
+
+        await this.prisma.message.create({
+          data: {
+            conversation_id: conversationId,
+            direction: fromMe ? 'out' : 'in',
+            type: 'text',
+            text,
+            external_message_id: externalId,
+            status: fromMe ? 'enviado' : 'recebido',
+            created_at: ts,
+          },
+        });
+        imported++;
+      } catch (e: any) {
+        this.logger.warn(`[syncHistory] Erro ao importar msg: ${e.message}`);
+      }
+    }
+
+    if (imported > 0) {
+      this.logger.log(`[syncHistory] ${imported}/${rawMessages.length} mensagens importadas para conversa ${conversationId}`);
+      // Update conversation timestamp to the most recent message
+      await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { last_message_at: new Date() },
+      });
+    }
+
+    return { imported, total: rawMessages.length };
+  }
+
   async sendMessage(conversationId: string, text: string, replyToId?: string) {
     const convo = await this.prisma.conversation.findUnique({
       where: { id: conversationId },

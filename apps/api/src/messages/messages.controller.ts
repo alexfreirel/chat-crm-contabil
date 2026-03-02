@@ -24,6 +24,11 @@ export class MessagesController {
     return this.messagesService.getMessages(conversationId);
   }
 
+  @Post('conversation/:id/sync-history')
+  syncHistory(@Param('id') conversationId: string) {
+    return this.messagesService.syncHistoryFromWhatsApp(conversationId);
+  }
+
   @Post('send')
   sendMessage(
     @Body('conversationId') conversationId: string,

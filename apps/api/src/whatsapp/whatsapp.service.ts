@@ -272,6 +272,24 @@ export class WhatsappService {
     }
   }
 
+  async fetchMessages(instanceName: string, remoteJid: string, limit = 200): Promise<any[]> {
+    try {
+      const data = await this.request(
+        'POST',
+        `chat/findMessages/${instanceName}`,
+        { where: { key: { remoteJid } }, limit },
+      );
+      const list = Array.isArray(data)
+        ? data
+        : (data as any)?.messages || (data as any)?.data || [];
+      this.logger.log(`fetchMessages ${instanceName}/${remoteJid}: ${list.length} mensagens`);
+      return list;
+    } catch (e) {
+      this.logger.error(`Erro ao buscar mensagens para ${remoteJid}: ${e}`);
+      return [];
+    }
+  }
+
   async fetchChats(instanceName: string) {
     try {
       // POST /chat/findChats com { where: {} } para trazer TODOS os chats (incluindo não salvos)

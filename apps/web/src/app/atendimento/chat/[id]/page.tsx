@@ -283,6 +283,16 @@ export default function ChatPage({ params }: { params: { id: string } }) {
           setAiMode(!!convo.ai_mode);
           setMessages(convo.messages || []);
 
+          // Sync WhatsApp history on open (background, non-blocking)
+          api.post(`/messages/conversation/${convo.id}/sync-history`)
+            .then(async (syncRes) => {
+              if (syncRes.data?.imported > 0) {
+                const msgRes = await api.get(`/messages/conversation/${convo.id}`);
+                setMessages(msgRes.data || []);
+              }
+            })
+            .catch(() => { /* silently ignore sync errors */ });
+
           socketRef.current = io(wsUrl, {
             path: '/api/socket.io/',
             transports: ['polling', 'websocket'],
