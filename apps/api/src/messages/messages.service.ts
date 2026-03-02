@@ -466,6 +466,67 @@ export class MessagesService {
     return { result };
   }
 
+  async getLinkPreview(url: string): Promise<{
+    url: string;
+    title: string | null;
+    description: string | null;
+    image: string | null;
+    domain: string;
+  }> {
+    const domain = (() => {
+      try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
+    })();
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; LinkPreviewBot/1.0)',
+          Accept: 'text/html',
+        },
+        redirect: 'follow',
+      }).finally(() => clearTimeout(timeout));
+
+      if (!res.ok) return { url, title: null, description: null, image: null, domain };
+
+      const html = await res.text();
+
+      const getOg = (prop: string): string | null => {
+        const m = html.match(new RegExp(`<meta[^>]+property=["']og:${prop}["'][^>]+content=["']([^"']+)["']`, 'i'))
+          || html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:${prop}["']`, 'i'));
+        return m ? m[1].trim() : null;
+      };
+
+      const getMeta = (name: string): string | null => {
+        const m = html.match(new RegExp(`<meta[^>]+name=["']${name}["'][^>]+content=["']([^"']+)["']`, 'i'))
+          || html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+name=["']${name}["']`, 'i'));
+        return m ? m[1].trim() : null;
+      };
+
+      const titleTag = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+
+      const title = getOg('title') || getMeta('title') || (titleTag ? titleTag[1].trim() : null);
+      const description = getOg('description') || getMeta('description');
+      let image = getOg('image');
+
+      // Make relative image URLs absolute
+      if (image && !image.startsWith('http')) {
+        try {
+          const base = new URL(url);
+          image = new URL(image, base.origin).toString();
+        } catch { image = null; }
+      }
+
+      return { url, title, description, image, domain };
+    } catch (e: any) {
+      this.logger.warn(`[LinkPreview] Falha ao obter preview para ${url}: ${e.message}`);
+      return { url, title: null, description: null, image: null, domain };
+    }
+  }
+
   private streamToBuffer(stream: Readable): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];

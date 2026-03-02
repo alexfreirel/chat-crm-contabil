@@ -5,6 +5,7 @@ import {
   Post,
   Delete,
   Body,
+  Query,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -22,6 +23,11 @@ export class MessagesController {
   @Get('conversation/:id')
   getMessages(@Param('id') conversationId: string) {
     return this.messagesService.getMessages(conversationId);
+  }
+
+  @Get('link-preview')
+  getLinkPreview(@Query('url') url: string) {
+    return this.messagesService.getLinkPreview(url);
   }
 
   @Post('conversation/:id/sync-history')

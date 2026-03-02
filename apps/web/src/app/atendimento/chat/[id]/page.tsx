@@ -7,6 +7,7 @@ import { AudioPlayer } from '@/components/AudioPlayer';
 import { AudioRecorder } from '@/components/AudioRecorder';
 import { EmojiPickerButton } from '@/components/EmojiPickerButton';
 import { SophIAButton } from '@/components/SophIAButton';
+import { LinkPreview } from '@/components/LinkPreview';
 import api from '@/lib/api';
 import { io, Socket } from 'socket.io-client';
 import { formatPhone } from '@/lib/utils';
@@ -67,6 +68,11 @@ export default function ChatPage({ params }: { params: { id: string } }) {
     const t = text.trim();
     if (!t) return false;
     return /^(\p{Emoji_Presentation}|\p{Extended_Pictographic}|\s)+$/u.test(t);
+  };
+
+  const extractFirstUrl = (text: string): string | null => {
+    const match = text.match(/https?:\/\/[^\s]+/);
+    return match ? match[0] : null;
   };
 
   const handleDocDownload = async (url: string, name: string) => {
@@ -460,11 +466,22 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                       {msg.type === 'deleted' ? (
                         <p className="text-sm italic opacity-50">🚫 Mensagem apagada</p>
                       ) : msg.type === 'text' || !msg.type ? (
-                        isEmojiOnly(msg.text || '') ? (
-                          <p className="text-4xl leading-tight">{msg.text}</p>
-                        ) : (
-                          <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{msg.text}</p>
-                        )
+                        (() => {
+                          const t = msg.text || '';
+                          const url = extractFirstUrl(t);
+                          const isOnlyUrl = url && t.trim() === url;
+                          if (isEmojiOnly(t)) {
+                            return <p className="text-4xl leading-tight">{t}</p>;
+                          }
+                          return (
+                            <>
+                              {!isOnlyUrl && (
+                                <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{t}</p>
+                              )}
+                              {url && <LinkPreview url={url} isOut={isOut} />}
+                            </>
+                          );
+                        })()
                       ) : msg.type === 'audio' ? (
                         msg.media ? (
                           <div>
