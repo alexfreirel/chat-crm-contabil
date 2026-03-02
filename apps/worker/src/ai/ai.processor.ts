@@ -642,15 +642,21 @@ export class AiProcessor extends WorkerHost {
       const textToSend = `*Sophia:* ${finalText}`;
 
       // Captura o ID real da mensagem retornado pela Evolution API
-      // para que o webhook echo seja corretamente deduplicado e não gere registro duplicado
+      // para que o webhook echo seja corretamente deduplicado e não gere registro duplicado.
+      // options.delay + presence:"composing" exibe o balão "digitando..." por 5s antes de entregar.
       const sendResult = await axios.post(
         `${apiUrl}/message/sendText/${instanceName}`,
         {
           number: convo.lead.phone,
           text: textToSend,
+          options: {
+            delay: 5000,
+            presence: 'composing',
+          },
         },
         {
           headers: { 'Content-Type': 'application/json', apikey: apiKey },
+          timeout: 30000,
         },
       );
       const evolutionMsgId: string =
