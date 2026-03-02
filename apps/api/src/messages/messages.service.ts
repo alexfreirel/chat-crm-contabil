@@ -99,7 +99,21 @@ export class MessagesService {
     return { imported, total: rawMessages.length };
   }
 
-  async sendMessage(conversationId: string, text: string, replyToId?: string) {
+  /** Re-assigns the conversation to senderId if it is currently assigned to someone else. */
+  private async autoReassignIfNeeded(convo: any, senderId: string | undefined): Promise<void> {
+    if (!senderId) return;
+    if (convo.assigned_user_id === senderId) return;
+    await this.prisma.conversation.update({
+      where: { id: convo.id },
+      data: { assigned_user_id: senderId },
+    });
+    this.logger.log(
+      `[AutoReassign] Conversa ${convo.id}: ${convo.assigned_user_id ?? 'sem operador'} → ${senderId}`,
+    );
+    this.chatGateway.emitConversationsUpdate(null);
+  }
+
+  async sendMessage(conversationId: string, text: string, replyToId?: string, senderId?: string) {
     const convo = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
       include: { lead: true }
@@ -108,6 +122,8 @@ export class MessagesService {
     if (!convo || !convo.lead) {
       throw new BadRequestException('Conversa inválida');
     }
+
+    await this.autoReassignIfNeeded(convo, senderId);
 
     // Look up the quoted message if replying
     let quotedPayload: any = undefined;
@@ -185,12 +201,15 @@ export class MessagesService {
     conversationId: string,
     file: Express.Multer.File,
     publicApiUrl: string,
+    senderId?: string,
   ) {
     const convo = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
       include: { lead: true },
     });
     if (!convo || !convo.lead) throw new BadRequestException('Conversa inválida');
+
+    await this.autoReassignIfNeeded(convo, senderId);
 
     // 1. Criar registro da mensagem no banco para obter o ID
     const tempExtId = `out_audio_${Date.now()}`;
@@ -284,12 +303,15 @@ export class MessagesService {
     file: Express.Multer.File,
     publicApiUrl: string,
     caption?: string,
+    senderId?: string,
   ) {
     const convo = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
       include: { lead: true },
     });
     if (!convo || !convo.lead) throw new BadRequestException('Conversa inválida');
+
+    await this.autoReassignIfNeeded(convo, senderId);
 
     const mime = file.mimetype;
     let mediaType: 'image' | 'document' | 'video';

@@ -39,9 +39,10 @@ export class MessagesController {
   sendMessage(
     @Body('conversationId') conversationId: string,
     @Body('text') text: string,
+    @Req() req: any,
     @Body('replyToId') replyToId?: string,
   ) {
-    return this.messagesService.sendMessage(conversationId, text, replyToId);
+    return this.messagesService.sendMessage(conversationId, text, replyToId, req.user?.id);
   }
 
   @Post('send-audio')
@@ -56,7 +57,7 @@ export class MessagesController {
       process.env.PUBLIC_API_URL ||
       `${(req.headers['x-forwarded-proto'] as string) || req.protocol}://${(req.headers['x-forwarded-host'] as string) || req.headers['host']}/api`;
 
-    return this.messagesService.sendAudio(conversationId, file, publicApiUrl);
+    return this.messagesService.sendAudio(conversationId, file, publicApiUrl, req.user?.id);
   }
 
   @Post('send-file')
@@ -70,7 +71,7 @@ export class MessagesController {
     const publicApiUrl =
       process.env.PUBLIC_API_URL ||
       `${(req.headers['x-forwarded-proto'] as string) || req.protocol}://${(req.headers['x-forwarded-host'] as string) || req.headers['host']}/api`;
-    return this.messagesService.sendFile(conversationId, file, publicApiUrl, caption);
+    return this.messagesService.sendFile(conversationId, file, publicApiUrl, caption, req.user?.id);
   }
 
   @Post('ai-correct')
