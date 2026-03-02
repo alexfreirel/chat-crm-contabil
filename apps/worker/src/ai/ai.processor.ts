@@ -358,7 +358,7 @@ export class AiProcessor extends WorkerHost {
           }),
         },
       ],
-      ...this.tokenParam(memoryModel, 800),
+      ...this.tokenParam(memoryModel, 2000),
       temperature: 0.3,
       response_format: { type: 'json_object' },
     });
@@ -530,8 +530,17 @@ export class AiProcessor extends WorkerHost {
         history_summary: historyText.slice(0, 500),
       };
 
+      // Cabeçalho fixo de capacidades — injetado antes de qualquer skill prompt
+      // para sobrescrever instruções antigas de "não consigo ouvir/ver mídia"
+      const MEDIA_CAPABILITIES_HEADER = `CAPACIDADES DE MÍDIA DISPONÍVEIS:
+- Áudios são transcritos automaticamente por IA (Whisper). O texto transcrito já aparece no histórico como texto normal. NUNCA diga que não consegue ouvir — você lê a transcrição.
+- Imagens e documentos enviados pelo cliente são analisados visualmente quando o modelo suporta visão. Responda ao conteúdo deles normalmente.
+- NUNCA peça para o cliente "escrever em texto" por causa de mídia — você já consegue ler o conteúdo.
+
+`;
+
       if (skill) {
-        systemPrompt = this.injectVariables(skill.system_prompt, vars);
+        systemPrompt = MEDIA_CAPABILITIES_HEADER + this.injectVariables(skill.system_prompt, vars);
         model = skill.model || (await this.settings.getDefaultModel());
         maxTokens = skill.max_tokens || 500;
         temperature = skill.temperature ?? 0.7;
@@ -539,7 +548,7 @@ export class AiProcessor extends WorkerHost {
           `[AI] Usando skill: "${skill.name}" (area=${skill.area}, model=${model})`,
         );
       } else {
-        systemPrompt = `Você é Sophia, agente de pré-atendimento do escritório André Lustosa Advogados.\nSeu objetivo é acolher o cliente, entender o problema e coletar informações para o advogado.\nResponda de forma empática e curta (adequado para WhatsApp).\nRetorne SOMENTE JSON válido: {"reply":"texto para enviar","updates":{"name":null,"status":"Contato Inicial","area":null,"lead_summary":"resumo","next_step":"duvidas","notes":""}}`;
+        systemPrompt = MEDIA_CAPABILITIES_HEADER + `Você é Sophia, agente de pré-atendimento do escritório André Lustosa Advogados.\nSeu objetivo é acolher o cliente, entender o problema e coletar informações para o advogado.\nResponda de forma empática e curta (adequado para WhatsApp).\nRetorne SOMENTE JSON válido: {"reply":"texto para enviar","updates":{"name":null,"status":"Contato Inicial","area":null,"lead_summary":"resumo","next_step":"duvidas","notes":""}}`;
         model = await this.settings.getDefaultModel();
         maxTokens = 500;
         temperature = 0.7;
