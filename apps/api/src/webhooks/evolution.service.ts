@@ -231,19 +231,17 @@ export class EvolutionService {
         const jobId = `ai-debounce-${conv.id}`;
 
         if (debounceMs > 0) {
-          // Cancela job pendente (delayed/waiting) para resetar o timer (debounce)
+          // Remove qualquer job existente com esse ID (delayed, waiting, completed ou failed)
+          // para evitar deduplicação silenciosa do BullMQ ao reutilizar o mesmo jobId.
           const existing = await this.aiQueue.getJob(jobId);
           if (existing) {
-            const state = await existing.getState();
-            if (state === 'delayed' || state === 'waiting') {
-              await existing.remove();
-              this.logger.log(`[AI] Debounce: job ${jobId} removido, timer resetado`);
-            }
+            await existing.remove();
+            this.logger.log(`[AI] Debounce: job ${jobId} removido, timer resetado`);
           }
           await this.aiQueue.add(
             'process_ai_response',
             { conversation_id: conv.id, lead_id: lead.id },
-            { jobId, delay: debounceMs, removeOnComplete: { count: 100 } },
+            { jobId, delay: debounceMs, removeOnComplete: true, removeOnFail: false },
           );
         } else {
           // Sem debounce: processa imediatamente
