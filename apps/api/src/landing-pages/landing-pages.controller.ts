@@ -12,7 +12,7 @@ import {
 import { LandingPagesService } from './landing-pages.service';
 import { CreateLandingPageDto } from './dto/create-landing-page.dto';
 import { TrackEventDto } from './dto/track-event.dto';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('landing-pages')
 export class LandingPagesController {
