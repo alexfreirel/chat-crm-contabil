@@ -37,4 +37,13 @@ export class SettingsService {
       orderBy: [{ order: 'asc' }, { id: 'asc' }],
     });
   }
+
+  private async get(key: string): Promise<string | null> {
+    const row = await this.prisma.globalSetting.findUnique({ where: { key } });
+    return row?.value || null;
+  }
+
+  async getMemoryModel(): Promise<string> {
+    return (await this.get('AI_MEMORY_MODEL')) || 'gpt-4.1';
+  }
 }

@@ -74,6 +74,8 @@ model Conversation {
   assigned_lawyer_id           String?   // Advogado pré-designado pela IA
   origin_assigned_user_id      String?   // Quem transferiu (para devolução)
   linked_agent_ids             String[]  @default([])  // Todos os agentes que atenderam
+  next_step                    String?   // Próximo passo: "duvidas" | "triagem_concluida" | "formulario" | "reuniao" | "encerrado"
+  ai_notes                     String?   // Observações internas da IA (campo notes do JSON)
   last_message_at              DateTime  @default(now())
   assigned_user    User?     @relation(fields: [assigned_user_id], references: [id])
   lead             Lead      @relation(fields: [lead_id], references: [id])
@@ -98,6 +100,7 @@ model Message {
   created_at          DateTime     @default(now())
   reply_to_id         String?
   reply_to_text       String?
+  skill_id            String?      // Qual PromptSkill gerou esta resposta IA
   media               Media?
   conversation        Conversation @relation(fields: [conversation_id], references: [id])
   tasks               Task[]

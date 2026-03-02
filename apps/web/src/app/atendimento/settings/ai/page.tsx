@@ -30,10 +30,11 @@ interface SkillForm {
 }
 
 const AVAILABLE_MODELS = [
-  { value: 'gpt-4o-mini', label: 'GPT-4o Mini — rápido, econômico' },
-  { value: 'gpt-4o', label: 'GPT-4o — mais capaz' },
-  { value: 'gpt-4.1', label: 'GPT-4.1 — avançado' },
+  { value: 'gpt-5.1', label: 'GPT-5.1 — conversacional avançado' },
+  { value: 'gpt-4.1', label: 'GPT-4.1 — analítico' },
   { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini — balanceado' },
+  { value: 'gpt-4o-mini', label: 'GPT-4o Mini — rápido, econômico' },
+  { value: 'gpt-4o', label: 'GPT-4o — capaz' },
   { value: 'o1-mini', label: 'o1 Mini — raciocínio' },
 ];
 
@@ -42,6 +43,9 @@ const TEMPLATE_VARS = [
   { key: '{{lead_phone}}', desc: 'Telefone' },
   { key: '{{legal_area}}', desc: 'Área jurídica detectada' },
   { key: '{{firm_name}}', desc: 'Nome do escritório' },
+  { key: '{{lead_memory}}', desc: 'Memória do lead (resumo + fatos)' },
+  { key: '{{lead_summary}}', desc: 'Resumo do caso' },
+  { key: '{{conversation_id}}', desc: 'ID da conversa (para URLs)' },
   { key: '{{history_summary}}', desc: 'Resumo do histórico' },
 ];
 
