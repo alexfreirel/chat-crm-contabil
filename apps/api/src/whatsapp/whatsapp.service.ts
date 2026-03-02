@@ -67,8 +67,9 @@ export class WhatsappService {
 
   async deleteForEveryone(instanceName: string, remoteJid: string, externalMessageId: string, fromMe: boolean) {
     const targetInstance = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'crm_instance';
-    return this.request('DELETE', `message/delete/${targetInstance}`, {
+    return this.request('DELETE', `chat/deleteMessageForEveryone/${targetInstance}`, {
       id: externalMessageId,
+      remoteJid,
       fromMe,
     });
   }
