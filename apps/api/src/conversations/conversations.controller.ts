@@ -17,6 +17,11 @@ export class ConversationsController {
     return this.conversationsService.findAll(undefined, userId, inboxId);
   }
 
+  @Get('pending-transfers')
+  getPendingTransfers(@Request() req: any) {
+    return this.conversationsService.findPendingTransfers(req.user.id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.conversationsService.findOne(id);

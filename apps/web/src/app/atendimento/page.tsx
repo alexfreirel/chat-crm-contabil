@@ -55,6 +55,25 @@ function StatusIcon({ status, isOut }: { status: string; isOut: boolean }) {
   return <Check size={12} className="text-primary-foreground/60" />;
 }
 
+function playNotificationSound() {
+  try {
+    const AC = window.AudioContext || (window as any).webkitAudioContext;
+    const ctx = new AC();
+    [880, 1100].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.connect(g); g.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const t = ctx.currentTime + i * 0.18;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.25, t + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+      osc.start(t); osc.stop(t + 0.15);
+    });
+  } catch { /* audio not supported */ }
+}
+
 export default function Dashboard() {
   const router = useRouter();
   const [leadFilter, setLeadFilter] = useState('');
@@ -89,6 +108,10 @@ export default function Dashboard() {
   const [processingTransfer, setProcessingTransfer] = useState(false);
   // Response notification (for sender)
   const [transferResponseMsg, setTransferResponseMsg] = useState<string | null>(null);
+  // Sent confirmation banner
+  const [transferSentMsg, setTransferSentMsg] = useState<string | null>(null);
+  // Pending transfers waiting for current user to accept/decline
+  const [pendingTransfers, setPendingTransfers] = useState<{ conversationId: string; contactName: string; fromUserName: string; reason: string | null }[]>([]);
   const [inboxOpen, setInboxOpen] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -138,6 +161,15 @@ export default function Dashboard() {
     }
   };
 
+  const fetchPendingTransfers = useCallback(async () => {
+    try {
+      const res = await api.get('/conversations/pending-transfers');
+      setPendingTransfers(res.data || []);
+    } catch (e) {
+      console.error('Failed to fetch pending transfers', e);
+    }
+  }, []);
+
   // WebSocket connection (once, does not reconnect on filter changes)
   useEffect(() => {
     const wsUrl = getWsUrl();
@@ -181,11 +213,13 @@ export default function Dashboard() {
       fetchConversations(selectedInboxIdRef.current);
     });
 
-    // Transfer request: incoming popup for target operator
+    // Transfer request: incoming popup + sound for target operator
     socket.on('transfer_request', (data: { conversationId: string; fromUserName: string; contactName: string; reason: string | null }) => {
+      playNotificationSound();
       setIncomingTransfer(data);
       setShowDeclineInput(false);
       setDeclineReason('');
+      fetchPendingTransfers();
     });
 
     // Transfer response: notification for the sender
@@ -211,7 +245,8 @@ export default function Dashboard() {
   useEffect(() => {
     fetchInboxes();
     fetchConversations(selectedInboxId);
-  }, [fetchConversations, selectedInboxId]);
+    fetchPendingTransfers();
+  }, [fetchConversations, fetchPendingTransfers, selectedInboxId]);
 
   // Fetch messages when conversation selected
   useEffect(() => {
@@ -344,6 +379,9 @@ export default function Dashboard() {
         toUserId: selectedTransferUserId,
         reason: transferReason.trim() || undefined,
       });
+      const destUser = transferGroups.flatMap(g => g.users).find(u => u.id === selectedTransferUserId);
+      setTransferSentMsg(`📨 Solicitação enviada para ${destUser?.name || 'operador'}. Aguardando resposta...`);
+      setTimeout(() => setTransferSentMsg(null), 6000);
       setTransferModal(false);
       setSelectedTransferUserId(null);
       setTransferReason('');
@@ -362,6 +400,7 @@ export default function Dashboard() {
     try {
       await api.patch(`/conversations/${incomingTransfer.conversationId}/transfer-accept`);
       setIncomingTransfer(null);
+      fetchPendingTransfers();
       fetchConversations(selectedInboxIdRef.current);
     } catch (e) {
       console.error('Failed to accept transfer', e);
@@ -378,10 +417,21 @@ export default function Dashboard() {
       setIncomingTransfer(null);
       setDeclineReason('');
       setShowDeclineInput(false);
+      fetchPendingTransfers();
     } catch (e) {
       console.error('Failed to decline transfer', e);
     } finally {
       setProcessingTransfer(false);
+    }
+  };
+
+  const handleQuickAcceptTransfer = async (conversationId: string) => {
+    try {
+      await api.patch(`/conversations/${conversationId}/transfer-accept`);
+      fetchPendingTransfers();
+      fetchConversations(selectedInboxIdRef.current);
+    } catch (e) {
+      console.error('Failed to quick accept transfer', e);
     }
   };
 
@@ -603,6 +653,41 @@ export default function Dashboard() {
               <PanelLeftClose size={18} />
             </button>
           </div>
+
+          {/* Transferências aguardando resposta */}
+          {pendingTransfers.length > 0 && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-amber-500/20">
+                <span className="text-amber-500 text-sm">📨</span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-500">
+                  Aguardando você ({pendingTransfers.length})
+                </span>
+              </div>
+              <div className="divide-y divide-amber-500/10">
+                {pendingTransfers.map(pt => (
+                  <div key={pt.conversationId} className="flex items-center gap-2 px-3 py-2.5">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold truncate">{pt.contactName}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">De: {pt.fromUserName}</p>
+                      {pt.reason && <p className="text-[10px] text-amber-400/80 italic truncate">{pt.reason}</p>}
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <button
+                        onClick={() => handleQuickAcceptTransfer(pt.conversationId)}
+                        className="px-2 py-1 bg-emerald-500 text-white rounded-lg text-[10px] font-bold hover:bg-emerald-600 transition-colors"
+                        title="Aceitar transferência"
+                      >✓</button>
+                      <button
+                        onClick={() => { setIncomingTransfer(pt); setShowDeclineInput(false); setDeclineReason(''); }}
+                        className="px-2 py-1 bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg text-[10px] font-bold hover:bg-red-500/20 transition-colors"
+                        title="Recusar transferência"
+                      >✗</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Seletor de Setores (Inboxes) */}
           {userInboxes.length > 0 && (
@@ -1316,9 +1401,17 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Transfer Sent Banner */}
+      {transferSentMsg && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[90] bg-card border border-sky-500/30 rounded-2xl px-5 py-3 shadow-2xl text-sm font-medium flex items-center gap-3">
+          {transferSentMsg}
+          <button onClick={() => setTransferSentMsg(null)} className="text-muted-foreground hover:text-foreground ml-2"><X size={14} /></button>
+        </div>
+      )}
+
       {/* Transfer Response Banner (for sender) */}
       {transferResponseMsg && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[90] bg-card border border-border rounded-2xl px-5 py-3 shadow-2xl text-sm font-medium flex items-center gap-3 animate-in slide-in-from-bottom-4 duration-300">
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[90] bg-card border border-border rounded-2xl px-5 py-3 shadow-2xl text-sm font-medium flex items-center gap-3">
           {transferResponseMsg}
           <button onClick={() => setTransferResponseMsg(null)} className="text-muted-foreground hover:text-foreground ml-2">
             <X size={14} />

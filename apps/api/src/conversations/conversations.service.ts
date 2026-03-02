@@ -109,6 +109,26 @@ export class ConversationsService {
     });
   }
 
+  async findPendingTransfers(toUserId: string) {
+    const convs = await (this.prisma as any).conversation.findMany({
+      where: { pending_transfer_to_id: toUserId },
+      include: { lead: { select: { name: true, phone: true, profile_picture_url: true } } },
+    });
+    const fromUserIds = [...new Set(convs.map((c: any) => c.pending_transfer_from_id).filter(Boolean))] as string[];
+    const fromUsers = fromUserIds.length > 0
+      ? await this.prisma.user.findMany({ where: { id: { in: fromUserIds } }, select: { id: true, name: true } })
+      : [];
+    const fromUserMap: Record<string, string> = Object.fromEntries(fromUsers.map(u => [u.id, u.name]));
+    return convs.map((c: any) => ({
+      conversationId: c.id,
+      contactName: c.lead?.name || c.lead?.phone || 'Contato',
+      contactPhone: c.lead?.phone || '',
+      profilePicture: c.lead?.profile_picture_url || null,
+      fromUserName: fromUserMap[c.pending_transfer_from_id] || 'Operador',
+      reason: c.pending_transfer_reason || null,
+    }));
+  }
+
   async requestTransfer(id: string, toUserId: string, fromUserId: string, reason: string | null) {
     const [fromUser, conv] = await Promise.all([
       this.prisma.user.findUnique({ where: { id: fromUserId }, select: { name: true } }),
