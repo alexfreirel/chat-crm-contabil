@@ -94,7 +94,7 @@ export default function Dashboard() {
   const [isDragging, setIsDragging] = useState(false);
   const [replyingTo, setReplyingTo] = useState<MessageItem | null>(null);
   const [transferModal, setTransferModal] = useState(false);
-  const [transferGroups, setTransferGroups] = useState<{ inboxId: string; inboxName: string; users: { id: string; name: string }[] }[]>([]);
+  const [transferGroups, setTransferGroups] = useState<{ id: string; name: string; type: 'INBOX' | 'SECTOR'; users: { id: string; name: string }[] }[]>([]);
   const [transferring, setTransferring] = useState(false);
   const [loadingOperators, setLoadingOperators] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
@@ -1305,8 +1305,10 @@ export default function Dashboard() {
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 px-1 shrink-0">Selecione o operador</p>
                 <div className="flex flex-col gap-4 overflow-y-auto custom-scrollbar flex-1 min-h-0">
                   {transferGroups.filter(g => g.users.length > 0).map(group => (
-                    <div key={group.inboxId}>
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5 px-1">{group.inboxName}</p>
+                    <div key={group.id}>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5 px-1">
+                        {group.type === 'SECTOR' ? '🏢' : '📥'} {group.name}
+                      </p>
                       <div className="flex flex-col gap-1">
                         {group.users.map(user => (
                           <button

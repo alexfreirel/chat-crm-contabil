@@ -1,10 +1,11 @@
 'use client';
 
 import { useRouter, usePathname } from 'next/navigation';
-import { UserCog, Bot, Building2, Shield, ChevronLeft, MessageSquare, Layout } from 'lucide-react';
+import { UserCog, Bot, Building2, Shield, ChevronLeft, MessageSquare, Layout, Briefcase } from 'lucide-react';
 
 const settingsMenu = [
   { label: 'Setores (Inboxes)', href: '/atendimento/settings/inboxes', icon: Layout },
+  { label: 'Departamentos', href: '/atendimento/settings/sectors', icon: Briefcase },
   { label: 'Usuários & Perfis', href: '/atendimento/settings/users', icon: UserCog },
   { label: 'Ajustes IA', href: '/atendimento/settings/ai', icon: Bot },
   { label: 'Integração WhatsApp', href: '/atendimento/settings/whatsapp', icon: MessageSquare },

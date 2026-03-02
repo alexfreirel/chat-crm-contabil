@@ -14,16 +14,31 @@ export class InboxesService {
   }
 
   async findAllOperators() {
-    const inboxes = await this.inbox.findMany({
-      include: {
-        users: { select: { id: true, name: true } },
-      },
-    });
-    return inboxes.map((inbox: any) => ({
-      inboxId: inbox.id,
-      inboxName: inbox.name,
+    const [inboxes, sectors] = await Promise.all([
+      this.inbox.findMany({
+        include: { users: { select: { id: true, name: true } } },
+      }),
+      (this.prisma as any).sector.findMany({
+        include: { users: { select: { id: true, name: true } } },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+
+    const inboxGroups = inboxes.map((inbox: any) => ({
+      id: inbox.id,
+      name: inbox.name,
+      type: 'INBOX' as const,
       users: inbox.users as { id: string; name: string }[],
     }));
+
+    const sectorGroups = sectors.map((sector: any) => ({
+      id: sector.id,
+      name: sector.name,
+      type: 'SECTOR' as const,
+      users: sector.users as { id: string; name: string }[],
+    }));
+
+    return [...inboxGroups, ...sectorGroups];
   }
 
   async findAll(tenantId?: string, userId?: string) {

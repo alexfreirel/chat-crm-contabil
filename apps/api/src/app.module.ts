@@ -14,6 +14,7 @@ import { TasksModule } from './tasks/tasks.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { SettingsModule } from './settings/settings.module';
 import { InboxesModule } from './inboxes/inboxes.module';
+import { SectorsModule } from './sectors/sectors.module';
 import { MediaModule } from './media/media.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 
@@ -49,6 +50,7 @@ import { APP_FILTER } from '@nestjs/core';
     WhatsappModule,
     SettingsModule,
     InboxesModule,
+    SectorsModule,
     MediaModule,
     AnalyticsModule,
   ],

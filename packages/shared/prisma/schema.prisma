@@ -29,6 +29,7 @@ model User {
   audit_logs      AuditLog[]
   assigned_convos Conversation[]
   inboxes         Inbox[]
+  sectors         Sector[]       @relation("SectorUsers")
   tasks           Task[]
   tenant          Tenant?        @relation(fields: [tenant_id], references: [id])
 }
@@ -220,4 +221,11 @@ model LpEvent {
 
   @@index([page_path, created_at])
   @@index([event_type])
+}
+
+model Sector {
+  id         String   @id @default(uuid())
+  name       String
+  created_at DateTime @default(now())
+  users      User[]   @relation("SectorUsers")
 }
