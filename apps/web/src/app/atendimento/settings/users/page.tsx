@@ -5,23 +5,14 @@ import { useRouter } from 'next/navigation';
 import { Plus, Pencil, Trash2, X, UserCog } from 'lucide-react';
 import api from '@/lib/api';
 
-const ROLES = [
-  { value: 'ADMIN', label: 'Administrador' },
-  { value: 'ADVOGADO', label: 'Advogado' },
-  { value: 'ESTAGIARIO', label: 'Estagiário' },
-  { value: 'COMERCIAL', label: 'Comercial' },
-  { value: 'FINANCEIRO', label: 'Financeiro' },
-];
-
-const roleBadgeColors: Record<string, string> = {
-  ADMIN: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
-  ADVOGADO: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
-  ESTAGIARIO: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
-  COMERCIAL: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
-  FINANCEIRO: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
-};
-
 const SPECIALTY_SUGGESTIONS = ['Trabalhista', 'Civil', 'Criminal', 'Tributário', 'Família', 'Empresarial', 'Previdenciário', 'Imobiliário'];
+
+function roleBadge(role: string) {
+  if (role === 'ADMIN') {
+    return <span className="px-2 py-0.5 text-[10px] font-bold rounded-lg border bg-red-900/30 text-red-300 border-red-800/30">Administrador</span>;
+  }
+  return <span className="px-2 py-0.5 text-[10px] font-bold rounded-lg border bg-primary/10 text-primary border-primary/20">{role}</span>;
+}
 
 interface UserForm {
   name: string;
@@ -32,12 +23,13 @@ interface UserForm {
   specialties: string[];
 }
 
-const emptyForm: UserForm = { name: '', email: '', password: '', role: 'ADVOGADO', inboxIds: [], specialties: [] };
+const emptyForm: UserForm = { name: '', email: '', password: '', role: '', inboxIds: [], specialties: [] };
 
 export default function UsersSettingsPage() {
   const router = useRouter();
   const [users, setUsers] = useState<any[]>([]);
   const [inboxes, setInboxes] = useState<any[]>([]);
+  const [sectors, setSectors] = useState<{ id: string; name: string }[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<UserForm>(emptyForm);
@@ -57,6 +49,7 @@ export default function UsersSettingsPage() {
   const fetchData = async () => {
     fetchUsers();
     fetchInboxes();
+    fetchSectors();
   };
 
   const fetchInboxes = async () => {
@@ -64,7 +57,16 @@ export default function UsersSettingsPage() {
       const res = await api.get('/inboxes');
       setInboxes(res.data);
     } catch (e) {
-      console.error('Erro ao buscar setores:', e);
+      console.error('Erro ao buscar inboxes:', e);
+    }
+  };
+
+  const fetchSectors = async () => {
+    try {
+      const res = await api.get('/sectors');
+      setSectors(res.data || []);
+    } catch (e) {
+      console.error('Erro ao buscar departamentos:', e);
     }
   };
 
@@ -200,7 +202,7 @@ export default function UsersSettingsPage() {
                   <tr className="bg-foreground/[0.02] border-b border-border">
                     <th className="px-6 py-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Nome</th>
                     <th className="px-6 py-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Email</th>
-                    <th className="px-6 py-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Setores</th>
+                    <th className="px-6 py-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Inboxes (Chat)</th>
                     <th className="px-6 py-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Especialidades</th>
                     <th className="px-6 py-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Criado em</th>
                     <th className="px-6 py-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider text-right">Ações</th>
@@ -210,11 +212,14 @@ export default function UsersSettingsPage() {
                   {users.map((user) => (
                     <tr key={user.id} className="hover:bg-foreground/[0.02] transition-colors group">
                       <td className="px-6 py-4">
-                        <div className="flex items-center">
-                          <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold mr-3 text-xs border border-primary/20 shadow-sm">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs border border-primary/20 shadow-sm shrink-0">
                             {user.name?.charAt(0)?.toUpperCase()}
                           </div>
-                          <span className="text-[14px] font-semibold text-foreground tracking-tight">{user.name}</span>
+                          <div>
+                            <span className="text-[14px] font-semibold text-foreground tracking-tight">{user.name}</span>
+                            <div className="mt-0.5">{roleBadge(user.role)}</div>
+                          </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 text-[13px] text-muted-foreground">{user.email}</td>
@@ -325,16 +330,26 @@ export default function UsersSettingsPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider ml-1">Perfil</label>
+                <label className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider ml-1">Departamento</label>
                 <select
+                  required
                   value={form.role}
                   onChange={e => setForm({ ...form, role: e.target.value })}
                   className="w-full px-4 py-2.5 border border-border rounded-xl bg-background text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                 >
-                  {ROLES.map(r => (
-                    <option key={r.value} value={r.value} className="bg-card text-foreground">{r.label}</option>
-                  ))}
+                  <option value="" disabled className="bg-card text-muted-foreground">Selecione um departamento...</option>
+                  <option value="ADMIN" className="bg-card text-foreground">🛡️ Administrador</option>
+                  {sectors.length > 0 && (
+                    sectors.map(s => (
+                      <option key={s.id} value={s.name} className="bg-card text-foreground">{s.name}</option>
+                    ))
+                  )}
                 </select>
+                {sectors.length === 0 && (
+                  <p className="text-[11px] text-muted-foreground opacity-70 ml-1">
+                    Crie departamentos primeiro em <strong>Configurações → Departamentos</strong>.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -361,7 +376,7 @@ export default function UsersSettingsPage() {
                   )}
                 </div>
               </div>
-              {(form.role === 'ADVOGADO' || form.role === 'ESTAGIARIO') && (
+              {form.role && form.role !== 'ADMIN' && (
                 <div className="space-y-1.5">
                   <label className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider ml-1">
                     ⚖️ Especialidades Jurídicas

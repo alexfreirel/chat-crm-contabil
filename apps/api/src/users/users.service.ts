@@ -8,11 +8,14 @@ export class UsersService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(): Promise<Omit<User, 'password_hash'>[]> {
-    const users = await this.prisma.user.findMany({
+    const users = await (this.prisma as any).user.findMany({
       orderBy: { created_at: 'desc' },
-      include: { inboxes: { select: { id: true, name: true } } }
+      include: {
+        inboxes: { select: { id: true, name: true } },
+        sectors: { select: { id: true, name: true } },
+      },
     });
-    return users.map(({ password_hash, ...user }) => user as any);
+    return users.map(({ password_hash, ...user }: any) => user);
   }
 
   async findOne(email: string): Promise<User | null> {
@@ -20,13 +23,33 @@ export class UsersService {
   }
 
   async findById(id: string): Promise<Omit<User, 'password_hash'> | null> {
-    const user = await this.prisma.user.findUnique({ 
+    const user = await (this.prisma as any).user.findUnique({
       where: { id },
-      include: { inboxes: { select: { id: true, name: true } } }
+      include: {
+        inboxes: { select: { id: true, name: true } },
+        sectors: { select: { id: true, name: true } },
+      },
     });
     if (!user) return null;
-    const { password_hash, ...result } = user;
-    return result as any;
+    const { password_hash, ...result } = user as any;
+    return result;
+  }
+
+  private async syncSector(userId: string, role: string) {
+    if (role === 'ADMIN') {
+      await (this.prisma as any).user.update({
+        where: { id: userId },
+        data: { sectors: { set: [] } },
+      });
+    } else {
+      const sector = await (this.prisma as any).sector.findFirst({
+        where: { name: { equals: role, mode: 'insensitive' } },
+      });
+      await (this.prisma as any).user.update({
+        where: { id: userId },
+        data: { sectors: { set: sector ? [{ id: sector.id }] : [] } },
+      });
+    }
   }
 
   async create(data: { name: string; email: string; password: string; role: string; tenant_id?: string; inboxIds?: string[] }): Promise<Omit<User, 'password_hash'>> {
@@ -42,6 +65,8 @@ export class UsersService {
       },
       include: { inboxes: { select: { id: true, name: true } } }
     });
+    // Auto-sync department based on role
+    await this.syncSector(user.id, data.role);
     const { password_hash: _, ...result } = user;
     return result as any;
   }
@@ -65,6 +90,10 @@ export class UsersService {
       data: updateData,
       include: { inboxes: { select: { id: true, name: true } } }
     });
+    // Auto-sync department when role changes
+    if (data.role) {
+      await this.syncSector(id, data.role);
+    }
     const { password_hash, ...result } = user;
     return result as any;
   }
