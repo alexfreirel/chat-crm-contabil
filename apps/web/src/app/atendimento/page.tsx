@@ -980,7 +980,7 @@ export default function Dashboard() {
             <div className="flex-1 relative overflow-hidden">
               <div className="pointer-events-none select-none absolute inset-0 flex items-center justify-center z-0">
                 <Image src="/landing/LOGO SEM FUNDO 01.png" alt="" width={883} height={453}
-                  style={{ width: '480px', height: 'auto', opacity: 0.07 }} aria-hidden />
+                  style={{ width: '620px', height: 'auto', opacity: 0.13 }} aria-hidden />
               </div>
             <div className="absolute inset-0 p-8 overflow-y-auto custom-scrollbar" ref={scrollRef}>
               <div className="flex flex-col gap-4 max-w-4xl mx-auto pb-4 relative z-10">
