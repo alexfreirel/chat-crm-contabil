@@ -45,6 +45,21 @@ export class SettingsController {
 
     console.log('Salvando configurações:', data);
     await this.settingsService.setWhatsAppConfig(data.apiUrl, data.apiKey, data.webhookUrl);
+
+    // Reaplicar webhook em todas as instâncias existentes
+    if (data.webhookUrl) {
+      try {
+        const instances = await this.whatsappService.listInstances();
+        const names: string[] = (instances as any[]).map((i) => i.instanceName).filter(Boolean);
+        await Promise.allSettled(
+          names.map((name) => this.whatsappService.setWebhook(name, data.webhookUrl!)),
+        );
+        console.log(`Webhook atualizado em ${names.length} instância(s):`, names);
+      } catch (e) {
+        console.error('Falha ao reaplicar webhook nas instâncias:', e);
+      }
+    }
+
     return { message: 'Configurações atualizadas com sucesso' };
   }
 
