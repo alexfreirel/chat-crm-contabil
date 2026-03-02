@@ -132,15 +132,18 @@ export default function Dashboard() {
     if (conv) setAiMode(!!conv.aiMode);
   }, [selectedId, conversations]);
 
-  const fetchConversations = useCallback(async (inboxId?: string | null) => {
+  const fetchConversations = useCallback(async (inboxId?: string | null, silent = false) => {
     try {
       const res = await api.get('/conversations', {
-        params: { inboxId: inboxId || undefined }
+        params: { inboxId: inboxId || undefined },
+        // silent=true: chamadas de background (inboxUpdate) não disparam redirect global de 401
+        ...( silent ? { _silent401: true } as any : {} ),
       });
       setConversations(res.data || []);
     } catch (e: any) {
-      // 401 is handled globally by api.ts interceptor
-      if (e.response?.status !== 401) {
+      if (e.response?.status === 401 && !silent) {
+        // Deixa o interceptor global (api.ts) tratar via evento auth:logout
+      } else if (e.response?.status !== 401) {
         setConversations([]);
       }
     } finally {
@@ -206,7 +209,8 @@ export default function Dashboard() {
 
     socket.on('inboxUpdate', () => {
       console.log('[SOCKET] inboxUpdate received, fetching conversations...');
-      fetchConversations(selectedInboxIdRef.current);
+      // silent=true: 401 nesta chamada de background não redireciona todos os usuários
+      fetchConversations(selectedInboxIdRef.current, true);
     });
 
     // Incoming message notification — broadcast to all; each client filters by assignedUserId
@@ -240,7 +244,7 @@ export default function Dashboard() {
       } else {
         setTransferResponseMsg(`❌ Transferência de "${data.contactName}" recusada${data.reason ? ': ' + data.reason : '.'}`);
       }
-      fetchConversations(selectedInboxIdRef.current);
+      fetchConversations(selectedInboxIdRef.current, true);
       setTimeout(() => setTransferResponseMsg(null), 6000);
     });
 

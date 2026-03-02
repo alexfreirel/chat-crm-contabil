@@ -19,6 +19,17 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
     }
   }, [pathname, router]);
 
+  // Escuta o evento auth:logout disparado pelo interceptor axios (api.ts)
+  // Usa router.replace (sem full page reload) para evitar cascata de logouts entre abas
+  useEffect(() => {
+    const handleAuthLogout = () => {
+      const isLoginPage = pathname === '/atendimento/login';
+      if (!isLoginPage) router.replace('/atendimento/login');
+    };
+    window.addEventListener('auth:logout', handleAuthLogout);
+    return () => window.removeEventListener('auth:logout', handleAuthLogout);
+  }, [pathname, router]);
+
   const isLoginPage = pathname === '/atendimento/login';
 
   if (isLoginPage) {
