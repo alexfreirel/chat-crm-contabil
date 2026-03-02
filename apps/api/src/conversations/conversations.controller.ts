@@ -42,6 +42,11 @@ export class ConversationsController {
     return this.conversationsService.assign(id, req.user.id);
   }
 
+  @Patch(':id/transfer')
+  transfer(@Param('id') id: string, @Body('userId') userId: string) {
+    return this.conversationsService.assign(id, userId);
+  }
+
   @Patch(':id/close')
   close(@Param('id') id: string) {
     return this.conversationsService.close(id);

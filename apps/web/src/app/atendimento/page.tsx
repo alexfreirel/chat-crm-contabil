@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply } from 'lucide-react';
+import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, UserCheck } from 'lucide-react';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { AudioRecorder } from '@/components/AudioRecorder';
 import { EmojiPickerButton } from '@/components/EmojiPickerButton';
@@ -22,6 +22,7 @@ interface ConversationSummary {
   assignedAgentName: string | null;
   aiMode: boolean;
   profile_picture_url?: string | null;
+  inboxId?: string | null;
 }
 
 interface MessageItem {
@@ -72,6 +73,9 @@ export default function Dashboard() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [replyingTo, setReplyingTo] = useState<MessageItem | null>(null);
+  const [transferModal, setTransferModal] = useState(false);
+  const [transferUsers, setTransferUsers] = useState<{ id: string; name: string }[]>([]);
+  const [transferring, setTransferring] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -270,6 +274,31 @@ export default function Dashboard() {
       fetchConversations();
     } catch (e) {
       console.error('Failed to close', e);
+    }
+  };
+
+  const handleOpenTransferModal = async () => {
+    if (!selected?.inboxId) return;
+    try {
+      const res = await api.get(`/inboxes/${selected.inboxId}`);
+      setTransferUsers(res.data?.users || []);
+      setTransferModal(true);
+    } catch (e) {
+      console.error('Failed to load operators', e);
+    }
+  };
+
+  const handleTransfer = async (userId: string) => {
+    if (!selectedId || selectedId.startsWith('demo-')) return;
+    try {
+      setTransferring(true);
+      await api.patch(`/conversations/${selectedId}/transfer`, { userId });
+      setTransferModal(false);
+      fetchConversations();
+    } catch (e) {
+      console.error('Failed to transfer', e);
+    } finally {
+      setTransferring(false);
     }
   };
 
@@ -619,6 +648,16 @@ export default function Dashboard() {
                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-ring text-primary-foreground font-bold text-sm shadow-[0_0_15px_rgba(var(--primary),0.3)] hover:shadow-[0_0_20px_rgba(var(--primary),0.4)] hover:-translate-y-0.5 transition-all"
                    >
                      Aceitar Atendimento
+                   </button>
+                 )}
+                 {!isClosed && isRealConvo && selected?.inboxId && (
+                   <button
+                     onClick={handleOpenTransferModal}
+                     title="Transferir conversa para outro operador"
+                     className="px-3 py-2 text-sm font-semibold text-sky-400 bg-sky-500/10 border border-sky-500/20 rounded-xl hover:bg-sky-500/20 transition-colors flex items-center gap-2"
+                   >
+                     <UserCheck size={16} />
+                     Transferir
                    </button>
                  )}
                  {!isClosed && isRealConvo && (
@@ -1019,6 +1058,46 @@ export default function Dashboard() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Transfer Modal */}
+      {transferModal && (
+        <div
+          className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm"
+          onClick={() => setTransferModal(false)}
+        >
+          <div
+            className="bg-card border border-border rounded-2xl p-6 w-80 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <UserCheck size={18} className="text-sky-400" />
+              <h3 className="font-bold text-base">Transferir Conversa</h3>
+            </div>
+            {transferUsers.length === 0 ? (
+              <p className="text-muted-foreground text-sm py-2">Nenhum operador disponível neste setor.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {transferUsers.map(user => (
+                  <button
+                    key={user.id}
+                    onClick={() => handleTransfer(user.id)}
+                    disabled={transferring}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-muted/30 hover:bg-sky-500/10 hover:text-sky-400 border border-border hover:border-sky-500/30 transition-colors font-medium text-sm disabled:opacity-50"
+                  >
+                    {user.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={() => setTransferModal(false)}
+              className="mt-4 w-full py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancelar
+            </button>
           </div>
         </div>
       )}

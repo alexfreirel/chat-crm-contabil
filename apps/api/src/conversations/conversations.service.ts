@@ -44,6 +44,7 @@ export class ConversationsService {
     return conversations.map((c) => ({
       id: c.id,
       leadId: c.lead_id,
+      inboxId: (c as any).inbox_id || null,
       contactName: c.lead?.name || c.lead?.phone || 'Desconhecido',
       contactPhone: c.lead?.phone || '',
       contactEmail: c.lead?.email || '',
