@@ -173,6 +173,7 @@ model Inbox {
   id            String         @id @default(uuid())
   tenant_id     String?
   name          String
+  rr_pointer    String?        // ID do último usuário atribuído (round-robin)
   created_at    DateTime       @default(now())
   updated_at    DateTime       @updatedAt
   tenant        Tenant?        @relation(fields: [tenant_id], references: [id])

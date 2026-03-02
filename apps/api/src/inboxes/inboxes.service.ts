@@ -125,4 +125,34 @@ export class InboxesService {
       include: { inbox: true }
     });
   }
+
+  /**
+   * Round-robin: retorna o ID do próximo operador do inbox.
+   * Usa $transaction para evitar double-assign em chamadas paralelas.
+   * Retorna null se o inbox não tiver operadores cadastrados.
+   */
+  async getNextAssignee(inboxId: string): Promise<string | null> {
+    return (this.prisma as any).$transaction(async (tx: any) => {
+      const inbox = await tx.inbox.findUnique({
+        where: { id: inboxId },
+        include: { users: { select: { id: true }, orderBy: { id: 'asc' } } },
+      });
+
+      if (!inbox?.users?.length) return null;
+
+      const users: { id: string }[] = inbox.users;
+      const currentIdx = inbox.rr_pointer
+        ? users.findIndex((u: any) => u.id === inbox.rr_pointer)
+        : -1;
+      const nextIdx = (currentIdx + 1) % users.length;
+      const nextUser = users[nextIdx];
+
+      await tx.inbox.update({
+        where: { id: inboxId },
+        data: { rr_pointer: nextUser.id },
+      });
+
+      return nextUser.id;
+    });
+  }
 }

@@ -92,10 +92,23 @@ export class EvolutionService {
         });
       } else if (!conv.inbox_id && inboxId) {
         // Se a conversa existe mas não tem setor, vincula ao setor da instância
-        await this.prisma.conversation.update({
+        conv = await this.prisma.conversation.update({
           where: { id: conv.id },
           data: { inbox_id: inboxId, instance_name: instanceName }
         });
+      }
+
+      // Auto-assign via round-robin se conversa sem operador atribuído
+      if (inboxId && !conv.assigned_user_id) {
+        const nextUserId = await this.inboxesService.getNextAssignee(inboxId);
+        if (nextUserId) {
+          conv = await this.prisma.conversation.update({
+            where: { id: conv.id },
+            data: { assigned_user_id: nextUserId },
+            // ai_mode NÃO é alterado: operador monitora, IA continua respondendo
+          });
+          this.logger.log(`[AUTO-ASSIGN] Conversa ${conv.id} → operador ${nextUserId}`);
+        }
       }
 
       // 3. Insert Message (idempotent)
@@ -179,7 +192,8 @@ export class EvolutionService {
       }
 
       // 5. Se AI_Mode ativo e mensagem recebida (não enviada), agenda job para a IA responder
-      if (!isOutgoing && conv.ai_mode && !conv.assigned_user_id) {
+      // Nota: assigned_user_id pode estar preenchido (monitorando) mas ai_mode ainda ativo
+      if (!isOutgoing && conv.ai_mode) {
         await this.aiQueue.add('process_ai_response', {
           conversation_id: conv.id,
           lead_id: lead.id,
