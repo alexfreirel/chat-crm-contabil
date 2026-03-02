@@ -16,6 +16,7 @@ model Tenant {
   users         User[]
   inboxes       Inbox[]
   instances     Instance[]
+  landingPages  LandingPage[]
 }
 
 model User {
@@ -197,4 +198,43 @@ model Instance {
 
   @@index([tenant_id])
   @@index([inbox_id])
+}
+
+model LandingPage {
+  id              String    @id @default(uuid())
+  title           String
+  slug            String    @unique
+  is_published    Boolean   @default(false)
+  content         Json
+  whatsapp_number String?
+  gtm_id          String?
+  views_count     Int       @default(0)
+  clicks_count    Int       @default(0)
+  tenant_id       String?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  events          LpEvent[]
+  tenant          Tenant?   @relation(fields: [tenant_id], references: [id])
+
+  @@index([slug])
+  @@index([tenant_id])
+}
+
+model LpEvent {
+  id              String      @id @default(uuid())
+  landing_page_id String
+  event_type      String
+  visitor_id      String?
+  utm_source      String?
+  utm_medium      String?
+  utm_campaign    String?
+  utm_term        String?
+  utm_content     String?
+  gclid           String?
+  referrer        String?
+  created_at      DateTime    @default(now())
+  landing_page    LandingPage @relation(fields: [landing_page_id], references: [id], onDelete: Cascade)
+
+  @@index([landing_page_id, created_at])
+  @@index([event_type])
 }
