@@ -976,11 +976,13 @@ export default function Dashboard() {
                </div>
             </header>
 
-            <div className="flex-1 p-8 overflow-y-auto custom-scrollbar relative" ref={scrollRef}>
-              {/* Logo watermark */}
-              <div className="pointer-events-none select-none absolute inset-0 flex items-center justify-center opacity-[0.04]">
-                <Image src="/landing/LOGO SEM FUNDO.png" alt="" width={480} height={300} className="invert" aria-hidden />
+            {/* Wrapper: watermark fixo + scroll area sobre ele */}
+            <div className="flex-1 relative overflow-hidden">
+              <div className="pointer-events-none select-none absolute inset-0 flex items-center justify-center z-0">
+                <Image src="/landing/LOGO SEM FUNDO.png" alt="" width={460} height={460}
+                  style={{ width: '380px', height: 'auto', opacity: 0.07 }} aria-hidden />
               </div>
+            <div className="absolute inset-0 p-8 overflow-y-auto custom-scrollbar" ref={scrollRef}>
               <div className="flex flex-col gap-4 max-w-4xl mx-auto pb-4 relative z-10">
                 {isRealConvo && messages.length > 0 ? (
                   messages.map((msg) => {
@@ -1187,6 +1189,7 @@ export default function Dashboard() {
                 )}
               </div>
             </div>
+            </div>{/* end watermark wrapper */}
 
             <footer className="px-6 pt-3 pb-6 bg-background shrink-0">
               {replyingTo && !isClosed && (
@@ -1271,13 +1274,13 @@ export default function Dashboard() {
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center">
-            <Image
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src="/landing/LOGO SEM FUNDO.png"
               alt="André Lustosa Advogados"
-              width={320}
-              height={200}
-              className="opacity-80 select-none pointer-events-none"
-              priority
+              style={{ width: '340px', height: 'auto', opacity: 0.85 }}
+              className="select-none pointer-events-none"
+              draggable={false}
             />
           </div>
         )}
