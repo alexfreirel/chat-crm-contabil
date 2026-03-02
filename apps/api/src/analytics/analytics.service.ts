@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
-export interface TrackEventDto {
+export class TrackEventDto {
   page_path: string;
   event_type: 'view' | 'whatsapp_click';
   visitor_id?: string;
