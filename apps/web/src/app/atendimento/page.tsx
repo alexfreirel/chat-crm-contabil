@@ -125,6 +125,7 @@ export default function Dashboard() {
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
+  const lawyerDropdownRef = useRef<HTMLDivElement>(null);
   const selectedInboxIdRef = useRef<string | null>(selectedInboxId);
   const selectedIdRef = useRef<string | null>(selectedId);
   const currentUserIdRef = useRef<string | null>(currentUserId);
@@ -145,8 +146,25 @@ export default function Dashboard() {
   useEffect(() => {
     const conv = conversations.find(c => c.id === selectedId);
     if (conv) setAiMode(!!conv.aiMode);
-    setShowLawyerDropdown(false);
+    // NÃO fechar o dropdown aqui — conversations muda via socket e fecharia prematuramente
   }, [selectedId, conversations]);
+
+  // Fechar dropdown ao trocar de conversa
+  useEffect(() => {
+    setShowLawyerDropdown(false);
+  }, [selectedId]);
+
+  // Fechar dropdown de especialista ao clicar fora
+  useEffect(() => {
+    if (!showLawyerDropdown) return;
+    const handler = (e: MouseEvent) => {
+      if (lawyerDropdownRef.current && !lawyerDropdownRef.current.contains(e.target as Node)) {
+        setShowLawyerDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showLawyerDropdown]);
 
   const fetchConversations = useCallback(async (inboxId?: string | null, silent = false) => {
     try {
@@ -475,13 +493,15 @@ export default function Dashboard() {
   };
 
   const handleAssignLawyerInbox = async (lawyerId: string | null) => {
-    if (!selectedId) return;
+    const convId = selectedIdRef.current || selectedId;
+    if (!convId) return;
+    setShowLawyerDropdown(false);
     try {
-      await api.patch(`/conversations/${selectedId}/assign-lawyer`, { lawyerId });
-      setShowLawyerDropdown(false);
+      await api.patch(`/conversations/${convId}/assign-lawyer`, { lawyerId });
       fetchConversations(selectedInboxIdRef.current);
     } catch (e: any) {
       console.error('Failed to assign lawyer', e);
+      alert('Erro ao atribuir especialista: ' + (e?.response?.data?.message || e?.message || 'Tente novamente'));
     }
   };
 
@@ -987,7 +1007,7 @@ export default function Dashboard() {
                          </span>
                        )}
                        {selected.legalArea && (
-                         <div className="relative">
+                         <div className="relative" ref={lawyerDropdownRef}>
                            <button
                              onClick={() => setShowLawyerDropdown(v => !v)}
                              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${selected.assignedLawyerName ? 'bg-primary/10 text-primary border-primary/20 hover:bg-primary/20' : 'bg-muted/50 text-muted-foreground border-border hover:bg-muted'}`}
@@ -997,40 +1017,37 @@ export default function Dashboard() {
                              {selected.assignedLawyerName || 'Atribuir especialista'}
                            </button>
                            {showLawyerDropdown && (
-                             <>
-                               <div className="fixed inset-0 z-40" onClick={() => setShowLawyerDropdown(false)} />
-                               <div className="absolute top-full left-0 mt-1 z-50 bg-card border border-border rounded-xl shadow-xl w-56 py-1 text-[12px]">
-                                 <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                                   {selected.assignedLawyerName ? 'Trocar especialista' : 'Escolher especialista'}
-                                 </p>
-                                 {allSpecialists.length === 0 && (
-                                   <p className="px-3 py-2 text-[11px] text-muted-foreground">Nenhum especialista cadastrado</p>
-                                 )}
-                                 {allSpecialists.map(u => (
-                                   <button
-                                     key={u.id}
-                                     onClick={() => handleAssignLawyerInbox(u.id)}
-                                     className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2 ${u.id === selected.assignedLawyerId ? 'text-primary font-semibold' : 'text-foreground'}`}
-                                   >
-                                     <span className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-bold text-primary shrink-0">
-                                       {u.name.charAt(0)}
-                                     </span>
-                                     <div>
-                                       <p className="leading-tight">{u.name}</p>
-                                       <p className="text-[9px] text-muted-foreground">{u.specialties.join(', ')}</p>
-                                     </div>
-                                   </button>
-                                 ))}
-                                 {selected.assignedLawyerId && (
-                                   <button
-                                     onClick={() => handleAssignLawyerInbox(null)}
-                                     className="w-full text-left px-3 py-2 text-muted-foreground hover:bg-accent hover:text-destructive transition-colors text-[11px] border-t border-border mt-1"
-                                   >
-                                     Remover especialista
-                                   </button>
-                                 )}
-                               </div>
-                             </>
+                             <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-xl shadow-xl w-56 py-1 text-[12px]" style={{ zIndex: 9999 }}>
+                               <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                                 {selected.assignedLawyerName ? 'Trocar especialista' : 'Escolher especialista'}
+                               </p>
+                               {allSpecialists.length === 0 && (
+                                 <p className="px-3 py-2 text-[11px] text-muted-foreground">Nenhum especialista cadastrado</p>
+                               )}
+                               {allSpecialists.map(u => (
+                                 <button
+                                   key={u.id}
+                                   onClick={() => handleAssignLawyerInbox(u.id)}
+                                   className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2 ${u.id === selected.assignedLawyerId ? 'text-primary font-semibold' : 'text-foreground'}`}
+                                 >
+                                   <span className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-bold text-primary shrink-0">
+                                     {u.name.charAt(0)}
+                                   </span>
+                                   <div>
+                                     <p className="leading-tight">{u.name}</p>
+                                     <p className="text-[9px] text-muted-foreground">{u.specialties.join(', ')}</p>
+                                   </div>
+                                 </button>
+                               ))}
+                               {selected.assignedLawyerId && (
+                                 <button
+                                   onClick={() => handleAssignLawyerInbox(null)}
+                                   className="w-full text-left px-3 py-2 text-muted-foreground hover:bg-accent hover:text-destructive transition-colors text-[11px] border-t border-border mt-1"
+                                 >
+                                   Remover especialista
+                                 </button>
+                               )}
+                             </div>
                            )}
                          </div>
                        )}
