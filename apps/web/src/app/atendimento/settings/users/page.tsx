@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Plus, Pencil, Trash2, X, UserCog } from 'lucide-react';
 import api from '@/lib/api';
 
-const SPECIALTY_SUGGESTIONS = ['Trabalhista', 'Civil', 'Criminal', 'Tributário', 'Família', 'Empresarial', 'Previdenciário', 'Imobiliário'];
+const SPECIALTY_SUGGESTIONS = ['Trabalhista', 'Civil', 'Criminal', 'Tributário', 'Família', 'Empresarial', 'Previdenciário', 'Imobiliário', 'Consumidor'];
 
 function roleBadge(role: string) {
   if (role === 'ADMIN') {
@@ -370,7 +370,7 @@ export default function UsersSettingsPage() {
                   )}
                 </div>
               </div>
-              {form.role && form.role !== 'ADMIN' && (
+              {form.role && (
                 <div className="space-y-1.5">
                   <label className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider ml-1">
                     ⚖️ Especialidades Jurídicas
