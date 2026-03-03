@@ -61,7 +61,29 @@ export class LeadsService {
   }
 
   async findOne(id: string): Promise<Lead | null> {
-    return this.prisma.lead.findUnique({ where: { id } });
+    return this.prisma.lead.findUnique({
+      where: { id },
+      include: {
+        memory: true,
+        conversations: {
+          orderBy: { last_message_at: 'desc' },
+          include: {
+            assigned_user: { select: { id: true, name: true } },
+            messages: {
+              orderBy: { created_at: 'desc' },
+              take: 1,
+            },
+          },
+        },
+        tasks: {
+          orderBy: { created_at: 'desc' },
+          take: 10,
+        },
+        _count: {
+          select: { conversations: true },
+        },
+      },
+    }) as any;
   }
 
   async upsert(data: Prisma.LeadCreateInput): Promise<Lead> {
