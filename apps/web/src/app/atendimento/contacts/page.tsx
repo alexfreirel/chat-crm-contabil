@@ -22,6 +22,7 @@ export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   const fetchAllContacts = async () => {
     try {
@@ -153,7 +154,10 @@ export default function ContactsPage() {
                     <tr key={contact.id} className="hover:bg-foreground/[0.02] transition-colors group">
                       <td className="px-6 py-5">
                         <div className="flex items-center gap-4">
-                          <div className="w-9 h-9 rounded-full bg-primary/10 border border-border flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
+                          <div
+                            className={`w-9 h-9 rounded-full bg-primary/10 border border-border flex items-center justify-center overflow-hidden shrink-0 shadow-sm ${contact.profile_picture_url ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+                            onClick={contact.profile_picture_url ? () => setLightbox(contact.profile_picture_url!) : undefined}
+                          >
                             {contact.profile_picture_url ? (
                               <img src={contact.profile_picture_url} alt={contact.name} className="w-full h-full object-cover" loading="lazy" />
                             ) : (
@@ -204,6 +208,21 @@ export default function ContactsPage() {
           )}
         </div>
       </main>
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center cursor-pointer"
+          onClick={() => setLightbox(null)}
+        >
+          <img
+            src={lightbox}
+            alt="Foto do contato"
+            className="max-w-[80vw] max-h-[80vh] rounded-2xl shadow-2xl object-contain"
+            onClick={e => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }
