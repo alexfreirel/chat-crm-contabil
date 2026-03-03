@@ -140,15 +140,19 @@ function ClientPanel({ leadId, onClose, onLightbox }: { leadId: string; onClose:
     api.get(`/conversations/lead/${leadId}`).then(r => {
       const convs = r.data as any[];
 
-      // Ordenar pela mensagem mais recente para pegar a conversa certa
-      const sortedConvs = [...convs].sort((a: any, b: any) =>
-        new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
-      );
+      // Priorizar conversas com mensagens; entre elas, ordenar pela mais recente
+      const withMessages = convs.filter((c: any) => (c.messages?.length || 0) > 0);
+      const pool = withMessages.length > 0 ? withMessages : convs;
+      const sortedConvs = [...pool].sort((a: any, b: any) => {
+        const aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+        const bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+        return bTime - aTime;
+      });
 
-      // ID da conversa mais recente
+      // ID da conversa mais recente com mensagens
       if (sortedConvs?.[0]?.id) setResolvedConvId(sortedConvs[0].id);
 
-      // Atendente da conversa mais recente
+      // Atendente da conversa selecionada
       const agent = sortedConvs?.[0]?.assigned_user;
       if (agent) setResolvedAgent(agent);
 
