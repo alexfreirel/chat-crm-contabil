@@ -135,6 +135,8 @@ export default function Dashboard() {
   const selectedInboxIdRef = useRef<string | null>(selectedInboxId);
   const selectedIdRef = useRef<string | null>(selectedId);
   const currentUserIdRef = useRef<string | null>(currentUserId);
+  // IDs de transferências já exibidas no popup (evita re-exibir após fechar)
+  const shownTransferIdsRef = useRef<Set<string>>(new Set());
 
   // Keep refs in sync
   useEffect(() => { selectedInboxIdRef.current = selectedInboxId; }, [selectedInboxId]);
@@ -260,6 +262,9 @@ export default function Dashboard() {
       console.log('[SOCKET] inboxUpdate received, fetching conversations...');
       // silent=true: 401 nesta chamada de background não redireciona todos os usuários
       fetchConversations(selectedInboxIdRef.current, true);
+      // Também atualiza transferências pendentes — garante que "Aguardando você" apareça
+      // mesmo se o evento transfer_request direto for perdido
+      fetchPendingTransfers();
     });
 
     // Incoming message notification — broadcast to all; each client filters by assignedUserId
@@ -280,6 +285,7 @@ export default function Dashboard() {
     // Transfer request: incoming popup + sound for target operator
     socket.on('transfer_request', (data: { conversationId: string; fromUserName: string; contactName: string; reason: string | null; audioIds?: string[] }) => {
       playNotificationSound();
+      shownTransferIdsRef.current.add(data.conversationId);
       setIncomingTransfer(data);
       setShowDeclineInput(false);
       setDeclineReason('');
@@ -312,6 +318,33 @@ export default function Dashboard() {
     fetchPendingTransfers();
     fetchSpecialists();
   }, [fetchConversations, fetchPendingTransfers, selectedInboxId]);
+
+  // Polling de transferências pendentes: fallback quando o evento socket direto é perdido
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchPendingTransfers();
+    }, 12000); // a cada 12 segundos
+    return () => clearInterval(interval);
+  }, [fetchPendingTransfers]);
+
+  // Auto-abrir popup para transferências ainda não exibidas ao usuário
+  useEffect(() => {
+    if (incomingTransfer) return; // já há um popup aberto
+    const unseen = pendingTransfers.find(pt => !shownTransferIdsRef.current.has(pt.conversationId));
+    if (unseen) {
+      shownTransferIdsRef.current.add(unseen.conversationId);
+      playNotificationSound();
+      setIncomingTransfer({
+        conversationId: unseen.conversationId,
+        fromUserName: unseen.fromUserName,
+        contactName: unseen.contactName,
+        reason: unseen.reason,
+        audioIds: unseen.audioIds,
+      });
+      setShowDeclineInput(false);
+      setDeclineReason('');
+    }
+  }, [pendingTransfers, incomingTransfer]);
 
   // Fetch messages when conversation selected
   useEffect(() => {
@@ -542,6 +575,7 @@ export default function Dashboard() {
     setProcessingTransfer(true);
     try {
       await api.patch(`/conversations/${incomingTransfer.conversationId}/transfer-accept`);
+      shownTransferIdsRef.current.delete(incomingTransfer.conversationId);
       setIncomingTransfer(null);
       fetchPendingTransfers();
       fetchConversations(selectedInboxIdRef.current);
@@ -557,6 +591,7 @@ export default function Dashboard() {
     setProcessingTransfer(true);
     try {
       await api.patch(`/conversations/${incomingTransfer.conversationId}/transfer-decline`, { reason: declineReason.trim() || undefined });
+      shownTransferIdsRef.current.delete(incomingTransfer.conversationId);
       setIncomingTransfer(null);
       setDeclineReason('');
       setShowDeclineInput(false);
@@ -571,6 +606,7 @@ export default function Dashboard() {
   const handleQuickAcceptTransfer = async (conversationId: string) => {
     try {
       await api.patch(`/conversations/${conversationId}/transfer-accept`);
+      shownTransferIdsRef.current.delete(conversationId);
       fetchPendingTransfers();
       fetchConversations(selectedInboxIdRef.current);
     } catch (e) {

@@ -203,6 +203,10 @@ export class ConversationsService {
       audioIds: audioIds?.length ? audioIds : undefined,
     });
 
+    // Broadcast para todos os clientes: garante que o destino atualize
+    // a lista "Aguardando você" mesmo se o evento direto for perdido
+    this.chatGateway.emitConversationsUpdate(null);
+
     return conv;
   }
 
