@@ -923,7 +923,11 @@ export default function Dashboard() {
           <>
             <header className="h-[80px] px-8 border-b border-border bg-card/50 backdrop-blur-md flex items-center justify-between z-30 shrink-0">
                <div className="flex items-center gap-4">
-                 <div className="w-12 h-12 rounded-full bg-accent border border-border flex items-center justify-center overflow-hidden shadow-sm">
+                 <div
+                   className={`w-12 h-12 rounded-full bg-accent border border-border flex items-center justify-center overflow-hidden shadow-sm ${selected.profile_picture_url ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+                   onClick={() => selected.profile_picture_url && setLightbox(selected.profile_picture_url)}
+                   title={selected.profile_picture_url ? 'Ver foto ampliada' : undefined}
+                 >
                    {selected.profile_picture_url ? (
                      <img src={selected.profile_picture_url} alt={selected.contactName} className="w-full h-full object-cover" loading="lazy" />
                    ) : (
