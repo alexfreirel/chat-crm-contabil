@@ -11,7 +11,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Response } from 'express';
+import type { Response } from 'express';
 import { TransferAudioService } from './transfer-audio.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
