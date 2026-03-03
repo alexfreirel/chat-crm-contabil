@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, KeyboardEvent } from 'react';
-import { Search, User, Phone, Loader2, RefreshCw, X, MessageSquare, Calendar, Tag, Brain, ChevronDown, ChevronUp, ExternalLink, Mail, Pencil, Check, Plus, UserCheck } from 'lucide-react';
+import { Search, User, Phone, Loader2, RefreshCw, X, MessageSquare, Calendar, Brain, ChevronDown, ChevronUp, Mail, Pencil, Check, UserCheck, FolderOpen, FileText, Image as ImageIcon, Mic, Video, Download, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { formatPhone } from '@/lib/utils';
@@ -48,21 +48,29 @@ interface LeadDetail {
   _count?: { conversations: number };
 }
 
-const STAGE_COLORS: Record<string, string> = {
-  'NOVO': 'bg-slate-500/15 text-slate-400 border-slate-500/20',
-  'Contato Inicial': 'bg-blue-500/15 text-blue-400 border-blue-500/20',
-  'Em Qualificação': 'bg-amber-500/15 text-amber-400 border-amber-500/20',
-  'Aguardando Formulário': 'bg-violet-500/15 text-violet-400 border-violet-500/20',
-  'Reunião Agendada': 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
-  'Desqualificado': 'bg-red-500/15 text-red-400 border-red-500/20',
-  'Finalizado': 'bg-green-500/15 text-green-400 border-green-500/20',
-};
 
-const STATUS_COLORS: Record<string, string> = {
-  'ABERTO': 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
-  'FECHADO': 'bg-slate-500/15 text-slate-400 border-slate-500/20',
-  'PENDENTE': 'bg-amber-500/15 text-amber-400 border-amber-500/20',
-};
+
+interface DocItem {
+  messageId: string;
+  filename: string;
+  mimeType: string;
+  size?: number;
+  createdAt: string;
+}
+
+function formatBytes(bytes?: number): string {
+  if (!bytes) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function DocIcon({ mimeType }: { mimeType: string }) {
+  if (mimeType.startsWith('image/')) return <ImageIcon size={15} className="text-blue-400" />;
+  if (mimeType.startsWith('audio/')) return <Mic size={15} className="text-purple-400" />;
+  if (mimeType.startsWith('video/')) return <Video size={15} className="text-emerald-400" />;
+  return <FileText size={15} className="text-amber-400" />;
+}
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -72,7 +80,6 @@ function formatDateShort(iso: string) {
   return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
-const STAGES = ['NOVO', 'Contato Inicial', 'Em Qualificação', 'Aguardando Formulário', 'Reunião Agendada', 'Desqualificado', 'Finalizado'];
 
 function InlineInput({ value, onSave, onCancel, placeholder }: { value: string; onSave: (v: string) => void; onCancel: () => void; placeholder?: string }) {
   const [val, setVal] = useState(value);
@@ -109,30 +116,61 @@ function ClientPanel({ leadId, onClose, onLightbox }: { leadId: string; onClose:
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [editing, setEditing] = useState<'name' | 'email' | null>(null);
   const [saving, setSaving] = useState(false);
-  const [stageOpen, setStageOpen] = useState(false);
-  const [newTag, setNewTag] = useState('');
-  const [addingTag, setAddingTag] = useState(false);
   const [resolvedAgent, setResolvedAgent] = useState<{ id: string; name: string } | null>(null);
-  const tagInputRef = useRef<HTMLInputElement>(null);
+  const [documents, setDocuments] = useState<DocItem[]>([]);
+  const [docsOpen, setDocsOpen] = useState(false);
 
   useEffect(() => {
     setLoading(true);
     setResolvedAgent(null);
+    setDocuments([]);
     api.get(`/leads/${leadId}`).then(r => {
       setLead(r.data);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [leadId]);
 
-  // Buscar atendente das conversas (fonte mais confiável)
+  // Buscar atendente e documentos das conversas
   useEffect(() => {
     if (!leadId) return;
     api.get(`/conversations/lead/${leadId}`).then(r => {
       const convs = r.data as any[];
+
+      // Atendente
       const agent = convs?.[0]?.assigned_user;
       if (agent) setResolvedAgent(agent);
+
+      // Documentos enviados pelo contato (direction: 'in' com media)
+      const docs: DocItem[] = [];
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      convs.forEach((conv: any) => {
+        conv.messages?.forEach((msg: any) => {
+          if (msg.direction === 'in' && msg.media) {
+            const mime = msg.media.mime_type || '';
+            const ext = (msg.media.s3_key?.split('.').pop() || 'bin').split(';')[0].trim();
+            let defaultName = `arquivo.${ext}`;
+            if (mime.startsWith('image/')) defaultName = `imagem.${ext}`;
+            else if (mime.startsWith('audio/')) defaultName = `audio.${ext}`;
+            else if (mime.startsWith('video/')) defaultName = `video.${ext}`;
+            docs.push({
+              messageId: msg.id,
+              filename: msg.media.original_name || defaultName,
+              mimeType: mime,
+              size: msg.media.size,
+              createdAt: msg.created_at,
+            });
+          }
+        });
+      });
+      docs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setDocuments(docs);
     }).catch(() => {});
   }, [leadId]);
+
+  const deleteDoc = (messageId: string) => {
+    if (!confirm('Remover do Banco de Documentos?\n(O arquivo permanece no chat e no banco de dados)')) return;
+    setDocuments(prev => prev.filter(d => d.messageId !== messageId));
+  };
 
   const saveField = async (field: 'name' | 'email', value: string) => {
     if (!lead) return;
@@ -141,37 +179,6 @@ function ClientPanel({ leadId, onClose, onLightbox }: { leadId: string; onClose:
       await api.patch(`/leads/${leadId}`, { [field]: value });
       setLead(prev => prev ? { ...prev, [field]: value } : prev);
     } catch (e) { console.error(e); } finally { setSaving(false); setEditing(null); }
-  };
-
-  const saveStage = async (stage: string) => {
-    if (!lead) return;
-    setSaving(true);
-    try {
-      await api.patch(`/leads/${leadId}/stage`, { stage });
-      setLead(prev => prev ? { ...prev, stage } : prev);
-    } catch (e) { console.error(e); } finally { setSaving(false); setStageOpen(false); }
-  };
-
-  const addTag = async () => {
-    if (!lead || !newTag.trim()) return;
-    const tag = newTag.trim();
-    if (lead.tags?.includes(tag)) { setNewTag(''); return; }
-    const tags = [...(lead.tags || []), tag];
-    setSaving(true);
-    try {
-      await api.patch(`/leads/${leadId}`, { tags });
-      setLead(prev => prev ? { ...prev, tags } : prev);
-    } catch (e) { console.error(e); } finally { setSaving(false); setNewTag(''); setAddingTag(false); }
-  };
-
-  const removeTag = async (tag: string) => {
-    if (!lead) return;
-    const tags = (lead.tags || []).filter(t => t !== tag);
-    setSaving(true);
-    try {
-      await api.patch(`/leads/${leadId}`, { tags });
-      setLead(prev => prev ? { ...prev, tags } : prev);
-    } catch (e) { console.error(e); } finally { setSaving(false); }
   };
 
   // Atendente: resolvedAgent (via /conversations/lead/:id) tem prioridade, fallback para lead.conversations
@@ -184,8 +191,8 @@ function ClientPanel({ leadId, onClose, onLightbox }: { leadId: string; onClose:
       {/* Backdrop */}
       <div className="fixed inset-0 z-[90] bg-black/50 backdrop-blur-[3px]" onClick={onClose} />
 
-      {/* Modal centralizado */}
-      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[560px] max-h-[88vh] z-[100] bg-card border border-border rounded-2xl shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
+      {/* Modal grande */}
+      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[780px] max-h-[90vh] z-[100] bg-card border border-border rounded-2xl shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
         {/* Header do painel */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <h2 className="text-[15px] font-bold text-foreground">Painel do Cliente</h2>
@@ -242,32 +249,6 @@ function ClientPanel({ leadId, onClose, onLightbox }: { leadId: string; onClose:
                     )}
                   </div>
 
-                  {/* Stage editável */}
-                  <div className="relative mt-1.5">
-                    <button
-                      onClick={() => setStageOpen(!stageOpen)}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider border transition-opacity hover:opacity-80 ${STAGE_COLORS[lead.stage] || STAGE_COLORS['NOVO']}`}
-                    >
-                      {lead.stage}
-                      <ChevronDown size={10} />
-                    </button>
-                    {stageOpen && (
-                      <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-xl shadow-xl z-10 py-1 min-w-[200px]">
-                        {STAGES.map(s => (
-                          <button
-                            key={s}
-                            onClick={() => saveStage(s)}
-                            className={`w-full text-left px-3 py-2 text-[12px] font-semibold hover:bg-accent transition-colors flex items-center gap-2 ${lead.stage === s ? 'text-primary' : 'text-foreground'}`}
-                          >
-                            <span className={`w-2 h-2 rounded-full border ${STAGE_COLORS[s] || STAGE_COLORS['NOVO']}`} />
-                            {s}
-                            {lead.stage === s && <Check size={11} className="ml-auto text-primary" />}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
                   {/* Dados de contato */}
                   <div className="mt-3 flex flex-col gap-1.5">
                     {/* Telefone — não editável */}
@@ -319,48 +300,9 @@ function ClientPanel({ leadId, onClose, onLightbox }: { leadId: string; onClose:
                 </div>
               </div>
 
-              {/* Tags editáveis */}
-              <div className="mt-4 flex flex-wrap gap-2 items-center">
-                {(lead.tags || []).map((tag) => (
-                  <span key={tag} className="inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 rounded-full bg-primary/10 text-primary text-[11px] font-semibold border border-primary/20">
-                    <Tag size={10} />
-                    {tag}
-                    <button onClick={() => removeTag(tag)} className="ml-0.5 hover:text-red-400 transition-colors">
-                      <X size={10} />
-                    </button>
-                  </span>
-                ))}
-                {addingTag ? (
-                  <div className="flex items-center gap-1">
-                    <input
-                      ref={tagInputRef}
-                      autoFocus
-                      value={newTag}
-                      onChange={e => setNewTag(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') addTag(); if (e.key === 'Escape') { setAddingTag(false); setNewTag(''); } }}
-                      placeholder="nova tag"
-                      className="w-24 bg-background border border-primary/40 rounded-full px-2.5 py-0.5 text-[11px] text-foreground outline-none focus:ring-1 focus:ring-primary/30"
-                    />
-                    <button onClick={addTag} className="w-5 h-5 flex items-center justify-center rounded-full bg-primary/15 text-primary hover:bg-primary/25 transition-colors">
-                      <Check size={10} />
-                    </button>
-                    <button onClick={() => { setAddingTag(false); setNewTag(''); }} className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-accent text-muted-foreground transition-colors">
-                      <X size={10} />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setAddingTag(true)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-dashed border-border text-muted-foreground text-[11px] hover:border-primary/40 hover:text-primary transition-colors"
-                  >
-                    <Plus size={10} />
-                    Tag
-                  </button>
-                )}
-              </div>
             </div>
 
-            {/* Seção: Memória IA */}
+            {/* Seção: Histórico de Atendimento */}
             {lead.memory && (
               <div className="border-b border-border">
                 <button
@@ -369,7 +311,7 @@ function ClientPanel({ leadId, onClose, onLightbox }: { leadId: string; onClose:
                 >
                   <div className="flex items-center gap-2.5">
                     <Brain size={15} className="text-violet-400" />
-                    <span className="text-[13px] font-bold text-foreground">Memória IA</span>
+                    <span className="text-[13px] font-bold text-foreground">Histórico de Atendimento</span>
                     <span className="text-[10px] text-muted-foreground font-mono">v{lead.memory.version}</span>
                   </div>
                   {memoryOpen ? <ChevronUp size={15} className="text-muted-foreground" /> : <ChevronDown size={15} className="text-muted-foreground" />}
@@ -445,72 +387,227 @@ function ClientPanel({ leadId, onClose, onLightbox }: { leadId: string; onClose:
               </div>
             )}
 
-            {/* Seção: Conversas */}
-            <div className="px-6 py-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <MessageSquare size={15} className="text-primary" />
-                  <span className="text-[13px] font-bold text-foreground">Conversas</span>
-                  <span className="text-[11px] text-muted-foreground bg-foreground/[0.06] px-2 py-0.5 rounded-full font-mono">{lead.conversations?.length ?? 0}</span>
+            {/* Seção: Banco de Documentos */}
+            <div className="border-t border-border">
+              <button
+                className="w-full px-6 py-4 flex items-center justify-between hover:bg-accent/30 transition-colors"
+                onClick={() => setDocsOpen(!docsOpen)}
+              >
+                <div className="flex items-center gap-2.5">
+                  <FolderOpen size={15} className="text-primary" />
+                  <span className="text-[13px] font-bold text-foreground">Banco de Documentos</span>
+                  {documents.length > 0 && (
+                    <span className="text-[11px] text-muted-foreground bg-foreground/[0.06] px-2 py-0.5 rounded-full font-mono">{documents.length}</span>
+                  )}
                 </div>
-              </div>
+                {docsOpen ? <ChevronUp size={15} className="text-muted-foreground" /> : <ChevronDown size={15} className="text-muted-foreground" />}
+              </button>
 
-              {!lead.conversations?.length ? (
-                <p className="text-[13px] text-muted-foreground text-center py-8 opacity-50">Nenhuma conversa</p>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  {lead.conversations.map((conv) => {
-                    const lastMsg = conv.messages[0];
+              {docsOpen && (
+                <div className="px-6 pb-5">
+                  {documents.length === 0 ? (
+                    <p className="text-[13px] text-muted-foreground text-center py-6 opacity-40 italic">Nenhum documento enviado</p>
+                  ) : (() => {
+                    const getCategory = (mime: string) => {
+                      if (mime.startsWith('image/')) return 'Imagens';
+                      if (mime.startsWith('audio/')) return 'Áudios';
+                      if (mime.startsWith('video/')) return 'Vídeos';
+                      return 'Arquivos';
+                    };
+                    const categoryOrder = ['Arquivos', 'Imagens', 'Vídeos', 'Áudios'];
+                    const grouped = documents.reduce<Record<string, DocItem[]>>((acc, doc) => {
+                      const cat = getCategory(doc.mimeType);
+                      if (!acc[cat]) acc[cat] = [];
+                      acc[cat].push(doc);
+                      return acc;
+                    }, {});
+                    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
                     return (
-                      <div
-                        key={conv.id}
-                        className="rounded-xl border border-border bg-foreground/[0.02] hover:bg-accent/30 transition-colors p-4 cursor-pointer group"
-                        onClick={() => router.push(`/atendimento/chat/${conv.id}`)}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            {/* Status + área */}
-                            <div className="flex items-center gap-2 flex-wrap mb-2">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${STATUS_COLORS[conv.status] || STATUS_COLORS['ABERTO']}`}>
-                                {conv.status}
-                              </span>
-                              {conv.legal_area && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                                  {conv.legal_area}
-                                </span>
-                              )}
-                              {conv.ai_mode && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-violet-500/10 text-violet-400 border border-violet-500/20">
-                                  IA
-                                </span>
-                              )}
-                            </div>
+                      <div className="flex flex-col gap-5">
+                        {categoryOrder.filter(cat => grouped[cat]?.length).map(cat => (
+                          <div key={cat}>
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">{cat} <span className="font-mono font-normal normal-case">({grouped[cat].length})</span></p>
 
-                            {/* Última mensagem */}
-                            {lastMsg?.text && (
-                              <p className="text-[12px] text-muted-foreground truncate leading-relaxed">
-                                {lastMsg.direction === 'in' ? '' : '→ '}{lastMsg.text}
-                              </p>
+                            {/* Imagens — grade de thumbnails clicáveis */}
+                            {cat === 'Imagens' && (
+                              <div className="grid grid-cols-4 gap-2">
+                                {grouped[cat].map(doc => (
+                                  <div key={doc.messageId} className="relative aspect-square group">
+                                    <button
+                                      onClick={() => onLightbox(`${API_URL}/media/${doc.messageId}`)}
+                                      className="w-full h-full rounded-xl overflow-hidden border border-border bg-foreground/[0.04] hover:opacity-90 transition-opacity"
+                                      title={doc.filename}
+                                    >
+                                      <img
+                                        src={`${API_URL}/media/${doc.messageId}`}
+                                        alt={doc.filename}
+                                        className="w-full h-full object-cover"
+                                        loading="lazy"
+                                      />
+                                    </button>
+                                    {/* Botões no canto superior direito */}
+                                    <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <a
+                                        href={`${API_URL}/media/${doc.messageId}?dl=1`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        title="Baixar imagem"
+                                        onClick={e => e.stopPropagation()}
+                                        className="w-6 h-6 flex items-center justify-center rounded-lg bg-black/60 text-white hover:bg-black/80 transition-colors"
+                                      >
+                                        <Download size={11} />
+                                      </a>
+                                      <button
+                                        onClick={e => { e.stopPropagation(); deleteDoc(doc.messageId); }}
+                                        title="Excluir imagem"
+                                        className="w-6 h-6 flex items-center justify-center rounded-lg bg-red-600/80 text-white hover:bg-red-700 transition-colors"
+                                      >
+                                        <Trash2 size={11} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
                             )}
 
-                            {/* Agente + data */}
-                            <div className="flex items-center gap-2 mt-2">
-                              {conv.assigned_user && (
-                                <span className="text-[11px] text-muted-foreground/70">@{conv.assigned_user.name.split(' ')[0]}</span>
-                              )}
-                              <span className="text-[11px] text-muted-foreground/50">{formatDateShort(conv.last_message_at)}</span>
-                            </div>
+                            {/* Vídeos — grade com ícone grande */}
+                            {cat === 'Vídeos' && (
+                              <div className="grid grid-cols-3 gap-2">
+                                {grouped[cat].map(doc => (
+                                  <div key={doc.messageId} className="relative group flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border bg-foreground/[0.02] hover:bg-accent/40 transition-colors">
+                                    <a
+                                      href={`${API_URL}/media/${doc.messageId}?dl=1`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      title={doc.filename}
+                                      className="flex flex-col items-center gap-1.5 w-full"
+                                    >
+                                      <div className="w-14 h-14 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                                        <Video size={28} className="text-emerald-400" />
+                                      </div>
+                                      <p className="text-[10px] text-muted-foreground truncate w-full text-center">{doc.filename}</p>
+                                      <p className="text-[9px] text-muted-foreground/60">{formatDateShort(doc.createdAt)}</p>
+                                    </a>
+                                    <button
+                                      onClick={() => deleteDoc(doc.messageId)}
+                                      title="Excluir vídeo"
+                                      className="absolute top-1.5 right-1.5 w-6 h-6 flex items-center justify-center rounded-lg bg-red-600/80 text-white hover:bg-red-700 transition-colors opacity-0 group-hover:opacity-100"
+                                    >
+                                      <Trash2 size={11} />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
 
-                            {/* next_step */}
-                            {conv.next_step && (
-                              <p className="text-[11px] text-primary/70 mt-1.5">Próximo passo: {conv.next_step}</p>
+                            {/* Arquivos — card com prévia acima + info abaixo */}
+                            {cat === 'Arquivos' && (
+                              <div className="flex flex-col gap-3">
+                                {grouped[cat].map(doc => {
+                                  const isPdf = doc.mimeType === 'application/pdf';
+                                  return (
+                                    <div key={doc.messageId} className="rounded-xl border border-border bg-foreground/[0.02] overflow-hidden group">
+                                      {/* Prévia */}
+                                      <a
+                                        href={`${API_URL}/media/${doc.messageId}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        title="Clique para abrir"
+                                        className="block relative"
+                                      >
+                                        {isPdf ? (
+                                          <div className="relative w-full h-[180px] bg-foreground/[0.04] overflow-hidden">
+                                            <iframe
+                                              src={`${API_URL}/media/${doc.messageId}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+                                              title={doc.filename}
+                                              className="absolute inset-0 w-full h-full pointer-events-none border-0"
+                                              loading="lazy"
+                                            />
+                                            <div className="absolute inset-0 hover:bg-black/10 transition-colors" />
+                                          </div>
+                                        ) : (
+                                          <div className="w-full h-[80px] bg-foreground/[0.04] flex items-center justify-center gap-2 hover:bg-foreground/[0.07] transition-colors">
+                                            <DocIcon mimeType={doc.mimeType} />
+                                            <span className="text-[11px] text-muted-foreground">Clique para visualizar</span>
+                                          </div>
+                                        )}
+                                      </a>
+
+                                      {/* Info do arquivo */}
+                                      <div className="flex items-center gap-3 px-3 py-2.5 border-t border-border">
+                                        <div className="w-7 h-7 rounded-lg bg-foreground/[0.06] flex items-center justify-center shrink-0">
+                                          <DocIcon mimeType={doc.mimeType} />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-[12px] font-medium text-foreground truncate leading-tight">{doc.filename}</p>
+                                          <p className="text-[10px] text-muted-foreground">
+                                            {formatBytes(doc.size)}{doc.size ? ' · ' : ''}{formatDateShort(doc.createdAt)}
+                                          </p>
+                                        </div>
+                                        <a
+                                          href={`${API_URL}/media/${doc.messageId}?dl=1`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          title="Baixar arquivo"
+                                          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+                                          onClick={e => e.stopPropagation()}
+                                        >
+                                          <Download size={13} />
+                                        </a>
+                                        <button
+                                          onClick={() => deleteDoc(doc.messageId)}
+                                          title="Excluir arquivo"
+                                          className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {/* Áudios — lista unificada com player */}
+                            {cat === 'Áudios' && (
+                              <div className="flex flex-col gap-2">
+                                {grouped[cat].map(doc => (
+                                  <div key={doc.messageId} className="rounded-xl border border-border bg-foreground/[0.02] overflow-hidden group">
+                                    <div className="flex items-center gap-3 px-3 pt-3 pb-2">
+                                      <div className="w-8 h-8 rounded-lg bg-foreground/[0.06] flex items-center justify-center shrink-0">
+                                        <Mic size={15} className="text-purple-400" />
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-[13px] font-medium text-foreground truncate leading-tight">{doc.filename}</p>
+                                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                                          {formatBytes(doc.size)}{doc.size ? ' · ' : ''}{formatDateShort(doc.createdAt)}
+                                        </p>
+                                      </div>
+                                      <a href={`${API_URL}/media/${doc.messageId}?dl=1`} target="_blank" rel="noopener noreferrer" title="Baixar" className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100 shrink-0">
+                                        <Download size={13} />
+                                      </a>
+                                      <button onClick={() => deleteDoc(doc.messageId)} title="Remover do banco" className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 shrink-0">
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </div>
+                                    <div className="px-3 pb-3">
+                                      <audio
+                                        controls
+                                        preload="none"
+                                        src={`${API_URL}/media/${doc.messageId}`}
+                                        className="w-full h-8"
+                                        style={{ colorScheme: 'dark' }}
+                                      />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
                             )}
                           </div>
-                          <ExternalLink size={13} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5" />
-                        </div>
+                        ))}
                       </div>
                     );
-                  })}
+                  })()}
                 </div>
               )}
             </div>
