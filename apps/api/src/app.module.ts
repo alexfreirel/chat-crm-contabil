@@ -8,6 +8,7 @@ import { LeadsModule } from './leads/leads.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
 import { MessagesModule } from './messages/messages.module';
 import { GatewayModule } from './gateway/gateway.module';
 import { TasksModule } from './tasks/tasks.module';
@@ -17,6 +18,7 @@ import { InboxesModule } from './inboxes/inboxes.module';
 import { SectorsModule } from './sectors/sectors.module';
 import { MediaModule } from './media/media.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { TransferAudioModule } from './transfer-audio/transfer-audio.module';
 
 import { HealthController } from './common/controllers/health.controller';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
@@ -24,6 +26,7 @@ import { APP_FILTER } from '@nestjs/core';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     BullModule.forRootAsync({
       useFactory: () => ({
         connection: {
@@ -53,6 +56,7 @@ import { APP_FILTER } from '@nestjs/core';
     SectorsModule,
     MediaModule,
     AnalyticsModule,
+    TransferAudioModule,
   ],
   controllers: [AppController, HealthController],
   providers: [

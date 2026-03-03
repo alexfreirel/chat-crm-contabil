@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, UserCheck, PanelLeftClose, PanelLeftOpen, CornerDownLeft, Inbox, Pencil } from 'lucide-react';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { AudioRecorder } from '@/components/AudioRecorder';
+import { TransferAudioRecorder } from '@/components/TransferAudioRecorder';
 import { EmojiPickerButton } from '@/components/EmojiPickerButton';
 import { SophIAButton } from '@/components/SophIAButton';
 import { playNotificationSound } from '@/lib/notificationSounds';
@@ -90,11 +91,13 @@ export default function Dashboard() {
   const [transferError, setTransferError] = useState<string | null>(null);
   const [selectedTransferUserId, setSelectedTransferUserId] = useState<string | null>(null);
   const [transferReason, setTransferReason] = useState('');
+  const [transferAudioIds, setTransferAudioIds] = useState<string[]>([]);
+  const [showLawyerReasonInput, setShowLawyerReasonInput] = useState(false);
   const [allSpecialists, setAllSpecialists] = useState<{ id: string; name: string; specialties: string[] }[]>([]);
   const [showLawyerDropdown, setShowLawyerDropdown] = useState(false);
   // Incoming transfer popup (for receiving operator)
   const [incomingTransfer, setIncomingTransfer] = useState<{
-    conversationId: string; fromUserName: string; contactName: string; reason: string | null;
+    conversationId: string; fromUserName: string; contactName: string; reason: string | null; audioIds?: string[];
   } | null>(null);
   const [showDeclineInput, setShowDeclineInput] = useState(false);
   const [declineReason, setDeclineReason] = useState('');
@@ -104,7 +107,7 @@ export default function Dashboard() {
   // Sent confirmation banner
   const [transferSentMsg, setTransferSentMsg] = useState<string | null>(null);
   // Pending transfers waiting for current user to accept/decline
-  const [pendingTransfers, setPendingTransfers] = useState<{ conversationId: string; contactName: string; fromUserName: string; reason: string | null }[]>([]);
+  const [pendingTransfers, setPendingTransfers] = useState<{ conversationId: string; contactName: string; fromUserName: string; reason: string | null; audioIds?: string[] }[]>([]);
   const [inboxOpen, setInboxOpen] = useState(true);
   // Unread message counts per conversation (persisted in sessionStorage to survive same-page navigation)
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>(() => {
@@ -272,7 +275,7 @@ export default function Dashboard() {
     });
 
     // Transfer request: incoming popup + sound for target operator
-    socket.on('transfer_request', (data: { conversationId: string; fromUserName: string; contactName: string; reason: string | null }) => {
+    socket.on('transfer_request', (data: { conversationId: string; fromUserName: string; contactName: string; reason: string | null; audioIds?: string[] }) => {
       playNotificationSound();
       setIncomingTransfer(data);
       setShowDeclineInput(false);
@@ -418,7 +421,9 @@ export default function Dashboard() {
     if (!selectedId || selectedId.startsWith('demo-')) return;
     setTransferError(null);
     setSelectedTransferUserId(null);
+    setShowLawyerReasonInput(false);
     setTransferReason('');
+    setTransferAudioIds([]);
     setLoadingOperators(true);
     setTransferModal(true);
     try {
@@ -440,6 +445,7 @@ export default function Dashboard() {
       await api.post(`/conversations/${selectedId}/transfer-request`, {
         toUserId: selectedTransferUserId,
         reason: transferReason.trim() || undefined,
+        audioIds: transferAudioIds.length > 0 ? transferAudioIds : undefined,
       });
       const destUser = transferGroups.flatMap(g => g.users).find(u => u.id === selectedTransferUserId);
       setTransferSentMsg(`📨 Solicitação enviada para ${destUser?.name || 'operador'}. Aguardando resposta...`);
@@ -461,8 +467,14 @@ export default function Dashboard() {
     setTransferring(true);
     setTransferError(null);
     try {
-      await api.post(`/conversations/${selectedId}/transfer-to-lawyer`);
+      await api.post(`/conversations/${selectedId}/transfer-to-lawyer`, {
+        reason: transferReason.trim() || undefined,
+        audioIds: transferAudioIds.length > 0 ? transferAudioIds : undefined,
+      });
       setTransferModal(false);
+      setTransferReason('');
+      setTransferAudioIds([]);
+      setShowLawyerReasonInput(false);
       setTransferSentMsg(`⚖️ Solicitação enviada para o advogado especialista. Aguardando resposta...`);
       setTimeout(() => setTransferSentMsg(null), 6000);
     } catch (e: any) {
@@ -807,6 +819,9 @@ export default function Dashboard() {
                       <p className="text-xs font-semibold truncate">{pt.contactName}</p>
                       <p className="text-[10px] text-muted-foreground truncate">De: {pt.fromUserName}</p>
                       {pt.reason && <p className="text-[10px] text-amber-400/80 italic truncate">{pt.reason}</p>}
+                      {pt.audioIds && pt.audioIds.length > 0 && (
+                        <p className="text-[10px] text-violet-400/80">🎙 {pt.audioIds.length} áudio{pt.audioIds.length > 1 ? 's' : ''}</p>
+                      )}
                     </div>
                     <div className="flex gap-1 shrink-0">
                       <button
@@ -1581,18 +1596,57 @@ export default function Dashboard() {
                       {group.type === 'SECTOR' && group.auto_route ? (
                         <div className="space-y-2">
                           {selected?.assignedLawyerId ? (
-                            /* Advogado já atribuído → botão direto com nome */
+                            /* Advogado já atribuído → botão direto; ao clicar abre textarea de motivo */
                             (() => {
                               const lawyer = group.users.find(u => u.id === selected.assignedLawyerId);
-                              const lawyerName = lawyer?.name || 'Advogado vinculado';
+                              const lawyerName = lawyer?.name || selected.assignedLawyerName || 'Advogado vinculado';
                               return (
-                                <button
-                                  onClick={handleTransferToLawyer}
-                                  disabled={transferring}
-                                  className="w-full py-3 bg-violet-500/10 border border-violet-500/30 text-violet-300 rounded-xl font-bold text-sm hover:bg-violet-500/20 transition-colors flex items-center justify-center gap-2 disabled:opacity-40"
-                                >
-                                  {transferring ? '⏳ Enviando...' : `⚖️ Transferir para ${lawyerName}${selected.legalArea ? ` (${selected.legalArea})` : ''}`}
-                                </button>
+                                <div className="space-y-2">
+                                  {!showLawyerReasonInput ? (
+                                    /* Passo 1 — botão inicial */
+                                    <button
+                                      onClick={() => setShowLawyerReasonInput(true)}
+                                      className="w-full py-3 bg-violet-500/10 border border-violet-500/30 text-violet-300 rounded-xl font-bold text-sm hover:bg-violet-500/20 transition-colors flex items-center justify-center gap-2"
+                                    >
+                                      ⚖️ Transferir para {lawyerName}{selected.legalArea ? ` (${selected.legalArea})` : ''}
+                                    </button>
+                                  ) : (
+                                    /* Passo 2 — textarea + gravador de áudio + confirmar */
+                                    <>
+                                      <div>
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5 px-1">Motivo da transferência</p>
+                                        <textarea
+                                          autoFocus
+                                          value={transferReason}
+                                          onChange={e => setTransferReason(e.target.value)}
+                                          placeholder={`Ex: Avanço do caso para Dr(a). ${lawyerName}...`}
+                                          className="w-full bg-muted border border-border rounded-xl px-3 py-2 text-sm resize-none outline-none focus:border-violet-500/50 transition-colors"
+                                          rows={3}
+                                        />
+                                      </div>
+                                      {/* Gravador de áudio opcional */}
+                                      <TransferAudioRecorder
+                                        conversationId={selectedId!}
+                                        onAudioIdsChange={setTransferAudioIds}
+                                      />
+                                      <div className="flex gap-2">
+                                        <button
+                                          onClick={() => { setShowLawyerReasonInput(false); setTransferReason(''); setTransferAudioIds([]); }}
+                                          className="flex-1 py-2.5 bg-muted border border-border text-muted-foreground rounded-xl text-sm font-semibold hover:bg-accent transition-colors"
+                                        >
+                                          Cancelar
+                                        </button>
+                                        <button
+                                          onClick={handleTransferToLawyer}
+                                          disabled={transferring || (!transferReason.trim() && transferAudioIds.length === 0)}
+                                          className="flex-1 py-2.5 bg-violet-500/10 border border-violet-500/30 text-violet-300 rounded-xl font-bold text-sm hover:bg-violet-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                        >
+                                          {transferring ? '⏳ Enviando...' : '⚖️ Confirmar'}
+                                        </button>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
                               );
                             })()
                           ) : (
@@ -1645,7 +1699,7 @@ export default function Dashboard() {
                 {selectedTransferUserId && (
                   <>
                     <div className="mt-3 shrink-0">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5 px-1">Motivo (obrigatório)</p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5 px-1">Motivo</p>
                       <textarea
                         value={transferReason}
                         onChange={e => setTransferReason(e.target.value)}
@@ -1654,9 +1708,15 @@ export default function Dashboard() {
                         rows={2}
                       />
                     </div>
+                    <div className="mt-2 shrink-0">
+                      <TransferAudioRecorder
+                        conversationId={selectedId!}
+                        onAudioIdsChange={setTransferAudioIds}
+                      />
+                    </div>
                     <button
                       onClick={handleTransfer}
-                      disabled={transferring || !selectedTransferUserId || !transferReason.trim()}
+                      disabled={transferring || !selectedTransferUserId || (!transferReason.trim() && transferAudioIds.length === 0)}
                       className="mt-3 shrink-0 w-full py-2.5 bg-sky-500 text-white rounded-xl font-bold text-sm hover:bg-sky-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {transferring ? 'Enviando...' : 'Solicitar Transferência'}
@@ -1690,6 +1750,24 @@ export default function Dashboard() {
               <p><span className="text-muted-foreground">Contato:</span> <strong>{incomingTransfer.contactName}</strong></p>
               {incomingTransfer.reason && (
                 <p><span className="text-muted-foreground">Motivo:</span> {incomingTransfer.reason}</p>
+              )}
+              {incomingTransfer.audioIds && incomingTransfer.audioIds.length > 0 && (
+                <div>
+                  <p className="text-muted-foreground mb-1">Áudios explicativos ({incomingTransfer.audioIds.length}):</p>
+                  <div className="space-y-1">
+                    {incomingTransfer.audioIds.map((aid, i) => (
+                      <div key={aid} className="flex items-center gap-2">
+                        <span className="text-[10px] text-muted-foreground shrink-0">#{i + 1}</span>
+                        <audio
+                          controls
+                          src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005'}/transfer-audios/${aid}/stream`}
+                          className="h-7 w-full"
+                          style={{ filter: 'hue-rotate(240deg) brightness(0.9)' }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
             {showDeclineInput && (

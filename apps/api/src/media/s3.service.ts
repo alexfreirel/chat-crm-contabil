@@ -4,6 +4,7 @@ import {
   GetObjectCommand,
   PutObjectCommand,
   CreateBucketCommand,
+  DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
 
@@ -46,6 +47,12 @@ export class MediaS3Service implements OnModuleInit {
     });
     await this.client.send(command);
     this.logger.log(`Uploaded: ${key}`);
+  }
+
+  async deleteObject(key: string): Promise<void> {
+    const command = new DeleteObjectCommand({ Bucket: this.bucket, Key: key });
+    await this.client.send(command);
+    this.logger.log(`Deleted: ${key}`);
   }
 
   async getObjectStream(key: string): Promise<{

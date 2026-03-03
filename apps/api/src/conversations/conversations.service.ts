@@ -166,10 +166,11 @@ export class ConversationsService {
       profilePicture: c.lead?.profile_picture_url || null,
       fromUserName: fromUserMap[c.pending_transfer_from_id] || 'Operador',
       reason: c.pending_transfer_reason || null,
+      audioIds: c.pending_transfer_audio_ids || [],
     }));
   }
 
-  async requestTransfer(id: string, toUserId: string, fromUserId: string, reason: string | null) {
+  async requestTransfer(id: string, toUserId: string, fromUserId: string, reason: string | null, audioIds?: string[]) {
     // Verifica se a conversa está atribuída ao operador que está solicitando a transferência
     const existing = await (this.prisma as any).conversation.findUnique({
       where: { id },
@@ -187,6 +188,7 @@ export class ConversationsService {
           pending_transfer_to_id: toUserId,
           pending_transfer_from_id: fromUserId,
           pending_transfer_reason: reason,
+          ...(audioIds?.length ? { pending_transfer_audio_ids: audioIds } : {}),
         },
         include: { lead: { select: { name: true, phone: true } } },
       }),
@@ -198,6 +200,7 @@ export class ConversationsService {
       fromUserName: fromUser?.name || 'Operador',
       contactName: conv.lead?.name || conv.lead?.phone || 'Contato',
       reason,
+      audioIds: audioIds?.length ? audioIds : undefined,
     });
 
     return conv;
@@ -219,6 +222,7 @@ export class ConversationsService {
           pending_transfer_to_id: null,
           pending_transfer_from_id: null,
           pending_transfer_reason: null,
+          pending_transfer_audio_ids: [],
         },
       }),
     ]);
@@ -246,6 +250,7 @@ export class ConversationsService {
         pending_transfer_to_id: null,
         pending_transfer_from_id: null,
         pending_transfer_reason: null,
+        pending_transfer_audio_ids: [],
       },
     });
 
@@ -260,7 +265,7 @@ export class ConversationsService {
     return { success: true };
   }
 
-  async transferToAssignedLawyer(id: string, fromUserId: string) {
+  async transferToAssignedLawyer(id: string, fromUserId: string, reason?: string, audioIds?: string[]) {
     const conv = await (this.prisma as any).conversation.findUnique({
       where: { id },
       select: { assigned_user_id: true, assigned_lawyer_id: true, legal_area: true },
@@ -284,7 +289,8 @@ export class ConversationsService {
       id,
       conv.assigned_lawyer_id,
       fromUserId,
-      `Área detectada pela IA: ${conv.legal_area || 'Jurídica'}`,
+      reason?.trim() || `Área detectada pela IA: ${conv.legal_area || 'Jurídica'}`,
+      audioIds,
     );
   }
 

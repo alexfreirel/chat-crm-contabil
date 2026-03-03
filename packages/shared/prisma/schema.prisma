@@ -70,6 +70,7 @@ model Conversation {
   pending_transfer_to_id       String?
   pending_transfer_from_id     String?
   pending_transfer_reason      String?
+  pending_transfer_audio_ids   String[]  @default([])
   legal_area                   String?   // Área do direito detectada pela IA
   assigned_lawyer_id           String?   // Advogado pré-designado pela IA
   origin_assigned_user_id      String?   // Quem transferiu (para devolução)
@@ -216,6 +217,20 @@ model Instance {
 
   @@index([tenant_id])
   @@index([inbox_id])
+}
+
+model TransferAudio {
+  id             String   @id @default(uuid())
+  conversation_id String
+  s3_key         String
+  mime_type      String   @default("audio/webm")
+  size           Int?
+  uploaded_by_id String?
+  expires_at     DateTime // 7 dias após upload — apagado pelo cron
+  created_at     DateTime @default(now())
+
+  @@index([conversation_id])
+  @@index([expires_at])
 }
 
 model LpEvent {

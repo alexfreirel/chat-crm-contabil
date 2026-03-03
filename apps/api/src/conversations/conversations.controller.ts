@@ -60,10 +60,10 @@ export class ConversationsController {
   @Post(':id/transfer-request')
   transferRequest(
     @Param('id') id: string,
-    @Body() body: { toUserId: string; reason?: string },
+    @Body() body: { toUserId: string; reason?: string; audioIds?: string[] },
     @Request() req: any,
   ) {
-    return this.conversationsService.requestTransfer(id, body.toUserId, req.user.id, body.reason || null);
+    return this.conversationsService.requestTransfer(id, body.toUserId, req.user.id, body.reason || null, body.audioIds);
   }
 
   @Patch(':id/transfer-accept')
@@ -82,8 +82,12 @@ export class ConversationsController {
   }
 
   @Post(':id/transfer-to-lawyer')
-  transferToLawyer(@Param('id') id: string, @Request() req: any) {
-    return this.conversationsService.transferToAssignedLawyer(id, req.user.id);
+  transferToLawyer(
+    @Param('id') id: string,
+    @Body() body: { reason?: string; audioIds?: string[] },
+    @Request() req: any,
+  ) {
+    return this.conversationsService.transferToAssignedLawyer(id, req.user.id, body.reason, body.audioIds);
   }
 
   @Patch(':id/return-to-origin')
