@@ -7,6 +7,7 @@ import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { AudioRecorder } from '@/components/AudioRecorder';
 import { TransferAudioRecorder } from '@/components/TransferAudioRecorder';
+import { AuthAudioPlayer } from '@/components/AuthAudioPlayer';
 import { EmojiPickerButton } from '@/components/EmojiPickerButton';
 import { SophIAButton } from '@/components/SophIAButton';
 import { playNotificationSound } from '@/lib/notificationSounds';
@@ -1831,9 +1832,8 @@ export default function Dashboard() {
                     {incomingTransfer.audioIds.map((aid, i) => (
                       <div key={aid} className="flex items-center gap-2">
                         <span className="text-[10px] text-muted-foreground shrink-0">#{i + 1}</span>
-                        <audio
-                          controls
-                          src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005'}/transfer-audios/${aid}/stream`}
+                        <AuthAudioPlayer
+                          audioId={aid}
                           className="h-7 w-full"
                           style={{ filter: 'hue-rotate(240deg) brightness(0.9)' }}
                         />
