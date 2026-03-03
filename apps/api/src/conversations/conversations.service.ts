@@ -275,6 +275,20 @@ export class ConversationsService {
     return { success: true };
   }
 
+  async countOpen(userId?: string): Promise<number> {
+    const where: any = { status: { not: 'FECHADO' } };
+    if (userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: { inboxes: { select: { id: true } } },
+      });
+      if (user?.role !== 'ADMIN' && user?.inboxes && user.inboxes.length > 0) {
+        where.inbox_id = { in: user.inboxes.map((i: any) => i.id) };
+      }
+    }
+    return this.prisma.conversation.count({ where });
+  }
+
   async keepInInbox(id: string) {
     const conv = await (this.prisma as any).conversation.findUnique({
       where: { id },

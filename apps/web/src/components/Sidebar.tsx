@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { LogOut, Users, Briefcase, Settings, Palette, Check, MessageSquare, Megaphone } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import api from '@/lib/api';
 
 const THEMES = [
   { id: 'logo-dark', name: 'Dark (Logo)', color: '#000000' },
@@ -20,6 +21,7 @@ export function Sidebar() {
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement>(null);
   const [dbStatus, setDbStatus] = useState<'online' | 'offline' | 'checking'>('checking');
+  const [openCount, setOpenCount] = useState<number>(0);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -47,8 +49,20 @@ export function Sidebar() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    const fetchOpenCount = async () => {
+      try {
+        const res = await api.get('/conversations/open-count');
+        setOpenCount(res.data?.count || 0);
+      } catch {}
+    };
+    fetchOpenCount();
+    const interval = setInterval(fetchOpenCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   const navItems = [
-    { label: 'Inbox (WhatsApp)', href: '/atendimento', icon: <MessageSquare size={22} strokeWidth={2} />, match: (p: string) => p === '/atendimento' || p.startsWith('/atendimento/chat') },
+    { label: 'Inbox (WhatsApp)', href: '/atendimento', icon: <MessageSquare size={22} strokeWidth={2} />, match: (p: string) => p === '/atendimento' || p.startsWith('/atendimento/chat'), badge: openCount },
     { label: 'Leads & CRM', href: '/atendimento/crm', icon: <Briefcase size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/crm') },
     { label: 'Contatos', href: '/atendimento/contacts', icon: <Users size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/contacts') },
     { label: 'Tarefas', href: '/atendimento/tasks', icon: <Check size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/tasks') },
@@ -72,6 +86,11 @@ export function Sidebar() {
             return (
               <button key={item.href} onClick={() => router.push(item.href)} className={`w-full aspect-square rounded-xl flex items-center justify-center relative shadow-sm group transition-colors ${isActive ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'}`}>
                 {item.icon}
+                {(item as any).badge > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-[18px] text-center shadow-md">
+                    {(item as any).badge > 99 ? '99+' : (item as any).badge}
+                  </span>
+                )}
                 {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary rounded-r-md"></div>}
                 
                 <div className="absolute left-[64px] px-3 py-2 bg-card text-foreground text-[13px] font-semibold rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap shadow-xl border border-border flex items-center z-[200] before:content-[''] before:absolute before:-left-[5px] before:top-1/2 before:-translate-y-1/2 before:border-y-[5px] before:border-y-transparent before:border-r-[5px] before:border-r-border">

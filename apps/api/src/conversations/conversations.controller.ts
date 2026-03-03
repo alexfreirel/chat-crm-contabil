@@ -22,6 +22,11 @@ export class ConversationsController {
     return this.conversationsService.findPendingTransfers(req.user.id);
   }
 
+  @Get('open-count')
+  getOpenCount(@Request() req: any) {
+    return this.conversationsService.countOpen(req.user?.id).then(count => ({ count }));
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.conversationsService.findOne(id);
