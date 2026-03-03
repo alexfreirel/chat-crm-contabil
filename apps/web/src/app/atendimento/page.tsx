@@ -843,7 +843,11 @@ export default function Dashboard() {
                 `}
               >
                 {selectedId === conv.id && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />}
-                <div className="w-11 h-11 rounded-full bg-accent border border-border flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
+                <div
+                  className={`w-11 h-11 rounded-full bg-accent border border-border flex items-center justify-center overflow-hidden shrink-0 shadow-sm ${conv.profile_picture_url ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+                  onClick={conv.profile_picture_url ? (e) => { e.stopPropagation(); setLightbox(conv.profile_picture_url!); } : undefined}
+                  title={conv.profile_picture_url ? 'Ver foto ampliada' : undefined}
+                >
                   {conv.profile_picture_url ? (
                     <img src={conv.profile_picture_url} alt={conv.contactName} className="w-full h-full object-cover" loading="lazy" />
                   ) : (
