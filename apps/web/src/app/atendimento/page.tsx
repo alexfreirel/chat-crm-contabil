@@ -1471,35 +1471,44 @@ export default function Dashboard() {
                       {group.type === 'SECTOR' && group.auto_route ? (
                         <div className="space-y-2">
                           {selected?.assignedLawyerId ? (
-                            <button
-                              onClick={handleTransferToLawyer}
-                              disabled={transferring}
-                              className="w-full py-3 bg-violet-500/10 border border-violet-500/30 text-violet-300 rounded-xl font-bold text-sm hover:bg-violet-500/20 transition-colors flex items-center justify-center gap-2 disabled:opacity-40"
-                            >
-                              {transferring ? '⏳ Enviando...' : `⚖️ Enviar para advogado vinculado${selected.legalArea ? ` (${selected.legalArea})` : ''}`}
-                            </button>
-                          ) : (
-                            <p className="text-sm text-muted-foreground text-center py-2 px-1">
-                              ⏳ Aguardando IA classificar a área... Ou escolha manualmente:
-                            </p>
-                          )}
-                          {group.users.length > 0 && (
-                            <div className="flex flex-col gap-1">
-                              {group.users.map(user => (
+                            /* Advogado já atribuído → botão direto com nome */
+                            (() => {
+                              const lawyer = group.users.find(u => u.id === selected.assignedLawyerId);
+                              const lawyerName = lawyer?.name || 'Advogado vinculado';
+                              return (
                                 <button
-                                  key={user.id}
-                                  onClick={() => setSelectedTransferUserId(user.id)}
-                                  className={`w-full text-left px-4 py-2.5 rounded-xl border transition-colors font-medium text-sm ${
-                                    selectedTransferUserId === user.id
-                                      ? 'bg-sky-500/20 text-sky-400 border-sky-500/40'
-                                      : 'bg-muted/30 hover:bg-sky-500/10 hover:text-sky-400 border-border hover:border-sky-500/30'
-                                  }`}
+                                  onClick={handleTransferToLawyer}
+                                  disabled={transferring}
+                                  className="w-full py-3 bg-violet-500/10 border border-violet-500/30 text-violet-300 rounded-xl font-bold text-sm hover:bg-violet-500/20 transition-colors flex items-center justify-center gap-2 disabled:opacity-40"
                                 >
-                                  {selectedTransferUserId === user.id && <span className="mr-2">✓</span>}
-                                  {user.name}
+                                  {transferring ? '⏳ Enviando...' : `⚖️ Transferir para ${lawyerName}${selected.legalArea ? ` (${selected.legalArea})` : ''}`}
                                 </button>
-                              ))}
-                            </div>
+                              );
+                            })()
+                          ) : (
+                            /* Sem advogado atribuído → lista manual */
+                            group.users.length > 0 ? (
+                              <div className="flex flex-col gap-1">
+                                {group.users.map(user => (
+                                  <button
+                                    key={user.id}
+                                    onClick={() => setSelectedTransferUserId(user.id)}
+                                    className={`w-full text-left px-4 py-2.5 rounded-xl border transition-colors font-medium text-sm ${
+                                      selectedTransferUserId === user.id
+                                        ? 'bg-sky-500/20 text-sky-400 border-sky-500/40'
+                                        : 'bg-muted/30 hover:bg-sky-500/10 hover:text-sky-400 border-border hover:border-sky-500/30'
+                                    }`}
+                                  >
+                                    {selectedTransferUserId === user.id && <span className="mr-2">✓</span>}
+                                    {user.name}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted-foreground text-center py-2 px-1 italic">
+                                Nenhum advogado especialista cadastrado.
+                              </p>
+                            )
                           )}
                         </div>
                       ) : (
