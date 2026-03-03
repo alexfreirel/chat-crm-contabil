@@ -145,7 +145,6 @@ export default function ContactsPage() {
                     <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Nome</th>
                     <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Telefone</th>
                     <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Email</th>
-                    <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-center">ID</th>
                     <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Origem</th>
                   </tr>
                 </thead>
@@ -171,11 +170,6 @@ export default function ContactsPage() {
                         {formatPhone(contact.phone)}
                       </td>
                       <td className="px-6 py-5 text-[13px] text-muted-foreground font-medium">{contact.email || '-'}</td>
-                      <td className="px-6 py-5 text-center">
-                        <span className="inline-flex items-center justify-center px-2 py-1 rounded-md bg-foreground/[0.03] text-muted-foreground text-[10px] font-mono border border-border/50">
-                          {contact.id.slice(0, 8)}...
-                        </span>
-                      </td>
                       <td className="px-6 py-5">
                         <div className="flex flex-col gap-1">
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-500/10 text-green-600 text-[10px] font-bold uppercase tracking-wider border border-green-500/20">
@@ -194,7 +188,7 @@ export default function ContactsPage() {
 
                   {filteredContacts.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="py-20 text-center">
+                      <td colSpan={4} className="py-20 text-center">
                         <div className="flex flex-col items-center opacity-30">
                           <User className="w-12 h-12 mb-3 stroke-[1.2]" />
                           <p className="text-sm font-medium">Nenhum contato encontrado</p>
