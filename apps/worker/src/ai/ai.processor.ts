@@ -302,11 +302,11 @@ export class AiProcessor extends WorkerHost {
       this.logger.log(`[AI] Lead.stage → "${updates.status}"`);
     }
 
-    // c. Área → Conversation.legal_area (só se não classificada)
+    // c. Área → Conversation.legal_area (só se não classificada) + auto-atribuir especialista
     if (updates.area && updates.area !== 'null') {
       const conv = await (this.prisma as any).conversation.findUnique({
         where: { id: convoId },
-        select: { legal_area: true },
+        select: { legal_area: true, assigned_lawyer_id: true },
       });
       if (!conv?.legal_area) {
         await (this.prisma as any).conversation.update({
@@ -314,6 +314,20 @@ export class AiProcessor extends WorkerHost {
           data: { legal_area: updates.area },
         });
         this.logger.log(`[AI] Área classificada: "${updates.area}"`);
+
+        // Auto-atribuir o especialista menos ocupado (só se ainda não houver um)
+        if (!conv?.assigned_lawyer_id) {
+          const lawyerId = await this.findLeastBusySpecialist(updates.area);
+          if (lawyerId) {
+            await (this.prisma as any).conversation.update({
+              where: { id: convoId },
+              data: { assigned_lawyer_id: lawyerId },
+            });
+            this.logger.log(
+              `[AI] Especialista pré-atribuído: ${lawyerId} (área: ${updates.area})`,
+            );
+          }
+        }
       }
     }
 
@@ -344,6 +358,45 @@ export class AiProcessor extends WorkerHost {
         data: convUpdate,
       });
     }
+  }
+
+  // ─── Encontra o especialista menos ocupado para uma área jurídica ───
+  private async findLeastBusySpecialist(area: string): Promise<string | null> {
+    const allUsers = await (this.prisma as any).user.findMany({
+      where: { specialties: { isEmpty: false } },
+      select: { id: true, specialties: true },
+    });
+
+    const areaLower = area.toLowerCase();
+    const specialists = (allUsers as any[]).filter((u) =>
+      u.specialties.some(
+        (s: string) =>
+          s.toLowerCase().includes(areaLower) ||
+          areaLower.includes(s.toLowerCase()),
+      ),
+    );
+
+    if (!specialists.length) {
+      this.logger.warn(
+        `[AI] Nenhum especialista encontrado para área: "${area}"`,
+      );
+      return null;
+    }
+
+    const counts = await Promise.all(
+      specialists.map(async (s) => {
+        const count = await (this.prisma as any).conversation.count({
+          where: { assigned_lawyer_id: s.id, status: 'ABERTO' },
+        });
+        return { id: s.id as string, count };
+      }),
+    );
+
+    counts.sort((a, b) => a.count - b.count);
+    this.logger.log(
+      `[AI] Especialistas disponíveis para "${area}": ${counts.map((c) => `${c.id}(${c.count})`).join(', ')}`,
+    );
+    return counts[0]?.id ?? null;
   }
 
   // ─── Atualiza Long Memory estruturada com GPT-4.1 ───

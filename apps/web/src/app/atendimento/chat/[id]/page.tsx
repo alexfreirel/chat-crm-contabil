@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Send, Bot, BotOff, Download, Mic, FileText, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, Pencil } from 'lucide-react';
+import { ArrowLeft, Send, Bot, BotOff, Download, Mic, FileText, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, Pencil, UserCheck, ChevronDown } from 'lucide-react';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { AudioRecorder } from '@/components/AudioRecorder';
 import { EmojiPickerButton } from '@/components/EmojiPickerButton';
@@ -45,6 +45,10 @@ export default function ChatPage({ params }: { params: { id: string } }) {
   const [docPreview, setDocPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const [transcribing, setTranscribing] = useState<Record<string, boolean>>({});
   const [editingMsg, setEditingMsg] = useState<{ id: string; text: string } | null>(null);
+  const [legalArea, setLegalArea] = useState<string | null>(null);
+  const [assignedLawyer, setAssignedLawyer] = useState<{ id: string; name: string } | null>(null);
+  const [allSpecialists, setAllSpecialists] = useState<{ id: string; name: string; specialties: string[] }[]>([]);
+  const [showLawyerDropdown, setShowLawyerDropdown] = useState(false);
 
   // Decode current user ID once from JWT (never changes during session)
   const [currentUserId] = useState<string | null>(() => {
@@ -265,6 +269,19 @@ export default function ChatPage({ params }: { params: { id: string } }) {
     });
   };
 
+  const handleAssignLawyer = async (lawyerId: string | null) => {
+    if (!convoId) return;
+    try {
+      await api.patch(`/conversations/${convoId}/assign-lawyer`, { lawyerId });
+      const lawyer = lawyerId ? (allSpecialists.find((u) => u.id === lawyerId) || null) : null;
+      setAssignedLawyer(lawyer ? { id: lawyer.id, name: lawyer.name } : null);
+    } catch (e) {
+      console.error('Erro ao atribuir especialista', e);
+    } finally {
+      setShowLawyerDropdown(false);
+    }
+  };
+
   const handleSend = async () => {
     if (!text.trim() || !convoId || sending) return;
     const msgText = text;
@@ -313,6 +330,15 @@ export default function ChatPage({ params }: { params: { id: string } }) {
           setConvoStatus(convo.status || 'ABERTO');
           setAiMode(!!convo.ai_mode);
           setMessages(convo.messages || []);
+          setLegalArea(convo.legal_area || null);
+          setAssignedLawyer(convo.assigned_lawyer || null);
+
+          // Carregar lista de especialistas para o dropdown
+          api.get('/users').then((r) => {
+            setAllSpecialists(
+              (r.data as any[]).filter((u) => u.specialties?.length > 0),
+            );
+          }).catch(() => {});
 
           // Sync WhatsApp history on open (background, non-blocking)
           api.post(`/messages/conversation/${convo.id}/sync-history`)
@@ -406,7 +432,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
           </div>
         )}
         {/* Header */}
-        <header className="h-[80px] px-8 border-b border-border bg-card/50 backdrop-blur-md flex items-center justify-between z-30 shrink-0">
+        <header className="min-h-[80px] px-8 py-4 border-b border-border bg-card/50 backdrop-blur-md flex items-center justify-between z-30 shrink-0">
           <div className="flex items-center gap-4">
             <button onClick={() => router.push('/')} className="text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft size={22} />
@@ -420,6 +446,64 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                 WHATSAPP <span className="mx-1">•</span> {formatPhone(lead?.phone) || ''}
                 {isClosed && <span className="ml-2 text-red-400">• FECHADA</span>}
               </div>
+              {(legalArea || assignedLawyer) && (
+                <div className="flex items-center gap-2 flex-wrap mt-1.5">
+                  {legalArea && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-400 text-[10px] font-bold border border-violet-500/20">
+                      ⚖️ {legalArea}
+                    </span>
+                  )}
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowLawyerDropdown(v => !v)}
+                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${
+                        assignedLawyer
+                          ? 'bg-primary/10 text-primary border-primary/20 hover:bg-primary/20'
+                          : 'bg-muted/30 text-muted-foreground border-border hover:bg-muted/60'
+                      }`}
+                      title={assignedLawyer ? 'Especialista pré-atribuído — clique para trocar' : 'Atribuir especialista'}
+                    >
+                      <UserCheck size={10} />
+                      {assignedLawyer ? assignedLawyer.name : 'Atribuir especialista'}
+                    </button>
+                    {showLawyerDropdown && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setShowLawyerDropdown(false)} />
+                        <div className="absolute top-full left-0 mt-1 z-50 bg-card border border-border rounded-xl shadow-xl w-56 py-1 text-[12px]">
+                          <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Trocar especialista</p>
+                          {allSpecialists.length === 0 ? (
+                            <p className="px-3 py-2 text-muted-foreground text-[11px] italic">Nenhum especialista cadastrado</p>
+                          ) : (
+                            allSpecialists.map(u => (
+                              <button
+                                key={u.id}
+                                onClick={() => handleAssignLawyer(u.id)}
+                                className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2 ${u.id === assignedLawyer?.id ? 'text-primary font-semibold' : 'text-foreground'}`}
+                              >
+                                <span className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-bold text-primary shrink-0">
+                                  {u.name.charAt(0)}
+                                </span>
+                                <div className="min-w-0">
+                                  <p className="leading-tight truncate">{u.name}</p>
+                                  <p className="text-[9px] text-muted-foreground truncate">{u.specialties.join(', ')}</p>
+                                </div>
+                              </button>
+                            ))
+                          )}
+                          {assignedLawyer && (
+                            <button
+                              onClick={() => handleAssignLawyer(null)}
+                              className="w-full text-left px-3 py-2 text-muted-foreground hover:bg-accent hover:text-destructive transition-colors text-[11px] border-t border-border mt-1 pt-2"
+                            >
+                              Remover especialista
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <div className="flex gap-2 items-center">

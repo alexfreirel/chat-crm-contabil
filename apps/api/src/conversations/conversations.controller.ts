@@ -95,4 +95,12 @@ export class ConversationsController {
   keepInInbox(@Param('id') id: string) {
     return this.conversationsService.keepInInbox(id);
   }
+
+  @Patch(':id/assign-lawyer')
+  assignLawyer(
+    @Param('id') id: string,
+    @Body('lawyerId') lawyerId: string | null,
+  ) {
+    return this.conversationsService.setAssignedLawyer(id, lawyerId ?? null);
+  }
 }

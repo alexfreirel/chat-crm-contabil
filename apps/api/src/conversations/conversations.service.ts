@@ -80,15 +80,37 @@ export class ConversationsService {
     });
   }
 
-  async findAllByLead(lead_id: string): Promise<Conversation[]> {
-    return this.prisma.conversation.findMany({
+  async findAllByLead(lead_id: string): Promise<any[]> {
+    const convos = await (this.prisma as any).conversation.findMany({
       where: { lead_id },
       orderBy: { last_message_at: 'desc' },
       include: {
         lead: { select: { id: true, name: true, phone: true, email: true, profile_picture_url: true } },
         messages: { orderBy: { created_at: 'asc' }, take: 100, include: { media: true } },
         assigned_user: { select: { id: true, name: true } },
-      }
+      },
+    });
+
+    // Enriquecer com dados do advogado especialista pré-atribuído
+    const lawyerIds = [...new Set(convos.map((c: any) => c.assigned_lawyer_id).filter(Boolean))] as string[];
+    const lawyers = lawyerIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: lawyerIds } },
+          select: { id: true, name: true, specialties: true },
+        })
+      : [];
+    const lawyerMap: Record<string, any> = Object.fromEntries(lawyers.map((l) => [l.id, l]));
+
+    return convos.map((c: any) => ({
+      ...c,
+      assigned_lawyer: c.assigned_lawyer_id ? (lawyerMap[c.assigned_lawyer_id] ?? null) : null,
+    }));
+  }
+
+  async setAssignedLawyer(id: string, lawyerId: string | null): Promise<Conversation> {
+    return this.prisma.conversation.update({
+      where: { id },
+      data: { assigned_lawyer_id: lawyerId } as any,
     });
   }
 
