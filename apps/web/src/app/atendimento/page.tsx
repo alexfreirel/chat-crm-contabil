@@ -602,6 +602,9 @@ export default function Dashboard() {
     let result: ConversationSummary[];
     if (leadFilter === 'ACTIVE') {
       result = conversations.filter(myActiveConvs);
+    } else if (leadFilter === 'BOT') {
+      // SophIA: somente conversas com IA ativa atribuídas ao usuário logado
+      result = conversations.filter(c => c.aiMode && c.assignedAgentId === currentUserId);
     } else if (leadFilter) {
       result = conversations.filter(c => c.status === leadFilter);
     } else {
