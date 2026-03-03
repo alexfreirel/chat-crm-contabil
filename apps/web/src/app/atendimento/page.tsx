@@ -92,7 +92,10 @@ export default function Dashboard() {
   const [selectedTransferUserId, setSelectedTransferUserId] = useState<string | null>(null);
   const [transferReason, setTransferReason] = useState('');
   const [transferAudioIds, setTransferAudioIds] = useState<string[]>([]);
-  const [showLawyerReasonInput, setShowLawyerReasonInput] = useState(false);
+  // Popup de motivo (lawyer ou operator)
+  const [showReasonPopup, setShowReasonPopup] = useState(false);
+  const [reasonPopupContext, setReasonPopupContext] = useState<'lawyer' | 'operator' | null>(null);
+  const [reasonPopupTargetName, setReasonPopupTargetName] = useState('');
   const [allSpecialists, setAllSpecialists] = useState<{ id: string; name: string; specialties: string[] }[]>([]);
   const [showLawyerDropdown, setShowLawyerDropdown] = useState(false);
   // Incoming transfer popup (for receiving operator)
@@ -417,11 +420,27 @@ export default function Dashboard() {
     }
   };
 
+  const openReasonPopup = (context: 'lawyer' | 'operator', targetName: string) => {
+    setTransferReason('');
+    setTransferAudioIds([]);
+    setTransferError(null);
+    setReasonPopupContext(context);
+    setReasonPopupTargetName(targetName);
+    setShowReasonPopup(true);
+  };
+
+  const closeReasonPopup = () => {
+    setShowReasonPopup(false);
+    setReasonPopupContext(null);
+    setTransferReason('');
+    setTransferAudioIds([]);
+  };
+
   const handleOpenTransferModal = async () => {
     if (!selectedId || selectedId.startsWith('demo-')) return;
     setTransferError(null);
     setSelectedTransferUserId(null);
-    setShowLawyerReasonInput(false);
+    setShowReasonPopup(false);
     setTransferReason('');
     setTransferAudioIds([]);
     setLoadingOperators(true);
@@ -450,6 +469,7 @@ export default function Dashboard() {
       const destUser = transferGroups.flatMap(g => g.users).find(u => u.id === selectedTransferUserId);
       setTransferSentMsg(`📨 Solicitação enviada para ${destUser?.name || 'operador'}. Aguardando resposta...`);
       setTimeout(() => setTransferSentMsg(null), 6000);
+      setShowReasonPopup(false);
       setTransferModal(false);
       setSelectedTransferUserId(null);
       setTransferReason('');
@@ -471,10 +491,10 @@ export default function Dashboard() {
         reason: transferReason.trim() || undefined,
         audioIds: transferAudioIds.length > 0 ? transferAudioIds : undefined,
       });
+      setShowReasonPopup(false);
       setTransferModal(false);
       setTransferReason('');
       setTransferAudioIds([]);
-      setShowLawyerReasonInput(false);
       setTransferSentMsg(`⚖️ Solicitação enviada para o advogado especialista. Aguardando resposta...`);
       setTimeout(() => setTransferSentMsg(null), 6000);
     } catch (e: any) {
@@ -1596,57 +1616,17 @@ export default function Dashboard() {
                       {group.type === 'SECTOR' && group.auto_route ? (
                         <div className="space-y-2">
                           {selected?.assignedLawyerId ? (
-                            /* Advogado já atribuído → botão direto; ao clicar abre textarea de motivo */
+                            /* Advogado atribuído → botão que abre popup de motivo */
                             (() => {
                               const lawyer = group.users.find(u => u.id === selected.assignedLawyerId);
                               const lawyerName = lawyer?.name || selected.assignedLawyerName || 'Advogado vinculado';
                               return (
-                                <div className="space-y-2">
-                                  {!showLawyerReasonInput ? (
-                                    /* Passo 1 — botão inicial */
-                                    <button
-                                      onClick={() => setShowLawyerReasonInput(true)}
-                                      className="w-full py-3 bg-violet-500/10 border border-violet-500/30 text-violet-300 rounded-xl font-bold text-sm hover:bg-violet-500/20 transition-colors flex items-center justify-center gap-2"
-                                    >
-                                      ⚖️ Transferir para {lawyerName}{selected.legalArea ? ` (${selected.legalArea})` : ''}
-                                    </button>
-                                  ) : (
-                                    /* Passo 2 — textarea + gravador de áudio + confirmar */
-                                    <>
-                                      <div>
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5 px-1">Motivo da transferência</p>
-                                        <textarea
-                                          autoFocus
-                                          value={transferReason}
-                                          onChange={e => setTransferReason(e.target.value)}
-                                          placeholder={`Ex: Avanço do caso para Dr(a). ${lawyerName}...`}
-                                          className="w-full bg-muted border border-border rounded-xl px-3 py-2 text-sm resize-none outline-none focus:border-violet-500/50 transition-colors"
-                                          rows={3}
-                                        />
-                                      </div>
-                                      {/* Gravador de áudio opcional */}
-                                      <TransferAudioRecorder
-                                        conversationId={selectedId!}
-                                        onAudioIdsChange={setTransferAudioIds}
-                                      />
-                                      <div className="flex gap-2">
-                                        <button
-                                          onClick={() => { setShowLawyerReasonInput(false); setTransferReason(''); setTransferAudioIds([]); }}
-                                          className="flex-1 py-2.5 bg-muted border border-border text-muted-foreground rounded-xl text-sm font-semibold hover:bg-accent transition-colors"
-                                        >
-                                          Cancelar
-                                        </button>
-                                        <button
-                                          onClick={handleTransferToLawyer}
-                                          disabled={transferring || (!transferReason.trim() && transferAudioIds.length === 0)}
-                                          className="flex-1 py-2.5 bg-violet-500/10 border border-violet-500/30 text-violet-300 rounded-xl font-bold text-sm hover:bg-violet-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                        >
-                                          {transferring ? '⏳ Enviando...' : '⚖️ Confirmar'}
-                                        </button>
-                                      </div>
-                                    </>
-                                  )}
-                                </div>
+                                <button
+                                  onClick={() => openReasonPopup('lawyer', lawyerName)}
+                                  className="w-full py-3 bg-violet-500/10 border border-violet-500/30 text-violet-300 rounded-xl font-bold text-sm hover:bg-violet-500/20 transition-colors flex items-center justify-center gap-2"
+                                >
+                                  ⚖️ Transferir para {lawyerName}{selected.legalArea ? ` (${selected.legalArea})` : ''}
+                                </button>
                               );
                             })()
                           ) : (
@@ -1697,31 +1677,15 @@ export default function Dashboard() {
                   ))}
                 </div>
                 {selectedTransferUserId && (
-                  <>
-                    <div className="mt-3 shrink-0">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5 px-1">Motivo</p>
-                      <textarea
-                        value={transferReason}
-                        onChange={e => setTransferReason(e.target.value)}
-                        placeholder="Explique o motivo da transferência..."
-                        className="w-full bg-muted border border-border rounded-xl px-3 py-2 text-sm resize-none outline-none focus:border-sky-500/50"
-                        rows={2}
-                      />
-                    </div>
-                    <div className="mt-2 shrink-0">
-                      <TransferAudioRecorder
-                        conversationId={selectedId!}
-                        onAudioIdsChange={setTransferAudioIds}
-                      />
-                    </div>
-                    <button
-                      onClick={handleTransfer}
-                      disabled={transferring || !selectedTransferUserId || (!transferReason.trim() && transferAudioIds.length === 0)}
-                      className="mt-3 shrink-0 w-full py-2.5 bg-sky-500 text-white rounded-xl font-bold text-sm hover:bg-sky-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      {transferring ? 'Enviando...' : 'Solicitar Transferência'}
-                    </button>
-                  </>
+                  <button
+                    onClick={() => {
+                      const destUser = transferGroups.flatMap(g => g.users).find(u => u.id === selectedTransferUserId);
+                      openReasonPopup('operator', destUser?.name || 'Operador');
+                    }}
+                    className="mt-3 shrink-0 w-full py-2.5 bg-sky-500 text-white rounded-xl font-bold text-sm hover:bg-sky-600 transition-colors"
+                  >
+                    Solicitar Transferência
+                  </button>
                 )}
               </>
             )}
@@ -1731,6 +1695,72 @@ export default function Dashboard() {
             >
               Cancelar
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Popup de Motivo de Transferência ── */}
+      {showReasonPopup && (
+        <div
+          className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm"
+          onClick={closeReasonPopup}
+        >
+          <div
+            className="bg-card border border-border rounded-2xl shadow-2xl w-[360px] overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className={`px-5 pt-5 pb-3 border-b border-border/60 ${reasonPopupContext === 'lawyer' ? 'bg-violet-500/5' : 'bg-sky-500/5'}`}>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">
+                {reasonPopupContext === 'lawyer' ? '⚖️ Transferência para especialista' : '📨 Solicitar transferência'}
+              </p>
+              <h3 className="font-bold text-sm text-foreground">{reasonPopupTargetName}</h3>
+            </div>
+
+            {/* Caixa unificada: textarea + gravador de áudio */}
+            <div className="m-4 rounded-xl border border-border bg-muted/40 overflow-hidden focus-within:border-violet-500/50 transition-colors">
+              <textarea
+                autoFocus
+                value={transferReason}
+                onChange={e => setTransferReason(e.target.value)}
+                placeholder={`Explique o motivo para ${reasonPopupTargetName}...`}
+                className="w-full bg-transparent px-4 pt-3 pb-2 text-sm resize-none outline-none min-h-[80px]"
+                rows={3}
+              />
+              {/* Divisor + gravador dentro da mesma caixa */}
+              <div className="border-t border-border/50 px-3 py-2.5 bg-muted/20">
+                <TransferAudioRecorder
+                  conversationId={selectedId!}
+                  onAudioIdsChange={setTransferAudioIds}
+                />
+              </div>
+            </div>
+
+            {/* Erro */}
+            {transferError && (
+              <p className="text-red-400 text-xs px-4 pb-2">{transferError}</p>
+            )}
+
+            {/* Botões */}
+            <div className="flex gap-2 px-4 pb-4">
+              <button
+                onClick={closeReasonPopup}
+                className="flex-1 py-2.5 bg-muted border border-border text-muted-foreground rounded-xl text-sm font-semibold hover:bg-accent transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={reasonPopupContext === 'lawyer' ? handleTransferToLawyer : handleTransfer}
+                disabled={transferring || (!transferReason.trim() && transferAudioIds.length === 0)}
+                className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                  reasonPopupContext === 'lawyer'
+                    ? 'bg-violet-500/15 border border-violet-500/40 text-violet-300 hover:bg-violet-500/25'
+                    : 'bg-sky-500 text-white hover:bg-sky-600'
+                }`}
+              >
+                {transferring ? '⏳ Enviando...' : reasonPopupContext === 'lawyer' ? '⚖️ Confirmar' : 'Enviar'}
+              </button>
+            </div>
           </div>
         </div>
       )}
