@@ -126,4 +126,12 @@ export class SettingsController {
     }
     return this.settingsService.deleteSkill(id);
   }
+
+  @Get('ai-costs')
+  async getAiCosts(@Request() req: any) {
+    if (req.user.role !== 'ADMIN') {
+      throw new ForbiddenException('Apenas administradores podem ver custos de IA');
+    }
+    return this.settingsService.getAiCosts();
+  }
 }

@@ -84,6 +84,52 @@ export class AiProcessor extends WorkerHost {
     return VISION_MODELS.some((prefix) => model.startsWith(prefix));
   }
 
+  // ─── Tabela de preços OpenAI (USD por 1M tokens) ───
+  private static readonly OPENAI_PRICING: Record<string, { input: number; output: number }> = {
+    'gpt-4o-mini':  { input: 0.15,  output: 0.60  },
+    'gpt-4o':       { input: 5.00,  output: 15.00 },
+    'gpt-4.1':      { input: 2.00,  output: 8.00  },
+    'gpt-4.1-mini': { input: 0.40,  output: 1.60  },
+    'gpt-5':        { input: 15.00, output: 60.00 },
+    'gpt-5-mini':   { input: 1.50,  output: 6.00  },
+    'o1':           { input: 15.00, output: 60.00 },
+    'o3-mini':      { input: 1.10,  output: 4.40  },
+  };
+
+  // ─── Salva uso de tokens no banco para o dashboard de custos ───
+  private async saveUsage(params: {
+    conversation_id?: string | null;
+    skill_id?: string | null;
+    model: string;
+    call_type: 'chat' | 'memory' | 'whisper';
+    usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null;
+  }): Promise<void> {
+    if (!params.usage) return;
+    // Busca preço pelo prefixo do modelo (ex: 'gpt-4.1' cobre 'gpt-4.1-mini')
+    const priceEntry = Object.entries(AiProcessor.OPENAI_PRICING)
+      .find(([key]) => params.model.startsWith(key));
+    const price = priceEntry ? priceEntry[1] : { input: 0.15, output: 0.60 };
+    const costUsd =
+      (params.usage.prompt_tokens     * price.input  / 1_000_000) +
+      (params.usage.completion_tokens * price.output / 1_000_000);
+    try {
+      await (this.prisma as any).aiUsage.create({
+        data: {
+          conversation_id: params.conversation_id ?? null,
+          skill_id:        params.skill_id ?? null,
+          model:           params.model,
+          call_type:       params.call_type,
+          prompt_tokens:     params.usage.prompt_tokens,
+          completion_tokens: params.usage.completion_tokens,
+          total_tokens:      params.usage.total_tokens,
+          cost_usd:          costUsd,
+        },
+      });
+    } catch (e) {
+      this.logger.warn(`[AI] Falha ao salvar AiUsage: ${e}`);
+    }
+  }
+
   // ─── Seleciona a skill baseado na área jurídica ───
   private selectSkill(skills: any[], legalArea: string | null): any | null {
     if (!skills.length) return null;
@@ -434,6 +480,14 @@ export class AiProcessor extends WorkerHost {
 
     const rawContent =
       memoryResult.choices[0]?.message?.content || '{}';
+
+    // Registra uso de tokens da memória para dashboard de custos
+    await this.saveUsage({
+      model: memoryModel,
+      call_type: 'memory',
+      usage: memoryResult.usage,
+    });
+
     const parsed = JSON.parse(rawContent);
 
     if (parsed.lead || parsed.case || parsed.facts) {
@@ -647,6 +701,15 @@ export class AiProcessor extends WorkerHost {
       const rawResponse =
         completion.choices[0]?.message?.content ||
         '{"reply":"Desculpe, estou com instabilidade no momento."}';
+
+      // Registra uso de tokens para dashboard de custos
+      await this.saveUsage({
+        conversation_id: conversation_id,
+        skill_id: skill?.id ?? null,
+        model,
+        call_type: 'chat',
+        usage: completion.usage,
+      });
 
       // 13. Parsear resposta JSON
       const { reply: aiText, updates } = this.parseAiResponse(rawResponse);

@@ -434,4 +434,95 @@ Você prepara o caso. O advogado decide.
   async deleteSkill(id: string) {
     return (this.prisma as any).promptSkill.delete({ where: { id } });
   }
+
+  async getAiCosts() {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const start7Days = new Date(startOfToday);
+    start7Days.setDate(start7Days.getDate() - 6);
+
+    const prismaAny = this.prisma as any;
+
+    const [today, month, byModel, byType, daily] = await Promise.all([
+      // Totais hoje
+      prismaAny.aiUsage.aggregate({
+        _sum: { cost_usd: true, total_tokens: true, prompt_tokens: true, completion_tokens: true },
+        _count: { id: true },
+        where: { created_at: { gte: startOfToday } },
+      }),
+      // Totais do mês
+      prismaAny.aiUsage.aggregate({
+        _sum: { cost_usd: true, total_tokens: true },
+        _count: { id: true },
+        where: { created_at: { gte: startOfMonth } },
+      }),
+      // Agrupado por modelo (mês atual)
+      prismaAny.aiUsage.groupBy({
+        by: ['model'],
+        _sum: { cost_usd: true, total_tokens: true },
+        _count: { id: true },
+        where: { created_at: { gte: startOfMonth } },
+        orderBy: { _sum: { cost_usd: 'desc' } },
+      }),
+      // Agrupado por tipo de chamada (mês atual)
+      prismaAny.aiUsage.groupBy({
+        by: ['call_type'],
+        _sum: { cost_usd: true, total_tokens: true },
+        _count: { id: true },
+        where: { created_at: { gte: startOfMonth } },
+      }),
+      // Últimos 7 dias (para gráfico)
+      prismaAny.aiUsage.groupBy({
+        by: ['created_at'],
+        _sum: { cost_usd: true, total_tokens: true },
+        where: { created_at: { gte: start7Days } },
+        orderBy: { created_at: 'asc' },
+      }),
+    ]);
+
+    // Agrega últimos 7 dias por data (yyyy-mm-dd)
+    const dailyMap: Record<string, { cost_usd: number; total_tokens: number }> = {};
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start7Days);
+      d.setDate(d.getDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      dailyMap[key] = { cost_usd: 0, total_tokens: 0 };
+    }
+    for (const row of daily) {
+      const key = new Date(row.created_at).toISOString().slice(0, 10);
+      if (dailyMap[key]) {
+        dailyMap[key].cost_usd   += row._sum.cost_usd   || 0;
+        dailyMap[key].total_tokens += row._sum.total_tokens || 0;
+      }
+    }
+
+    return {
+      today: {
+        cost_usd:          today._sum.cost_usd      || 0,
+        total_tokens:      today._sum.total_tokens  || 0,
+        prompt_tokens:     today._sum.prompt_tokens || 0,
+        completion_tokens: today._sum.completion_tokens || 0,
+        calls:             today._count.id          || 0,
+      },
+      month: {
+        cost_usd:     month._sum.cost_usd     || 0,
+        total_tokens: month._sum.total_tokens || 0,
+        calls:        month._count.id         || 0,
+      },
+      byModel: byModel.map((r: any) => ({
+        model:        r.model,
+        cost_usd:     r._sum.cost_usd     || 0,
+        total_tokens: r._sum.total_tokens || 0,
+        calls:        r._count.id         || 0,
+      })),
+      byType: byType.map((r: any) => ({
+        call_type:    r.call_type,
+        cost_usd:     r._sum.cost_usd     || 0,
+        total_tokens: r._sum.total_tokens || 0,
+        calls:        r._count.id         || 0,
+      })),
+      last7Days: Object.entries(dailyMap).map(([date, v]) => ({ date, ...v })),
+    };
+  }
 }
