@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import {
   BarChart2, Globe, MousePointerClick, TrendingUp, ChevronLeft, ArrowUpRight,
-  Users, Activity, Clock, RefreshCw, Wifi,
+  Users, Activity, Clock, RefreshCw, Wifi, Settings, CheckCircle2, ChevronDown, ChevronUp,
+  ExternalLink, AlertCircle,
 } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -211,6 +212,49 @@ export default function AnalyticsDashboard() {
   const [ga4, setGa4] = useState<Ga4Summary | null>(null);
   const [loadingGa4, setLoadingGa4] = useState(true);
 
+  // GA4 Config
+  const [ga4Configured, setGa4Configured] = useState(false);
+  const [showGa4Config, setShowGa4Config] = useState(false);
+  const [ga4PropertyId, setGa4PropertyId] = useState('');
+  const [ga4JsonText, setGa4JsonText] = useState('');
+  const [savingGa4Config, setSavingGa4Config] = useState(false);
+  const [ga4ConfigSaved, setGa4ConfigSaved] = useState(false);
+  const [ga4ConfigError, setGa4ConfigError] = useState('');
+
+  const loadGa4Config = () =>
+    api.get('/analytics/ga4-config')
+      .then((r) => {
+        setGa4Configured(r.data.isConfigured);
+        if (r.data.propertyId) setGa4PropertyId(r.data.propertyId);
+      })
+      .catch(console.error);
+
+  const handleSaveGa4Config = async () => {
+    if (!ga4PropertyId.trim()) { setGa4ConfigError('Informe o Property ID.'); return; }
+    if (!ga4JsonText.trim()) { setGa4ConfigError('Cole o JSON da Service Account.'); return; }
+    try { JSON.parse(ga4JsonText); } catch { setGa4ConfigError('JSON inválido. Verifique o arquivo copiado.'); return; }
+    setSavingGa4Config(true);
+    setGa4ConfigError('');
+    try {
+      await api.post('/analytics/ga4-config', {
+        propertyId: ga4PropertyId.trim(),
+        serviceAccountJson: ga4JsonText.trim(),
+      });
+      setGa4Configured(true);
+      setGa4ConfigSaved(true);
+      setGa4JsonText('');
+      setShowGa4Config(false);
+      setTimeout(() => setGa4ConfigSaved(false), 3000);
+      // Recarrega dados GA4
+      setLoadingGa4(true);
+      api.get('/analytics/ga4').then((r) => setGa4(r.data)).catch(console.error).finally(() => setLoadingGa4(false));
+    } catch (e: any) {
+      setGa4ConfigError(e?.response?.data?.message || 'Erro ao salvar. Verifique o JSON.');
+    } finally {
+      setSavingGa4Config(false);
+    }
+  };
+
   useEffect(() => {
     api.get('/analytics/pages')
       .then((r) => setPages(r.data))
@@ -221,6 +265,8 @@ export default function AnalyticsDashboard() {
       .then((r) => setGa4(r.data))
       .catch(console.error)
       .finally(() => setLoadingGa4(false));
+
+    loadGa4Config();
   }, []);
 
   const openDetail = async (path: string) => {
@@ -347,6 +393,113 @@ export default function AnalyticsDashboard() {
                 ))}
               </tbody>
             </table>
+          )}
+        </div>
+
+        {/* ── Configuração GA4 ── */}
+        <div className="shrink-0 border-t border-border">
+          <button
+            onClick={() => setShowGa4Config((v) => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              <Settings size={13} />
+              Configurar Google Analytics (GA4)
+              {ga4Configured && !ga4ConfigSaved && (
+                <span className="flex items-center gap-1 text-emerald-500">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> CONECTADO
+                </span>
+              )}
+              {ga4ConfigSaved && (
+                <span className="flex items-center gap-1 text-emerald-500">
+                  <CheckCircle2 size={12} /> Salvo!
+                </span>
+              )}
+              {!ga4Configured && (
+                <span className="text-amber-500">NÃO CONFIGURADO</span>
+              )}
+            </span>
+            {showGa4Config ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </button>
+
+          {showGa4Config && (
+            <div className="px-4 pb-5 pt-1 space-y-4 bg-muted/20">
+
+              {/* Instruções */}
+              <div className="bg-violet-500/5 border border-violet-500/20 rounded-xl p-4 space-y-3">
+                <p className="text-xs font-bold text-violet-500 uppercase tracking-wider">Como obter as credenciais</p>
+                <div className="space-y-2 text-[11px] text-muted-foreground">
+                  <div className="flex gap-2">
+                    <span className="shrink-0 w-4 h-4 rounded-full bg-violet-500/20 text-violet-400 flex items-center justify-center text-[9px] font-bold">1</span>
+                    <span><strong className="text-foreground">Property ID:</strong> acesse <a href="https://analytics.google.com" target="_blank" rel="noopener noreferrer" className="text-violet-400 hover:underline inline-flex items-center gap-0.5">analytics.google.com <ExternalLink size={9} /></a> → ⚙ Admin → Property Settings → copie o número em "Property ID".</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="shrink-0 w-4 h-4 rounded-full bg-violet-500/20 text-violet-400 flex items-center justify-center text-[9px] font-bold">2</span>
+                    <span><strong className="text-foreground">Service Account:</strong> acesse <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="text-violet-400 hover:underline inline-flex items-center gap-0.5">console.cloud.google.com <ExternalLink size={9} /></a> → APIs & Services → Library → ative <strong className="text-foreground">"Google Analytics Data API"</strong>.</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="shrink-0 w-4 h-4 rounded-full bg-violet-500/20 text-violet-400 flex items-center justify-center text-[9px] font-bold">3</span>
+                    <span>Ainda no Cloud Console → APIs & Services → <strong className="text-foreground">Credentials</strong> → + Create Credentials → <strong className="text-foreground">Service Account</strong>. Dê um nome (ex: "analytics-reader") e finalize.</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="shrink-0 w-4 h-4 rounded-full bg-violet-500/20 text-violet-400 flex items-center justify-center text-[9px] font-bold">4</span>
+                    <span>Clique na service account criada → aba <strong className="text-foreground">Keys</strong> → Add Key → Create New Key → <strong className="text-foreground">JSON</strong>. Um arquivo .json será baixado — copie todo o conteúdo e cole no campo abaixo.</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="shrink-0 w-4 h-4 rounded-full bg-violet-500/20 text-violet-400 flex items-center justify-center text-[9px] font-bold">5</span>
+                    <span>Volte ao GA4 → ⚙ Admin → <strong className="text-foreground">Property Access Management</strong> → + → cole o email da service account (campo <code className="font-mono bg-muted px-0.5 rounded">client_email</code> do JSON) → Permissão: <strong className="text-foreground">Viewer</strong>.</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Campos */}
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide">
+                    Property ID <span className="normal-case font-normal text-muted-foreground/60">(somente o número, ex: 484715478)</span>
+                  </label>
+                  <input
+                    value={ga4PropertyId}
+                    onChange={(e) => setGa4PropertyId(e.target.value.replace('properties/', ''))}
+                    placeholder="484715478"
+                    className="w-full bg-card border border-border rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-500/50 transition-all font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide">
+                    Service Account JSON <span className="normal-case font-normal text-muted-foreground/60">(conteúdo completo do arquivo .json)</span>
+                  </label>
+                  <textarea
+                    value={ga4JsonText}
+                    onChange={(e) => { setGa4JsonText(e.target.value); setGa4ConfigError(''); }}
+                    placeholder={'{\n  "type": "service_account",\n  "project_id": "...",\n  ...\n}'}
+                    rows={6}
+                    className="w-full font-mono text-[11px] bg-card border border-border rounded-xl px-3 py-2 resize-y outline-none focus:border-violet-500/50 transition-all leading-relaxed"
+                  />
+                  {ga4Configured && !ga4JsonText && (
+                    <p className="text-[11px] text-emerald-500">✓ Credenciais já configuradas. Cole um novo JSON para substituir.</p>
+                  )}
+                </div>
+
+                {ga4ConfigError && (
+                  <div className="flex items-center gap-2 text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                    <AlertCircle size={12} /> {ga4ConfigError}
+                  </div>
+                )}
+
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleSaveGa4Config}
+                    disabled={savingGa4Config}
+                    className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-xl font-bold text-sm transition-all disabled:opacity-50 shadow-lg shadow-violet-500/20"
+                  >
+                    {savingGa4Config ? <RefreshCw className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}
+                    Salvar e Conectar
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       </div>

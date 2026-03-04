@@ -32,4 +32,18 @@ export class AnalyticsController {
   getGa4() {
     return this.service.getGa4Summary();
   }
+
+  /** Protegido — retorna status de configuração GA4 */
+  @UseGuards(JwtAuthGuard)
+  @Get('ga4-config')
+  getGa4Config() {
+    return this.service.getGa4Config();
+  }
+
+  /** Protegido — salva Property ID e Service Account JSON no banco */
+  @UseGuards(JwtAuthGuard)
+  @Post('ga4-config')
+  saveGa4Config(@Body() body: { propertyId: string; serviceAccountJson: string }) {
+    return this.service.saveGa4Config(body.propertyId, body.serviceAccountJson);
+  }
 }

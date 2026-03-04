@@ -19,6 +19,44 @@ export class TrackEventDto {
 export class AnalyticsService {
   constructor(private prisma: PrismaService) {}
 
+  // ── Helpers para globalSetting ────────────────────────────────────────────
+
+  private async getSetting(key: string): Promise<string | null> {
+    const row = await this.prisma.globalSetting.findUnique({ where: { key } });
+    return row?.value || null;
+  }
+
+  private async upsertSetting(key: string, value: string): Promise<void> {
+    await this.prisma.globalSetting.upsert({
+      where: { key },
+      update: { value },
+      create: { key, value },
+    });
+  }
+
+  // ── GA4 Config (banco) ────────────────────────────────────────────────────
+
+  async getGa4Config(): Promise<{ isConfigured: boolean; propertyId: string | null }> {
+    const propertyId = await this.getSetting('GA4_PROPERTY_ID');
+    const b64 = await this.getSetting('GA4_SERVICE_ACCOUNT_B64');
+    // Remove o prefixo "properties/" para mostrar só o número na UI
+    const numericId = propertyId ? propertyId.replace('properties/', '') : null;
+    return { isConfigured: !!(propertyId && b64), propertyId: numericId };
+  }
+
+  async saveGa4Config(propertyId: string, serviceAccountJson: string): Promise<void> {
+    // Valida o JSON (lança se inválido)
+    JSON.parse(serviceAccountJson);
+    const b64 = Buffer.from(serviceAccountJson).toString('base64');
+    const fullPropertyId = propertyId.startsWith('properties/')
+      ? propertyId
+      : `properties/${propertyId}`;
+    await this.upsertSetting('GA4_PROPERTY_ID', fullPropertyId);
+    await this.upsertSetting('GA4_SERVICE_ACCOUNT_B64', b64);
+  }
+
+  // ── LP Tracking ───────────────────────────────────────────────────────────
+
   async track(dto: TrackEventDto) {
     await this.prisma.lpEvent.create({ data: dto });
     return { ok: true };
@@ -72,7 +110,6 @@ export class AnalyticsService {
     const views = events.filter((e) => e.event_type === 'view').length;
     const clicks = events.filter((e) => e.event_type === 'whatsapp_click').length;
 
-    // By source
     const sourceMap: Record<string, { views: number; clicks: number }> = {};
     for (const e of events) {
       const source = e.gclid ? 'google_ads' : e.utm_source || 'organico';
@@ -87,7 +124,6 @@ export class AnalyticsService {
       return { source, medium: medium || null, campaign: campaign || null, ...counts };
     });
 
-    // Last 7 days
     const dayMap: Record<string, { views: number; clicks: number }> = {};
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
@@ -115,9 +151,12 @@ export class AnalyticsService {
     };
   }
 
+  // ── GA4 Data API ──────────────────────────────────────────────────────────
+
   async getGa4Summary() {
-    const propertyId = process.env.GA4_PROPERTY_ID;
-    const b64 = process.env.GA4_SERVICE_ACCOUNT_B64;
+    // Prioridade: banco → env var
+    const propertyId = (await this.getSetting('GA4_PROPERTY_ID')) || process.env.GA4_PROPERTY_ID;
+    const b64 = (await this.getSetting('GA4_SERVICE_ACCOUNT_B64')) || process.env.GA4_SERVICE_ACCOUNT_B64;
 
     if (!propertyId || !b64) return null;
 
@@ -156,7 +195,6 @@ export class AnalyticsService {
         orderBys: [{ dimension: { dimensionName: 'date' } }],
       });
 
-      // Agregar totais por canal
       let totalSessions = 0;
       let totalUsers = 0;
       let totalNewUsers = 0;
@@ -188,7 +226,6 @@ export class AnalyticsService {
       const bounceRate = totalSessions > 0 ? (weightedBounce / totalSessions) * 100 : 0;
       const avgDuration = totalSessions > 0 ? weightedDuration / totalSessions : 0;
 
-      // Processar dados diários
       const by_day = (dailyReport.rows || []).map((row) => {
         const raw = row.dimensionValues?.[0]?.value || '';
         const date = `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
