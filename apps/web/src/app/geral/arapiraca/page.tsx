@@ -64,7 +64,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "André Lustosa Advogados | Escritório Especializado em Arapiraca-AL",
-    description: "Escritório de advocacia em Arapiraca-AL.",
+    description: "Escritório de advocacia em Arapiraca-AL especializado em Direito Trabalhista, Previdenciário, Consumidor, Civil e Imobiliário. Agende sua consulta online ou presencial.",
     url: `${baseUrl}/geral/arapiraca`,
     siteName: "André Lustosa Advogados",
     locale: "pt_BR",
@@ -80,8 +80,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "André Lustosa Advogados",
-    description: "Escritório de advocacia em Arapiraca-AL.",
+    title: "André Lustosa Advogados | Arapiraca-AL",
+    description: "Escritório de advocacia em Arapiraca-AL especializado em Direito Trabalhista, Previdenciário, Consumidor e Civil. Agende sua consulta.",
     images: ["/landing/Design sem nome (35).png"],
     creator: "@andrelustosa",
   },

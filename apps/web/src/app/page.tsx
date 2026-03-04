@@ -74,6 +74,13 @@ export async function generateMetadata(): Promise<Metadata> {
       type: 'website',
       images: [{ url: '/logo_andre_lustosa.png', width: 1200, height: 630, alt: title }],
     },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: ['/logo_andre_lustosa.png'],
+      creator: '@andrelustosa',
+    },
     robots: { index: true, follow: true },
   };
 }
