@@ -17,8 +17,8 @@ interface PageStat {
   clicks: number;
   conversion_rate: string;
   top_source: string;
-  by_day: { date: string; views: number; clicks: number }[];
-  trend: number; // variação percentual visitas: semana atual vs anterior
+  by_day?: { date: string; views: number; clicks: number }[]; // opcional: API antiga pode não retornar
+  trend?: number; // variação percentual visitas: semana atual vs anterior
 }
 
 interface PageDetail {
@@ -105,7 +105,8 @@ function conversionColor(rate: string): string {
    Componentes visuais
 ────────────────────────────────────────────────────────────── */
 /** Mini gráfico de barras 7 dias — visitas (claro) + cliques WA (escuro) */
-function MiniSparkline({ data }: { data: PageStat['by_day'] }) {
+function MiniSparkline({ data }: { data: NonNullable<PageStat['by_day']> }) {
+  if (!data || data.length === 0) return null;
   const maxV = Math.max(...data.map((d) => d.views), 1);
   return (
     <div className="flex items-end gap-0.5 h-9">
@@ -182,8 +183,8 @@ function Ga4DayChart({ data }: { data: Ga4Summary['by_day'] }) {
 /** Card de uma Landing Page */
 function LpCard({ page, onClick }: { page: PageStat; onClick: () => void }) {
   const convClass = conversionColor(page.conversion_rate);
-  const hasTrend = page.trend !== 0;
-  const trendUp = page.trend > 0;
+  const hasTrend = page.trend !== undefined && page.trend !== 0;
+  const trendUp = (page.trend ?? 0) > 0;
 
   return (
     <div
@@ -229,7 +230,7 @@ function LpCard({ page, onClick }: { page: PageStat; onClick: () => void }) {
       </div>
 
       {/* Sparkline 7 dias */}
-      {page.by_day.length > 0 && <MiniSparkline data={page.by_day} />}
+      {page.by_day && page.by_day.length > 0 && <MiniSparkline data={page.by_day} />}
 
       {/* Rodapé: fonte + tendência */}
       <div className="flex items-center justify-between">
@@ -239,7 +240,7 @@ function LpCard({ page, onClick }: { page: PageStat; onClick: () => void }) {
         {hasTrend ? (
           <span className={`flex items-center gap-0.5 text-[11px] font-bold ${trendUp ? 'text-emerald-500' : 'text-red-400'}`}>
             {trendUp ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-            {trendUp ? '+' : ''}{page.trend}% esta semana
+            {trendUp ? '+' : ''}{page.trend ?? 0}% esta semana
           </span>
         ) : (
           <span className="text-[10px] text-muted-foreground">→ sem variação</span>
