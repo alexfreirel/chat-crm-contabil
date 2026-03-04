@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Ubuntu_Sans } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers';
+import { GTMScript, GTMNoScript } from '@/components/GTMScript';
 
 const ubuntuSans = Ubuntu_Sans({
   subsets: ['latin'],
@@ -24,8 +25,12 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet" />
+        {/* Google Tag Manager */}
+        <GTMScript />
       </head>
       <body className="font-sans antialiased text-foreground bg-background">
+        {/* GTM noscript fallback */}
+        <GTMNoScript />
         <Providers>
           <main className="min-h-screen flex flex-col">
             {children}

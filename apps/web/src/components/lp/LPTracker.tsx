@@ -46,8 +46,9 @@ async function sendEvent(event_type: 'view' | 'whatsapp_click') {
         ...utms,
       }),
     });
-    // GTM dataLayer
-    if (typeof window !== 'undefined' && window.dataLayer) {
+    // GTM dataLayer — inicializa se GTM ainda não carregou
+    if (typeof window !== 'undefined') {
+      window.dataLayer = window.dataLayer || [];
       window.dataLayer.push({
         event: event_type === 'view' ? 'lp_page_view' : 'lp_whatsapp_click',
         page_path: window.location.pathname,

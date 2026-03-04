@@ -25,6 +25,7 @@ jobs:
             build-args: |
               NEXT_PUBLIC_API_URL=https://andrelustosaadvogados.com.br/api
               NEXT_PUBLIC_WS_URL=wss://andrelustosaadvogados.com.br
+              NEXT_PUBLIC_GTM_ID=${{ vars.NEXT_PUBLIC_GTM_ID }}
 
     steps:
       - name: Checkout repository
