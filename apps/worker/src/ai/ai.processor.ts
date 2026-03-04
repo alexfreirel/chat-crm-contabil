@@ -640,6 +640,8 @@ export class AiProcessor extends WorkerHost {
         lead_summary: memory?.summary || '',
         conversation_id: convo.id,
         history_summary: historyText.slice(0, 500),
+        // URL base do site — use no prompt: "{{site_url}}/geral/arapiraca"
+        site_url: process.env.APP_URL || 'https://andrelustosaadvogados.com.br',
       };
 
       // Cabeçalho fixo de capacidades — injetado antes de qualquer skill prompt

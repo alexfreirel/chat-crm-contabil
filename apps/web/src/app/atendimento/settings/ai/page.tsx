@@ -47,6 +47,7 @@ const TEMPLATE_VARS = [
   { key: '{{lead_summary}}', desc: 'Resumo do caso' },
   { key: '{{conversation_id}}', desc: 'ID da conversa (para URLs)' },
   { key: '{{history_summary}}', desc: 'Resumo do histórico' },
+  { key: '{{site_url}}', desc: 'URL base do site (ex: para links de LP)' },
 ];
 
 const BLANK_FORM: SkillForm = {
