@@ -1,29 +1,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { BarChart2, Globe, MousePointerClick, TrendingUp, ChevronLeft, ArrowUpRight } from 'lucide-react';
+import {
+  BarChart2, Globe, MousePointerClick, TrendingUp, ChevronLeft, ArrowUpRight,
+  Users, Activity, Clock, RefreshCw, Wifi,
+} from 'lucide-react';
 import api from '@/lib/api';
 
+/* ──────────────────────────────────────────────────────────────
+   Tipos
+────────────────────────────────────────────────────────────── */
 interface PageStat {
   page_path: string;
   views: number;
   clicks: number;
   conversion_rate: string;
   top_source: string;
-}
-
-// Mapeamento de paths → nomes amigáveis
-const PAGE_NAMES: Record<string, string> = {
-  '/': 'Home — Página Principal',
-  '/geral/arapiraca': 'Arapiraca — AL',
-};
-
-function getPageName(path: string): string {
-  if (PAGE_NAMES[path]) return PAGE_NAMES[path];
-  // /lp/slug → usa o slug formatado
-  const lpMatch = path.match(/^\/lp\/(.+)$/);
-  if (lpMatch) return `LP: ${lpMatch[1].replace(/-/g, ' ')}`;
-  return path;
 }
 
 interface PageDetail {
@@ -35,6 +27,57 @@ interface PageDetail {
   by_day: { date: string; views: number; clicks: number }[];
 }
 
+interface Ga4Summary {
+  sessions: number;
+  users: number;
+  newUsers: number;
+  bounceRate: string;
+  avgDurationSec: number;
+  pageViews: number;
+  by_channel: { channel: string; sessions: number; users: number }[];
+  by_day: { date: string; sessions: number; users: number }[];
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Utilitários
+────────────────────────────────────────────────────────────── */
+const PAGE_NAMES: Record<string, string> = {
+  '/': 'Home — Página Principal',
+  '/geral/arapiraca': 'Arapiraca — AL',
+};
+
+function getPageName(path: string): string {
+  if (PAGE_NAMES[path]) return PAGE_NAMES[path];
+  const lpMatch = path.match(/^\/lp\/(.+)$/);
+  if (lpMatch) return `LP: ${lpMatch[1].replace(/-/g, ' ')}`;
+  return path;
+}
+
+function fmtDuration(sec: number): string {
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}m ${s}s`;
+}
+
+function fmtChannel(ch: string): string {
+  const map: Record<string, string> = {
+    'Organic Search': 'Orgânico',
+    'Paid Search': 'Google Ads',
+    'Direct': 'Direto',
+    'Social': 'Social',
+    'Referral': 'Referência',
+    'Email': 'E-mail',
+    'Organic Social': 'Social Orgânico',
+    'Unassigned': 'Não atrib.',
+    'Other': 'Outro',
+  };
+  return map[ch] || ch;
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Componentes auxiliares
+────────────────────────────────────────────────────────────── */
 function MiniBar({ value, max }: { value: number; max: number }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0;
   return (
@@ -52,7 +95,7 @@ function DayChart({ data }: { data: PageDetail['by_day'] }) {
         <div key={d.date} className="flex-1 flex flex-col items-center gap-1" title={`${d.date}: ${d.views} views, ${d.clicks} cliques`}>
           <div className="w-full flex flex-col justify-end" style={{ height: 52 }}>
             <div
-              className="w-full bg-primary/30 rounded-sm relative group"
+              className="w-full bg-primary/30 rounded-sm relative"
               style={{ height: `${Math.max(4, (d.views / maxViews) * 52)}px` }}
             >
               {d.clicks > 0 && (
@@ -70,17 +113,114 @@ function DayChart({ data }: { data: PageDetail['by_day'] }) {
   );
 }
 
+function Ga4DayChart({ data }: { data: Ga4Summary['by_day'] }) {
+  const maxSessions = Math.max(...data.map((d) => d.sessions), 1);
+  return (
+    <div className="flex items-end gap-1 h-14">
+      {data.map((d) => (
+        <div key={d.date} className="flex-1 flex flex-col items-center gap-1" title={`${d.date}: ${d.sessions} sessões, ${d.users} usuários`}>
+          <div className="w-full flex flex-col justify-end" style={{ height: 44 }}>
+            <div
+              className="w-full bg-violet-500/30 rounded-sm"
+              style={{ height: `${Math.max(3, (d.sessions / maxSessions) * 44)}px` }}
+            />
+          </div>
+          <span className="text-[8px] text-muted-foreground">{d.date.slice(5)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Painel GA4
+────────────────────────────────────────────────────────────── */
+function Ga4Panel({ data }: { data: Ga4Summary }) {
+  const maxCh = Math.max(...data.by_channel.map((c) => c.sessions), 1);
+
+  return (
+    <div className="border-b border-border bg-violet-500/5 px-6 py-5 space-y-4 shrink-0">
+      {/* Cabeçalho */}
+      <div className="flex items-center gap-2">
+        <div className="w-6 h-6 rounded-lg bg-violet-500/15 text-violet-500 flex items-center justify-center shrink-0">
+          <Wifi size={13} />
+        </div>
+        <span className="text-xs font-bold text-violet-600 dark:text-violet-400 uppercase tracking-wider">Google Analytics · 30 dias</span>
+      </div>
+
+      {/* Métricas em grade */}
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: 'Sessões', value: data.sessions.toLocaleString('pt-BR'), icon: Activity, color: 'text-violet-500 bg-violet-500/10' },
+          { label: 'Usuários', value: data.users.toLocaleString('pt-BR'), icon: Users, color: 'text-blue-500 bg-blue-500/10' },
+          { label: 'Novos', value: data.newUsers.toLocaleString('pt-BR'), icon: TrendingUp, color: 'text-emerald-500 bg-emerald-500/10' },
+          { label: 'Bounce', value: data.bounceRate, icon: RefreshCw, color: 'text-amber-500 bg-amber-500/10' },
+          { label: 'Duração', value: fmtDuration(data.avgDurationSec), icon: Clock, color: 'text-rose-500 bg-rose-500/10' },
+          { label: 'Pageviews', value: data.pageViews.toLocaleString('pt-BR'), icon: Globe, color: 'text-sky-500 bg-sky-500/10' },
+        ].map(({ label, value, icon: Icon, color }) => (
+          <div key={label} className="bg-card border border-border rounded-xl p-2.5">
+            <div className={`w-6 h-6 rounded-lg ${color} flex items-center justify-center mb-1.5`}>
+              <Icon size={12} />
+            </div>
+            <p className="text-sm font-bold text-foreground leading-none">{value}</p>
+            <p className="text-[9px] text-muted-foreground mt-0.5 uppercase font-semibold tracking-wide">{label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Por canal */}
+      {data.by_channel.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Canais de tráfego</p>
+          {data.by_channel.slice(0, 5).map((ch) => {
+            const pct = Math.round((ch.sessions / maxCh) * 100);
+            return (
+              <div key={ch.channel} className="space-y-0.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-semibold text-foreground">{fmtChannel(ch.channel)}</span>
+                  <span className="text-muted-foreground tabular-nums">{ch.sessions.toLocaleString('pt-BR')} sessões</span>
+                </div>
+                <div className="h-1 bg-muted rounded-full overflow-hidden">
+                  <div className="h-full bg-violet-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Gráfico 7 dias */}
+      {data.by_day.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Sessões — últimos 7 dias</p>
+          <Ga4DayChart data={data.by_day} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Página principal
+────────────────────────────────────────────────────────────── */
 export default function AnalyticsDashboard() {
   const [pages, setPages] = useState<PageStat[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<PageDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [ga4, setGa4] = useState<Ga4Summary | null>(null);
+  const [loadingGa4, setLoadingGa4] = useState(true);
 
   useEffect(() => {
     api.get('/analytics/pages')
       .then((r) => setPages(r.data))
       .catch(console.error)
       .finally(() => setLoading(false));
+
+    api.get('/analytics/ga4')
+      .then((r) => setGa4(r.data))
+      .catch(console.error)
+      .finally(() => setLoadingGa4(false));
   }, []);
 
   const openDetail = async (path: string) => {
@@ -105,6 +245,7 @@ export default function AnalyticsDashboard() {
 
       {/* Lista de páginas */}
       <div className={`flex flex-col min-h-0 ${selected ? 'hidden md:flex md:w-96 border-r border-border' : 'flex-1'}`}>
+
         {/* Header */}
         <div className="p-6 border-b border-border bg-card/50 shrink-0">
           <div className="flex items-center gap-3 mb-5">
@@ -117,7 +258,7 @@ export default function AnalyticsDashboard() {
             </div>
           </div>
 
-          {/* Totais */}
+          {/* Totais LP */}
           <div className="grid grid-cols-3 gap-3">
             {[
               { label: 'Visitas', value: totalViews.toLocaleString('pt-BR'), icon: Globe, color: 'text-blue-500 bg-blue-500/10' },
@@ -135,10 +276,25 @@ export default function AnalyticsDashboard() {
           </div>
         </div>
 
-        {/* Tabela */}
+        {/* Painel Google Analytics 4 */}
+        {loadingGa4 ? (
+          <div className="px-6 py-4 border-b border-border bg-violet-500/5 shrink-0">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Wifi size={13} className="text-violet-400 animate-pulse" />
+              <span>Carregando Google Analytics…</span>
+            </div>
+          </div>
+        ) : ga4 ? (
+          <Ga4Panel data={ga4} />
+        ) : null}
+
+        {/* Tabela de LPs */}
         <div className="flex-1 overflow-y-auto">
+          <div className="px-4 pt-4 pb-1">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Rastreamento próprio por LP</p>
+          </div>
           {loading ? (
-            <div className="p-12 text-center text-muted-foreground text-sm">Carregando...</div>
+            <div className="p-12 text-center text-muted-foreground text-sm">Carregando…</div>
           ) : pages.length === 0 ? (
             <div className="p-12 text-center">
               <Globe size={40} className="mx-auto text-muted-foreground/30 mb-3" />
@@ -221,7 +377,7 @@ export default function AnalyticsDashboard() {
           </div>
 
           {loadingDetail ? (
-            <div className="p-12 text-center text-muted-foreground text-sm">Carregando...</div>
+            <div className="p-12 text-center text-muted-foreground text-sm">Carregando…</div>
           ) : (
             <div className="p-6 space-y-6">
               {/* Métricas */}

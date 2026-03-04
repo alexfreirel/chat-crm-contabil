@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { BetaAnalyticsDataClient } from '@google-analytics/data';
 
 export class TrackEventDto {
   page_path: string;
@@ -112,5 +113,105 @@ export class AnalyticsService {
       by_source,
       by_day,
     };
+  }
+
+  async getGa4Summary() {
+    const propertyId = process.env.GA4_PROPERTY_ID;
+    const b64 = process.env.GA4_SERVICE_ACCOUNT_B64;
+
+    if (!propertyId || !b64) return null;
+
+    try {
+      const credentialsJson = Buffer.from(b64, 'base64').toString('utf8');
+      const creds = JSON.parse(credentialsJson);
+
+      const client = new BetaAnalyticsDataClient({
+        credentials: {
+          client_email: creds.client_email,
+          private_key: creds.private_key,
+        },
+      });
+
+      // Relatório principal: métricas por canal (30 dias)
+      const [mainReport] = await client.runReport({
+        property: propertyId,
+        dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+        metrics: [
+          { name: 'sessions' },
+          { name: 'totalUsers' },
+          { name: 'newUsers' },
+          { name: 'bounceRate' },
+          { name: 'averageSessionDuration' },
+          { name: 'screenPageViews' },
+        ],
+        dimensions: [{ name: 'sessionDefaultChannelGroup' }],
+      });
+
+      // Relatório diário: últimos 7 dias
+      const [dailyReport] = await client.runReport({
+        property: propertyId,
+        dateRanges: [{ startDate: '7daysAgo', endDate: 'today' }],
+        metrics: [{ name: 'sessions' }, { name: 'totalUsers' }],
+        dimensions: [{ name: 'date' }],
+        orderBys: [{ dimension: { dimensionName: 'date' } }],
+      });
+
+      // Agregar totais por canal
+      let totalSessions = 0;
+      let totalUsers = 0;
+      let totalNewUsers = 0;
+      let weightedBounce = 0;
+      let weightedDuration = 0;
+      let totalPageViews = 0;
+
+      const by_channel: { channel: string; sessions: number; users: number }[] = [];
+
+      for (const row of mainReport.rows || []) {
+        const ch = row.dimensionValues?.[0]?.value || 'Other';
+        const s = parseInt(row.metricValues?.[0]?.value || '0');
+        const u = parseInt(row.metricValues?.[1]?.value || '0');
+        const nu = parseInt(row.metricValues?.[2]?.value || '0');
+        const br = parseFloat(row.metricValues?.[3]?.value || '0');
+        const ad = parseFloat(row.metricValues?.[4]?.value || '0');
+        const pv = parseInt(row.metricValues?.[5]?.value || '0');
+
+        totalSessions += s;
+        totalUsers += u;
+        totalNewUsers += nu;
+        weightedBounce += br * s;
+        weightedDuration += ad * s;
+        totalPageViews += pv;
+
+        by_channel.push({ channel: ch, sessions: s, users: u });
+      }
+
+      const bounceRate = totalSessions > 0 ? (weightedBounce / totalSessions) * 100 : 0;
+      const avgDuration = totalSessions > 0 ? weightedDuration / totalSessions : 0;
+
+      // Processar dados diários
+      const by_day = (dailyReport.rows || []).map((row) => {
+        const raw = row.dimensionValues?.[0]?.value || '';
+        const date = `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+        return {
+          date,
+          sessions: parseInt(row.metricValues?.[0]?.value || '0'),
+          users: parseInt(row.metricValues?.[1]?.value || '0'),
+        };
+      });
+
+      return {
+        sessions: totalSessions,
+        users: totalUsers,
+        newUsers: totalNewUsers,
+        bounceRate: bounceRate.toFixed(1) + '%',
+        avgDurationSec: Math.round(avgDuration),
+        pageViews: totalPageViews,
+        by_channel: by_channel.sort((a, b) => b.sessions - a.sessions),
+        by_day,
+      };
+    } catch (e) {
+      console.error('[GA4] Erro ao consultar Analytics Data API:', e);
+      return null;
+    }
   }
 }

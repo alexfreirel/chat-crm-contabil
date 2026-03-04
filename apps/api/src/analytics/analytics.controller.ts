@@ -25,4 +25,11 @@ export class AnalyticsController {
   getDetail(@Query('path') path: string) {
     return this.service.getPageDetail(decodeURIComponent(path));
   }
+
+  /** Protegido — resumo do Google Analytics 4 (últimos 30 dias + 7 dias diário) */
+  @UseGuards(JwtAuthGuard)
+  @Get('ga4')
+  getGa4() {
+    return this.service.getGa4Summary();
+  }
 }
