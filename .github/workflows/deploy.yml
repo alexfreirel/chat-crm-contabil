@@ -5,17 +5,9 @@ on:
     branches:
       - master
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-
 jobs:
   build-and-push:
-    # Runner instalado no próprio VPS → zero minutos cobrados pelo GitHub
-    runs-on: self-hosted
-    permissions:
-      contents: read
-      packages: write
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
@@ -38,59 +30,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Log in to the Container registry
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.suffix }}
-
-      - name: Build and push ${{ matrix.name }} image
+      - name: Build and push ${{ matrix.name }}
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ${{ matrix.dockerfile }}
           build-args: ${{ matrix.build-args }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # Cache local no VPS — muito mais rápido que GHA cache e sem custo
-          cache-from: type=local,src=/tmp/.buildx-cache-${{ matrix.suffix }}
-          cache-to: type=local,dest=/tmp/.buildx-cache-${{ matrix.suffix }}-new,mode=max
-
-      # Rotação do cache local (evita crescimento infinito)
-      - name: Rotate local build cache
-        run: |
-          rm -rf /tmp/.buildx-cache-${{ matrix.suffix }}
-          mv /tmp/.buildx-cache-${{ matrix.suffix }}-new /tmp/.buildx-cache-${{ matrix.suffix }} 2>/dev/null || true
-
-  cleanup-old-images:
-    needs: build-and-push
-    runs-on: self-hosted
-    permissions:
-      packages: write
-    strategy:
-      matrix:
-        suffix: [api, worker, web]
-    steps:
-      - name: Delete old image versions (keep last 5)
-        uses: actions/delete-package-versions@v5
-        with:
-          package-name: ${{ github.event.repository.name }}-${{ matrix.suffix }}
-          package-type: container
-          min-versions-to-keep: 5
-          ignore-versions: '^master$'
-        continue-on-error: true
+          # Tag :latest sobrescreve a anterior — sem acúmulo de versões
+          tags: andreflustosa/chat-crm-juridico-${{ matrix.suffix }}:latest
+          # Cache armazenado no próprio Docker Hub (grátis, não usa storage do GitHub)
+          cache-from: type=registry,ref=andreflustosa/chat-crm-juridico-${{ matrix.suffix }}:cache
+          cache-to: type=registry,ref=andreflustosa/chat-crm-juridico-${{ matrix.suffix }}:cache,mode=max
 
   deploy:
     needs: build-and-push
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     if: ${{ vars.PORTAINER_WEBHOOK_URL != '' }}
     steps:
       - name: Trigger Portainer stack redeploy
