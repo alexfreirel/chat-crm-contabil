@@ -110,7 +110,19 @@ function InlineInput({ value, onSave, onCancel, placeholder }: { value: string; 
   );
 }
 
-function ClientPanel({ leadId, onClose, onLightbox }: { leadId: string; onClose: () => void; onLightbox: (url: string) => void }) {
+function ClientPanel({
+  leadId,
+  onClose,
+  onLightbox,
+  isAdmin = false,
+  onDeleteSuccess,
+}: {
+  leadId: string;
+  onClose: () => void;
+  onLightbox: (url: string) => void;
+  isAdmin?: boolean;
+  onDeleteSuccess?: (id: string) => void;
+}) {
   const router = useRouter();
   const [lead, setLead] = useState<LeadDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -122,6 +134,9 @@ function ClientPanel({ leadId, onClose, onLightbox }: { leadId: string; onClose:
   const [resolvedConvId, setResolvedConvId] = useState<string | null>(null);
   const [documents, setDocuments] = useState<DocItem[]>([]);
   const [docsOpen, setDocsOpen] = useState(false);
+  // Delete state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [docViewer, setDocViewer] = useState<{ url: string; mimeType: string; filename: string } | null>(null);
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -214,6 +229,21 @@ function ClientPanel({ leadId, onClose, onLightbox }: { leadId: string; onClose:
       alert('Erro ao resetar memória. Tente novamente.');
     } finally {
       setResettingMemory(false);
+    }
+  };
+
+  const handleDeleteContact = async () => {
+    if (!lead) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/leads/${lead.id}`);
+      onDeleteSuccess?.(lead.id);
+      onClose();
+    } catch (e: any) {
+      alert(e?.response?.data?.message || 'Erro ao excluir contato. Tente novamente.');
+      setShowDeleteConfirm(false);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -663,7 +693,7 @@ function ClientPanel({ leadId, onClose, onLightbox }: { leadId: string; onClose:
 
         {/* Footer com ação rápida */}
         {lead && (
-          <div className="px-6 py-4 border-t border-border shrink-0">
+          <div className="px-6 py-4 border-t border-border shrink-0 space-y-2">
             <button
               className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-[13px] font-semibold flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors shadow-sm"
               onClick={() => {
@@ -677,6 +707,47 @@ function ClientPanel({ leadId, onClose, onLightbox }: { leadId: string; onClose:
               <MessageSquare size={15} />
               Abrir no Chat
             </button>
+
+            {/* Zona de Perigo — somente ADMIN */}
+            {isAdmin && (
+              <>
+                {!showDeleteConfirm ? (
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="w-full py-2 rounded-xl border border-destructive/30 text-destructive text-[12px] font-semibold flex items-center justify-center gap-2 hover:bg-destructive/10 transition-colors"
+                  >
+                    <Trash2 size={13} />
+                    Excluir Contato
+                  </button>
+                ) : (
+                  <div className="p-3 bg-destructive/5 border border-destructive/30 rounded-xl space-y-2">
+                    <p className="text-[11px] font-bold text-destructive flex items-center gap-1.5">
+                      <AlertCircle size={13} /> Atenção: ação irreversível
+                    </p>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Serão excluídos: contato, <strong>todas as conversas</strong>, mensagens, memória IA, documentos, casos jurídicos e tarefas.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleDeleteContact}
+                        disabled={deleting}
+                        className="flex-1 py-2 text-[12px] font-bold bg-destructive text-white rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-1.5 transition-opacity"
+                      >
+                        {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                        {deleting ? 'Excluindo…' : 'Confirmar Exclusão'}
+                      </button>
+                      <button
+                        onClick={() => setShowDeleteConfirm(false)}
+                        disabled={deleting}
+                        className="px-4 py-2 text-[12px] text-muted-foreground hover:text-foreground border border-border rounded-lg transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>
@@ -955,6 +1026,17 @@ function NewContactModal({ onClose, onCreated }: {
   );
 }
 
+function getIsAdminFromToken(): boolean {
+  try {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) return false;
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload?.role === 'ADMIN';
+  } catch {
+    return false;
+  }
+}
+
 export default function ContactsPage() {
   const router = useRouter();
   const [search, setSearch] = useState('');
@@ -965,6 +1047,7 @@ export default function ContactsPage() {
   // 'active' = tela principal | 'archived' = tela de arquivados
   const [view, setView] = useState<'active' | 'archived'>('active');
   const [showNewContact, setShowNewContact] = useState(false);
+  const [isAdmin] = useState<boolean>(getIsAdminFromToken);
 
   const fetchAllContacts = async () => {
     try {
@@ -1000,6 +1083,11 @@ export default function ContactsPage() {
   const handleNewContactCreated = (convId: string) => {
     sessionStorage.setItem('crm_open_conv', convId);
     router.push('/atendimento');
+  };
+
+  const handleContactDeleted = (deletedId: string) => {
+    setContacts(prev => prev.filter(c => c.id !== deletedId));
+    setSelectedLeadId(null);
   };
 
   const handleUnarchive = async (contactId: string) => {
@@ -1139,7 +1227,13 @@ export default function ContactsPage() {
         </main>
 
         {selectedLeadId && (
-          <ClientPanel leadId={selectedLeadId} onClose={() => setSelectedLeadId(null)} onLightbox={setLightbox} />
+          <ClientPanel
+            leadId={selectedLeadId}
+            onClose={() => setSelectedLeadId(null)}
+            onLightbox={setLightbox}
+            isAdmin={isAdmin}
+            onDeleteSuccess={handleContactDeleted}
+          />
         )}
         {lightbox && (
           <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center cursor-pointer" onClick={() => setLightbox(null)}>
@@ -1288,6 +1382,8 @@ export default function ContactsPage() {
           leadId={selectedLeadId}
           onClose={() => setSelectedLeadId(null)}
           onLightbox={setLightbox}
+          isAdmin={isAdmin}
+          onDeleteSuccess={handleContactDeleted}
         />
       )}
 

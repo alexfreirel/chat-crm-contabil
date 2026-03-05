@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, Lead } from '@crm/shared';
 import { LegalCasesService } from '../legal-cases/legal-cases.service';
@@ -163,6 +163,96 @@ export class LeadsService {
 
   async resetMemory(id: string): Promise<{ ok: boolean }> {
     await this.prisma.aiMemory.deleteMany({ where: { lead_id: id } });
+    return { ok: true };
+  }
+
+  // ─── DELETE CONTACT (somente ADMIN) ──────────────────────────────────────
+  // Exclui o contato e TODOS os seus dados: conversas, mensagens, memória IA,
+  // casos jurídicos, tarefas, eventos, publicações DJEN.
+  async deleteContact(id: string): Promise<{ ok: boolean }> {
+    const lead = await this.prisma.lead.findUnique({ where: { id }, select: { id: true } });
+    if (!lead) throw new NotFoundException('Contato não encontrado');
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Coleta todos os IDs relacionados
+      const conversations = await tx.conversation.findMany({
+        where: { lead_id: id },
+        select: { id: true },
+      });
+      const convIds = conversations.map(c => c.id);
+
+      const legalCases = await tx.legalCase.findMany({
+        where: { lead_id: id },
+        select: { id: true },
+      });
+      const caseIds = legalCases.map(c => c.id);
+
+      const messages = convIds.length > 0
+        ? await tx.message.findMany({
+            where: { conversation_id: { in: convIds } },
+            select: { id: true },
+          })
+        : [];
+      const msgIds = messages.map(m => m.id);
+
+      const allTasks = await tx.task.findMany({
+        where: {
+          OR: [
+            { lead_id: id },
+            ...(caseIds.length > 0 ? [{ legal_case_id: { in: caseIds } }] : []),
+            ...(convIds.length > 0 ? [{ conversation_id: { in: convIds } }] : []),
+          ],
+        },
+        select: { id: true },
+      });
+      const taskIds = allTasks.map(t => t.id);
+
+      // 2. Exclui na ordem correta (filhos antes de pais)
+
+      // Comentários de tarefas
+      if (taskIds.length > 0) {
+        await tx.taskComment.deleteMany({ where: { task_id: { in: taskIds } } });
+      }
+
+      // Publicações DJEN dos casos
+      if (caseIds.length > 0) {
+        await tx.djenPublication.deleteMany({ where: { legal_case_id: { in: caseIds } } });
+      }
+
+      // Eventos dos casos
+      if (caseIds.length > 0) {
+        await tx.caseEvent.deleteMany({ where: { case_id: { in: caseIds } } });
+      }
+
+      // Tarefas (do lead, dos casos e das conversas)
+      if (taskIds.length > 0) {
+        await tx.task.deleteMany({ where: { id: { in: taskIds } } });
+      }
+
+      // Casos jurídicos
+      if (caseIds.length > 0) {
+        await tx.legalCase.deleteMany({ where: { id: { in: caseIds } } });
+      }
+
+      // Mídia das mensagens
+      if (msgIds.length > 0) {
+        await tx.media.deleteMany({ where: { message_id: { in: msgIds } } });
+        await tx.message.deleteMany({ where: { id: { in: msgIds } } });
+      }
+
+      // Conversas
+      if (convIds.length > 0) {
+        await tx.conversation.deleteMany({ where: { id: { in: convIds } } });
+      }
+
+      // Memória IA
+      await tx.aiMemory.deleteMany({ where: { lead_id: id } });
+
+      // Lead em si
+      await tx.lead.delete({ where: { id } });
+    }, { timeout: 30000 }); // timeout generoso para contatos com muito histórico
+
+    this.logger.log(`[deleteContact] Contato ${id} e todos os seus dados foram excluídos.`);
     return { ok: true };
   }
 }

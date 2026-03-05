@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Delete, Param, Query, UseGuards, Request, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Delete, Param, Query, UseGuards, Request, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { LeadsService } from './leads.service';
 import { LeadsCleanupService } from './leads-cleanup.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -53,6 +53,15 @@ export class LeadsController {
   @Delete(':id/memory')
   resetMemory(@Param('id') id: string) {
     return this.leadsService.resetMemory(id);
+  }
+
+  // DELETE /leads/:id — exclui contato e TODOS os seus dados (somente ADMIN)
+  @Delete(':id')
+  deleteContact(@Param('id') id: string, @Request() req: any) {
+    if (req.user?.role !== 'ADMIN') {
+      throw new ForbiddenException('Apenas administradores podem excluir contatos.');
+    }
+    return this.leadsService.deleteContact(id);
   }
 
   @Post('cleanup/deduplicate')
