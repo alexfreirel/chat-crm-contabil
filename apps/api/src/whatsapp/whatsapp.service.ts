@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { SettingsService } from '../settings/settings.service';
 import { LeadsService } from '../leads/leads.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -10,7 +10,7 @@ export class WhatsappService {
   
   constructor(
     private readonly settingsService: SettingsService,
-    private readonly leadsService: LeadsService,
+    @Inject(forwardRef(() => LeadsService)) private readonly leadsService: LeadsService,
     private readonly prisma: PrismaService,
   ) {}
 

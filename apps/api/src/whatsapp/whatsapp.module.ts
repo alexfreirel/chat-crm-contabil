@@ -5,7 +5,7 @@ import { SettingsModule } from '../settings/settings.module';
 import { LeadsModule } from '../leads/leads.module';
 
 @Module({
-  imports: [forwardRef(() => SettingsModule), LeadsModule],
+  imports: [forwardRef(() => SettingsModule), forwardRef(() => LeadsModule)],
   controllers: [WhatsappController],
   providers: [WhatsappService],
   exports: [WhatsappService]

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatGateway } from '../gateway/chat.gateway';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
@@ -9,7 +9,7 @@ export class LegalCasesService {
   constructor(
     private prisma: PrismaService,
     private chatGateway: ChatGateway,
-    private whatsappService: WhatsappService,
+    @Inject(forwardRef(() => WhatsappService)) private whatsappService: WhatsappService,
   ) {}
 
   // ─── CRUD ───────────────────────────────────────────────────────
