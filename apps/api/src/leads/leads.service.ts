@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, Lead } from '@crm/shared';
 import { LegalCasesService } from '../legal-cases/legal-cases.service';
@@ -22,7 +22,6 @@ export class LeadsService {
 
   constructor(
     private prisma: PrismaService,
-    @Inject(forwardRef(() => LegalCasesService))
     private legalCasesService: LegalCasesService,
   ) {}
 
