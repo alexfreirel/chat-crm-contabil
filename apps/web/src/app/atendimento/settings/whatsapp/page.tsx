@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { 
-  MessageSquare, 
-  Plus, 
-  RefreshCw, 
-  Trash2, 
-  ExternalLink, 
-  CheckCircle2, 
+import {
+  MessageSquare,
+  Plus,
+  RefreshCw,
+  Loader2,
+  Trash2,
+  ExternalLink,
+  CheckCircle2,
   AlertCircle,
   HelpCircle,
   QrCode,
@@ -38,7 +39,8 @@ export default function WhatsappIntegrationPage() {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [newInstanceName, setNewInstanceName] = useState('');
   const [creating, setCreating] = useState(false);
-  
+  const [syncing, setSyncing] = useState<string | null>(null);
+
   // Configurações Globais
   const [apiUrl, setApiUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -153,6 +155,19 @@ export default function WhatsappIntegrationPage() {
       await fetchInstances();
     } catch (error) {
       console.error('Erro ao excluir instância:', error);
+    }
+  };
+
+  const handleSyncInstance = async (name: string) => {
+    setSyncing(name);
+    try {
+      await api.post(`/whatsapp/instances/${name}/sync`);
+      alert(`Instância "${name}" sincronizada com sucesso!`);
+    } catch (error) {
+      console.error(`Erro ao sincronizar instância ${name}:`, error);
+      alert('Erro ao sincronizar. Verifique se a instância está conectada.');
+    } finally {
+      setSyncing(null);
     }
   };
 
@@ -469,12 +484,20 @@ export default function WhatsappIntegrationPage() {
                           </div>
                         </div>
                         
-                        {/* Footer Sync Indicator */}
+                        {/* Footer Sync Button */}
                         {isConnected && (
-                          <div className="px-6 py-3 bg-white/5 border-t border-white/5 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-500/60 transition-colors group-hover:bg-emerald-500/5">
-                             <CheckCircle2 size={12} />
-                             SINCRONIZADO
-                          </div>
+                          <button
+                            onClick={() => handleSyncInstance(instance.instanceName)}
+                            disabled={syncing === instance.instanceName}
+                            className="w-full px-6 py-3 bg-white/5 border-t border-white/5 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-500/60 hover:text-emerald-400 hover:bg-emerald-500/5 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            {syncing === instance.instanceName ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              <RefreshCw size={12} />
+                            )}
+                            {syncing === instance.instanceName ? 'SINCRONIZANDO...' : 'SINCRONIZAR CONTATOS'}
+                          </button>
                         )}
                       </div>
                     );

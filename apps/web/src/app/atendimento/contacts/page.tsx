@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, KeyboardEvent } from 'react';
-import { Search, User, Phone, Loader2, RefreshCw, X, MessageSquare, Calendar, Brain, ChevronDown, ChevronUp, Mail, Pencil, Check, UserCheck, FolderOpen, FileText, Image as ImageIcon, Mic, Video, Download, Trash2, RotateCcw, ArrowLeft, UserPlus, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Search, User, Phone, Loader2, X, MessageSquare, Calendar, Brain, ChevronDown, ChevronUp, Mail, Pencil, Check, UserCheck, FolderOpen, FileText, Image as ImageIcon, Mic, Video, Download, Trash2, RotateCcw, ArrowLeft, UserPlus, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { formatPhone } from '@/lib/utils';
@@ -934,7 +934,6 @@ export default function ContactsPage() {
   const [search, setSearch] = useState('');
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   // 'active' = tela principal | 'archived' = tela de arquivados
@@ -971,35 +970,6 @@ export default function ContactsPage() {
   useEffect(() => {
     fetchAllContacts();
   }, []);
-
-  const handleSync = async () => {
-    try {
-      setSyncing(true);
-      const instancesResponse = await api.get('/whatsapp/instances');
-      const activeInstances = instancesResponse.data.filter((inst: any) => inst.status === 'open');
-
-      if (activeInstances.length === 0) {
-        alert('Nenhuma instância do WhatsApp conectada para sincronizar.');
-        return;
-      }
-
-      await Promise.all(activeInstances.map(async (inst: any) => {
-        try {
-          await api.post(`/whatsapp/instances/${inst.instanceName}/sync`);
-        } catch (e) {
-          console.error(`Erro ao sincronizar instância ${inst.instanceName}:`, e);
-        }
-      }));
-
-      await fetchAllContacts();
-      alert('Sincronização concluída!');
-    } catch (error) {
-      console.error('Erro na sincronização:', error);
-      alert('Erro ao sincronizar contatos.');
-    } finally {
-      setSyncing(false);
-    }
-  };
 
   const handleNewContactCreated = (convId: string) => {
     sessionStorage.setItem('crm_open_conv', convId);
@@ -1205,18 +1175,6 @@ export default function ContactsPage() {
               />
             </div>
 
-            <button
-              onClick={handleSync}
-              disabled={syncing}
-              className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-[13px] font-semibold hover:bg-primary/90 transition-all disabled:opacity-50 shadow-sm shadow-primary/20"
-            >
-              {syncing ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <RefreshCw className="w-4 h-4" />
-              )}
-              {syncing ? 'Sincronizando...' : 'Sincronizar'}
-            </button>
           </div>
         </header>
 
