@@ -455,13 +455,16 @@ export default function ChatPage({ params }: { params: { id: string } }) {
       if (dateKey !== lastDateKey) {
         items.push({
           kind: 'sep',
-          label: msg.created_at ? formatDateLabel(msg.created_at) : '',
+          label: msg.created_at ? formatDateLabel(msg.created_at) : '(sem data)',
           key: `sep-${dateKey}-${i}`,
         });
         lastDateKey = dateKey;
       }
       items.push({ kind: 'msg', msg, idx: i });
     }
+    // DEBUG — verificar no console do navegador (F12)
+    console.log('[Chat] renderItems:', items.length, 'itens,', items.filter(x => x.kind === 'sep').length, 'separadores');
+    console.log('[Chat] primeiro msg created_at:', messages[0]?.created_at ?? 'UNDEFINED');
     return items;
   }, [messages]);
 
@@ -602,12 +605,12 @@ export default function ChatPage({ params }: { params: { id: string } }) {
             ) : renderItems.map((item) => {
                 if (item.kind === 'sep') {
                   return (
-                    <div key={item.key} className="flex items-center gap-3 my-1 select-none">
-                      <div className="flex-1 h-px bg-border/60" />
-                      <span className="text-[11px] font-semibold text-muted-foreground px-3 py-1 rounded-full border border-border bg-card capitalize">
+                    <div key={item.key} className="flex items-center gap-3 my-3 select-none">
+                      <div className="flex-1 h-px bg-muted-foreground/30" />
+                      <span className="text-[11px] font-bold text-foreground/70 px-3 py-1 rounded-full border border-muted-foreground/20 bg-muted capitalize whitespace-nowrap">
                         {item.label}
                       </span>
-                      <div className="flex-1 h-px bg-border/60" />
+                      <div className="flex-1 h-px bg-muted-foreground/30" />
                     </div>
                   );
                 }
