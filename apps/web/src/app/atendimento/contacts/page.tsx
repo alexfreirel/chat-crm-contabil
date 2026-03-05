@@ -931,6 +931,7 @@ function NewContactModal({ onClose, onCreated }: {
 }
 
 export default function ContactsPage() {
+  const router = useRouter();
   const [search, setSearch] = useState('');
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
