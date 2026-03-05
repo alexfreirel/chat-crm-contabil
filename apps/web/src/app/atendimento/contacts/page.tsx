@@ -644,14 +644,13 @@ function ClientPanel({ leadId, onClose, onLightbox }: { leadId: string; onClose:
               onClick={() => {
                 const convId = resolvedConvId || lead.conversations?.[0]?.id;
                 if (convId) {
-                  router.push(`/atendimento/chat/${convId}`);
-                } else {
-                  router.push('/atendimento');
+                  sessionStorage.setItem('crm_open_conv', convId);
                 }
+                router.push('/atendimento');
               }}
             >
               <MessageSquare size={15} />
-              Abrir Conversa
+              Abrir no Chat
             </button>
           </div>
         )}
