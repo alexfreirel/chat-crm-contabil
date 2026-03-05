@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+  workflow_dispatch:  # permite acionar manualmente pelo GitHub UI
 
 jobs:
   build-and-push:
