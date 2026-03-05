@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, UserCheck, PanelLeftClose, PanelLeftOpen, CornerDownLeft, Inbox, Pencil } from 'lucide-react';
@@ -65,6 +65,30 @@ function getSocketPath(): string {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
   const isDev = apiUrl.includes('localhost') || /https?:\/\/[^/]+:\d{4,}/.test(apiUrl);
   return isDev ? '/socket.io/' : '/api/socket.io/';
+}
+
+function getDateKey(dateStr: string): string {
+  return new Date(dateStr).toDateString();
+}
+
+function formatDateLabel(dateStr: string): string {
+  const date = new Date(dateStr);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return 'Hoje';
+  if (date.toDateString() === yesterday.toDateString()) return 'Ontem';
+  return date.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function DateSeparator({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 px-3 py-2 select-none sticky top-0 z-10 bg-card/80 backdrop-blur-sm">
+      <div className="flex-1 h-px bg-border/60" />
+      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest whitespace-nowrap">{label}</span>
+      <div className="flex-1 h-px bg-border/60" />
+    </div>
+  );
 }
 
 function StatusIcon({ status, isOut }: { status: string; isOut: boolean }) {
@@ -1018,9 +1042,19 @@ export default function Dashboard() {
           ) : filteredConversations.length === 0 ? (
             <div className="p-10 text-center text-muted-foreground text-sm">Nenhuma conversa encontrada.</div>
           ) : (
-            filteredConversations.map((conv) => (
+            (() => {
+              let lastConvDateKey = '';
+              return filteredConversations.map((conv) => {
+                const convDate = conv.lastMessageAt;
+                const dateKey = convDate ? getDateKey(convDate) : '__nodate__';
+                const showDateSep = dateKey !== lastConvDateKey;
+                if (showDateSep) lastConvDateKey = dateKey;
+                return (
+                  <div key={conv.id}>
+                    {showDateSep && convDate && (
+                      <DateSeparator label={formatDateLabel(convDate)} />
+                    )}
               <div
-                key={conv.id}
                 onClick={() => {
                   setSelectedId(conv.id);
                   // Clear unread count when opening the conversation
@@ -1087,7 +1121,10 @@ export default function Dashboard() {
                   </p>
                 </div>
               </div>
-            ))
+                  </div>
+                );
+              });
+            })()
           )}
         </div>
       </section>
@@ -1315,9 +1352,24 @@ export default function Dashboard() {
             <div className="absolute inset-0 p-8 overflow-y-auto custom-scrollbar" ref={scrollRef}>
               <div className="flex flex-col gap-4 max-w-4xl mx-auto pb-4 relative z-10">
                 {isRealConvo && messages.length > 0 ? (
-                  messages.map((msg) => {
-                    const isOut = msg.direction === 'out';
-                    return (
+                  (() => {
+                    let lastMsgDateKey = '';
+                    return messages.map((msg, msgIdx) => {
+                      const isOut = msg.direction === 'out';
+                      const msgDateKey = msg.created_at ? getDateKey(msg.created_at) : `__nodate__${msgIdx}`;
+                      const showMsgDateSep = msgDateKey !== lastMsgDateKey;
+                      if (showMsgDateSep) lastMsgDateKey = msgDateKey;
+                      return (
+                        <Fragment key={msg.id || msgIdx}>
+                          {showMsgDateSep && (
+                            <div className="flex items-center gap-3 my-3 select-none">
+                              <div className="flex-1 h-px bg-muted-foreground/30" />
+                              <span className="text-[11px] font-bold text-foreground/70 px-3 py-1 rounded-full border border-muted-foreground/20 bg-muted capitalize whitespace-nowrap">
+                                {msg.created_at ? formatDateLabel(msg.created_at) : '(sem data)'}
+                              </span>
+                              <div className="flex-1 h-px bg-muted-foreground/30" />
+                            </div>
+                          )}
                       <div id={`msg-${msg.id}`} key={msg.id} className={`w-full flex items-end gap-1 ${isOut ? 'justify-end' : 'justify-start'} group rounded-xl transition-all duration-300`}>
                         {!isOut && (
                           <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mb-1">
@@ -1515,8 +1567,10 @@ export default function Dashboard() {
                           </div>
                         )}
                       </div>
-                    );
-                  })
+                        </Fragment>
+                      );
+                    });
+                  })()
                 ) : isRealConvo && messages.length === 0 ? (
                   <div className="text-center text-muted-foreground py-20">Nenhuma mensagem nesta conversa.</div>
                 ) : (
