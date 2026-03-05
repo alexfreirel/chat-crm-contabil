@@ -113,6 +113,12 @@ export class LeadsService {
     });
   }
 
+  async checkPhone(phone: string): Promise<{ exists: boolean; lead?: Lead }> {
+    const found = await this.findByPhone(phone);
+    if (!found) return { exists: false };
+    return { exists: true, lead: found };
+  }
+
   async update(id: string, data: { name?: string; email?: string; tags?: string[] }): Promise<Lead> {
     return this.prisma.lead.update({
       where: { id },

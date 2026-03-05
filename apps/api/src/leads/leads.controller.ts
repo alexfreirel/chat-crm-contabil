@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Query, UseGuards, Request, BadRequestException } from '@nestjs/common';
 import { LeadsService } from './leads.service';
 import { LeadsCleanupService } from './leads-cleanup.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -24,6 +24,12 @@ export class LeadsController {
   @Get()
   findAll(@Request() req: any, @Query('inboxId') inboxId?: string) {
     return this.leadsService.findAll(req.user?.tenant_id, inboxId);
+  }
+
+  @Get('check-phone')
+  checkPhone(@Query('phone') phone: string) {
+    if (!phone) throw new BadRequestException('phone é obrigatório');
+    return this.leadsService.checkPhone(phone);
   }
 
   @Get(':id')
