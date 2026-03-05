@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, UserCheck, PanelLeftClose, PanelLeftOpen, CornerDownLeft, Inbox, Pencil, Search } from 'lucide-react';
+import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, UserCheck, PanelLeftClose, PanelLeftOpen, CornerDownLeft, Inbox, Pencil, Search, ChevronDown } from 'lucide-react';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { AudioRecorder } from '@/components/AudioRecorder';
 import { TransferAudioRecorder } from '@/components/TransferAudioRecorder';
@@ -1266,38 +1266,6 @@ export default function Dashboard() {
                    <div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mt-1">
                      {selected.channel} <span className="mx-1">•</span> {selected.contactPhone}
                    </div>
-                   {/* Etapa CRM do lead */}
-                   {leadStage && (() => {
-                     const stage = findStage(normalizeStage(leadStage));
-                     return (
-                       <div className="relative mt-1" ref={stageDropdownRef}>
-                         <button
-                           onClick={() => setShowStageDropdown(v => !v)}
-                           className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-all hover:opacity-80"
-                           style={{ background: `${stage.color}18`, color: stage.color, borderColor: `${stage.color}35` }}
-                           title="Etapa no CRM — clique para trocar"
-                         >
-                           {stage.emoji} {stage.label}
-                         </button>
-                         {showStageDropdown && (
-                           <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-xl shadow-xl w-56 py-1" style={{ zIndex: 9999 }}>
-                             <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Etapa no CRM</p>
-                             {CRM_STAGES.map(s => (
-                               <button
-                                 key={s.id}
-                                 onClick={() => handleChangeLeadStage(s.id)}
-                                 className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2 text-[12px] ${normalizeStage(leadStage) === s.id ? 'font-semibold' : ''}`}
-                                 style={{ color: normalizeStage(leadStage) === s.id ? s.color : undefined }}
-                               >
-                                 <span>{s.emoji}</span>
-                                 <span>{s.label}</span>
-                               </button>
-                             ))}
-                           </div>
-                         )}
-                       </div>
-                     );
-                   })()}
                    {/* Área jurídica + especialista pré-atribuído */}
                    {(selected.legalArea || selected.assignedLawyerId) && (
                      <div className="flex items-center gap-2 flex-wrap mt-1.5">
@@ -1355,69 +1323,109 @@ export default function Dashboard() {
                    )}
                  </div>
                </div>
-               <div className="flex gap-2 items-center">
-                 {isRealConvo && (
-                   <button
-                     onClick={handleToggleAiMode}
-                     title={aiMode ? 'Desativar IA' : 'Ativar IA'}
-                     className={`px-4 py-2 text-sm font-semibold border rounded-xl transition-colors flex items-center gap-2 ${
-                       aiMode
-                         ? 'text-primary bg-primary/10 border-primary/20 hover:bg-primary/20'
-                         : 'text-muted-foreground bg-muted/30 border-border hover:bg-muted/60'
-                     }`}
-                   >
-                     {aiMode ? <Bot size={16} /> : <BotOff size={16} />}
-                     {aiMode ? 'IA Ativa' : 'IA Inativa'}
-                   </button>
-                 )}
-                 {selected.status === 'WAITING' && isRealConvo && (
-                   <button
-                     onClick={handleAccept}
-                     className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-ring text-primary-foreground font-bold text-sm shadow-[0_0_15px_rgba(var(--primary),0.3)] hover:shadow-[0_0_20px_rgba(var(--primary),0.4)] hover:-translate-y-0.5 transition-all"
-                   >
-                     Aceitar Atendimento
-                   </button>
-                 )}
-                 {!isClosed && isRealConvo && (
-                   <button
-                     onClick={handleOpenTransferModal}
-                     title="Transferir conversa para outro operador"
-                     className="px-3 py-2 text-sm font-semibold text-sky-400 bg-sky-500/10 border border-sky-500/20 rounded-xl hover:bg-sky-500/20 transition-colors flex items-center gap-2"
-                   >
-                     <UserCheck size={16} />
-                     Transferir
-                   </button>
-                 )}
-                 {selected?.originAssignedUserId && selected?.assignedAgentId === currentUserId && !isClosed && (
-                   <>
+               <div className="flex flex-col items-end gap-2 shrink-0">
+                 {/* Linha de botões de ação */}
+                 <div className="flex gap-2 items-center">
+                   {isRealConvo && (
                      <button
-                       onClick={() => openReasonPopup('return', selected?.originAssignedUserName || 'atendente de origem')}
-                       title="Devolver conversa ao atendente de origem"
-                       className="px-3 py-2 text-sm font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl hover:bg-amber-500/20 transition-colors flex items-center gap-2"
+                       onClick={handleToggleAiMode}
+                       title={aiMode ? 'Desativar IA' : 'Ativar IA'}
+                       className={`px-4 py-2 text-sm font-semibold border rounded-xl transition-colors flex items-center gap-2 ${
+                         aiMode
+                           ? 'text-primary bg-primary/10 border-primary/20 hover:bg-primary/20'
+                           : 'text-muted-foreground bg-muted/30 border-border hover:bg-muted/60'
+                       }`}
                      >
-                       <CornerDownLeft size={16} />
-                       Devolver
+                       {aiMode ? <Bot size={16} /> : <BotOff size={16} />}
+                       {aiMode ? 'IA Ativa' : 'IA Inativa'}
                      </button>
+                   )}
+                   {selected.status === 'WAITING' && isRealConvo && (
                      <button
-                       onClick={handleKeepInInbox}
-                       title="Manter conversa no meu inbox"
-                       className="px-3 py-2 text-sm font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl hover:bg-emerald-500/20 transition-colors flex items-center gap-2"
+                       onClick={handleAccept}
+                       className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-ring text-primary-foreground font-bold text-sm shadow-[0_0_15px_rgba(var(--primary),0.3)] hover:shadow-[0_0_20px_rgba(var(--primary),0.4)] hover:-translate-y-0.5 transition-all"
                      >
-                       <Inbox size={16} />
-                       Manter Aqui
+                       Aceitar Atendimento
                      </button>
-                   </>
-                 )}
-                 {!isClosed && isRealConvo && (
-                   <button
-                     onClick={handleClose}
-                     title="Fechar conversa"
-                     className="px-3 py-2 text-sm font-semibold text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl hover:bg-red-500/20 transition-colors flex items-center gap-2"
-                   >
-                     <XCircle size={16} />
-                     Fechar
-                   </button>
-                 )}
+                   )}
+                   {!isClosed && isRealConvo && (
+                     <button
+                       onClick={handleOpenTransferModal}
+                       title="Transferir conversa para outro operador"
+                       className="px-3 py-2 text-sm font-semibold text-sky-400 bg-sky-500/10 border border-sky-500/20 rounded-xl hover:bg-sky-500/20 transition-colors flex items-center gap-2"
+                     >
+                       <UserCheck size={16} />
+                       Transferir
+                     </button>
+                   )}
+                   {selected?.originAssignedUserId && selected?.assignedAgentId === currentUserId && !isClosed && (
+                     <>
+                       <button
+                         onClick={() => openReasonPopup('return', selected?.originAssignedUserName || 'atendente de origem')}
+                         title="Devolver conversa ao atendente de origem"
+                         className="px-3 py-2 text-sm font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl hover:bg-amber-500/20 transition-colors flex items-center gap-2"
+                       >
+                         <CornerDownLeft size={16} />
+                         Devolver
+                       </button>
+                       <button
+                         onClick={handleKeepInInbox}
+                         title="Manter conversa no meu inbox"
+                         className="px-3 py-2 text-sm font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl hover:bg-emerald-500/20 transition-colors flex items-center gap-2"
+                       >
+                         <Inbox size={16} />
+                         Manter Aqui
+                       </button>
+                     </>
+                   )}
+                   {!isClosed && isRealConvo && (
+                     <button
+                       onClick={handleClose}
+                       title="Fechar conversa"
+                       className="px-3 py-2 text-sm font-semibold text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl hover:bg-red-500/20 transition-colors flex items-center gap-2"
+                     >
+                       <XCircle size={16} />
+                       Fechar
+                     </button>
+                   )}
+                 </div>
+
+                 {/* Etapa do Funil (CRM) */}
+                 {isRealConvo && (() => {
+                   const stage = findStage(normalizeStage(leadStage));
+                   return (
+                     <div className="relative flex items-center gap-2" ref={stageDropdownRef}>
+                       <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                         Etapa do Funil:
+                       </span>
+                       <button
+                         onClick={() => setShowStageDropdown(v => !v)}
+                         className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all hover:opacity-80"
+                         style={{ background: `${stage.color}18`, color: stage.color, borderColor: `${stage.color}35` }}
+                         title="Clique para trocar a etapa do funil"
+                       >
+                         {stage.emoji} {stage.label}
+                         <ChevronDown size={10} className="opacity-60" />
+                       </button>
+                       {showStageDropdown && (
+                         <div className="absolute top-full right-0 mt-1 bg-card border border-border rounded-xl shadow-xl w-56 py-1" style={{ zIndex: 9999 }}>
+                           <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Etapa do Funil</p>
+                           {CRM_STAGES.map(s => (
+                             <button
+                               key={s.id}
+                               onClick={() => handleChangeLeadStage(s.id)}
+                               className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2 text-[12px] ${normalizeStage(leadStage) === s.id ? 'font-semibold' : ''}`}
+                               style={{ color: normalizeStage(leadStage) === s.id ? s.color : undefined }}
+                             >
+                               <span>{s.emoji}</span>
+                               <span>{s.label}</span>
+                             </button>
+                           ))}
+                         </div>
+                       )}
+                     </div>
+                   );
+                 })()}
                </div>
             </header>
 
