@@ -160,4 +160,9 @@ export class LeadsService {
 
     return lead;
   }
+
+  async resetMemory(id: string): Promise<{ ok: boolean }> {
+    await this.prisma.aiMemory.deleteMany({ where: { lead_id: id } });
+    return { ok: true };
+  }
 }

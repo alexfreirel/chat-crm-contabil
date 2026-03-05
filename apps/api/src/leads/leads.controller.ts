@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Query, UseGuards, Request, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Delete, Param, Query, UseGuards, Request, BadRequestException } from '@nestjs/common';
 import { LeadsService } from './leads.service';
 import { LeadsCleanupService } from './leads-cleanup.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -48,6 +48,11 @@ export class LeadsController {
   @Patch(':id/stage')
   updateStage(@Param('id') id: string, @Body('stage') stage: string) {
     return this.leadsService.updateStatus(id, stage);
+  }
+
+  @Delete(':id/memory')
+  resetMemory(@Param('id') id: string) {
+    return this.leadsService.resetMemory(id);
   }
 
   @Post('cleanup/deduplicate')

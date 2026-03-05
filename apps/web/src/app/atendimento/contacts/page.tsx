@@ -115,6 +115,7 @@ function ClientPanel({ leadId, onClose, onLightbox }: { leadId: string; onClose:
   const [lead, setLead] = useState<LeadDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const [resettingMemory, setResettingMemory] = useState(false);
   const [editing, setEditing] = useState<'name' | 'email' | null>(null);
   const [saving, setSaving] = useState(false);
   const [resolvedAgent, setResolvedAgent] = useState<{ id: string; name: string } | null>(null);
@@ -201,6 +202,20 @@ function ClientPanel({ leadId, onClose, onLightbox }: { leadId: string; onClose:
   const currentAgent = resolvedAgent ?? lead?.conversations?.[0]?.assigned_user ?? null;
 
   const factsJson = lead?.memory?.facts_json as any;
+
+  const handleResetMemory = async () => {
+    if (!lead) return;
+    if (!window.confirm('Resetar a memória da IA para este contato? A IA começará do zero na próxima conversa.')) return;
+    setResettingMemory(true);
+    try {
+      await api.delete(`/leads/${lead.id}/memory`);
+      setLead(prev => prev ? { ...prev, memory: undefined } : prev);
+    } catch {
+      alert('Erro ao resetar memória. Tente novamente.');
+    } finally {
+      setResettingMemory(false);
+    }
+  };
 
   return (
     <>
@@ -321,17 +336,27 @@ function ClientPanel({ leadId, onClose, onLightbox }: { leadId: string; onClose:
             {/* Seção: Histórico de Atendimento */}
             {lead.memory && (
               <div className="border-b border-border">
-                <button
-                  className="w-full px-6 py-4 flex items-center justify-between hover:bg-accent/30 transition-colors"
-                  onClick={() => setMemoryOpen(!memoryOpen)}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Brain size={15} className="text-violet-400" />
-                    <span className="text-[13px] font-bold text-foreground">Histórico de Atendimento</span>
-                    <span className="text-[10px] text-muted-foreground font-mono">v{lead.memory.version}</span>
-                  </div>
-                  {memoryOpen ? <ChevronUp size={15} className="text-muted-foreground" /> : <ChevronDown size={15} className="text-muted-foreground" />}
-                </button>
+                <div className="flex items-center">
+                  <button
+                    className="flex-1 px-6 py-4 flex items-center justify-between hover:bg-accent/30 transition-colors"
+                    onClick={() => setMemoryOpen(!memoryOpen)}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Brain size={15} className="text-violet-400" />
+                      <span className="text-[13px] font-bold text-foreground">Histórico de Atendimento</span>
+                      <span className="text-[10px] text-muted-foreground font-mono">v{lead.memory.version}</span>
+                    </div>
+                    {memoryOpen ? <ChevronUp size={15} className="text-muted-foreground" /> : <ChevronDown size={15} className="text-muted-foreground" />}
+                  </button>
+                  <button
+                    onClick={handleResetMemory}
+                    disabled={resettingMemory}
+                    title="Resetar memória da IA"
+                    className="mr-4 p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors disabled:opacity-50"
+                  >
+                    {resettingMemory ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                  </button>
+                </div>
 
                 {memoryOpen && (
                   <div className="px-6 pb-5 flex flex-col gap-4">
