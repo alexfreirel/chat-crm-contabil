@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { TasksService } from './tasks.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
@@ -12,13 +12,36 @@ export class TasksController {
     return this.tasksService.findAll();
   }
 
+  @Get('legal-case/:caseId')
+  findByLegalCase(@Param('caseId') caseId: string) {
+    return this.tasksService.findByLegalCase(caseId);
+  }
+
   @Post()
-  create(@Body() data: any) {
-    return this.tasksService.create(data);
+  create(@Body() data: any, @Request() req: any) {
+    return this.tasksService.create({
+      ...data,
+      tenant_id: req.user?.tenant_id,
+    });
   }
 
   @Patch(':id/status')
   updateStatus(@Param('id') id: string, @Body('status') status: string) {
     return this.tasksService.updateStatus(id, status);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() data: any) {
+    return this.tasksService.update(id, data);
+  }
+
+  @Post(':id/comments')
+  addComment(@Param('id') id: string, @Body('text') text: string, @Request() req: any) {
+    return this.tasksService.addComment(id, req.user.id, text);
+  }
+
+  @Get(':id/comments')
+  findComments(@Param('id') id: string) {
+    return this.tasksService.findComments(id);
   }
 }

@@ -21,15 +21,17 @@ interface UserForm {
   role: string;
   inboxIds: string[];
   specialties: string[];
+  supervisorIds: string[];
 }
 
-const emptyForm: UserForm = { name: '', email: '', password: '', role: '', inboxIds: [], specialties: [] };
+const emptyForm: UserForm = { name: '', email: '', password: '', role: '', inboxIds: [], specialties: [], supervisorIds: [] };
 
 export default function UsersSettingsPage() {
   const router = useRouter();
   const [users, setUsers] = useState<any[]>([]);
   const [inboxes, setInboxes] = useState<any[]>([]);
   const [sectors, setSectors] = useState<{ id: string; name: string }[]>([]);
+  const [lawyers, setLawyers] = useState<{ id: string; name: string; specialties: string[] }[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<UserForm>(emptyForm);
@@ -50,6 +52,7 @@ export default function UsersSettingsPage() {
     fetchUsers();
     fetchInboxes();
     fetchSectors();
+    fetchLawyers();
   };
 
   const fetchInboxes = async () => {
@@ -67,6 +70,15 @@ export default function UsersSettingsPage() {
       setSectors(res.data || []);
     } catch (e) {
       console.error('Erro ao buscar departamentos:', e);
+    }
+  };
+
+  const fetchLawyers = async () => {
+    try {
+      const res = await api.get('/users/lawyers');
+      setLawyers(res.data || []);
+    } catch (e) {
+      console.error('Erro ao buscar advogados:', e);
     }
   };
 
@@ -99,6 +111,7 @@ export default function UsersSettingsPage() {
       role: user.role,
       inboxIds: user.inboxes?.map((i: any) => i.id) || [],
       specialties: user.specialties || [],
+      supervisorIds: user.supervisors?.map((s: any) => s.id) || [],
     });
     setSpecialtyInput('');
     setError('');
@@ -132,13 +145,19 @@ export default function UsersSettingsPage() {
         };
         if (form.password) payload.password = form.password;
         await api.patch(`/users/${editingId}`, payload);
+        // Salvar vínculo de supervisores
+        await api.patch(`/users/${editingId}/supervisors`, { lawyerIds: form.supervisorIds });
       } else {
         if (!form.password) {
           setError('Senha é obrigatória para novos usuários.');
           setLoading(false);
           return;
         }
-        await api.post('/users', form);
+        const res = await api.post('/users', form);
+        // Salvar vínculo de supervisores para novo usuário
+        if (form.supervisorIds.length > 0 && res.data?.id) {
+          await api.patch(`/users/${res.data.id}/supervisors`, { lawyerIds: form.supervisorIds });
+        }
       }
       setShowModal(false);
       fetchUsers();
@@ -198,6 +217,7 @@ export default function UsersSettingsPage() {
                     <th className="px-6 py-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Email</th>
                     <th className="px-6 py-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Inboxes (Chat)</th>
                     <th className="px-6 py-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Especialidades</th>
+                    <th className="px-6 py-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Supervisores</th>
                     <th className="px-6 py-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Criado em</th>
                     <th className="px-6 py-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider text-right">Ações</th>
                   </tr>
@@ -235,6 +255,16 @@ export default function UsersSettingsPage() {
                             </span>
                           ))}
                           {!user.specialties?.length && <span className="text-[10px] text-muted-foreground opacity-50">—</span>}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-wrap gap-1">
+                          {user.supervisors?.map((s: any) => (
+                            <span key={s.id} className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 text-[10px] font-bold rounded-lg border border-indigo-500/20">
+                              {s.name}
+                            </span>
+                          ))}
+                          {!user.supervisors?.length && <span className="text-[10px] text-muted-foreground opacity-50">—</span>}
                         </div>
                       </td>
                       <td className="px-6 py-4 text-[13px] text-muted-foreground opacity-70">
@@ -416,6 +446,42 @@ export default function UsersSettingsPage() {
                   </div>
                 </div>
               )}
+
+              {/* Supervisores (Advogados) */}
+              {lawyers.length > 0 && (
+                <div className="space-y-1.5">
+                  <label className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider ml-1">
+                    👨‍⚖️ Supervisores (Advogados)
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 p-3 border border-border rounded-xl bg-background/50">
+                    {lawyers.map(lawyer => (
+                      <label key={lawyer.id} className="flex items-center gap-2 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          checked={form.supervisorIds.includes(lawyer.id)}
+                          onChange={(e) => {
+                            const ids = e.target.checked
+                              ? [...form.supervisorIds, lawyer.id]
+                              : form.supervisorIds.filter(id => id !== lawyer.id);
+                            setForm({ ...form, supervisorIds: ids });
+                          }}
+                          className="w-4 h-4 rounded border-border text-indigo-500 focus:ring-indigo-500/20"
+                        />
+                        <div>
+                          <span className="text-[13px] text-foreground group-hover:text-indigo-400 transition-colors">{lawyer.name}</span>
+                          {lawyer.specialties?.length > 0 && (
+                            <span className="ml-1 text-[9px] text-muted-foreground">({lawyer.specialties.join(', ')})</span>
+                          )}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground opacity-70 ml-1">
+                    Vincule este usuário como estagiário de um ou mais advogados.
+                  </p>
+                </div>
+              )}
+
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"

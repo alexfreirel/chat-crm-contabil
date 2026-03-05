@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, Lead } from '@crm/shared';
+import { LegalCasesService } from '../legal-cases/legal-cases.service';
 
 /**
  * Remove o nono dígito de celulares brasileiros.
@@ -19,7 +20,11 @@ function to12Digits(phone: string): string {
 export class LeadsService {
   private readonly logger = new Logger(LeadsService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => LegalCasesService))
+    private legalCasesService: LegalCasesService,
+  ) {}
 
   async create(data: Prisma.LeadCreateInput): Promise<Lead> {
     if (data.phone) data = { ...data, phone: to12Digits(data.phone) };
@@ -127,9 +132,33 @@ export class LeadsService {
   }
 
   async updateStatus(id: string, stage: string): Promise<Lead> {
-    return this.prisma.lead.update({
+    const lead = await this.prisma.lead.update({
       where: { id },
       data: { stage },
     });
+
+    // Auto-criação de LegalCase quando lead atinge FINALIZADO
+    if (stage === 'FINALIZADO') {
+      try {
+        const conv = await this.prisma.conversation.findFirst({
+          where: { lead_id: id, assigned_lawyer_id: { not: null } },
+          orderBy: { last_message_at: 'desc' },
+          select: { id: true, assigned_lawyer_id: true, tenant_id: true, legal_area: true },
+        });
+        if (conv?.assigned_lawyer_id) {
+          await this.legalCasesService.createFromFinalizado(
+            id,
+            conv.assigned_lawyer_id,
+            conv.id,
+            conv.tenant_id ?? undefined,
+          );
+          this.logger.log(`Auto-created LegalCase for lead ${id} → lawyer ${conv.assigned_lawyer_id}`);
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to auto-create LegalCase for lead ${id}: ${err}`);
+      }
+    }
+
+    return lead;
   }
 }

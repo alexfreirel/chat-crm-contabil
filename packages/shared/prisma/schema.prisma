@@ -16,6 +16,7 @@ model Tenant {
   users         User[]
   inboxes       Inbox[]
   instances     Instance[]
+  legal_cases   LegalCase[]
 }
 
 model User {
@@ -33,6 +34,10 @@ model User {
   sectors         Sector[]       @relation("SectorUsers")
   tasks           Task[]
   tenant          Tenant?        @relation(fields: [tenant_id], references: [id])
+  lawyer_cases    LegalCase[]    @relation("LawyerCases")
+  task_comments   TaskComment[]
+  supervisors     User[]         @relation("InternSupervisors")
+  interns         User[]         @relation("InternSupervisors")
 }
 
 model Lead {
@@ -51,6 +56,7 @@ model Lead {
   conversations Conversation[]
   tenant        Tenant?        @relation(fields: [tenant_id], references: [id])
   tasks         Task[]
+  legal_cases   LegalCase[]
 
   @@index([tenant_id, phone])
   @@index([stage])
@@ -84,6 +90,7 @@ model Conversation {
   inbox            Inbox?    @relation(fields: [inbox_id], references: [id])
   messages         Message[]
   tasks            Task[]
+  legal_cases      LegalCase[]
 
   @@index([lead_id])
   @@index([last_message_at(sort: Desc)])
@@ -130,6 +137,7 @@ model Task {
   lead_id          String?
   conversation_id  String?
   message_id       String?
+  legal_case_id    String?
   title            String
   description      String?
   due_at           DateTime?
@@ -141,9 +149,12 @@ model Task {
   lead             Lead?         @relation(fields: [lead_id], references: [id])
   message          Message?      @relation(fields: [message_id], references: [id])
   tenant           Tenant?       @relation(fields: [tenant_id], references: [id])
+  legal_case       LegalCase?    @relation(fields: [legal_case_id], references: [id])
+  comments         TaskComment[]
 
   @@index([assigned_user_id, due_at])
   @@index([status])
+  @@index([legal_case_id])
 }
 
 model AiMemory {
@@ -274,4 +285,61 @@ model Sector {
   auto_route Boolean  @default(false)
   created_at DateTime @default(now())
   users      User[]   @relation("SectorUsers")
+}
+
+model LegalCase {
+  id              String         @id @default(uuid())
+  tenant_id       String?
+  lead_id         String
+  conversation_id String?
+  lawyer_id       String
+  case_number     String?
+  legal_area      String?
+  stage           String         @default("VIABILIDADE")
+  archived        Boolean        @default(false)
+  archive_reason  String?
+  notes           String?
+  court           String?
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+
+  lead            Lead           @relation(fields: [lead_id], references: [id])
+  conversation    Conversation?  @relation(fields: [conversation_id], references: [id])
+  lawyer          User           @relation("LawyerCases", fields: [lawyer_id], references: [id])
+  tenant          Tenant?        @relation(fields: [tenant_id], references: [id])
+  tasks           Task[]
+  events          CaseEvent[]
+
+  @@index([lawyer_id, stage])
+  @@index([lead_id])
+  @@index([stage])
+}
+
+model CaseEvent {
+  id            String     @id @default(uuid())
+  case_id       String
+  type          String
+  title         String
+  description   String?
+  source        String?
+  reference_url String?
+  event_date    DateTime?
+  created_at    DateTime   @default(now())
+
+  legal_case    LegalCase  @relation(fields: [case_id], references: [id], onDelete: Cascade)
+
+  @@index([case_id, created_at])
+}
+
+model TaskComment {
+  id         String   @id @default(uuid())
+  task_id    String
+  user_id    String
+  text       String
+  created_at DateTime @default(now())
+
+  task       Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [user_id], references: [id])
+
+  @@index([task_id, created_at])
 }

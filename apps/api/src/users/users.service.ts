@@ -20,6 +20,7 @@ export class UsersService {
       include: {
         inboxes: { select: { id: true, name: true } },
         sectors: { select: { id: true, name: true } },
+        supervisors: { select: { id: true, name: true } },
       },
     });
     return users.map(({ password_hash, ...user }: any) => user);
@@ -107,5 +108,38 @@ export class UsersService {
 
   async remove(id: string): Promise<void> {
     await this.prisma.user.delete({ where: { id } });
+  }
+
+  // ─── Lawyer / Intern helpers ──────────────────────────────────
+
+  /** Lista advogados (users com specialties não-vazio) */
+  async findLawyers() {
+    return this.prisma.user.findMany({
+      where: { specialties: { isEmpty: false } },
+      select: { id: true, name: true, specialties: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  /** Lista estagiários vinculados a um advogado */
+  async findInterns(supervisorId: string) {
+    return this.prisma.user.findMany({
+      where: { supervisors: { some: { id: supervisorId } } },
+      select: { id: true, name: true, email: true, role: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  /** Define os supervisores (advogados) de um estagiário */
+  async linkSupervisors(internId: string, lawyerIds: string[]) {
+    return this.prisma.user.update({
+      where: { id: internId },
+      data: {
+        supervisors: { set: lawyerIds.map(id => ({ id })) },
+      },
+      include: {
+        supervisors: { select: { id: true, name: true } },
+      },
+    });
   }
 }

@@ -12,6 +12,11 @@ export class UsersController {
     return this.usersService.findAgents();
   }
 
+  @Get('lawyers')
+  findLawyers() {
+    return this.usersService.findLawyers();
+  }
+
   @Get()
   findAll(@Request() req: any) {
     if (req.user.role !== 'ADMIN') {
@@ -42,6 +47,23 @@ export class UsersController {
       throw new ForbiddenException('Apenas administradores podem editar usuários');
     }
     return this.usersService.update(id, data);
+  }
+
+  @Get(':id/interns')
+  findInterns(@Request() req: any, @Param('id') id: string) {
+    return this.usersService.findInterns(id);
+  }
+
+  @Patch(':id/supervisors')
+  linkSupervisors(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() data: { lawyerIds: string[] },
+  ) {
+    if (req.user.role !== 'ADMIN') {
+      throw new ForbiddenException('Apenas administradores podem vincular supervisores');
+    }
+    return this.usersService.linkSupervisors(id, data.lawyerIds);
   }
 
   @Delete(':id')
