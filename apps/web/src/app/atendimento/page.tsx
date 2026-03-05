@@ -13,6 +13,7 @@ import { SophIAButton } from '@/components/SophIAButton';
 import { playNotificationSound } from '@/lib/notificationSounds';
 import api from '@/lib/api';
 import { io, Socket } from 'socket.io-client';
+import { CRM_STAGES, findStage, normalizeStage } from '@/lib/crmStages';
 
 interface ConversationSummary {
   id: string;
@@ -134,6 +135,9 @@ export default function Dashboard() {
   const [transferContextMap, setTransferContextMap] = useState<Record<string, { fromUserName: string; reason: string | null; audioIds: string[] }>>({});
   const [allSpecialists, setAllSpecialists] = useState<{ id: string; name: string; specialties: string[] }[]>([]);
   const [showLawyerDropdown, setShowLawyerDropdown] = useState(false);
+  // CRM stage do lead da conversa selecionada
+  const [leadStage, setLeadStage] = useState<string | null>(null);
+  const [showStageDropdown, setShowStageDropdown] = useState(false);
   // Incoming transfer popup (for receiving operator)
   const [incomingTransfer, setIncomingTransfer] = useState<{
     conversationId: string; fromUserName: string; contactName: string; reason: string | null; audioIds?: string[];
@@ -169,6 +173,7 @@ export default function Dashboard() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
   const lawyerDropdownRef = useRef<HTMLDivElement>(null);
+  const stageDropdownRef = useRef<HTMLDivElement>(null);
   const selectedInboxIdRef = useRef<string | null>(selectedInboxId);
   const selectedIdRef = useRef<string | null>(selectedId);
   const currentUserIdRef = useRef<string | null>(currentUserId);
@@ -210,6 +215,18 @@ export default function Dashboard() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [showLawyerDropdown]);
+
+  // Fechar dropdown de etapa CRM ao clicar fora
+  useEffect(() => {
+    if (!showStageDropdown) return;
+    const handler = (e: MouseEvent) => {
+      if (stageDropdownRef.current && !stageDropdownRef.current.contains(e.target as Node)) {
+        setShowStageDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showStageDropdown]);
 
   const fetchConversations = useCallback(async (inboxId?: string | null, silent = false) => {
     try {
@@ -379,6 +396,33 @@ export default function Dashboard() {
     fetchPendingTransfers();
     fetchSpecialists();
   }, [fetchConversations, fetchPendingTransfers, selectedInboxId]);
+
+  // Auto-abrir conversa vinda do CRM (via sessionStorage 'crm_open_conv')
+  useEffect(() => {
+    if (!conversations.length) return;
+    const pendingConvId = sessionStorage.getItem('crm_open_conv');
+    if (pendingConvId) {
+      const match = conversations.find(c => c.id === pendingConvId);
+      if (match) {
+        setSelectedId(pendingConvId);
+        sessionStorage.removeItem('crm_open_conv');
+      }
+    }
+  }, [conversations]);
+
+  // Buscar stage do lead ao selecionar conversa
+  useEffect(() => {
+    if (!selectedId) { setLeadStage(null); return; }
+    setShowStageDropdown(false);
+    const conv = conversations.find(c => c.id === selectedId);
+    if (conv?.leadId) {
+      api.get(`/leads/${conv.leadId}`, { _silent401: true } as any)
+        .then(r => setLeadStage(r.data?.stage || null))
+        .catch(() => setLeadStage(null));
+    } else {
+      setLeadStage(null);
+    }
+  }, [selectedId]);
 
   // Polling de transferências pendentes: fallback quando o evento socket direto é perdido
   // silent=true: nunca causa logout — se o token expirar, só o load inicial ou ação do usuário redireciona
@@ -629,6 +673,18 @@ export default function Dashboard() {
     } catch (e: any) {
       console.error('Failed to assign lawyer', e);
       alert('Erro ao atribuir especialista: ' + (e?.response?.data?.message || e?.message || 'Tente novamente'));
+    }
+  };
+
+  const handleChangeLeadStage = async (newStage: string) => {
+    const conv = conversations.find(c => c.id === selectedId);
+    if (!conv?.leadId) return;
+    setLeadStage(newStage); // otimista
+    setShowStageDropdown(false);
+    try {
+      await api.patch(`/leads/${conv.leadId}/stage`, { stage: newStage });
+    } catch (e: any) {
+      console.error('Failed to change lead stage', e);
     }
   };
 
@@ -1210,6 +1266,38 @@ export default function Dashboard() {
                    <div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mt-1">
                      {selected.channel} <span className="mx-1">•</span> {selected.contactPhone}
                    </div>
+                   {/* Etapa CRM do lead */}
+                   {leadStage && (() => {
+                     const stage = findStage(normalizeStage(leadStage));
+                     return (
+                       <div className="relative mt-1" ref={stageDropdownRef}>
+                         <button
+                           onClick={() => setShowStageDropdown(v => !v)}
+                           className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-all hover:opacity-80"
+                           style={{ background: `${stage.color}18`, color: stage.color, borderColor: `${stage.color}35` }}
+                           title="Etapa no CRM — clique para trocar"
+                         >
+                           {stage.emoji} {stage.label}
+                         </button>
+                         {showStageDropdown && (
+                           <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-xl shadow-xl w-56 py-1" style={{ zIndex: 9999 }}>
+                             <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Etapa no CRM</p>
+                             {CRM_STAGES.map(s => (
+                               <button
+                                 key={s.id}
+                                 onClick={() => handleChangeLeadStage(s.id)}
+                                 className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2 text-[12px] ${normalizeStage(leadStage) === s.id ? 'font-semibold' : ''}`}
+                                 style={{ color: normalizeStage(leadStage) === s.id ? s.color : undefined }}
+                               >
+                                 <span>{s.emoji}</span>
+                                 <span>{s.label}</span>
+                               </button>
+                             ))}
+                           </div>
+                         )}
+                       </div>
+                     );
+                   })()}
                    {/* Área jurídica + especialista pré-atribuído */}
                    {(selected.legalArea || selected.assignedLawyerId) && (
                      <div className="flex items-center gap-2 flex-wrap mt-1.5">

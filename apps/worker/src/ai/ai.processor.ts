@@ -346,6 +346,21 @@ export class AiProcessor extends WorkerHost {
         data: { stage: updates.status },
       });
       this.logger.log(`[AI] Lead.stage → "${updates.status}"`);
+    } else if (!updates.status && updates.next_step) {
+      // Se a IA enviou next_step mas esqueceu o status, inferir o stage automaticamente
+      const inferMap: Record<string, string> = {
+        formulario:        'AGUARDANDO_FORM',
+        reuniao:           'REUNIAO_AGENDADA',
+        documentos:        'AGUARDANDO_DOCS',
+        procuracao:        'AGUARDANDO_PROC',
+        encerrado:         'FINALIZADO',
+        triagem_concluida: 'QUALIFICANDO',
+      };
+      const inferred = inferMap[updates.next_step];
+      if (inferred) {
+        await this.prisma.lead.update({ where: { id: leadId }, data: { stage: inferred } });
+        this.logger.log(`[AI] Stage inferido do next_step "${updates.next_step}": ${inferred}`);
+      }
     }
 
     // c. Área → Conversation.legal_area (só se não classificada) + auto-atribuir especialista
@@ -662,7 +677,7 @@ export class AiProcessor extends WorkerHost {
           `[AI] Usando skill: "${skill.name}" (area=${skill.area}, model=${model})`,
         );
       } else {
-        systemPrompt = MEDIA_CAPABILITIES_HEADER + `Você é Sophia, agente de pré-atendimento do escritório André Lustosa Advogados.\nSeu objetivo é acolher o cliente, entender o problema e coletar informações para o advogado.\nResponda de forma empática e curta (adequado para WhatsApp).\nRetorne SOMENTE JSON válido: {"reply":"texto para enviar","updates":{"name":null,"status":"Contato Inicial","area":null,"lead_summary":"resumo","next_step":"duvidas","notes":""}}`;
+        systemPrompt = MEDIA_CAPABILITIES_HEADER + `Você é Sophia, agente de pré-atendimento do escritório André Lustosa Advogados.\nSeu objetivo é acolher o cliente, entender o problema e coletar informações para o advogado.\nResponda de forma empática e curta (adequado para WhatsApp).\nRetorne SOMENTE JSON válido: {"reply":"texto para enviar","updates":{"name":null,"status":"INICIAL","area":null,"lead_summary":"resumo","next_step":"duvidas","notes":""}}\n\nValores válidos para updates.status (etapa do lead no CRM):\nINICIAL | QUALIFICANDO | AGUARDANDO_FORM | REUNIAO_AGENDADA | AGUARDANDO_DOCS | AGUARDANDO_PROC | FINALIZADO | PERDIDO\n\nValores válidos para updates.next_step:\nduvidas | triagem_concluida | formulario | reuniao | documentos | procuracao | encerrado`;
         model = await this.settings.getDefaultModel();
         maxTokens = 500;
         temperature = 0.7;
