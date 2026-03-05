@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, KeyboardEvent } from 'react';
-import { Search, User, Phone, Loader2, RefreshCw, X, MessageSquare, Calendar, Brain, ChevronDown, ChevronUp, Mail, Pencil, Check, UserCheck, FolderOpen, FileText, Image as ImageIcon, Mic, Video, Download, Trash2 } from 'lucide-react';
+import { Search, User, Phone, Loader2, RefreshCw, X, MessageSquare, Calendar, Brain, ChevronDown, ChevronUp, Mail, Pencil, Check, UserCheck, FolderOpen, FileText, Image as ImageIcon, Mic, Video, Download, Trash2, RotateCcw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { formatPhone } from '@/lib/utils';
@@ -777,6 +777,17 @@ export default function ContactsPage() {
   const activeContacts = contacts.filter(c => c.stage !== 'PERDIDO' && searchMatch(c));
   const archivedContacts = contacts.filter(c => c.stage === 'PERDIDO' && searchMatch(c));
 
+  const handleUnarchive = async (contactId: string) => {
+    // Otimista: move para ativos imediatamente
+    setContacts(prev => prev.map(c => c.id === contactId ? { ...c, stage: 'INICIAL' } : c));
+    try {
+      await api.patch(`/leads/${contactId}/stage`, { stage: 'INICIAL' });
+    } catch {
+      // Rollback em caso de erro
+      fetchAllContacts();
+    }
+  };
+
   return (
     <div className="flex h-screen bg-background overflow-hidden text-foreground">
       <main className="flex-1 flex flex-col bg-background overflow-hidden relative">
@@ -897,84 +908,97 @@ export default function ContactsPage() {
                 </table>
               </div>
 
-              {/* ── Seção Arquivados (PERDIDO) ── */}
-              {(archivedContacts.length > 0 || contacts.some(c => c.stage === 'PERDIDO')) && (
-                <div className="mt-6">
-                  <button
-                    onClick={() => setShowArchived(v => !v)}
-                    className="flex items-center gap-2.5 px-1 py-2 text-[13px] font-semibold text-muted-foreground hover:text-foreground transition-colors group"
-                  >
-                    <FolderOpen size={16} className="text-red-400 group-hover:text-red-500 transition-colors" />
-                    <span>Arquivados</span>
-                    {contacts.filter(c => c.stage === 'PERDIDO').length > 0 && (
-                      <span className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 text-[11px] font-bold border border-red-500/20">
-                        {contacts.filter(c => c.stage === 'PERDIDO').length}
-                      </span>
-                    )}
-                    {showArchived
-                      ? <ChevronUp size={14} className="ml-1" />
-                      : <ChevronDown size={14} className="ml-1" />
-                    }
-                  </button>
-
-                  {showArchived && (
-                    <div className="mt-2 rounded-2xl border border-red-500/20 bg-card shadow-sm overflow-hidden opacity-80">
-                      <table className="w-full text-left table-auto">
-                        <thead>
-                          <tr className="bg-red-500/[0.04] border-b border-red-500/20">
-                            <th className="px-6 py-4 text-[10px] font-bold text-red-400 uppercase tracking-widest">Nome</th>
-                            <th className="px-6 py-4 text-[10px] font-bold text-red-400 uppercase tracking-widest">Telefone</th>
-                            <th className="px-6 py-4 text-[10px] font-bold text-red-400 uppercase tracking-widest">Email</th>
-                            <th className="px-6 py-4 text-[10px] font-bold text-red-400 uppercase tracking-widest">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-red-500/[0.06]">
-                          {archivedContacts.map((contact) => (
-                            <tr key={contact.id} className="hover:bg-red-500/[0.03] transition-colors group">
-                              <td className="px-6 py-4">
-                                <div className="flex items-center gap-4">
-                                  <div
-                                    className={`w-9 h-9 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center overflow-hidden shrink-0 shadow-sm grayscale ${contact.profile_picture_url ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
-                                    onClick={contact.profile_picture_url ? (e) => { e.stopPropagation(); setLightbox(contact.profile_picture_url!); } : undefined}
-                                  >
-                                    {contact.profile_picture_url ? (
-                                      <img src={contact.profile_picture_url} alt={contact.name} className="w-full h-full object-cover" loading="lazy" />
-                                    ) : (
-                                      <span className="text-red-400 font-bold text-xs">{contact.name.charAt(0).toUpperCase()}</span>
-                                    )}
-                                  </div>
-                                  <span
-                                    className="text-[14px] font-semibold text-muted-foreground tracking-tight cursor-pointer hover:text-foreground transition-colors"
-                                    onClick={() => setSelectedLeadId(contact.id)}
-                                  >
-                                    {contact.name}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 text-[13px] text-muted-foreground/70 font-medium">
-                                {formatPhone(contact.phone)}
-                              </td>
-                              <td className="px-6 py-4 text-[13px] text-muted-foreground/70 font-medium">{contact.email || '-'}</td>
-                              <td className="px-6 py-4">
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 text-red-500 text-[10px] font-bold uppercase tracking-wider border border-red-500/20">
-                                  ❌ Perdido
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                          {archivedContacts.length === 0 && search && (
-                            <tr>
-                              <td colSpan={4} className="py-10 text-center text-[13px] text-muted-foreground/50">
-                                Nenhum arquivado encontrado para esta busca
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+              {/* ── Seção Arquivados (PERDIDO) — sempre visível ── */}
+              <div className="mt-6">
+                <button
+                  onClick={() => setShowArchived(v => !v)}
+                  className="flex items-center gap-2.5 px-1 py-2 text-[13px] font-semibold text-muted-foreground hover:text-foreground transition-colors group"
+                >
+                  <FolderOpen size={16} className="text-red-400 group-hover:text-red-500 transition-colors" />
+                  <span>Arquivados</span>
+                  {contacts.filter(c => c.stage === 'PERDIDO').length > 0 ? (
+                    <span className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 text-[11px] font-bold border border-red-500/20">
+                      {contacts.filter(c => c.stage === 'PERDIDO').length}
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full bg-foreground/[0.06] text-muted-foreground text-[11px] font-bold">
+                      0
+                    </span>
                   )}
-                </div>
-              )}
+                  {showArchived
+                    ? <ChevronUp size={14} className="ml-1" />
+                    : <ChevronDown size={14} className="ml-1" />
+                  }
+                </button>
+
+                {showArchived && (
+                  <div className="mt-2 rounded-2xl border border-red-500/20 bg-card shadow-sm overflow-hidden opacity-80">
+                    <table className="w-full text-left table-auto">
+                      <thead>
+                        <tr className="bg-red-500/[0.04] border-b border-red-500/20">
+                          <th className="px-6 py-4 text-[10px] font-bold text-red-400 uppercase tracking-widest">Nome</th>
+                          <th className="px-6 py-4 text-[10px] font-bold text-red-400 uppercase tracking-widest">Telefone</th>
+                          <th className="px-6 py-4 text-[10px] font-bold text-red-400 uppercase tracking-widest">Email</th>
+                          <th className="px-6 py-4 text-[10px] font-bold text-red-400 uppercase tracking-widest">Status</th>
+                          <th className="px-6 py-4 text-[10px] font-bold text-red-400 uppercase tracking-widest">Ação</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-red-500/[0.06]">
+                        {archivedContacts.map((contact) => (
+                          <tr key={contact.id} className="hover:bg-red-500/[0.03] transition-colors group">
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-4">
+                                <div
+                                  className={`w-9 h-9 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center overflow-hidden shrink-0 shadow-sm grayscale ${contact.profile_picture_url ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+                                  onClick={contact.profile_picture_url ? (e) => { e.stopPropagation(); setLightbox(contact.profile_picture_url!); } : undefined}
+                                >
+                                  {contact.profile_picture_url ? (
+                                    <img src={contact.profile_picture_url} alt={contact.name} className="w-full h-full object-cover" loading="lazy" />
+                                  ) : (
+                                    <span className="text-red-400 font-bold text-xs">{contact.name.charAt(0).toUpperCase()}</span>
+                                  )}
+                                </div>
+                                <span
+                                  className="text-[14px] font-semibold text-muted-foreground tracking-tight cursor-pointer hover:text-foreground transition-colors"
+                                  onClick={() => setSelectedLeadId(contact.id)}
+                                >
+                                  {contact.name}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-[13px] text-muted-foreground/70 font-medium">
+                              {formatPhone(contact.phone)}
+                            </td>
+                            <td className="px-6 py-4 text-[13px] text-muted-foreground/70 font-medium">{contact.email || '-'}</td>
+                            <td className="px-6 py-4">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 text-red-500 text-[10px] font-bold uppercase tracking-wider border border-red-500/20">
+                                ❌ Perdido
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <button
+                                onClick={() => handleUnarchive(contact.id)}
+                                title="Desarquivar lead (mover para Inicial)"
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-foreground/[0.05] text-muted-foreground hover:bg-primary/10 hover:text-primary text-[11px] font-semibold border border-transparent hover:border-primary/20 transition-all"
+                              >
+                                <RotateCcw size={12} />
+                                Desarquivar
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        {archivedContacts.length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="py-10 text-center text-[13px] text-muted-foreground/50 italic">
+                              {search ? 'Nenhum arquivado encontrado para esta busca' : 'Nenhum lead arquivado'}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
