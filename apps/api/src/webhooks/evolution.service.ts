@@ -231,17 +231,33 @@ export class EvolutionService {
         const jobId = `ai-debounce-${conv.id}`;
 
         if (debounceMs > 0) {
-          // Remove qualquer job existente com esse ID (delayed, waiting, completed ou failed)
-          // para evitar deduplicação silenciosa do BullMQ ao reutilizar o mesmo jobId.
+          // Tenta remover job pendente com o mesmo ID para resetar o timer.
+          // Se o job já estiver ATIVO (locked pelo worker), não pode ser removido;
+          // nesse caso agendamos um novo job SEM jobId fixo para que o BullMQ
+          // não faça deduplicação — garantindo que a nova mensagem seja processada
+          // assim que o job atual terminar.
+          let useFixedId = true;
           const existing = await this.aiQueue.getJob(jobId);
           if (existing) {
-            await existing.remove();
-            this.logger.log(`[AI] Debounce: job ${jobId} removido, timer resetado`);
+            try {
+              await existing.remove();
+              this.logger.log(`[AI] Debounce: job ${jobId} removido, timer resetado`);
+            } catch {
+              // Job está bloqueado (em execução) — não pode ser cancelado.
+              // Agendamos novo job sem ID fixo para processar a nova mensagem em seguida.
+              useFixedId = false;
+              this.logger.warn(
+                `[AI] Debounce: job ${jobId} ativo/bloqueado — novo job agendado sem ID fixo`,
+              );
+            }
           }
+
           await this.aiQueue.add(
             'process_ai_response',
             { conversation_id: conv.id, lead_id: lead.id },
-            { jobId, delay: debounceMs, removeOnComplete: true, removeOnFail: false },
+            useFixedId
+              ? { jobId, delay: debounceMs, removeOnComplete: true, removeOnFail: false }
+              : { delay: debounceMs, removeOnComplete: true, removeOnFail: false },
           );
         } else {
           // Sem debounce: processa imediatamente
