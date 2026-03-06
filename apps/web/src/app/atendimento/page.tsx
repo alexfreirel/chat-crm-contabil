@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, UserCheck, PanelLeftClose, PanelLeftOpen, CornerDownLeft, Inbox, Pencil, Search, ChevronDown, ClipboardList } from 'lucide-react';
+import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, UserCheck, PanelLeftClose, PanelLeftOpen, CornerDownLeft, Inbox, Pencil, Search, ChevronDown, ClipboardList, ArrowLeft, MoreVertical } from 'lucide-react';
 import FichaTrabalhista from '@/components/FichaTrabalhista';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { AudioRecorder } from '@/components/AudioRecorder';
@@ -155,6 +155,9 @@ export default function Dashboard() {
   // Pending transfers waiting for current user to accept/decline
   const [pendingTransfers, setPendingTransfers] = useState<{ conversationId: string; contactName: string; fromUserName: string; reason: string | null; audioIds?: string[] }[]>([]);
   const [inboxOpen, setInboxOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   // Unread message counts per conversation (persisted in sessionStorage to survive same-page navigation)
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>(() => {
@@ -187,6 +190,25 @@ export default function Dashboard() {
   useEffect(() => { selectedInboxIdRef.current = selectedInboxId; }, [selectedInboxId]);
   useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
   useEffect(() => { currentUserIdRef.current = currentUserId; }, [currentUserId]);
+
+  // Detect mobile (<768px) for responsive layout
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  // Close mobile menu on click outside
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node)) setMobileMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [mobileMenuOpen]);
 
   // Persist unreadCounts + broadcast total to Sidebar
   useEffect(() => {
@@ -1032,13 +1054,13 @@ export default function Dashboard() {
     <div className="flex h-screen overflow-hidden bg-background font-sans antialiased text-foreground">
 
       {/* INBOX */}
-      <section className={`flex flex-col bg-card border-r border-border shrink-0 z-40 transition-all duration-300 ${inboxOpen ? 'w-[380px]' : 'w-0 overflow-hidden'}`}>
+      <section className={`flex flex-col bg-card border-r border-border shrink-0 z-40 transition-all duration-300 ${isMobile ? (selectedId ? 'hidden' : 'w-full') : (inboxOpen ? 'w-[380px]' : 'w-0 overflow-hidden')}`}>
         <div className="p-5 border-b border-border space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold">Inbox</h2>
             <button
               onClick={() => setInboxOpen(false)}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+              className="hidden md:block p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
               title="Fechar painel"
             >
               <PanelLeftClose size={18} />
@@ -1243,8 +1265,8 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {/* INBOX OPEN BUTTON (when collapsed) */}
-      {!inboxOpen && (
+      {/* INBOX OPEN BUTTON (when collapsed) - desktop only */}
+      {!inboxOpen && !isMobile && (
         <button
           onClick={() => setInboxOpen(true)}
           className="shrink-0 w-10 flex flex-col items-center justify-start gap-2 pt-4 bg-card border-r border-border z-40 hover:bg-accent/50 transition-all"
@@ -1256,7 +1278,7 @@ export default function Dashboard() {
 
       {/* MAIN CHAT PANEL */}
       <main
-        className="flex-1 flex flex-col bg-background relative"
+        className={`flex-1 flex flex-col bg-background relative ${isMobile && !selectedId ? 'hidden' : ''}`}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
@@ -1273,27 +1295,36 @@ export default function Dashboard() {
         )}
         {selected ? (
           <>
-            <header className="min-h-[80px] py-3 px-8 border-b border-border bg-card/50 backdrop-blur-md flex items-center justify-between z-30 shrink-0">
-               <div className="flex items-center gap-4">
+            <header className="min-h-[60px] md:min-h-[80px] py-2 md:py-3 px-3 md:px-8 border-b border-border bg-card/50 backdrop-blur-md flex items-center justify-between z-30 shrink-0">
+               <div className="flex items-center gap-2 md:gap-4 min-w-0 flex-1">
+                 {/* Botão Voltar - mobile only */}
+                 {isMobile && (
+                   <button
+                     onClick={() => { setSelectedId(null); setMobileMenuOpen(false); }}
+                     className="p-2 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shrink-0"
+                   >
+                     <ArrowLeft size={20} />
+                   </button>
+                 )}
                  <div
-                   className={`w-12 h-12 rounded-full bg-accent border border-border flex items-center justify-center overflow-hidden shadow-sm shrink-0 ${selected.profile_picture_url ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+                   className={`w-10 h-10 md:w-12 md:h-12 rounded-full bg-accent border border-border flex items-center justify-center overflow-hidden shadow-sm shrink-0 ${selected.profile_picture_url ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
                    onClick={() => selected.profile_picture_url && setLightbox(selected.profile_picture_url)}
                    title={selected.profile_picture_url ? 'Ver foto ampliada' : undefined}
                  >
                    {selected.profile_picture_url ? (
                      <img src={selected.profile_picture_url} alt={selected.contactName} className="w-full h-full object-cover" loading="lazy" />
                    ) : (
-                     <span className="text-foreground font-bold text-xl">{getInitial(selected.contactName)}</span>
+                     <span className="text-foreground font-bold text-lg md:text-xl">{getInitial(selected.contactName)}</span>
                    )}
                  </div>
-                 <div>
-                   <h3 className="font-bold text-lg leading-tight">{selected.contactName || selected.contactPhone}</h3>
-                   <div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mt-1">
+                 <div className="min-w-0 flex-1">
+                   <h3 className="font-bold text-base md:text-lg leading-tight truncate">{selected.contactName || selected.contactPhone}</h3>
+                   <div className="text-[11px] md:text-xs text-muted-foreground uppercase tracking-wider font-semibold mt-0.5 md:mt-1 truncate">
                      {selected.channel} <span className="mx-1">•</span> {selected.contactPhone}
                    </div>
-                   {/* Área jurídica + especialista pré-atribuído */}
+                   {/* Área jurídica + especialista pré-atribuído — hidden on mobile */}
                    {(selected.legalArea || selected.assignedLawyerId) && (
-                     <div className="flex items-center gap-2 flex-wrap mt-1.5">
+                     <div className="hidden md:flex items-center gap-2 flex-wrap mt-1.5">
                        {selected.legalArea && (
                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-400 text-[10px] font-bold border border-violet-500/20">
                            ⚖️ {selected.legalArea}
@@ -1354,8 +1385,96 @@ export default function Dashboard() {
                  </div>
                </div>
                <div className="flex flex-col items-end gap-2 shrink-0">
-                 {/* Linha de botões de ação */}
-                 <div className="flex gap-2 items-center flex-wrap justify-end">
+                 {/* Menu ⋮ mobile */}
+                 {isMobile && (
+                   <div className="relative" ref={mobileMenuRef}>
+                     <button
+                       onClick={() => setMobileMenuOpen(v => !v)}
+                       className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                     >
+                       <MoreVertical size={20} />
+                     </button>
+                     {mobileMenuOpen && (
+                       <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-xl shadow-2xl py-2 w-56 z-[999]">
+                         {/* IA toggle */}
+                         {isRealConvo && (
+                           <button
+                             onClick={() => { handleToggleAiMode(); setMobileMenuOpen(false); }}
+                             className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-accent transition-colors text-sm"
+                           >
+                             {aiMode ? <Bot size={16} className="text-primary" /> : <BotOff size={16} className="text-muted-foreground" />}
+                             {aiMode ? 'IA Ativa' : 'IA Inativa'}
+                           </button>
+                         )}
+                         {/* Ficha trabalhista */}
+                         {selected?.legalArea?.toLowerCase().includes('trabalhist') && (
+                           <>
+                             {!isClosed && (
+                               <button
+                                 onClick={() => { handleSendFormLink(); setMobileMenuOpen(false); }}
+                                 className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-accent transition-colors text-sm text-amber-400"
+                               >
+                                 <ClipboardList size={16} /> Enviar Formulário
+                               </button>
+                             )}
+                             <button
+                               onClick={() => { setFichaInboxVisible(true); setMobileMenuOpen(false); }}
+                               className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-accent transition-colors text-sm text-violet-400"
+                             >
+                               <Eye size={16} /> Visualizar Ficha
+                             </button>
+                           </>
+                         )}
+                         {/* Aceitar */}
+                         {selected.status === 'WAITING' && isRealConvo && (
+                           <button
+                             onClick={() => { handleAccept(); setMobileMenuOpen(false); }}
+                             className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-accent transition-colors text-sm text-primary"
+                           >
+                             <Check size={16} /> Aceitar Atendimento
+                           </button>
+                         )}
+                         {/* Transferir */}
+                         {!isClosed && isRealConvo && (
+                           <button
+                             onClick={() => { handleOpenTransferModal(); setMobileMenuOpen(false); }}
+                             className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-accent transition-colors text-sm text-sky-400"
+                           >
+                             <UserCheck size={16} /> Transferir
+                           </button>
+                         )}
+                         {/* Devolver + Manter */}
+                         {selected?.originAssignedUserId && selected?.assignedAgentId === currentUserId && !isClosed && (
+                           <>
+                             <button
+                               onClick={() => { openReasonPopup('return', selected?.originAssignedUserName || 'atendente de origem'); setMobileMenuOpen(false); }}
+                               className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-accent transition-colors text-sm text-amber-400"
+                             >
+                               <CornerDownLeft size={16} /> Devolver
+                             </button>
+                             <button
+                               onClick={() => { handleKeepInInbox(); setMobileMenuOpen(false); }}
+                               className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-accent transition-colors text-sm text-emerald-400"
+                             >
+                               <Inbox size={16} /> Manter Aqui
+                             </button>
+                           </>
+                         )}
+                         {/* Fechar */}
+                         {!isClosed && isRealConvo && (
+                           <button
+                             onClick={() => { handleClose(); setMobileMenuOpen(false); }}
+                             className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-accent transition-colors text-sm text-red-400 border-t border-border mt-1 pt-2.5"
+                           >
+                             <XCircle size={16} /> Fechar Conversa
+                           </button>
+                         )}
+                       </div>
+                     )}
+                   </div>
+                 )}
+                 {/* Linha de botões de ação — desktop only */}
+                 <div className="hidden md:flex gap-2 items-center flex-wrap justify-end">
                    {selected?.legalArea?.toLowerCase().includes('trabalhist') && (
                      <>
                        {!isClosed && (
@@ -1442,11 +1561,11 @@ export default function Dashboard() {
                    )}
                  </div>
 
-                 {/* Etapa do Funil (CRM) */}
+                 {/* Etapa do Funil (CRM) — hidden on mobile */}
                  {isRealConvo && (() => {
                    const stage = findStage(normalizeStage(leadStage));
                    return (
-                     <div className="relative flex items-center gap-2" ref={stageDropdownRef}>
+                     <div className="relative hidden md:flex items-center gap-2" ref={stageDropdownRef}>
                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
                          Etapa do Funil:
                        </span>
@@ -1530,8 +1649,8 @@ export default function Dashboard() {
                 <Image src="/landing/LOGO SEM FUNDO 01.png" alt="" width={883} height={453}
                   style={{ width: '620px', height: 'auto', opacity: 0.13 }} aria-hidden />
               </div>
-            <div className="absolute inset-0 p-8 overflow-y-auto custom-scrollbar" ref={scrollRef}>
-              <div className="flex flex-col gap-4 max-w-4xl mx-auto pb-4 relative z-10">
+            <div className="absolute inset-0 p-3 sm:p-5 md:p-8 overflow-y-auto custom-scrollbar" ref={scrollRef}>
+              <div className="flex flex-col gap-3 md:gap-4 max-w-4xl mx-auto pb-4 relative z-10">
                 {isRealConvo && messages.length > 0 ? (
                   (() => {
                     let lastMsgDateKey = '';
@@ -1570,7 +1689,7 @@ export default function Dashboard() {
                             </button>
                           </div>
                         )}
-                        <div className={`max-w-[80%] p-4 shadow-sm ${
+                        <div className={`max-w-[92%] md:max-w-[80%] p-4 shadow-sm ${
                           isOut
                             ? 'bg-gradient-to-tr from-primary/90 to-ring/90 text-primary-foreground rounded-2xl rounded-tr-sm'
                             : 'bg-card border border-border rounded-2xl rounded-tl-sm'
@@ -1757,13 +1876,13 @@ export default function Dashboard() {
                 ) : (
                   <>
                     <div className="w-full flex justify-end">
-                      <div className="max-w-[80%] bg-gradient-to-tr from-primary/90 to-ring/90 text-primary-foreground p-4 rounded-2xl rounded-tr-sm shadow-sm relative">
+                      <div className="max-w-[92%] md:max-w-[80%] bg-gradient-to-tr from-primary/90 to-ring/90 text-primary-foreground p-4 rounded-2xl rounded-tr-sm shadow-sm relative">
                         <p className="text-[15px] leading-relaxed">Trabalhei 3 anos e 4 meses. Não recebi nada ainda.</p>
                         <span className="text-[10px] text-primary-foreground/70 absolute bottom-1.5 right-3">14:00</span>
                       </div>
                     </div>
                     <div className="w-full flex justify-start">
-                      <div className="max-w-[80%] bg-card border border-border p-4 rounded-2xl rounded-tl-sm shadow-sm mt-4">
+                      <div className="max-w-[92%] md:max-w-[80%] bg-card border border-border p-4 rounded-2xl rounded-tl-sm shadow-sm mt-4">
                         <div className="flex items-center gap-2 mb-2 opacity-80">
                           <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">André Lustosa</span>
                         </div>
@@ -1772,7 +1891,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <div className="w-full flex justify-end">
-                      <div className="max-w-[80%] bg-gradient-to-tr from-primary/90 to-ring/90 text-primary-foreground p-4 rounded-2xl rounded-tr-sm shadow-sm mt-4">
+                      <div className="max-w-[92%] md:max-w-[80%] bg-gradient-to-tr from-primary/90 to-ring/90 text-primary-foreground p-4 rounded-2xl rounded-tr-sm shadow-sm mt-4">
                         <p className="text-[15px] leading-relaxed font-medium">{selected.lastMessage}</p>
                         <span className="text-[10px] text-primary-foreground/60 mt-1 flex justify-end">14:02</span>
                       </div>
@@ -1783,7 +1902,7 @@ export default function Dashboard() {
             </div>
             </div>{/* end watermark wrapper */}
 
-            <footer className="px-6 pt-3 pb-6 bg-background shrink-0">
+            <footer className="px-3 md:px-6 pt-2 pb-3 md:pt-3 md:pb-6 bg-background shrink-0">
               {replyingTo && !isClosed && (
                 <div className="max-w-4xl mx-auto mb-2 flex items-center gap-2 px-4 py-2 bg-card border border-border rounded-xl">
                   <Reply size={13} className="text-primary shrink-0" />
@@ -1798,12 +1917,12 @@ export default function Dashboard() {
                   Conversa encerrada. Não é possível enviar mensagens.
                 </div>
               ) : (
-                <div className="max-w-4xl mx-auto flex gap-3 items-center">
+                <div className="max-w-4xl mx-auto flex gap-2 md:gap-3 items-center">
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={!isRealConvo || uploadingFile}
                     title="Enviar arquivo"
-                    className="p-3 rounded-xl bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50 shrink-0"
+                    className="p-2.5 md:p-3 rounded-xl bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50 shrink-0"
                   >
                     {uploadingFile ? (
                       <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -1832,7 +1951,7 @@ export default function Dashboard() {
                       }}
                       placeholder={isRealConvo ? "Digite sua mensagem..." : "Selecione uma conversa real para enviar..."}
                       disabled={!isRealConvo || sending}
-                      className="w-full bg-card border border-border rounded-xl pl-5 pr-24 py-4 focus:outline-none focus:ring-2 focus:ring-primary shadow-sm text-foreground disabled:opacity-50"
+                      className="w-full bg-card border border-border rounded-xl pl-4 md:pl-5 pr-20 md:pr-24 py-3 md:py-4 focus:outline-none focus:ring-2 focus:ring-primary shadow-sm text-foreground disabled:opacity-50 text-sm md:text-base"
                     />
                     {isRealConvo && (
                       <div className="absolute inset-y-0 right-3 flex items-center gap-1">
@@ -1856,9 +1975,9 @@ export default function Dashboard() {
                   <button
                     onClick={handleSend}
                     disabled={!isRealConvo || !text.trim() || sending}
-                    className="bg-gradient-to-r from-primary to-ring p-4 rounded-xl shadow-lg disabled:opacity-50 hover:-translate-y-1 transition-transform"
+                    className="bg-gradient-to-r from-primary to-ring p-3 md:p-4 rounded-xl shadow-lg disabled:opacity-50 hover:-translate-y-1 transition-transform shrink-0"
                   >
-                    <Send size={20} className="text-primary-foreground" />
+                    <Send size={18} className="text-primary-foreground md:w-5 md:h-5" />
                   </button>
                 </div>
               )}
@@ -1974,7 +2093,7 @@ export default function Dashboard() {
           onClick={() => setTransferModal(false)}
         >
           <div
-            className="bg-card border border-border rounded-2xl p-6 w-80 shadow-2xl max-h-[80vh] flex flex-col"
+            className="bg-card border border-border rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl max-h-[80vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center gap-2 mb-4 shrink-0">
@@ -2091,7 +2210,7 @@ export default function Dashboard() {
           onClick={closeReasonPopup}
         >
           <div
-            className="bg-card border border-border rounded-2xl shadow-2xl w-[360px] overflow-hidden"
+            className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-[360px] mx-4 overflow-hidden"
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
