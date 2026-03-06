@@ -578,7 +578,7 @@ export class AiProcessor extends WorkerHost {
 
     const memoryModel = await this.settings.getMemoryModel();
 
-    const newEvent = `Últimas mensagens:\n${historyText.slice(-800)}\n\nUpdates do agente: ${JSON.stringify(latestUpdates || {})}`;
+    const newEvent = `Últimas mensagens:\n${historyText.slice(-3000)}\n\nUpdates do agente: ${JSON.stringify(latestUpdates || {})}`;
 
     const memoryResult = await ai.chat.completions.create({
       model: memoryModel,
@@ -592,7 +592,7 @@ export class AiProcessor extends WorkerHost {
           }),
         },
       ],
-      ...this.tokenParam(memoryModel, 2000),
+      ...this.tokenParam(memoryModel, 4000),
       temperature: 0.3,
       response_format: { type: 'json_object' },
     });
@@ -656,7 +656,7 @@ export class AiProcessor extends WorkerHost {
           lead: true,
           messages: {
             orderBy: { created_at: 'desc' },
-            take: 20,
+            take: 80,
             include: { media: true },
           },
         },
@@ -681,34 +681,85 @@ export class AiProcessor extends WorkerHost {
       });
       const factsJson = (memory?.facts_json as any) || null;
 
-      // Montar memória legível para injeção no prompt
+      // Montar memória legível COMPLETA para injeção no prompt
+      // Quanto mais detalhada, menos chance de repetir perguntas
       let leadMemory = 'Nenhuma memória anterior — primeiro contato.';
       if (memory && (memory.summary || factsJson)) {
         const parts: string[] = [];
-        if (memory.summary) parts.push(`Resumo: ${memory.summary}`);
-        if (factsJson?.case?.area)
-          parts.push(`Área: ${factsJson.case.area}`);
-        if (factsJson?.case?.status)
-          parts.push(`Status: ${factsJson.case.status}`);
-        if (factsJson?.facts?.current?.main_issue)
-          parts.push(
-            `Problema principal: ${factsJson.facts.current.main_issue}`,
-          );
-        if (factsJson?.facts?.core_facts?.length)
-          parts.push(
-            `Fatos-chave: ${factsJson.facts.core_facts.join('; ')}`,
-          );
-        if (factsJson?.open_questions?.length)
-          parts.push(
-            `Perguntas pendentes: ${factsJson.open_questions.join('; ')}`,
-          );
+        if (memory.summary) parts.push(`📋 Resumo: ${memory.summary}`);
+        // Dados do lead
+        if (factsJson?.lead) {
+          const l = factsJson.lead;
+          const leadParts: string[] = [];
+          if (l.full_name) leadParts.push(`Nome: ${l.full_name}`);
+          if (l.first_name && !l.full_name) leadParts.push(`Nome: ${l.first_name}`);
+          if (l.cpf) leadParts.push(`CPF: ${l.cpf}`);
+          if (l.mother_name) leadParts.push(`Mãe: ${l.mother_name}`);
+          if (l.city) leadParts.push(`Cidade: ${l.city}`);
+          if (l.state) leadParts.push(`Estado: ${l.state}`);
+          if (l.phones?.length) leadParts.push(`Telefone(s): ${l.phones.join(', ')}`);
+          if (l.emails?.length) leadParts.push(`Email(s): ${l.emails.join(', ')}`);
+          if (leadParts.length) parts.push(`👤 Dados do Lead: ${leadParts.join(' | ')}`);
+        }
+        // Caso
+        if (factsJson?.case) {
+          const c = factsJson.case;
+          const caseParts: string[] = [];
+          if (c.area) caseParts.push(`Área: ${c.area}`);
+          if (c.subarea) caseParts.push(`Subárea: ${c.subarea}`);
+          if (c.status) caseParts.push(`Status: ${c.status}`);
+          if (c.summary) caseParts.push(`Resumo: ${c.summary}`);
+          if (c.tags?.length) caseParts.push(`Tags: ${c.tags.join(', ')}`);
+          if (caseParts.length) parts.push(`⚖️ Caso: ${caseParts.join(' | ')}`);
+        }
+        // Partes
+        if (factsJson?.parties) {
+          const p = factsJson.parties;
+          const partyParts: string[] = [];
+          if (p.client_role) partyParts.push(`Papel do cliente: ${p.client_role}`);
+          if (p.counterparty_name) partyParts.push(`Parte contrária: ${p.counterparty_name}`);
+          if (p.counterparty_id) partyParts.push(`CNPJ/CPF contrária: ${p.counterparty_id}`);
+          if (p.counterparty_type) partyParts.push(`Tipo: ${p.counterparty_type}`);
+          if (partyParts.length) parts.push(`🏢 Partes: ${partyParts.join(' | ')}`);
+        }
+        // Fatos
+        if (factsJson?.facts) {
+          const f = factsJson.facts;
+          if (f.current) {
+            const curParts: string[] = [];
+            if (f.current.employment_status) curParts.push(`Situação: ${f.current.employment_status}`);
+            if (f.current.main_issue) curParts.push(`Problema: ${f.current.main_issue}`);
+            if (f.current.key_dates && Object.keys(f.current.key_dates).length) {
+              curParts.push(`Datas: ${Object.entries(f.current.key_dates).map(([k,v]) => `${k}=${v}`).join(', ')}`);
+            }
+            if (f.current.key_values && Object.keys(f.current.key_values).length) {
+              curParts.push(`Valores: ${Object.entries(f.current.key_values).map(([k,v]) => `${k}=${v}`).join(', ')}`);
+            }
+            if (curParts.length) parts.push(`📌 Situação atual: ${curParts.join(' | ')}`);
+          }
+          if (f.core_facts?.length)
+            parts.push(`📝 Fatos-chave:\n${f.core_facts.map((fact: string, i: number) => `  ${i+1}. ${fact}`).join('\n')}`);
+          if (f.timeline?.length) {
+            const events = f.timeline.filter((t: any) => t?.event).slice(-10);
+            if (events.length)
+              parts.push(`📅 Timeline:\n${events.map((t: any) => `  - ${t.date || '?'}: ${t.event} (${t.origin || '?'})`).join('\n')}`);
+          }
+        }
+        // Evidências
         if (factsJson?.evidence?.items?.length) {
           const evItems = factsJson.evidence.items
             .filter((e: any) => e?.type)
-            .map((e: any) => e.type);
+            .map((e: any) => `${e.type}(${e.status || '?'})${e.notes ? ': '+e.notes : ''}`);
           if (evItems.length)
-            parts.push(`Evidências: ${evItems.join(', ')}`);
+            parts.push(`📎 Evidências: ${evItems.join('; ')}`);
         }
+        // Perguntas pendentes
+        if (factsJson?.open_questions?.length)
+          parts.push(`❓ Perguntas AINDA pendentes (pergunte estas):\n${factsJson.open_questions.map((q: string, i: number) => `  ${i+1}. ${q}`).join('\n')}`);
+        // Próximas ações
+        if (factsJson?.next_actions?.length)
+          parts.push(`🎯 Próximas ações: ${factsJson.next_actions.join('; ')}`);
+
         if (parts.length) leadMemory = parts.join('\n');
       }
 
@@ -760,7 +811,7 @@ export class AiProcessor extends WorkerHost {
         lead_summary: memory?.summary || '',
         conversation_id: convo.id,
         lead_id: convo.lead_id || convo.lead?.id || '',
-        history_summary: historyText.slice(0, 500),
+        history_summary: historyText.slice(0, 2000),
         // URL base do site — use no prompt: "{{site_url}}/geral/arapiraca"
         site_url: siteUrl,
         form_url: `${siteUrl}/formulario/trabalhista/${convo.lead_id || convo.lead?.id || ''}`,
@@ -784,7 +835,20 @@ export class AiProcessor extends WorkerHost {
       const BEHAVIOR_RULES = `DATA E HORA ATUAL: {{data_hoje}} (fuso horário de Maceió/AL).
 Use essa data para referências temporais e para saber os valores vigentes (ex: salário mínimo atual).
 
-REGRAS DE ATENDIMENTO — OBRIGATÓRIAS, ACIMA DE TUDO:
+═══════════════════════════════════════════════════
+MEMÓRIA DO LEAD (tudo que já foi coletado sobre este cliente):
+{{lead_memory}}
+═══════════════════════════════════════════════════
+
+REGRA CRÍTICA — PROIBIDO REPETIR PERGUNTAS:
+- O histórico COMPLETO da conversa está nos turns acima (user/assistant). LEIA TUDO antes de responder.
+- A MEMÓRIA DO LEAD acima contém TODOS os fatos já extraídos de conversas anteriores.
+- ANTES de perguntar algo, verifique SE a informação já foi dita no histórico OU na memória.
+- Se nome, empresa, problema, datas, valores, função, jornada etc. já foram mencionados → NÃO pergunte de novo.
+- Avance SEMPRE para o próximo ponto do roteiro que AINDA NÃO foi coberto.
+- Se perceber que repetiu algo sem querer, reconheça ("Desculpe, já temos essa informação.") e avance.
+
+REGRAS DE ATENDIMENTO — OBRIGATÓRIAS:
 1. FAÇA SOMENTE UMA PERGUNTA POR MENSAGEM. Nunca envie duas ou mais perguntas juntas.
 2. Quando o cliente responder uma pergunta sua, RECONHEÇA BREVEMENTE a resposta ("Entendi.", "Anotado.", "Ok, obrigado.") e só então faça a próxima pergunta.
 3. NUNCA explique leis, artigos, jurisprudências ou dê parecer jurídico A NÃO SER que o cliente pergunte EXPLICITAMENTE ("tenho direito?", "o que a lei diz?", "pode me explicar?"). Se o cliente apenas relatar um fato, registre e continue coletando.
@@ -859,30 +923,66 @@ form_data: objeto com campos trabalhistas extraídos (só quando area=Trabalhist
         );
       }
 
-      // 11. Montar conteúdo do usuário (texto + imagens para modelos com visão)
-      const baseText = `Histórico recente:\n${historyText}\n\nResponda SOMENTE à última mensagem do cliente. Se o cliente respondeu uma pergunta sua, reconheça brevemente e faça a próxima pergunta do roteiro. Não explique leis nem dê pareceres jurídicos a não ser que o cliente pergunte diretamente.`;
-
-      let userContent: string | any[] = baseText;
-
-      if (this.modelSupportsVision(model)) {
-        const visionImages = await this.collectVisionImages(
-          convo.messages as any[],
-        );
-        if (visionImages.length > 0) {
-          userContent = [{ type: 'text', text: baseText }, ...visionImages];
-          this.logger.log(
-            `[AI] Visão ativa: ${visionImages.length} imagem(ns) incluída(s)`,
-          );
+      // 11. Montar histórico MULTI-TURN (memória natural do modelo)
+      // Cada mensagem vira um turn user/assistant real — muito mais eficaz que texto plano
+      const chatTurns: Array<{role: 'user' | 'assistant', content: string}> = [];
+      for (const m of chronological) {
+        const isClient = (m as any).direction === 'in';
+        const role: 'user' | 'assistant' = isClient ? 'user' : 'assistant';
+        const content =
+          (m as any).text ||
+          ((m as any).type === 'audio'
+            ? '[áudio sem transcrição]'
+            : (m as any).type === 'image'
+              ? '[imagem enviada]'
+              : (m as any).type === 'document'
+                ? '[documento enviado]'
+                : '[mídia]');
+        // Prefixar mensagens de operadores humanos para distinguir da IA
+        const isOperator = !isClient && !(m as any).external_message_id?.startsWith('sys_');
+        const finalContent = isOperator ? `[Operador Humano]: ${content}` : content;
+        // Mesclar mensagens consecutivas do mesmo remetente (ex: cliente envia 3 msgs seguidas)
+        if (chatTurns.length > 0 && chatTurns[chatTurns.length - 1].role === role) {
+          chatTurns[chatTurns.length - 1].content += '\n' + finalContent;
+        } else {
+          chatTurns.push({ role, content: finalContent });
         }
       }
+
+      // Coletar imagens para visão (modelos com suporte)
+      let visionImages: { type: 'image_url'; image_url: { url: string } }[] = [];
+      if (this.modelSupportsVision(model)) {
+        visionImages = await this.collectVisionImages(convo.messages as any[]);
+        if (visionImages.length > 0) {
+          this.logger.log(`[AI] Visão ativa: ${visionImages.length} imagem(ns) incluída(s)`);
+        }
+      }
+
+      // Instrução final para a IA (não aparece no chat do cliente)
+      const instruction = `[INSTRUÇÃO INTERNA — não exiba ao cliente]\nResponda à última mensagem do cliente. Consulte o histórico completo acima e a MEMÓRIA DO LEAD no system prompt: NÃO repita perguntas já respondidas. Avance o roteiro para o próximo ponto que ainda não foi coberto.`;
+
+      // Montar array final de mensagens para a OpenAI (multi-turn real)
+      const openAiMessages: any[] = [
+        { role: 'system', content: systemPrompt },
+        ...chatTurns,
+      ];
+
+      // Adicionar instrução + imagens de visão como última mensagem user
+      if (visionImages.length > 0) {
+        openAiMessages.push({
+          role: 'user',
+          content: [{ type: 'text', text: instruction }, ...visionImages],
+        });
+      } else {
+        openAiMessages.push({ role: 'user', content: instruction });
+      }
+
+      this.logger.log(`[AI] Multi-turn: ${chatTurns.length} turns + instrução (${chronological.length} msgs carregadas)`);
 
       // 12. Chamar OpenAI com JSON mode
       const completion = await ai.chat.completions.create({
         model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userContent as any },
-        ],
+        messages: openAiMessages,
         ...this.tokenParam(model, maxTokens),
         temperature,
         response_format: { type: 'json_object' },
@@ -1007,11 +1107,11 @@ form_data: objeto com campos trabalhistas extraídos (só quando area=Trabalhist
         `[AI] Resposta enviada para ${convo.lead.phone} (model=${model}, skill=${skill?.name || 'fallback'})`,
       );
 
-      // 19. Atualizar Long Memory (a cada 3 mensagens recebidas)
+      // 19. Atualizar Long Memory (TODA mensagem recebida — sem economizar tokens)
       const inboundTotal = convo.messages.filter(
         (m) => m.direction === 'in',
       ).length;
-      if (inboundTotal > 0 && inboundTotal % 3 === 0) {
+      if (inboundTotal > 0) {
         try {
           await this.updateLongMemory(
             ai,
