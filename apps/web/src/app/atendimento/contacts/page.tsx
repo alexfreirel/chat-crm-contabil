@@ -1138,7 +1138,7 @@ export default function ContactsPage() {
   // ─── Tela de Arquivados ───────────────────────────────────────────────────
   if (view === 'archived') {
     return (
-      <div className="flex h-full bg-background overflow-hidden text-foreground">
+      <div className="flex h-screen bg-background overflow-hidden text-foreground">
         <main className="flex-1 flex flex-col bg-background overflow-hidden relative">
           {/* Header */}
           <header className="px-8 py-6 shrink-0 flex items-center justify-between border-b border-border bg-card/30 backdrop-blur-md z-10">
@@ -1275,7 +1275,7 @@ export default function ContactsPage() {
 
   // ─── Tela Principal (Contatos Ativos) ────────────────────────────────────
   return (
-    <div className="flex h-full bg-background overflow-hidden text-foreground">
+    <div className="flex h-screen bg-background overflow-hidden text-foreground">
       <main className="flex-1 flex flex-col bg-background overflow-hidden relative">
         {/* Header Section */}
         <header className="px-8 py-6 shrink-0 flex items-center justify-between border-b border-border bg-card/30 backdrop-blur-md z-10">

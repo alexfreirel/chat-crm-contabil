@@ -1175,7 +1175,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto w-full custom-scrollbar">
+        <div className={`flex-1 overflow-y-auto w-full custom-scrollbar ${isMobile && !selectedId ? 'pb-16' : ''}`}>
           {loading ? (
             <div className="p-10 text-center text-muted-foreground text-sm">Carregando conversas...</div>
           ) : filteredConversations.length === 0 ? (
@@ -1624,7 +1624,7 @@ export default function Dashboard() {
                             </button>
                           </div>
                         )}
-                        <div className={`max-w-[92%] md:max-w-[80%] p-4 shadow-sm ${
+                        <div className={`max-w-[92%] md:max-w-[80%] p-4 shadow-sm break-words overflow-hidden ${
                           isOut
                             ? 'bg-gradient-to-tr from-primary/90 to-ring/90 text-primary-foreground rounded-2xl rounded-tr-sm'
                             : 'bg-card border border-border rounded-2xl rounded-tl-sm'

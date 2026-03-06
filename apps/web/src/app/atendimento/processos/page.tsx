@@ -1141,7 +1141,7 @@ export default function ProcessosPage() {
       .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
   return (
-    <div className="flex h-full bg-background font-sans antialiased text-foreground overflow-hidden">
+    <div className="flex h-screen bg-background font-sans antialiased text-foreground overflow-hidden">
       <main className="flex-1 flex flex-col overflow-hidden">
 
         {/* Header */}
