@@ -23,6 +23,15 @@ import api from '@/lib/api';
 
 // ─── Formatters ─────────────────────────────────────────────────
 
+const formatMoney = (val: string): string => {
+  if (!val) return '';
+  // Remove R$, spaces, dots (thousands) and swap comma for dot
+  const cleaned = val.replace(/R\$\s?/g, '').replace(/\./g, '').replace(',', '.').trim();
+  const num = parseFloat(cleaned);
+  if (isNaN(num)) return val; // texto livre como "salário mínimo" — mantém
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
+};
+
 const formatCPF = (val: string) => {
   if (!val) return '';
   let raw = val.replace(/\D/g, '');
@@ -121,6 +130,14 @@ export default function FichaTrabalhista({
           if (merged.cpf) merged.cpf = formatCPF(merged.cpf);
           if (merged.cep) merged.cep = formatCEP(merged.cep);
           if (merged.telefone) merged.telefone = formatPhone(merged.telefone);
+          // Format money fields
+          for (const section of FICHA_SECTIONS) {
+            for (const f of section.fields) {
+              if (f.type === 'money' && merged[f.key]) {
+                merged[f.key] = formatMoney(merged[f.key]);
+              }
+            }
+          }
           setFormData(merged);
 
           // Auto-open sections that have filled data + track AI-filled fields
@@ -406,6 +423,24 @@ export default function FichaTrabalhista({
               handleAutoSave(field.key, e.target.value);
             }}
             disabled={disabled}
+            className={`${baseClasses} h-10`}
+          />
+        );
+        break;
+
+      case 'money':
+        input = (
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => handleChange(field.key, e.target.value)}
+            onBlur={() => {
+              const formatted = formatMoney(value);
+              if (formatted !== value) handleChange(field.key, formatted);
+              handleAutoSave(field.key, formatted || value);
+            }}
+            disabled={disabled}
+            placeholder={field.placeholder}
             className={`${baseClasses} h-10`}
           />
         );

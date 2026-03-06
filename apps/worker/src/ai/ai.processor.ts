@@ -799,7 +799,7 @@ nome_completo: NOME COMPLETO (nunca só o primeiro nome). Quando não Trabalhist
 
 CAMPOS DISPONÍVEIS (inclua só os que a conversa permite inferir):
 Pessoal: nome_completo, cpf, rg, data_nascimento(YYYY-MM-DD), nome_mae, estado_civil, profissao, telefone, email.
-Contrato: nome_empregador, funcao, data_admissao(YYYY-MM-DD), data_saida(YYYY-MM-DD), situacao_atual, motivo_saida, salario(número), ctps_assinada_corretamente, atividades_realizadas.
+Contrato: nome_empregador, funcao, data_admissao(YYYY-MM-DD), data_saida(YYYY-MM-DD), situacao_atual, motivo_saida, salario(use EXATAMENTE o que o cliente informou: "salário mínimo" se não disse valor exato, "2000" se disse dois mil; NUNCA assuma o valor atual do salário mínimo), ctps_assinada_corretamente, atividades_realizadas.
 Jornada: horario_entrada, horario_saida, tempo_intervalo, dias_trabalhados, fazia_horas_extras, qtd_horas_extras_dia, horas_extras_pagas_corretamente, tipo_controle_ponto.
 Pagamentos: recebia_por_fora, outro_valor_por_fora, recebia_vale_transporte, premio_comissao, valor_comissao, valor_premio.
 Segurança: ambiente_insalubre_perigoso, forneciam_epis, sofreu_acidente, detalhes_acidente, sofreu_assedio_moral, detalhes_assedio_moral.
