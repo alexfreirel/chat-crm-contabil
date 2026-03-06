@@ -750,6 +750,7 @@ export class AiProcessor extends WorkerHost {
       let maxTokens: number;
       let temperature: number;
 
+      const siteUrl = process.env.APP_URL || 'https://andrelustosaadvogados.com.br';
       const vars: Record<string, string> = {
         lead_name: convo.lead.name || 'Desconhecido',
         lead_phone: convo.lead.phone || '',
@@ -758,9 +759,11 @@ export class AiProcessor extends WorkerHost {
         lead_memory: leadMemory,
         lead_summary: memory?.summary || '',
         conversation_id: convo.id,
+        lead_id: convo.lead_id || convo.lead?.id || '',
         history_summary: historyText.slice(0, 500),
         // URL base do site — use no prompt: "{{site_url}}/geral/arapiraca"
-        site_url: process.env.APP_URL || 'https://andrelustosaadvogados.com.br',
+        site_url: siteUrl,
+        form_url: `${siteUrl}/formulario/trabalhista/${convo.lead_id || convo.lead?.id || ''}`,
       };
 
       // Cabeçalho fixo de capacidades — injetado antes de qualquer skill prompt
@@ -793,8 +796,22 @@ Se a área NÃO for trabalhista, NÃO inclua form_data no JSON.
 
 `;
 
+      // Instrução de form_data injetada APÓS o prompt da skill (sobrescreve o JSON schema da skill)
+      const FORM_DATA_INJECTION = `
+
+IMPORTANTE — CAMPO form_data NO JSON:
+O JSON de resposta DEVE incluir o campo "form_data" dentro de "updates".
+Quando a área for TRABALHISTA, preencha form_data com os dados trabalhistas que o cliente mencionou nesta mensagem.
+Quando NÃO for trabalhista, envie form_data: null.
+Exemplo: {"reply":"...","updates":{"name":"...","status":"...","area":"Trabalhista","lead_summary":"...","next_step":"...","notes":"","form_data":{"nome_empregador":"Empresa X","salario":"3500","data_admissao":"2020-01-15"}}}
+
+LINK DO FORMULÁRIO CORRETO:
+Quando precisar enviar o formulário ao lead, use EXATAMENTE este link: {{form_url}}
+NUNCA use o link antigo (sistema.andrelustosaadvogados.com.br). O link correto é: {{form_url}}
+`;
+
       if (skill) {
-        systemPrompt = MEDIA_CAPABILITIES_HEADER + BEHAVIOR_RULES + this.injectVariables(skill.system_prompt, vars);
+        systemPrompt = MEDIA_CAPABILITIES_HEADER + BEHAVIOR_RULES + this.injectVariables(skill.system_prompt, vars) + this.injectVariables(FORM_DATA_INJECTION, vars);
         model = skill.model || (await this.settings.getDefaultModel());
         maxTokens = skill.max_tokens || 500;
         temperature = skill.temperature ?? 0.7;
