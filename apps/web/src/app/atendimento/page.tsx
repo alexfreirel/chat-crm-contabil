@@ -1844,149 +1844,122 @@ export default function Dashboard() {
             </div>
             </div>{/* end watermark wrapper */}
 
-            {/* ═══ BOTTOM ACTION BAR — mobile only ═══ */}
+            {/* ═══ BOTTOM ACTION BAR — mobile scrollável ═══ */}
             {isMobile && selectedId && selected && isRealConvo && (
-              <div className="relative shrink-0" ref={mobileMoreRef}>
-                {/* Painel "Mais Ações" — sobe da bottom bar */}
-                {mobileMoreOpen && (
-                  <div className="absolute bottom-full left-0 right-0 bg-card border-t border-x border-border rounded-t-2xl shadow-2xl z-50 max-h-[60vh] overflow-y-auto">
-                    {/* Info: Área jurídica */}
-                    {selected.legalArea && (
-                      <div className="px-4 py-3 flex items-center gap-3 border-b border-border/50">
-                        <span className="text-violet-400">⚖️</span>
-                        <div>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Área Jurídica</p>
-                          <p className="text-sm font-semibold text-foreground">{selected.legalArea}</p>
-                        </div>
-                      </div>
-                    )}
-                    {/* Info: CRM Stage */}
-                    {(() => {
-                      const stage = findStage(normalizeStage(leadStage));
-                      return (
-                        <div className="px-4 py-3 border-b border-border/50">
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Etapa do Funil</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {CRM_STAGES.map(s => (
-                              <button
-                                key={s.id}
-                                onClick={() => { handleChangeLeadStage(s.id); setMobileMoreOpen(false); }}
-                                className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all active:scale-95 ${normalizeStage(leadStage) === s.id ? 'ring-2 ring-offset-1 ring-offset-card' : 'opacity-60 hover:opacity-100'}`}
-                                style={{ background: `${s.color}18`, color: s.color, borderColor: `${s.color}35`, ...(normalizeStage(leadStage) === s.id ? { ringColor: s.color } : {}) }}
-                              >
-                                {s.emoji} {s.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })()}
-                    {/* Ações: Ficha trabalhista */}
-                    {selected?.legalArea?.toLowerCase().includes('trabalhist') && (
-                      <div className="border-b border-border/50">
-                        {!isClosed && (
-                          <button
-                            onClick={() => { handleSendFormLink(); setMobileMoreOpen(false); }}
-                            className="w-full px-4 py-3.5 flex items-center gap-3 active:bg-accent transition-colors text-sm"
-                          >
-                            <ClipboardList size={18} className="text-amber-400" />
-                            <span className="text-foreground">Enviar Formulário</span>
-                          </button>
-                        )}
+              <div className="relative shrink-0 bg-card/95 backdrop-blur-md border-t border-border" ref={mobileMoreRef}>
+                {/* Stage dropdown popup */}
+                {showStageDropdown && (
+                  <div ref={stageDropdownRef} className="absolute bottom-full left-2 right-2 bg-card border border-border rounded-2xl shadow-2xl z-50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2 px-1">Etapa do Funil</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {CRM_STAGES.map(s => (
                         <button
-                          onClick={() => { setFichaInboxVisible(true); setMobileMoreOpen(false); }}
-                          className="w-full px-4 py-3.5 flex items-center gap-3 active:bg-accent transition-colors text-sm"
+                          key={s.id}
+                          onClick={() => { handleChangeLeadStage(s.id); setShowStageDropdown(false); }}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all active:scale-95 ${normalizeStage(leadStage) === s.id ? 'ring-2 ring-offset-1 ring-offset-card' : 'opacity-60'}`}
+                          style={{ background: `${s.color}18`, color: s.color, borderColor: `${s.color}35` }}
                         >
-                          <Eye size={18} className="text-violet-400" />
-                          <span className="text-foreground">Visualizar Ficha</span>
-                          {fichaFinalizada && <span className="ml-auto text-[10px] text-emerald-400 font-bold">✅ Finalizada</span>}
+                          {s.emoji} {s.label}
                         </button>
-                      </div>
-                    )}
-                    {/* Ações: Devolver + Manter */}
-                    {selected?.originAssignedUserId && selected?.assignedAgentId === currentUserId && !isClosed && (
-                      <div className="border-b border-border/50">
-                        <button
-                          onClick={() => { openReasonPopup('return', selected?.originAssignedUserName || 'atendente de origem'); setMobileMoreOpen(false); }}
-                          className="w-full px-4 py-3.5 flex items-center gap-3 active:bg-accent transition-colors text-sm"
-                        >
-                          <CornerDownLeft size={18} className="text-amber-400" />
-                          <span className="text-foreground">Devolver ao SDR</span>
-                        </button>
-                        <button
-                          onClick={() => { handleKeepInInbox(); setMobileMoreOpen(false); }}
-                          className="w-full px-4 py-3.5 flex items-center gap-3 active:bg-accent transition-colors text-sm"
-                        >
-                          <Inbox size={18} className="text-emerald-400" />
-                          <span className="text-foreground">Manter Aqui</span>
-                        </button>
-                      </div>
-                    )}
-                    {/* Ação: Fechar */}
-                    {!isClosed && (
-                      <button
-                        onClick={() => { handleClose(); setMobileMoreOpen(false); }}
-                        className="w-full px-4 py-3.5 flex items-center gap-3 active:bg-accent transition-colors text-sm"
-                      >
-                        <XCircle size={18} className="text-red-400" />
-                        <span className="text-red-400">Fechar Conversa</span>
-                      </button>
-                    )}
+                      ))}
+                    </div>
                   </div>
                 )}
 
-                {/* Bottom bar com botões principais */}
-                <div className="flex items-center justify-around bg-card/95 backdrop-blur-md border-t border-border">
+                {/* ── Scrollable action row (deslize ← para mais) ── */}
+                <div className="flex items-center gap-1 px-2 py-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+
                   {/* IA Toggle */}
                   <button
                     onClick={handleToggleAiMode}
-                    className={`flex flex-col items-center gap-0.5 py-2.5 px-3 rounded-lg active:bg-accent transition-colors min-w-[56px] ${aiMode ? 'text-emerald-400' : 'text-muted-foreground'}`}
+                    className={`flex flex-col items-center gap-0.5 py-2 px-3 rounded-xl active:bg-accent transition-colors shrink-0 min-w-[54px] ${aiMode ? 'text-emerald-400' : 'text-muted-foreground'}`}
                   >
-                    {aiMode ? <Bot size={22} /> : <BotOff size={22} />}
-                    <span className="text-[10px] font-medium">{aiMode ? 'IA On' : 'IA Off'}</span>
+                    {aiMode ? <Bot size={20} /> : <BotOff size={20} />}
+                    <span className="text-[9px] font-medium">{aiMode ? 'IA On' : 'IA Off'}</span>
                   </button>
-
-                  {/* Ficha — só trabalhista */}
-                  {selected?.legalArea?.toLowerCase().includes('trabalhist') && (
-                    <button
-                      onClick={() => setFichaInboxVisible(true)}
-                      className="flex flex-col items-center gap-0.5 py-2.5 px-3 rounded-lg active:bg-accent transition-colors min-w-[56px] text-amber-400"
-                    >
-                      <ClipboardList size={22} />
-                      <span className="text-[10px] font-medium">Ficha</span>
-                    </button>
-                  )}
 
                   {/* Aceitar — só WAITING */}
                   {selected.status === 'WAITING' && (
-                    <button
-                      onClick={handleAccept}
-                      className="flex flex-col items-center gap-0.5 py-2.5 px-3 rounded-lg active:bg-accent transition-colors min-w-[56px] text-primary"
-                    >
-                      <Check size={22} />
-                      <span className="text-[10px] font-medium">Aceitar</span>
+                    <button onClick={handleAccept} className="flex flex-col items-center gap-0.5 py-2 px-3 rounded-xl active:bg-accent transition-colors shrink-0 min-w-[54px] text-primary">
+                      <Check size={20} />
+                      <span className="text-[9px] font-medium">Aceitar</span>
+                    </button>
+                  )}
+
+                  {/* Ficha — trabalhista */}
+                  {selected?.legalArea?.toLowerCase().includes('trabalhist') && (
+                    <button onClick={() => setFichaInboxVisible(true)} className="flex flex-col items-center gap-0.5 py-2 px-3 rounded-xl active:bg-accent transition-colors shrink-0 min-w-[54px] text-amber-400 relative">
+                      <ClipboardList size={20} />
+                      <span className="text-[9px] font-medium">Ficha</span>
+                      {fichaFinalizada && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400" />}
                     </button>
                   )}
 
                   {/* Transferir */}
                   {!isClosed && (
-                    <button
-                      onClick={handleOpenTransferModal}
-                      className="flex flex-col items-center gap-0.5 py-2.5 px-3 rounded-lg active:bg-accent transition-colors min-w-[56px] text-sky-400"
-                    >
-                      <UserCheck size={22} />
-                      <span className="text-[10px] font-medium">Transferir</span>
+                    <button onClick={handleOpenTransferModal} className="flex flex-col items-center gap-0.5 py-2 px-3 rounded-xl active:bg-accent transition-colors shrink-0 min-w-[54px] text-sky-400">
+                      <UserCheck size={20} />
+                      <span className="text-[9px] font-medium">Transferir</span>
                     </button>
                   )}
 
-                  {/* Mais — abre painel */}
-                  <button
-                    onClick={() => setMobileMoreOpen(v => !v)}
-                    className={`flex flex-col items-center gap-0.5 py-2.5 px-3 rounded-lg active:bg-accent transition-colors min-w-[56px] ${mobileMoreOpen ? 'text-primary' : 'text-muted-foreground'}`}
-                  >
-                    <MoreVertical size={22} />
-                    <span className="text-[10px] font-medium">Mais</span>
-                  </button>
+                  {/* Separador visual */}
+                  <div className="w-px h-8 bg-border/60 shrink-0 mx-1" />
+
+                  {/* Etapa CRM */}
+                  {(() => {
+                    const stage = findStage(normalizeStage(leadStage));
+                    return (
+                      <button
+                        onClick={() => setShowStageDropdown(v => !v)}
+                        className="flex flex-col items-center gap-0.5 py-2 px-3 rounded-xl active:bg-accent transition-colors shrink-0 min-w-[60px]"
+                        style={{ color: stage?.color || 'currentColor' }}
+                      >
+                        <ChevronDown size={20} />
+                        <span className="text-[9px] font-medium max-w-[60px] truncate">{stage ? `${stage.emoji} ${stage.label}` : 'Etapa'}</span>
+                      </button>
+                    );
+                  })()}
+
+                  {/* Enviar Formulário — trabalhista */}
+                  {selected?.legalArea?.toLowerCase().includes('trabalhist') && !isClosed && (
+                    <button onClick={handleSendFormLink} className="flex flex-col items-center gap-0.5 py-2 px-3 rounded-xl active:bg-accent transition-colors shrink-0 min-w-[62px] text-amber-400">
+                      <ClipboardList size={20} />
+                      <span className="text-[9px] font-medium">Formulário</span>
+                    </button>
+                  )}
+
+                  {/* Visualizar Ficha — trabalhista */}
+                  {selected?.legalArea?.toLowerCase().includes('trabalhist') && (
+                    <button onClick={() => { setFichaInboxVisible(true); }} className="flex flex-col items-center gap-0.5 py-2 px-3 rounded-xl active:bg-accent transition-colors shrink-0 min-w-[60px] text-violet-400">
+                      <Eye size={20} />
+                      <span className="text-[9px] font-medium">Ver Ficha</span>
+                    </button>
+                  )}
+
+                  {/* Devolver ao SDR */}
+                  {selected?.originAssignedUserId && selected?.assignedAgentId === currentUserId && !isClosed && (
+                    <button onClick={() => openReasonPopup('return', selected?.originAssignedUserName || 'atendente de origem')} className="flex flex-col items-center gap-0.5 py-2 px-3 rounded-xl active:bg-accent transition-colors shrink-0 min-w-[58px] text-amber-400">
+                      <CornerDownLeft size={20} />
+                      <span className="text-[9px] font-medium">Devolver</span>
+                    </button>
+                  )}
+
+                  {/* Manter Aqui */}
+                  {selected?.originAssignedUserId && selected?.assignedAgentId === currentUserId && !isClosed && (
+                    <button onClick={handleKeepInInbox} className="flex flex-col items-center gap-0.5 py-2 px-3 rounded-xl active:bg-accent transition-colors shrink-0 min-w-[54px] text-emerald-400">
+                      <Inbox size={20} />
+                      <span className="text-[9px] font-medium">Manter</span>
+                    </button>
+                  )}
+
+                  {/* Fechar Conversa */}
+                  {!isClosed && (
+                    <button onClick={handleClose} className="flex flex-col items-center gap-0.5 py-2 px-3 rounded-xl active:bg-accent transition-colors shrink-0 min-w-[54px] text-red-400">
+                      <XCircle size={20} />
+                      <span className="text-[9px] font-medium">Fechar</span>
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -2008,123 +1981,120 @@ export default function Dashboard() {
                   Conversa encerrada. Não é possível enviar mensagens.
                 </div>
               ) : (
-                <div className="max-w-4xl mx-auto flex flex-col gap-1.5">
+                <div className="max-w-4xl mx-auto flex gap-2 md:gap-3 items-end">
 
-                  {/* ── Mobile tool bar (above input) ───────────────── */}
-                  {isMobile && isRealConvo && (
-                    <div className="flex items-center gap-1 px-0.5">
-                      {/* Clip */}
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploadingFile}
-                        title="Enviar arquivo"
-                        className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors disabled:opacity-50"
-                      >
-                        {uploadingFile
-                          ? <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                          : <Paperclip size={22} />}
-                      </button>
-                      {/* Emoji */}
-                      <EmojiPickerButton onEmojiSelect={handleEmojiSelect} compact />
-                      {/* Correção SophIA */}
-                      <SophIAButton text={text} onResult={handleSophIAResult} compact />
-                      {/* Áudio (only when no text) */}
-                      {!text.trim() && (
-                        <AudioRecorder
-                          conversationId={selectedId!}
-                          disabled={!isRealConvo}
-                          onSent={(msg) => {
-                            setMessages((prev) => {
-                              if (prev.find((m) => m.id === msg.id)) return prev;
-                              return [...prev, msg];
-                            });
-                          }}
-                        />
-                      )}
-                    </div>
+                  {/* Desktop: clip button inline */}
+                  {!isMobile && (
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={!isRealConvo || uploadingFile}
+                      title="Enviar arquivo"
+                      className="p-2.5 md:p-3 rounded-xl bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50 shrink-0 mb-0.5"
+                    >
+                      {uploadingFile
+                        ? <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        : <Paperclip size={20} />}
+                    </button>
                   )}
 
-                  {/* ── Main input row ───────────────────────────────── */}
-                  <div className="flex gap-2 md:gap-3 items-end">
-                    {/* Desktop: clip button inline */}
-                    {!isMobile && (
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={!isRealConvo || uploadingFile}
-                        title="Enviar arquivo"
-                        className="p-2.5 md:p-3 rounded-xl bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50 shrink-0 mb-0.5"
-                      >
-                        {uploadingFile
-                          ? <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                          : <Paperclip size={20} />}
-                      </button>
-                    )}
+                  {/* Hidden file input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
 
-                    {/* Hidden file input */}
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
-                      className="hidden"
-                      onChange={handleFileSelect}
+                  {/* ── Textarea + ícones internos ──────────────────── */}
+                  <div className="relative flex-1">
+                    <textarea
+                      ref={inputRef}
+                      rows={1}
+                      value={text}
+                      onChange={(e) => {
+                        setText(e.target.value);
+                        e.target.style.height = 'auto';
+                        e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSend();
+                        }
+                      }}
+                      placeholder={isRealConvo ? "Digite sua mensagem..." : "Selecione uma conversa..."}
+                      disabled={!isRealConvo || sending}
+                      className={`w-full bg-card border border-border rounded-2xl py-3 md:py-4 focus:outline-none focus:ring-2 focus:ring-primary shadow-sm text-foreground disabled:opacity-50 text-sm md:text-base resize-none leading-normal overflow-hidden pl-4 ${
+                        isRealConvo ? (isMobile ? 'pr-[7rem]' : 'pr-24') : 'pr-4'
+                      }`}
                     />
-
-                    {/* Textarea wrapper */}
-                    <div className="relative flex-1">
-                      <textarea
-                        ref={inputRef}
-                        rows={1}
-                        value={text}
-                        onChange={(e) => {
-                          setText(e.target.value);
-                          // Auto-grow (max ≈ 5 linhas)
-                          e.target.style.height = 'auto';
-                          e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSend();
-                          }
-                        }}
-                        placeholder={isRealConvo ? "Digite sua mensagem..." : "Selecione uma conversa real para enviar..."}
-                        disabled={!isRealConvo || sending}
-                        className={`w-full bg-card border border-border rounded-xl py-3 md:py-4 focus:outline-none focus:ring-2 focus:ring-primary shadow-sm text-foreground disabled:opacity-50 text-sm md:text-base resize-none leading-normal overflow-hidden ${
-                          isMobile ? 'pl-4 pr-4' : 'pl-4 md:pl-5 pr-20 md:pr-24'
-                        }`}
-                      />
-                      {/* Desktop: emoji + SophIA absolutely inside textarea */}
-                      {!isMobile && isRealConvo && (
-                        <div className="absolute bottom-3 md:bottom-4 right-3 flex items-center gap-1">
-                          <EmojiPickerButton onEmojiSelect={handleEmojiSelect} compact />
-                          <SophIAButton text={text} onResult={handleSophIAResult} compact />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Desktop: audio recorder inline */}
-                    {!isMobile && isRealConvo && !text.trim() && (
-                      <AudioRecorder
-                        conversationId={selectedId!}
-                        disabled={!isRealConvo}
-                        onSent={(msg) => {
-                          setMessages((prev) => {
-                            if (prev.find((m) => m.id === msg.id)) return prev;
-                            return [...prev, msg];
-                          });
-                        }}
-                      />
+                    {/* Ícones internos (direita) */}
+                    {isRealConvo && (
+                      <div className="absolute bottom-2 right-2 flex items-center gap-0.5">
+                        {/* Clip — mobile */}
+                        {isMobile && (
+                          <button
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={uploadingFile}
+                            title="Arquivo"
+                            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                          >
+                            {uploadingFile
+                              ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                              : <Paperclip size={17} />}
+                          </button>
+                        )}
+                        {/* Emoji */}
+                        <EmojiPickerButton onEmojiSelect={handleEmojiSelect} compact />
+                        {/* SophIA correção */}
+                        <SophIAButton text={text} onResult={handleSophIAResult} compact />
+                        {/* Áudio — quando não há texto */}
+                        {!text.trim() && (
+                          <AudioRecorder
+                            conversationId={selectedId!}
+                            disabled={!isRealConvo}
+                            onSent={(msg) => {
+                              setMessages((prev) => {
+                                if (prev.find((m) => m.id === msg.id)) return prev;
+                                return [...prev, msg];
+                              });
+                            }}
+                          />
+                        )}
+                      </div>
                     )}
-
-                    {/* Send button */}
-                    <button
-                      onClick={handleSend}
-                      disabled={!isRealConvo || !text.trim() || sending}
-                      className="bg-gradient-to-r from-primary to-ring p-3 md:p-4 rounded-xl shadow-lg disabled:opacity-50 hover:-translate-y-1 transition-transform shrink-0 mb-0.5"
-                    >
-                      <Send size={18} className="text-primary-foreground md:w-5 md:h-5" />
-                    </button>
+                    {/* Desktop: emoji + SophIA (se não estão no ícones internos) */}
+                    {!isMobile && isRealConvo && false && (
+                      <div className="absolute bottom-3 md:bottom-4 right-3 flex items-center gap-1">
+                        <EmojiPickerButton onEmojiSelect={handleEmojiSelect} compact />
+                        <SophIAButton text={text} onResult={handleSophIAResult} compact />
+                      </div>
+                    )}
                   </div>
+
+                  {/* Desktop: audio recorder inline */}
+                  {!isMobile && isRealConvo && !text.trim() && false && (
+                    <AudioRecorder
+                      conversationId={selectedId!}
+                      disabled={!isRealConvo}
+                      onSent={(msg) => {
+                        setMessages((prev) => {
+                          if (prev.find((m) => m.id === msg.id)) return prev;
+                          return [...prev, msg];
+                        });
+                      }}
+                    />
+                  )}
+
+                  {/* Botão Enviar */}
+                  <button
+                    onClick={handleSend}
+                    disabled={!isRealConvo || !text.trim() || sending}
+                    className="bg-gradient-to-r from-primary to-ring p-3 md:p-4 rounded-xl shadow-lg disabled:opacity-50 hover:-translate-y-1 transition-transform shrink-0 mb-0.5"
+                  >
+                    <Send size={18} className="text-primary-foreground md:w-5 md:h-5" />
+                  </button>
                 </div>
               )}
             </footer>
