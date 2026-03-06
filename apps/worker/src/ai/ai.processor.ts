@@ -801,6 +801,34 @@ export class AiProcessor extends WorkerHost {
       let maxTokens: number;
       let temperature: number;
 
+      // 10b. Buscar status da ficha trabalhista (se área trabalhista)
+      let fichaStatus = '';
+      if (legalArea?.toLowerCase().includes('trabalhist')) {
+        try {
+          const ficha = await (this.prisma as any).fichaTrabalhista.findUnique({
+            where: { lead_id: convo.lead_id },
+          });
+          if (ficha?.data) {
+            const data = ficha.data as Record<string, any>;
+            const requiredFields = [
+              'nome_completo', 'cpf', 'data_nascimento', 'nome_mae', 'estado_civil', 'profissao', 'telefone', 'email',
+              'cidade', 'estado_uf',
+              'nome_empregador', 'funcao', 'data_admissao', 'situacao_atual', 'salario', 'ctps_assinada_corretamente', 'atividades_realizadas',
+              'horario_entrada', 'horario_saida', 'tempo_intervalo', 'dias_trabalhados', 'fazia_horas_extras',
+              'fgts_depositado', 'fgts_sacado', 'tem_ferias_pendentes', 'tem_decimo_terceiro_pendente',
+              'possui_testemunhas', 'possui_provas_documentais',
+            ];
+            const filled = requiredFields.filter(k => data[k] && data[k] !== '');
+            const missing = requiredFields.filter(k => !data[k] || data[k] === '');
+            fichaStatus = `CAMPOS JÁ PREENCHIDOS (${filled.length}/${requiredFields.length}): ${filled.join(', ')}\nCAMPOS FALTANDO (${missing.length}): ${missing.join(', ')}\nProgresso: ${ficha.completion_pct || 0}%`;
+          } else {
+            fichaStatus = 'FICHA AINDA NÃO INICIADA — nenhum campo preenchido. Comece coletando os dados.';
+          }
+        } catch {
+          fichaStatus = 'FICHA AINDA NÃO INICIADA — nenhum campo preenchido. Comece coletando os dados.';
+        }
+      }
+
       const siteUrl = process.env.APP_URL || 'https://andrelustosaadvogados.com.br';
       const vars: Record<string, string> = {
         lead_name: convo.lead.name || 'Desconhecido',
@@ -820,6 +848,7 @@ export class AiProcessor extends WorkerHost {
           day: '2-digit', month: '2-digit', year: 'numeric',
           hour: '2-digit', minute: '2-digit',
         }),
+        ficha_status: fichaStatus,
       };
 
       // Cabeçalho fixo de capacidades — injetado antes de qualquer skill prompt
@@ -857,34 +886,102 @@ REGRAS DE ATENDIMENTO — OBRIGATÓRIAS:
 6. Se o cliente fizer uma pergunta jurídica diretamente, responda em no máximo 2 linhas e volte imediatamente à coleta de informações.
 
 FICHA TRABALHISTA (apenas quando area = Trabalhista):
-Quando a área for TRABALHISTA, inclua "form_data" no JSON com os campos que a conversa permitir inferir.
-A lista completa dos campos está no final do prompt. Se a área NÃO for trabalhista, envie form_data: null.
+Quando a área for TRABALHISTA, você DEVE coletar ATIVAMENTE todos os campos da ficha através de perguntas.
+NÃO envie o link do formulário até ter coletado todos os campos essenciais. O formulário serve para REVISÃO, não para preenchimento.
+Siga o ROTEIRO DE COLETA no final do prompt. Inclua "form_data" no JSON a cada resposta. Se NÃO for trabalhista: form_data: null.
 
 `;
 
       // Instrução de form_data injetada APÓS o prompt da skill (sobrescreve o JSON schema da skill)
       const FORM_DATA_INJECTION = `
 
-CAMPO form_data — OBRIGATÓRIO NO JSON:
-O JSON DEVE ter "form_data" em "updates". Quando area=Trabalhista, preencha com dados extraídos de TODA A CONVERSA.
-nome_completo: nome completo DO CLIENTE/LEAD (NÃO é o empregador; nunca só o primeiro nome; use o nome que o próprio cliente informou). Quando não Trabalhista: form_data: null.
+═══════════════════════════════════════════════════
+FICHA TRABALHISTA — ROTEIRO DE COLETA COMPLETO
+═══════════════════════════════════════════════════
 
-CAMPOS DISPONÍVEIS (inclua só os que a conversa permite inferir):
-Pessoal: nome_completo(DO CLIENTE), cpf, rg, data_nascimento(YYYY-MM-DD), nome_mae, estado_civil, profissao, telefone, email.
-Contrato: nome_empregador(nome da empresa/empregador — DIFERENTE de nome_completo do cliente), funcao, data_admissao(YYYY-MM-DD), data_saida(YYYY-MM-DD), situacao_atual, motivo_saida, salario(use EXATAMENTE o que o cliente informou: "salário mínimo" se não disse valor exato, "2000" se disse dois mil; NUNCA assuma o valor atual do salário mínimo), ctps_assinada_corretamente, atividades_realizadas.
-Jornada: horario_entrada, horario_saida, tempo_intervalo, dias_trabalhados, fazia_horas_extras, qtd_horas_extras_dia, horas_extras_pagas_corretamente, tipo_controle_ponto.
-Pagamentos: recebia_por_fora, outro_valor_por_fora, recebia_vale_transporte, premio_comissao, valor_comissao, valor_premio.
-Segurança: ambiente_insalubre_perigoso, forneciam_epis, sofreu_acidente, detalhes_acidente, sofreu_assedio_moral, detalhes_assedio_moral.
-FGTS/Verbas: fgts_depositado, fgts_sacado, tem_ferias_pendentes, tem_decimo_terceiro_pendente, detalhes_verbas_pendentes.
-Provas: possui_testemunhas, possui_provas_documentais.
-Resumo: motivos_reclamacao.
+STATUS ATUAL DA FICHA NO BANCO:
+{{ficha_status}}
 
-Exemplo (inclua apenas campos com dados reais):
-{"reply":"Entendido...","updates":{"name":"João Silva","status":"QUALIFICANDO","area":"Trabalhista","lead_summary":"...","next_step":"duvidas","notes":"","form_data":{"nome_empregador":"Empresa X","salario":"3500","fazia_horas_extras":"Sim","fgts_depositado":"Não","motivos_reclamacao":"Salário atrasado 6 meses"}}}
+SUA MISSÃO: Coletar TODOS os campos obrigatórios abaixo através da conversa, UM POR VEZ.
+NÃO envie o formulário até ter coletado TODOS os campos essenciais. O formulário é apenas para o cliente REVISAR e ASSINAR, não para preencher do zero.
 
-LINK DO FORMULÁRIO TRABALHISTA: {{form_url}}
-Quando next_step = "formulario", INCLUA OBRIGATORIAMENTE o link acima no campo "reply" da resposta.
-Exemplo de reply com link: "Ótimo! Para agilizar seu atendimento, preencha a ficha com os dados do seu caso: {{form_url}} — Se tiver dúvidas, é só me chamar aqui!"
+ROTEIRO (siga na ordem, UMA pergunta por vez, pule campos já preenchidos):
+
+FASE 1 — Identificação:
+- nome_completo: "Qual é o seu nome completo?" (DO CLIENTE, NÃO do empregador)
+- cpf: "Pode me informar seu CPF?"
+- data_nascimento: "Qual a sua data de nascimento?" (salvar YYYY-MM-DD)
+
+FASE 2 — Dados Pessoais:
+- nome_mae: "Qual o nome completo da sua mãe?"
+- estado_civil: "Qual o seu estado civil?" (Solteiro/Casado/Divorciado/Viúvo/União Estável)
+- profissao: "Qual a sua profissão?"
+- email: "Qual o seu e-mail para contato?"
+
+FASE 3 — Localização:
+- cidade: "Em qual cidade você mora?"
+- estado_uf: "Qual o estado (UF)?"
+
+FASE 4 — Empregador e Contrato (FOCO PRINCIPAL):
+- nome_empregador: "Qual o nome da empresa onde trabalhou (ou trabalha)?" (DIFERENTE de nome_completo)
+- funcao: "Qual era a sua função/cargo na empresa?"
+- data_admissao: "Quando você começou a trabalhar lá? (data aproximada)" (salvar YYYY-MM-DD)
+- situacao_atual: "Qual a sua situação? Ainda trabalha lá ou já saiu?" (Empregado/Demitido sem justa causa/Demitido por justa causa/Pediu demissão/Acordo/Contrato encerrado)
+- salario: "Qual era o seu último salário?" (usar EXATAMENTE o que o cliente disse: "salário mínimo", "2000", "R$ 1.800" — NUNCA calcular o valor do salário mínimo)
+- ctps_assinada_corretamente: "A sua carteira de trabalho foi assinada corretamente?" (Sim/Não/Parcialmente)
+- atividades_realizadas: "Quais atividades você exercia no dia a dia?"
+
+FASE 5 — Jornada de Trabalho:
+- horario_entrada: "A que horas você entrava no trabalho?"
+- horario_saida: "E saía a que horas?"
+- tempo_intervalo: "Quanto tempo de intervalo/almoço tinha?"
+- dias_trabalhados: "Quais dias da semana trabalhava?" (ex: Seg a Sex, Seg a Sáb)
+- fazia_horas_extras: "Fazia horas extras?" (Sim/Não/Às vezes)
+
+FASE 6 — FGTS e Verbas Rescisórias:
+- fgts_depositado: "O FGTS era depositado corretamente?" (Sim/Não/Parcialmente/Não sei)
+- fgts_sacado: "Conseguiu sacar o FGTS?" (Sim/Não/Parcialmente/Não se aplica)
+- tem_ferias_pendentes: "Tem férias pendentes que não recebeu?" (Sim/Não/Não sei)
+- tem_decimo_terceiro_pendente: "Tem 13º salário pendente?" (Sim/Não/Não sei)
+
+FASE 7 — Testemunhas e Provas:
+- possui_testemunhas: "Possui alguma testemunha que possa confirmar os fatos?" (Sim/Não)
+- possui_provas_documentais: "Possui provas como mensagens, fotos, documentos, etc.?" (Sim/Não)
+
+FASE 8 — Resumo:
+- motivos_reclamacao: Inferir automaticamente dos fatos coletados. NÃO perguntar diretamente — montar a partir de tudo que o cliente relatou.
+
+CAMPOS OPCIONAIS (pergunte se forem relevantes ao caso):
+- data_saida(YYYY-MM-DD), motivo_saida, rg, telefone (já temos do WhatsApp)
+- qtd_horas_extras_dia, horas_extras_pagas_corretamente, tipo_controle_ponto
+- recebia_por_fora, outro_valor_por_fora, recebia_vale_transporte
+- premio_comissao, valor_comissao, valor_premio
+- ambiente_insalubre_perigoso, forneciam_epis
+- sofreu_acidente, detalhes_acidente, sofreu_assedio_moral, detalhes_assedio_moral
+- cnpjcpf_empregador, periodo_sem_carteira, detalhes_verbas_pendentes
+- detalhes_testemunhas, detalhes_provas_documentais
+
+REGRAS DE COLETA:
+1. Consulte "CAMPOS FALTANDO" acima — pergunte SOMENTE os que faltam.
+2. A cada resposta, inclua no form_data TODOS os campos coletados (novos + anteriores da memória).
+3. NUNCA envie form_data vazio ou null quando a área é Trabalhista.
+4. nome_completo = nome DO CLIENTE (NÃO é o empregador).
+5. nome_empregador = nome da EMPRESA (DIFERENTE do nome_completo).
+6. Salário: use EXATAMENTE o que o cliente disse. NUNCA calcule valores.
+
+QUANDO ENVIAR O FORMULÁRIO (next_step = "formulario"):
+SOMENTE use next_step = "formulario" quando TODOS estes campos estiverem preenchidos:
+nome_completo, nome_empregador, funcao, data_admissao, situacao_atual, salario,
+horario_entrada, horario_saida, fazia_horas_extras, fgts_depositado, possui_testemunhas.
+
+Se ainda faltam campos essenciais → next_step = "duvidas" e continue perguntando.
+
+LINK DO FORMULÁRIO: {{form_url}}
+Quando next_step = "formulario", inclua o link na reply:
+"Já temos quase todas as informações! Preenchi a ficha com o que você me informou. Agora preciso que você acesse o link abaixo para conferir os dados, completar o que faltar (como endereço e CPF se não informou) e finalizar: {{form_url}}"
+
+FORMATO DO JSON:
+{"reply":"texto","updates":{"name":"João","status":"QUALIFICANDO","area":"Trabalhista","lead_summary":"resumo","next_step":"duvidas","notes":"","form_data":{"nome_completo":"João da Silva","nome_empregador":"Empresa X","funcao":"Operador","salario":"2000","fazia_horas_extras":"Sim"}}}
 `;
 
       if (skill) {
