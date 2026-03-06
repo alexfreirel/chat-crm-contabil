@@ -58,7 +58,7 @@ export default function TasksPage() {
   };
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-full bg-background overflow-hidden">
       {/* Main Content */}
       <main className="flex-1 flex flex-col pt-8 overflow-hidden bg-background">
         <header className="px-8 mb-6 shrink-0">

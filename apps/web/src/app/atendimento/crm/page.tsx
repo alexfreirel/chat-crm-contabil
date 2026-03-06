@@ -291,7 +291,7 @@ export default function CrmPage() {
       });
 
   return (
-    <div className="flex h-screen bg-background font-sans antialiased text-foreground overflow-hidden">
+    <div className="flex h-full bg-background font-sans antialiased text-foreground overflow-hidden">
       <main className="flex-1 flex flex-col overflow-hidden">
 
         {/* Header */}

@@ -501,7 +501,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
   }, [messages]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background font-sans antialiased text-foreground">
+    <div className="flex h-full overflow-hidden bg-background font-sans antialiased text-foreground">
       <div
         className="flex-1 flex flex-col relative"
         onDragEnter={handleDragEnter}

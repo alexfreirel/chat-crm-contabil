@@ -200,6 +200,11 @@ export default function Dashboard() {
     return () => mq.removeEventListener('change', handler);
   }, []);
 
+  // Notify layout when mobile chat is open/closed (hides bottom nav)
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('mobile-chat-state', { detail: { chatOpen: isMobile && !!selectedId } }));
+  }, [isMobile, selectedId]);
+
   // Close mobile menu on click outside
   useEffect(() => {
     if (!mobileMoreOpen) return;
@@ -1051,7 +1056,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background font-sans antialiased text-foreground">
+    <div className="flex h-full overflow-hidden bg-background font-sans antialiased text-foreground">
 
       {/* INBOX */}
       <section className={`flex flex-col bg-card border-r border-border shrink-0 z-40 transition-all duration-300 ${isMobile ? (selectedId ? 'hidden' : 'w-full') : (inboxOpen ? 'w-[380px]' : 'w-0 overflow-hidden')}`}>
