@@ -175,7 +175,7 @@ export default function Dashboard() {
   });
   const scrollRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
   const lawyerDropdownRef = useRef<HTMLDivElement>(null);
@@ -204,6 +204,13 @@ export default function Dashboard() {
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('mobile-chat-state', { detail: { chatOpen: isMobile && !!selectedId } }));
   }, [isMobile, selectedId]);
+
+  // Reset textarea height when text is cleared (after send, etc.)
+  useEffect(() => {
+    if (!text && inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
+  }, [text]);
 
   // Close mobile menu on click outside
   useEffect(() => {
@@ -1985,6 +1992,7 @@ export default function Dashboard() {
             )}
 
             <footer className="px-3 md:px-6 pt-2 pb-3 md:pt-3 md:pb-6 bg-background shrink-0">
+              {/* Reply bar */}
               {replyingTo && !isClosed && (
                 <div className="max-w-4xl mx-auto mb-2 flex items-center gap-2 px-4 py-2 bg-card border border-border rounded-xl">
                   <Reply size={13} className="text-primary shrink-0" />
@@ -1994,73 +2002,129 @@ export default function Dashboard() {
                   </button>
                 </div>
               )}
+
               {isClosed ? (
                 <div className="max-w-4xl mx-auto text-center text-sm text-muted-foreground py-3 border border-border rounded-xl bg-card/50">
                   Conversa encerrada. Não é possível enviar mensagens.
                 </div>
               ) : (
-                <div className="max-w-4xl mx-auto flex gap-2 md:gap-3 items-center">
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={!isRealConvo || uploadingFile}
-                    title="Enviar arquivo"
-                    className="p-2.5 md:p-3 rounded-xl bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50 shrink-0"
-                  >
-                    {uploadingFile ? (
-                      <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <Paperclip size={20} />
-                    )}
-                  </button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
-                    className="hidden"
-                    onChange={handleFileSelect}
-                  />
-                  <div className="relative flex-1">
-                    <input
-                      ref={inputRef}
-                      type="text"
-                      value={text}
-                      onChange={(e) => setText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSend();
-                        }
-                      }}
-                      placeholder={isRealConvo ? "Digite sua mensagem..." : "Selecione uma conversa real para enviar..."}
-                      disabled={!isRealConvo || sending}
-                      className="w-full bg-card border border-border rounded-xl pl-4 md:pl-5 pr-20 md:pr-24 py-3 md:py-4 focus:outline-none focus:ring-2 focus:ring-primary shadow-sm text-foreground disabled:opacity-50 text-sm md:text-base"
-                    />
-                    {isRealConvo && (
-                      <div className="absolute inset-y-0 right-3 flex items-center gap-1">
-                        <EmojiPickerButton onEmojiSelect={handleEmojiSelect} compact />
-                        <SophIAButton text={text} onResult={handleSophIAResult} compact />
-                      </div>
-                    )}
-                  </div>
-                  {isRealConvo && !text.trim() && (
-                    <AudioRecorder
-                      conversationId={selectedId!}
-                      disabled={!isRealConvo}
-                      onSent={(msg) => {
-                        setMessages((prev) => {
-                          if (prev.find((m) => m.id === msg.id)) return prev;
-                          return [...prev, msg];
-                        });
-                      }}
-                    />
+                <div className="max-w-4xl mx-auto flex flex-col gap-1.5">
+
+                  {/* ── Mobile tool bar (above input) ───────────────── */}
+                  {isMobile && isRealConvo && (
+                    <div className="flex items-center gap-1 px-0.5">
+                      {/* Clip */}
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingFile}
+                        title="Enviar arquivo"
+                        className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors disabled:opacity-50"
+                      >
+                        {uploadingFile
+                          ? <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                          : <Paperclip size={22} />}
+                      </button>
+                      {/* Emoji */}
+                      <EmojiPickerButton onEmojiSelect={handleEmojiSelect} compact />
+                      {/* Correção SophIA */}
+                      <SophIAButton text={text} onResult={handleSophIAResult} compact />
+                      {/* Áudio (only when no text) */}
+                      {!text.trim() && (
+                        <AudioRecorder
+                          conversationId={selectedId!}
+                          disabled={!isRealConvo}
+                          onSent={(msg) => {
+                            setMessages((prev) => {
+                              if (prev.find((m) => m.id === msg.id)) return prev;
+                              return [...prev, msg];
+                            });
+                          }}
+                        />
+                      )}
+                    </div>
                   )}
-                  <button
-                    onClick={handleSend}
-                    disabled={!isRealConvo || !text.trim() || sending}
-                    className="bg-gradient-to-r from-primary to-ring p-3 md:p-4 rounded-xl shadow-lg disabled:opacity-50 hover:-translate-y-1 transition-transform shrink-0"
-                  >
-                    <Send size={18} className="text-primary-foreground md:w-5 md:h-5" />
-                  </button>
+
+                  {/* ── Main input row ───────────────────────────────── */}
+                  <div className="flex gap-2 md:gap-3 items-end">
+                    {/* Desktop: clip button inline */}
+                    {!isMobile && (
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={!isRealConvo || uploadingFile}
+                        title="Enviar arquivo"
+                        className="p-2.5 md:p-3 rounded-xl bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50 shrink-0 mb-0.5"
+                      >
+                        {uploadingFile
+                          ? <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                          : <Paperclip size={20} />}
+                      </button>
+                    )}
+
+                    {/* Hidden file input */}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
+                      className="hidden"
+                      onChange={handleFileSelect}
+                    />
+
+                    {/* Textarea wrapper */}
+                    <div className="relative flex-1">
+                      <textarea
+                        ref={inputRef}
+                        rows={1}
+                        value={text}
+                        onChange={(e) => {
+                          setText(e.target.value);
+                          // Auto-grow (max ≈ 5 linhas)
+                          e.target.style.height = 'auto';
+                          e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSend();
+                          }
+                        }}
+                        placeholder={isRealConvo ? "Digite sua mensagem..." : "Selecione uma conversa real para enviar..."}
+                        disabled={!isRealConvo || sending}
+                        className={`w-full bg-card border border-border rounded-xl py-3 md:py-4 focus:outline-none focus:ring-2 focus:ring-primary shadow-sm text-foreground disabled:opacity-50 text-sm md:text-base resize-none leading-normal overflow-hidden ${
+                          isMobile ? 'pl-4 pr-4' : 'pl-4 md:pl-5 pr-20 md:pr-24'
+                        }`}
+                      />
+                      {/* Desktop: emoji + SophIA absolutely inside textarea */}
+                      {!isMobile && isRealConvo && (
+                        <div className="absolute bottom-3 md:bottom-4 right-3 flex items-center gap-1">
+                          <EmojiPickerButton onEmojiSelect={handleEmojiSelect} compact />
+                          <SophIAButton text={text} onResult={handleSophIAResult} compact />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Desktop: audio recorder inline */}
+                    {!isMobile && isRealConvo && !text.trim() && (
+                      <AudioRecorder
+                        conversationId={selectedId!}
+                        disabled={!isRealConvo}
+                        onSent={(msg) => {
+                          setMessages((prev) => {
+                            if (prev.find((m) => m.id === msg.id)) return prev;
+                            return [...prev, msg];
+                          });
+                        }}
+                      />
+                    )}
+
+                    {/* Send button */}
+                    <button
+                      onClick={handleSend}
+                      disabled={!isRealConvo || !text.trim() || sending}
+                      className="bg-gradient-to-r from-primary to-ring p-3 md:p-4 rounded-xl shadow-lg disabled:opacity-50 hover:-translate-y-1 transition-transform shrink-0 mb-0.5"
+                    >
+                      <Send size={18} className="text-primary-foreground md:w-5 md:h-5" />
+                    </button>
+                  </div>
                 </div>
               )}
             </footer>
