@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, KeyboardEvent } from 'react';
-import { Search, User, Phone, Loader2, X, MessageSquare, Calendar, Brain, ChevronDown, ChevronUp, Mail, Pencil, Check, UserCheck, FolderOpen, FileText, Image as ImageIcon, Mic, Video, Download, Trash2, RotateCcw, ArrowLeft, UserPlus, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Search, User, Phone, Loader2, X, MessageSquare, Calendar, Brain, ChevronDown, ChevronUp, Mail, Pencil, Check, UserCheck, FolderOpen, FileText, Image as ImageIcon, Mic, Video, Download, Trash2, RotateCcw, ArrowLeft, UserPlus, AlertCircle, CheckCircle2, ClipboardList } from 'lucide-react';
+import FichaTrabalhista from '@/components/FichaTrabalhista';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { formatPhone } from '@/lib/utils';
@@ -134,6 +135,7 @@ function ClientPanel({
   const [resolvedConvId, setResolvedConvId] = useState<string | null>(null);
   const [documents, setDocuments] = useState<DocItem[]>([]);
   const [docsOpen, setDocsOpen] = useState(false);
+  const [fichaOpen, setFichaOpen] = useState(false);
   // Delete state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -687,6 +689,33 @@ function ClientPanel({
                 </div>
               )}
             </div>
+
+            {/* Seção: Ficha Trabalhista (visível quando alguma conversa tem área Trabalhista) */}
+            {lead && (() => {
+              const hasTrabalhistaArea = lead.conversations?.some(
+                (c: any) => c.legal_area?.toLowerCase().includes('trabalhist')
+              );
+              if (!hasTrabalhistaArea) return null;
+              return (
+                <div className="border-t border-border">
+                  <button
+                    className="w-full px-6 py-4 flex items-center justify-between hover:bg-accent/30 transition-colors"
+                    onClick={() => setFichaOpen(!fichaOpen)}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <ClipboardList size={15} className="text-amber-500" />
+                      <span className="text-[13px] font-bold text-foreground">Ficha Trabalhista</span>
+                    </div>
+                    {fichaOpen ? <ChevronUp size={15} className="text-muted-foreground" /> : <ChevronDown size={15} className="text-muted-foreground" />}
+                  </button>
+                  {fichaOpen && (
+                    <div className="px-4 pb-5">
+                      <FichaTrabalhista leadId={lead.id} />
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
           </div>
         )}

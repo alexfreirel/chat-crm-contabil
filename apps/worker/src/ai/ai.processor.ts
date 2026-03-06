@@ -416,6 +416,113 @@ export class AiProcessor extends WorkerHost {
         data: convUpdate,
       });
     }
+
+    // f. form_data → Auto-preencher FichaTrabalhista (área Trabalhista)
+    if (updates.form_data && typeof updates.form_data === 'object') {
+      const formFields = updates.form_data;
+      // Filtrar campos null/undefined
+      const cleanFields: Record<string, any> = {};
+      for (const [key, value] of Object.entries(formFields)) {
+        if (value !== null && value !== undefined && value !== 'null') {
+          cleanFields[key] = value;
+        }
+      }
+      if (Object.keys(cleanFields).length > 0) {
+        try {
+          const ficha = await (this.prisma as any).fichaTrabalhista.upsert({
+            where: { lead_id: leadId },
+            update: {},
+            create: { lead_id: leadId, data: {} },
+          });
+          const oldData = (ficha.data as Record<string, any>) || {};
+          const merged = { ...oldData, ...cleanFields };
+          const totalFields = 72;
+          const filled = Object.values(merged).filter(
+            (v) => v !== null && v !== undefined && v !== '',
+          ).length;
+          const pct = Math.min(100, Math.round((filled / totalFields) * 100));
+
+          await (this.prisma as any).fichaTrabalhista.update({
+            where: { lead_id: leadId },
+            data: {
+              data: merged,
+              nome_completo: cleanFields.nome_completo ?? ficha.nome_completo,
+              nome_empregador: cleanFields.nome_empregador ?? ficha.nome_empregador,
+              completion_pct: pct,
+              filled_by: 'ai',
+            },
+          });
+          this.logger.log(
+            `[AI] Ficha trabalhista atualizada: ${Object.keys(cleanFields).length} campo(s), ${pct}%`,
+          );
+        } catch (e: any) {
+          this.logger.warn(`[AI] Falha ao atualizar ficha trabalhista: ${e.message}`);
+        }
+      }
+    }
+
+    // g. Se next_step = "formulario" e área = Trabalhista, preencher ficha com memória
+    if (updates.next_step === 'formulario') {
+      try {
+        const conv = await (this.prisma as any).conversation.findUnique({
+          where: { id: convoId },
+          select: { legal_area: true },
+        });
+        if (conv?.legal_area?.toLowerCase().includes('trabalhist')) {
+          const memory = await this.prisma.aiMemory.findUnique({
+            where: { lead_id: leadId },
+          });
+          if (memory?.facts_json) {
+            const facts = memory.facts_json as any;
+            const mappedData: Record<string, string> = {};
+            if (facts.lead?.full_name) mappedData.nome_completo = facts.lead.full_name;
+            if (facts.lead?.cpf) mappedData.cpf = facts.lead.cpf;
+            if (facts.lead?.city) mappedData.cidade = facts.lead.city;
+            if (facts.lead?.state) mappedData.estado_uf = facts.lead.state;
+            if (facts.lead?.phones?.[0]) mappedData.telefone = facts.lead.phones[0];
+            if (facts.lead?.emails?.[0]) mappedData.email = facts.lead.emails[0];
+            if (facts.lead?.mother_name) mappedData.nome_mae = facts.lead.mother_name;
+            if (facts.parties?.counterparty_name) mappedData.nome_empregador = facts.parties.counterparty_name;
+            if (facts.parties?.counterparty_id) mappedData.cnpjcpf_empregador = facts.parties.counterparty_id;
+            if (facts.facts?.current?.employment_status) mappedData.situacao_atual = facts.facts.current.employment_status;
+            if (facts.facts?.current?.main_issue) mappedData.motivos_reclamacao = facts.facts.current.main_issue;
+            const kv = facts.facts?.current?.key_values || {};
+            if (kv.salario) mappedData.salario = String(kv.salario);
+            const kd = facts.facts?.current?.key_dates || {};
+            if (kd.admissao) mappedData.data_admissao = kd.admissao;
+            if (kd.demissao || kd.saida) mappedData.data_saida = kd.demissao || kd.saida;
+
+            if (Object.keys(mappedData).length > 0) {
+              const ficha = await (this.prisma as any).fichaTrabalhista.upsert({
+                where: { lead_id: leadId },
+                update: {},
+                create: { lead_id: leadId, data: {} },
+              });
+              const merged = { ...(ficha.data as Record<string, any>), ...mappedData };
+              const totalFields = 72;
+              const filled = Object.values(merged).filter((v) => v != null && v !== '').length;
+              const pct = Math.min(100, Math.round((filled / totalFields) * 100));
+
+              await (this.prisma as any).fichaTrabalhista.update({
+                where: { lead_id: leadId },
+                data: {
+                  data: merged,
+                  nome_completo: mappedData.nome_completo ?? ficha.nome_completo,
+                  nome_empregador: mappedData.nome_empregador ?? ficha.nome_empregador,
+                  completion_pct: pct,
+                  filled_by: 'ai',
+                },
+              });
+              this.logger.log(
+                `[AI] Ficha trabalhista preenchida da memória: ${Object.keys(mappedData).length} campo(s)`,
+              );
+            }
+          }
+        }
+      } catch (e: any) {
+        this.logger.warn(`[AI] Falha ao preencher ficha da memória: ${e.message}`);
+      }
+    }
   }
 
   // ─── Encontra o especialista menos ocupado para uma área jurídica ───
@@ -674,6 +781,16 @@ export class AiProcessor extends WorkerHost {
 5. Mensagens curtas: máximo 4 linhas por resposta. WhatsApp não é e-mail.
 6. Se o cliente fizer uma pergunta jurídica diretamente, responda em no máximo 2 linhas e volte imediatamente à coleta de informações.
 
+FICHA TRABALHISTA (apenas quando area = Trabalhista):
+Quando a área jurídica for TRABALHISTA, extraia dados do caso para o campo "form_data" do JSON de resposta.
+Inclua APENAS campos que o cliente mencionou EXPLICITAMENTE na mensagem atual. Use null para campos não mencionados.
+Campos válidos: nome_empregador, cnpjcpf_empregador, data_admissao, data_saida, situacao_atual, motivo_saida,
+funcao, salario, periodicidade_pagamento, horario_entrada, horario_saida, tempo_intervalo, dias_trabalhados,
+fazia_horas_extras, qtd_horas_extras_dia, recebia_por_fora, outro_valor_por_fora, recebia_vale_transporte,
+ctps_assinada_corretamente, periodo_sem_carteira, ambiente_insalubre_perigoso, sofreu_acidente, sofreu_assedio_moral,
+fgts_depositado, tem_ferias_pendentes, tem_decimo_terceiro_pendente, motivos_reclamacao, nome_completo, cpf.
+Se a área NÃO for trabalhista, NÃO inclua form_data no JSON.
+
 `;
 
       if (skill) {
@@ -698,10 +815,11 @@ ROTEIRO (siga na ordem, UMA pergunta por vez):
 4. Pergunte se possui documentos ou provas (contrato, mensagens, fotos, etc.).
 5. Quando tiver informações suficientes, informe que o advogado vai analisar e oriente o próximo passo.
 
-Retorne SOMENTE JSON válido: {"reply":"texto para enviar","updates":{"name":null,"status":"INICIAL","area":null,"lead_summary":"resumo","next_step":"duvidas","notes":""}}
+Retorne SOMENTE JSON válido: {"reply":"texto para enviar","updates":{"name":null,"status":"INICIAL","area":null,"lead_summary":"resumo","next_step":"duvidas","notes":"","form_data":null}}
 
 Valores válidos para updates.status: INICIAL | QUALIFICANDO | AGUARDANDO_FORM | REUNIAO_AGENDADA | AGUARDANDO_DOCS | AGUARDANDO_PROC | FINALIZADO | PERDIDO
-Valores válidos para updates.next_step: duvidas | triagem_concluida | formulario | reuniao | documentos | procuracao | encerrado`;
+Valores válidos para updates.next_step: duvidas | triagem_concluida | formulario | reuniao | documentos | procuracao | encerrado
+form_data: objeto com campos trabalhistas extraídos (só quando area=Trabalhista). Null quando não se aplica.`;
         model = await this.settings.getDefaultModel();
         maxTokens = 500;
         temperature = 0.7;

@@ -52,11 +52,12 @@ model Lead {
   tags               String[]
   created_at    DateTime       @default(now())
   updated_at    DateTime       @updatedAt
-  memory        AiMemory?
-  conversations Conversation[]
-  tenant        Tenant?        @relation(fields: [tenant_id], references: [id])
-  tasks         Task[]
-  legal_cases   LegalCase[]
+  memory             AiMemory?
+  conversations      Conversation[]
+  tenant             Tenant?            @relation(fields: [tenant_id], references: [id])
+  tasks              Task[]
+  legal_cases        LegalCase[]
+  ficha_trabalhista  FichaTrabalhista?
 
   @@index([tenant_id, phone])
   @@index([stage])
@@ -347,6 +348,23 @@ model TaskComment {
   user       User     @relation(fields: [user_id], references: [id])
 
   @@index([task_id, created_at])
+}
+
+model FichaTrabalhista {
+  id              String   @id @default(uuid())
+  lead_id         String   @unique
+  lead            Lead     @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+  data            Json     @default("{}")    // todos os ~80 campos do formulário
+  nome_completo   String?                   // espelho para busca rápida
+  nome_empregador String?                   // espelho para busca rápida
+  finalizado      Boolean  @default(false)
+  filled_by       String   @default("manual") // "manual" | "ai" | "lead"
+  completion_pct  Int      @default(0)       // 0-100
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@index([lead_id])
+  @@index([finalizado])
 }
 
 model DjenPublication {

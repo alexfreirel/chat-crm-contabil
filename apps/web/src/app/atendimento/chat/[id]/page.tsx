@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Send, Bot, BotOff, Download, Mic, FileText, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, Pencil, UserCheck, ChevronDown, CornerUpLeft } from 'lucide-react';
+import { ArrowLeft, Send, Bot, BotOff, Download, Mic, FileText, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, Pencil, UserCheck, ChevronDown, CornerUpLeft, ClipboardList } from 'lucide-react';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { AudioRecorder } from '@/components/AudioRecorder';
 import { EmojiPickerButton } from '@/components/EmojiPickerButton';
@@ -322,6 +322,27 @@ export default function ChatPage({ params }: { params: { id: string } }) {
     }
   };
 
+  const handleSendFormLink = async () => {
+    if (!lead?.id || !convoId || sending) return;
+    setSending(true);
+    try {
+      const baseUrl = window.location.origin;
+      const formUrl = `${baseUrl}/formulario/trabalhista/${lead.id}`;
+      const formText = `Olá! Para agilizar o seu atendimento, por favor preencha a ficha abaixo com as informações do seu caso trabalhista:\n\n${formUrl}\n\nSe tiver dúvidas durante o preenchimento, é só me chamar aqui!`;
+      const res = await api.post('/messages/send', { conversationId: convoId, text: formText });
+      if (res.data?.id) {
+        setMessages(prev => {
+          if (prev.some((m: any) => m.id === res.data.id)) return prev;
+          return [...prev, res.data];
+        });
+      }
+    } catch (err) {
+      console.error('Erro ao enviar formulário:', err);
+    } finally {
+      setSending(false);
+    }
+  };
+
   const handleSend = async () => {
     if (!text.trim() || !convoId || sending) return;
     const msgText = text;
@@ -569,6 +590,17 @@ export default function ChatPage({ params }: { params: { id: string } }) {
             </div>
           </div>
           <div className="flex gap-2 items-center">
+            {legalArea?.toLowerCase().includes('trabalhist') && !isClosed && (
+              <button
+                onClick={handleSendFormLink}
+                disabled={sending}
+                title="Enviar link do formulário trabalhista ao lead"
+                className="px-3 py-2 text-sm font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl hover:bg-amber-500/20 transition-colors flex items-center gap-2 disabled:opacity-50"
+              >
+                <ClipboardList size={16} />
+                Enviar Formulário
+              </button>
+            )}
             <button
               onClick={handleToggleAiMode}
               title={aiMode ? 'Desativar IA' : 'Ativar IA'}
