@@ -195,6 +195,8 @@ export default function Dashboard() {
     } catch { return null; }
   });
   const scrollRef = useRef<HTMLDivElement>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const socketRef = useRef<Socket | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -631,6 +633,86 @@ export default function Dashboard() {
     }
   }, [messages, loadingMoreMsgs]);
 
+  // Infinite scroll: auto-load ao rolar perto do topo
+  const loadMoreMsgsRef = useRef(loadingMoreMsgs);
+  loadMoreMsgsRef.current = loadingMoreMsgs;
+  const msgCurrentPageRef = useRef(msgCurrentPage);
+  msgCurrentPageRef.current = msgCurrentPage;
+  const msgTotalPagesRef = useRef(msgTotalPages);
+  msgTotalPagesRef.current = msgTotalPages;
+
+  const loadOlderMessages = useCallback(async () => {
+    const convId = selectedIdRef.current;
+    if (!convId || loadMoreMsgsRef.current) return;
+    if (msgCurrentPageRef.current >= msgTotalPagesRef.current) return;
+    setLoadingMoreMsgs(true);
+    try {
+      const nextPage = msgCurrentPageRef.current + 1;
+      const res = await api.get(`/messages/conversation/${convId}`, {
+        params: { page: nextPage, limit: 100 },
+      });
+      const olderMsgs = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+      const scrollEl = scrollRef.current;
+      const prevScrollHeight = scrollEl?.scrollHeight || 0;
+      setMessages(prev => {
+        const existingIds = new Set(prev.map(m => m.id));
+        const newMsgs = olderMsgs.filter((m: any) => !existingIds.has(m.id));
+        return [...newMsgs, ...prev];
+      });
+      setMsgCurrentPage(nextPage);
+      requestAnimationFrame(() => {
+        if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight - prevScrollHeight;
+      });
+    } catch (e) {
+      console.error('Falha ao carregar mensagens anteriores', e);
+    } finally {
+      setLoadingMoreMsgs(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const sentinel = loadMoreSentinelRef.current;
+    const scrollContainer = scrollRef.current;
+    if (!sentinel || !scrollContainer) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) loadOlderMessages(); },
+      { root: scrollContainer, threshold: 0.1 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [selectedId, msgCurrentPage, msgTotalPages, loadOlderMessages]);
+
+  // Protecao contra perda de texto: beforeunload
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (text.trim()) e.preventDefault();
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [text]);
+
+  // Rascunhos: salvar texto ao trocar de conversa, restaurar ao voltar
+  useEffect(() => {
+    if (selectedId && drafts[selectedId]) {
+      setText(drafts[selectedId]);
+      setDrafts(prev => { const n = { ...prev }; delete n[selectedId!]; return n; });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
+  // Salvar rascunho quando muda de conversa
+  const prevSelectedIdForDraft = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevSelectedIdForDraft.current && prevSelectedIdForDraft.current !== selectedId && text.trim()) {
+      const prevId = prevSelectedIdForDraft.current;
+      setDrafts(prev => ({ ...prev, [prevId]: text }));
+      setText('');
+    } else if (selectedId !== prevSelectedIdForDraft.current) {
+      // Limpar texto ao trocar (se não tinha rascunho, o useEffect acima já restaurou)
+    }
+    prevSelectedIdForDraft.current = selectedId;
+  }, [selectedId, text]);
+
   const handleSend = async () => {
     if (!text.trim() || !selectedId || selectedId.startsWith('demo-') || sending || text.length > 5000) return;
     const msgText = text;
@@ -982,8 +1064,20 @@ export default function Dashboard() {
     }
   };
 
+  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+  const ALLOWED_MEDIA = /^(image|video|audio)\//;
+  const ALLOWED_DOC_TYPES = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument', 'application/vnd.ms-excel', 'text/plain', 'application/zip', 'application/x-zip-compressed'];
+
   const uploadFile = async (file: File) => {
     if (!selectedId || selectedId.startsWith('demo-')) return;
+    if (file.size > MAX_FILE_SIZE) {
+      showError(`Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Limite: 50MB`);
+      return;
+    }
+    if (!ALLOWED_MEDIA.test(file.type) && !ALLOWED_DOC_TYPES.some(t => file.type.startsWith(t))) {
+      showError('Tipo de arquivo não permitido');
+      return;
+    }
     setUploadingFile(true);
     try {
       const formData = new FormData();
@@ -1813,44 +1907,12 @@ export default function Dashboard() {
                     ))}
                   </div>
                 )}
-                {/* Botao carregar mensagens anteriores */}
+                {/* Sentinel para infinite scroll (auto-load mensagens anteriores) */}
                 {isRealConvo && msgTotalPages > 1 && msgCurrentPage < msgTotalPages && (
-                  <div className="flex justify-center py-2">
-                    <button
-                      className="text-xs text-muted-foreground hover:text-foreground bg-muted/50 hover:bg-muted px-4 py-1.5 rounded-full transition-colors disabled:opacity-50"
-                      disabled={loadingMoreMsgs}
-                      onClick={async () => {
-                        if (!selectedId) return;
-                        setLoadingMoreMsgs(true);
-                        try {
-                          const nextPage = msgCurrentPage + 1;
-                          const res = await api.get(`/messages/conversation/${selectedId}`, {
-                            params: { page: nextPage, limit: 100 },
-                          });
-                          const olderMsgs = Array.isArray(res.data) ? res.data : (res.data?.data || []);
-                          const scrollEl = scrollRef.current;
-                          const prevScrollHeight = scrollEl?.scrollHeight || 0;
-                          setMessages(prev => {
-                            const existingIds = new Set(prev.map(m => m.id));
-                            const newMsgs = olderMsgs.filter((m: any) => !existingIds.has(m.id));
-                            return [...newMsgs, ...prev];
-                          });
-                          setMsgCurrentPage(nextPage);
-                          // Manter posicao de scroll ao carregar msgs antigas
-                          requestAnimationFrame(() => {
-                            if (scrollEl) {
-                              scrollEl.scrollTop = scrollEl.scrollHeight - prevScrollHeight;
-                            }
-                          });
-                        } catch (e) {
-                          console.error('Falha ao carregar mensagens anteriores', e);
-                        } finally {
-                          setLoadingMoreMsgs(false);
-                        }
-                      }}
-                    >
-                      {loadingMoreMsgs ? 'Carregando...' : 'Carregar mensagens anteriores'}
-                    </button>
+                  <div ref={loadMoreSentinelRef} className="flex justify-center py-3">
+                    {loadingMoreMsgs && (
+                      <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    )}
                   </div>
                 )}
                 {isRealConvo && messages.length > 0 ? (
@@ -1983,6 +2045,7 @@ export default function Dashboard() {
                                   src={`/api/media/${msg.id}`}
                                   alt="Imagem"
                                   className="max-w-[220px] max-h-[220px] object-cover rounded-lg cursor-pointer"
+                                  loading="lazy"
                                   onClick={() => setLightbox(`/api/media/${msg.id}`)}
                                 />
                                 <button
@@ -2038,6 +2101,7 @@ export default function Dashboard() {
                                 src={`/api/media/${msg.id}`}
                                 alt="Figurinha"
                                 className="max-w-[140px] max-h-[140px] object-contain"
+                                loading="lazy"
                               />
                             ) : (
                               <p className="text-sm italic opacity-70">🎭 Figurinha processando...</p>

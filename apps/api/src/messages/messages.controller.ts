@@ -14,8 +14,21 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { MessagesService } from './messages.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+
+// Whitelist de MIME types para upload
+const ALLOWED_MEDIA_RE = /^(image|video|audio)\//;
+const ALLOWED_DOC_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument',
+  'application/vnd.ms-excel',
+  'text/plain',
+  'application/zip',
+  'application/x-zip-compressed',
+];
 
 @UseGuards(JwtAuthGuard)
 @Controller('messages')
@@ -45,6 +58,7 @@ export class MessagesController {
     return this.messagesService.syncHistoryFromWhatsApp(conversationId);
   }
 
+  @Throttle({ default: { ttl: 60000, limit: 30 } })
   @Post('send')
   sendMessage(
     @Body('conversationId') conversationId: string,
@@ -61,8 +75,18 @@ export class MessagesController {
     return this.messagesService.sendMessage(conversationId, text.trim(), replyToId, req.user?.id);
   }
 
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   @Post('send-audio')
-  @UseInterceptors(FileInterceptor('audio', { limits: { fileSize: 25 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('audio', {
+    limits: { fileSize: 25 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      if (file.mimetype.startsWith('audio/') || file.mimetype === 'video/webm') {
+        cb(null, true);
+      } else {
+        cb(new BadRequestException('Somente arquivos de audio sao permitidos') as any, false);
+      }
+    },
+  }))
   sendAudio(
     @Body('conversationId') conversationId: string,
     @UploadedFile() file: Express.Multer.File,
@@ -76,8 +100,18 @@ export class MessagesController {
     return this.messagesService.sendAudio(conversationId, file, publicApiUrl, req.user?.id);
   }
 
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   @Post('send-file')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 50 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      if (ALLOWED_MEDIA_RE.test(file.mimetype) || ALLOWED_DOC_TYPES.some(t => file.mimetype.startsWith(t))) {
+        cb(null, true);
+      } else {
+        cb(new BadRequestException(`Tipo de arquivo nao permitido: ${file.mimetype}`) as any, false);
+      }
+    },
+  }))
   sendFile(
     @Body('conversationId') conversationId: string,
     @Body('caption') caption: string | undefined,
