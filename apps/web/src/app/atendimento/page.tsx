@@ -11,6 +11,7 @@ import { TransferAudioRecorder } from '@/components/TransferAudioRecorder';
 import { AuthAudioPlayer } from '@/components/AuthAudioPlayer';
 import { EmojiPickerButton } from '@/components/EmojiPickerButton';
 import { SophIAButton } from '@/components/SophIAButton';
+import { ClientPanel } from '@/components/ClientPanel';
 import { playNotificationSound } from '@/lib/notificationSounds';
 import api from '@/lib/api';
 import { io, Socket } from 'socket.io-client';
@@ -160,6 +161,7 @@ export default function Dashboard() {
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const mobileMoreRef = useRef<HTMLDivElement>(null);
   const [showDetailsPanel, setShowDetailsPanel] = useState(false);
+  const [clientPanelLeadId, setClientPanelLeadId] = useState<string | null>(null);
   const touchStartXRef = useRef<number>(0);
   const touchStartYRef = useRef<number>(0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1349,7 +1351,7 @@ export default function Dashboard() {
                      if (isMobile) {
                        setShowDetailsPanel(true);
                      } else {
-                       router.push(`/atendimento/contacts?lead=${selected.leadId}`);
+                       setClientPanelLeadId(selected.leadId);
                      }
                    }}
                  >
@@ -2272,6 +2274,15 @@ export default function Dashboard() {
           </div>
         )}
       </main>
+
+      {/* Painel do Cliente — popup ao clicar no nome no desktop */}
+      {clientPanelLeadId && (
+        <ClientPanel
+          leadId={clientPanelLeadId}
+          onClose={() => setClientPanelLeadId(null)}
+          onLightbox={setLightbox}
+        />
+      )}
 
       {/* Lightbox */}
       {lightbox && (
