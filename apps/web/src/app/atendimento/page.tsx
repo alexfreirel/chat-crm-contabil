@@ -580,7 +580,16 @@ export default function Dashboard() {
             // Guard: ignore messages that belong to a different conversation
             if (msg.conversation_id && msg.conversation_id !== selectedIdRef.current) return;
             setMessages(prev => {
+              // Já existe pelo ID real ou external_message_id — ignorar
               if (prev.find(m => m.id === msg.id || (m.external_message_id && m.external_message_id === msg.external_message_id))) return prev;
+              // Se é mensagem outgoing, pode ser duplicata da optimistic UI
+              // Substituir a msg otimista correspondente em vez de adicionar
+              if (msg.direction === 'out') {
+                const optimisticIdx = prev.findIndex(m => typeof m.id === 'string' && m.id.startsWith('optimistic_'));
+                if (optimisticIdx >= 0) {
+                  return prev.map((m, i) => i === optimisticIdx ? msg : m);
+                }
+              }
               return [...prev, msg];
             });
             if (msg.direction === 'in') playNotificationSound();
@@ -651,8 +660,20 @@ export default function Dashboard() {
         ...(replyId ? { replyToId: replyId } : {}),
       });
       // Substituir msg otimista pela real do servidor
+      // Se o WebSocket já substituiu a otimista, o ID real já está na lista — não duplicar
       if (res.data?.id) {
-        setMessages(prev => prev.map(m => m.id === optimisticId ? res.data : m));
+        setMessages(prev => {
+          const hasOptimistic = prev.some(m => m.id === optimisticId);
+          const hasReal = prev.some(m => m.id === res.data.id);
+          if (hasReal) {
+            // WebSocket já entregou — só remover a otimista se ainda existir
+            return hasOptimistic ? prev.filter(m => m.id !== optimisticId) : prev;
+          }
+          // Substituir otimista pela real
+          return hasOptimistic
+            ? prev.map(m => m.id === optimisticId ? res.data : m)
+            : [...prev, res.data];
+        });
       }
       inputRef.current?.focus();
     } catch (e: any) {
