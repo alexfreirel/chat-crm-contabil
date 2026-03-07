@@ -11,18 +11,10 @@ export class ConversationsController {
   @Get()
   async findAll(
     @Query('inboxId') inboxId: string | undefined,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
     @Request() req?: any,
   ) {
     const userId = req?.user?.id;
-    return this.conversationsService.findAll(
-      undefined,
-      userId,
-      inboxId,
-      page ? parseInt(page, 10) : 1,
-      limit ? parseInt(limit, 10) : 50,
-    );
+    return this.conversationsService.findAll(undefined, userId, inboxId);
   }
 
   @Get('pending-transfers')

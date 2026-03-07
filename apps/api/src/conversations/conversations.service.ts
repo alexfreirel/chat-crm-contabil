@@ -14,7 +14,7 @@ export class ConversationsService {
     return this.prisma.conversation.create({ data });
   }
 
-  async findAll(status?: string, userId?: string, inboxId?: string, page = 1, limit = 50) {
+  async findAll(status?: string, userId?: string, inboxId?: string) {
     const where: any = {};
     if (status) {
       where.status = status;
@@ -26,29 +26,24 @@ export class ConversationsService {
     // Se um inboxId específico foi solicitado, filtramos por ele
     if (inboxId) {
       where.inbox_id = inboxId;
-    } 
+    }
     // Caso contrário, se o userId estiver presente, filtramos pelos inboxes que o usuário tem acesso
     else if (userId) {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
         include: { inboxes: { select: { id: true } } }
       });
-      
+
       // Se o usuário não for ADMIN e tiver inboxes vinculados, filtramos por eles
       if (user?.role !== 'ADMIN' && user?.inboxes && user.inboxes.length > 0) {
         where.inbox_id = { in: user.inboxes.map((i: any) => i.id) };
       }
     }
 
-    const safePage = Math.max(1, page);
-    const safeLimit = Math.min(Math.max(1, limit), 500);
-
     const [conversations, total] = await Promise.all([
       this.prisma.conversation.findMany({
         where,
         orderBy: { last_message_at: 'desc' },
-        skip: (safePage - 1) * safeLimit,
-        take: safeLimit,
         include: {
           lead: { select: { id: true, name: true, phone: true, email: true, stage: true, profile_picture_url: true } },
           messages: { orderBy: { created_at: 'desc' }, take: 1, include: { media: true } },
@@ -96,7 +91,7 @@ export class ConversationsService {
       leadStage: c.lead?.stage || null,
     }));
 
-    return { data, total, page: safePage, limit: safeLimit, totalPages: Math.ceil(total / safeLimit) };
+    return { data, total };
   }
 
   async findOne(id: string) {
