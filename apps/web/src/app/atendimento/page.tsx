@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, UserCheck, PanelLeftClose, PanelLeftOpen, CornerDownLeft, Inbox, Pencil, Search, ChevronDown, ClipboardList, ArrowLeft, MoreVertical, ChevronRight, Bell } from 'lucide-react';
+import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, UserCheck, PanelLeftOpen, CornerDownLeft, Inbox, Pencil, Search, ChevronDown, ClipboardList, ArrowLeft, MoreVertical } from 'lucide-react';
 import FichaTrabalhista from '@/components/FichaTrabalhista';
 import { AudioRecorder } from '@/components/AudioRecorder';
 import { AuthAudioPlayer } from '@/components/AuthAudioPlayer';
@@ -15,8 +15,6 @@ import {
   isDesktopNotifSupported,
   getDesktopNotifPermission,
   isBannerDismissed,
-  dismissBanner,
-  requestNotificationPermission,
   showDesktopNotification,
 } from '@/lib/desktopNotifications';
 import api from '@/lib/api';
@@ -27,6 +25,8 @@ import type { ConversationSummary, MessageItem } from './types';
 import { MessageBubble } from './components/MessageBubble';
 import { TransferModals } from './components/TransferModals';
 import { CommandPalette } from './components/CommandPalette';
+import { InboxSidebar } from './components/InboxSidebar';
+import { ChatHeader } from './components/ChatHeader';
 
 function getWsUrl(): string {
   if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
@@ -1365,258 +1365,36 @@ export default function Dashboard() {
 
   const getInitial = (name?: string) => (name || 'V')[0].toUpperCase();
 
-  const statusBadge = (status: string) => {
-    const map: Record<string, { class: string; label: string }> = {
-      BOT: { class: 'bg-slate-500/15 text-slate-400 border border-slate-500/20', label: '🤖 SophIA' },
-      WAITING: { class: 'bg-amber-500/15 text-amber-500 border border-amber-500/20 shadow-[0_0_10px_rgba(251,191,36,0.15)]', label: '⏳ Aguardando' },
-      ACTIVE: { class: 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/20', label: '🟢 Atribuído' },
-      CLOSED: { class: 'bg-gray-500/15 text-gray-400 border border-gray-500/20', label: '⬛ Fechado' },
-    };
-    const badge = map[status] || map.CLOSED;
-    return <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${badge.class}`}>{badge.label}</span>;
-  };
-
   return (
     <div className="flex h-full overflow-hidden bg-background font-sans antialiased text-foreground">
 
       {/* INBOX */}
-      <section className={`flex flex-col bg-card border-r border-border shrink-0 z-40 transition-all duration-300 ${isMobile ? (selectedId ? 'hidden' : 'w-full') : (inboxOpen ? 'w-[380px]' : 'w-0 overflow-hidden')}`}>
-        <div className="p-5 border-b border-border space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold">Inbox</h2>
-            <button
-              onClick={() => setInboxOpen(false)}
-              className="hidden md:block p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
-              title="Fechar painel"
-              aria-label="Fechar painel de inbox"
-            >
-              <PanelLeftClose size={18} />
-            </button>
-          </div>
-
-          {/* Barra de pesquisa */}
-          <div className="relative">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Buscar contato ou mensagem…"
-              className="w-full pl-8 pr-7 py-1.5 text-[12px] bg-accent/50 border border-border rounded-lg placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary/40 transition-all"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                title="Limpar busca"
-                aria-label="Limpar busca"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
-
-          {/* Desktop notification permission banner */}
-          {showNotifBanner && (
-            <div className="p-2.5 bg-primary/5 border border-primary/20 rounded-xl flex items-center gap-2.5">
-              <Bell size={14} className="text-primary shrink-0" />
-              <p className="text-[11px] text-foreground flex-1">Ativar notificacoes do navegador?</p>
-              <button
-                onClick={async () => {
-                  const result = await requestNotificationPermission();
-                  setShowNotifBanner(false);
-                  if (result === 'granted') showSuccess('Notificacoes ativadas!');
-                }}
-                className="text-[10px] font-bold text-primary px-2 py-0.5 rounded-lg hover:bg-primary/10 transition-colors"
-              >
-                Ativar
-              </button>
-              <button
-                onClick={() => { dismissBanner(); setShowNotifBanner(false); }}
-                className="text-muted-foreground hover:text-foreground transition-colors"
-                aria-label="Dispensar"
-              >
-                <X size={12} />
-              </button>
-            </div>
-          )}
-
-          {/* Transferências aguardando resposta */}
-          {pendingTransfers.length > 0 && (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 overflow-hidden">
-              <div className="flex items-center gap-2 px-3 py-2 border-b border-amber-500/20">
-                <span className="text-amber-500 text-sm">📨</span>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-500">
-                  Aguardando você ({pendingTransfers.length})
-                </span>
-              </div>
-              <div className="divide-y divide-amber-500/10">
-                {pendingTransfers.map(pt => (
-                  <div key={pt.conversationId} className="flex items-center gap-2 px-3 py-2.5">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold truncate">{pt.contactName}</p>
-                      <p className="text-[10px] text-muted-foreground truncate">De: {pt.fromUserName}</p>
-                      {pt.reason && <p className="text-[10px] text-amber-400/80 italic truncate">{pt.reason}</p>}
-                      {pt.audioIds && pt.audioIds.length > 0 && (
-                        <p className="text-[10px] text-violet-400/80">🎙 {pt.audioIds.length} áudio{pt.audioIds.length > 1 ? 's' : ''}</p>
-                      )}
-                    </div>
-                    <div className="flex gap-1 shrink-0">
-                      <button
-                        onClick={() => handleQuickAcceptTransfer(pt.conversationId)}
-                        className="px-2 py-1 bg-emerald-500 text-white rounded-lg text-[10px] font-bold hover:bg-emerald-600 transition-colors"
-                        title="Aceitar transferência"
-                      >✓</button>
-                      <button
-                        onClick={() => { setIncomingTransfer(pt); setShowDeclineInput(false); setDeclineReason(''); }}
-                        className="px-2 py-1 bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg text-[10px] font-bold hover:bg-red-500/20 transition-colors"
-                        title="Recusar transferência"
-                      >✗</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Seletor de Setores (Inboxes) */}
-          {userInboxes.length > 0 && (
-            <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar no-scrollbar">
-              <button
-                onClick={() => setSelectedInboxId(null)}
-                className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${!selectedInboxId ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground border-transparent hover:bg-muted/80'}`}
-              >
-                Todos Setores
-              </button>
-              {userInboxes.map((inbox) => (
-                <button
-                  key={inbox.id}
-                  onClick={() => setSelectedInboxId(inbox.id)}
-                  className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${selectedInboxId === inbox.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground border-transparent hover:bg-muted/80'}`}
-                >
-                  {inbox.name}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="flex bg-muted rounded-xl p-1 w-full relative">
-            {[
-              { value: '', label: 'Tudo', count: conversations.filter(c => normalizeStage(c.leadStage) !== 'PERDIDO').length },
-              { value: 'BOT', label: 'SophIA', count: conversations.filter(c => c.aiMode && c.assignedAgentId === currentUserId).length },
-              { value: 'WAITING', label: 'Espera', count: conversations.filter(c => c.status === 'WAITING').length },
-              { value: 'ACTIVE', label: 'Ativas', count: conversations.filter(myActiveConvs).length },
-            ].map((tab) => (
-              <button
-                key={tab.value}
-                onClick={() => setLeadFilter(tab.value)}
-                className={`flex-1 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all relative ${leadFilter === tab.value ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-background/50'}`}
-              >
-                {tab.label}
-                {tab.count > 0 && (
-                  <span className="absolute -top-2.5 -right-2 min-w-[26px] h-[26px] px-1.5 rounded-full bg-red-500 text-white text-[12px] font-bold leading-[26px] text-center shadow-md">
-                    {tab.count > 99 ? '99+' : tab.count}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className={`flex-1 overflow-y-auto w-full custom-scrollbar ${isMobile && !selectedId ? 'pb-16' : ''}`}>
-          {loading ? (
-            <div className="p-10 text-center text-muted-foreground text-sm">Carregando conversas...</div>
-          ) : filteredConversations.length === 0 ? (
-            <div className="p-10 text-center text-muted-foreground text-sm">
-              {searchQuery.trim() ? `Nenhum resultado para "${searchQuery}".` : 'Nenhuma conversa encontrada.'}
-            </div>
-          ) : (
-            (() => {
-              let lastConvDateKey = '';
-              return filteredConversations.map((conv) => {
-                const convDate = conv.lastMessageAt;
-                const dateKey = convDate ? getDateKey(convDate) : '__nodate__';
-                const showDateSep = dateKey !== lastConvDateKey;
-                if (showDateSep) lastConvDateKey = dateKey;
-                return (
-                  <div key={conv.id}>
-                    {showDateSep && convDate && (
-                      <DateSeparator label={formatDateLabel(convDate)} />
-                    )}
-              <div
-                onClick={() => {
-                  setSelectedId(conv.id);
-                  // Clear unread count when opening the conversation
-                  setUnreadCounts(prev => { const n = { ...prev }; delete n[conv.id]; return n; });
-                }}
-                className={`flex gap-4 p-4 border-b border-border/50 cursor-pointer transition-colors relative
-                  ${selectedId === conv.id ? 'bg-accent/50' : 'hover:bg-accent/30'}
-                `}
-              >
-                {selectedId === conv.id && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />}
-                <div
-                  className={`w-11 h-11 rounded-full bg-accent border border-border flex items-center justify-center overflow-hidden shrink-0 shadow-sm ${conv.profile_picture_url ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
-                  onClick={conv.profile_picture_url ? (e) => { e.stopPropagation(); setLightbox(conv.profile_picture_url!); } : undefined}
-                  title={conv.profile_picture_url ? 'Ver foto ampliada' : undefined}
-                >
-                  {conv.profile_picture_url ? (
-                    <img src={conv.profile_picture_url} alt={conv.contactName} className="w-full h-full object-cover" loading="lazy" />
-                  ) : (
-                    <span className="text-foreground font-bold text-lg">{getInitial(conv.contactName)}</span>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-start mb-0.5">
-                    <span className={`font-semibold truncate pl-0.5 ${(unreadCounts[conv.id] || 0) > 0 ? 'text-foreground' : 'text-foreground'}`}>
-                      {conv.contactName || conv.contactPhone}
-                    </span>
-                    <div className="flex items-center gap-1.5 shrink-0 ml-1">
-                      {(unreadCounts[conv.id] || 0) > 0 && (
-                        <span className="bg-red-500 text-white text-[11px] font-bold rounded-full min-w-[20px] h-[20px] flex items-center justify-center px-1 leading-none shadow-md">
-                          {unreadCounts[conv.id] > 99 ? '99+' : unreadCounts[conv.id]}
-                        </span>
-                      )}
-                      <span className="text-[11px] text-muted-foreground">{formatTime(conv.lastMessageAt)}</span>
-                    </div>
-                  </div>
-                  {conv.contactPhone && conv.contactName !== conv.contactPhone && (
-                    <p className="text-[11px] text-muted-foreground truncate pl-0.5 mb-0.5">{conv.contactPhone}</p>
-                  )}
-                  <div className="mb-1 flex items-center gap-2 flex-wrap">
-                    {statusBadge(conv.status)}
-                    {/* Aten. = atendente comercial original (ou atual se não transferido ao adv.) */}
-                    {(conv.originAssignedUserId ? conv.originAssignedUserName : conv.assignedAgentName) && (
-                      <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground font-medium">
-                        <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 inline-block" />
-                        Aten. {conv.originAssignedUserId ? conv.originAssignedUserName : conv.assignedAgentName}
-                      </span>
-                    )}
-                  </div>
-                  {conv.legalArea && (
-                    <div className="mb-1.5 flex items-center gap-1.5 flex-wrap">
-                      <span className="inline-flex items-center gap-1 text-[10px] text-violet-400 font-bold border border-violet-500/20 bg-violet-500/10 rounded-md px-1.5 py-0.5">
-                        ⚖️ {conv.legalArea}
-                      </span>
-                      {/* Adv. = advogado atual (assignedAgentName quando transferido) ou pré-atribuído */}
-                      {(conv.originAssignedUserId ? conv.assignedAgentName : conv.assignedLawyerName) && (
-                        <span className="text-[10px] text-violet-300 font-medium truncate">
-                          Adv. {conv.originAssignedUserId ? conv.assignedAgentName : conv.assignedLawyerName}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  <p className={`text-sm truncate ${(unreadCounts[conv.id] || 0) > 0 ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
-                    {conv.lastMessage}
-                  </p>
-                </div>
-              </div>
-                  </div>
-                );
-              });
-            })()
-          )}
-        </div>
-      </section>
+      <InboxSidebar
+        conversations={conversations}
+        filteredConversations={filteredConversations}
+        userInboxes={userInboxes}
+        pendingTransfers={pendingTransfers}
+        unreadCounts={unreadCounts}
+        currentUserId={currentUserId}
+        selectedId={selectedId}
+        selectedInboxId={selectedInboxId}
+        searchQuery={searchQuery}
+        leadFilter={leadFilter}
+        inboxOpen={inboxOpen}
+        loading={loading}
+        isMobile={isMobile}
+        showNotifBanner={showNotifBanner}
+        onSelectConversation={setSelectedId}
+        onSetSearchQuery={setSearchQuery}
+        onSetLeadFilter={setLeadFilter}
+        onSetSelectedInboxId={setSelectedInboxId}
+        onSetInboxOpen={setInboxOpen}
+        onSetShowNotifBanner={setShowNotifBanner}
+        onSetUnreadCounts={setUnreadCounts}
+        onQuickAcceptTransfer={handleQuickAcceptTransfer}
+        onShowTransferPopup={(pt) => { setIncomingTransfer(pt); setShowDeclineInput(false); setDeclineReason(''); }}
+        onLightbox={setLightbox}
+      />
 
       {/* INBOX OPEN BUTTON (when collapsed) - desktop only */}
       {!inboxOpen && !isMobile && (
@@ -1660,279 +1438,42 @@ export default function Dashboard() {
                   : 'Conexao perdida. Reconectando...'}
               </div>
             )}
-            <header className="min-h-[60px] md:min-h-[80px] py-2 md:py-3 px-3 md:px-8 border-b border-border bg-card/50 backdrop-blur-md flex items-center justify-between z-30 shrink-0">
-               <div className="flex items-center gap-2 md:gap-4 min-w-0 flex-1">
-                 {/* Botão Voltar - mobile only */}
-                 {isMobile && (
-                   <button
-                     onClick={() => { setSelectedId(null); setMobileMoreOpen(false); }}
-                     aria-label="Voltar"
-                     className="p-2 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shrink-0"
-                   >
-                     <ArrowLeft size={20} />
-                   </button>
-                 )}
-                 <div
-                   className={`w-10 h-10 md:w-12 md:h-12 rounded-full bg-accent border border-border flex items-center justify-center overflow-hidden shadow-sm shrink-0 ${selected.profile_picture_url ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
-                   onClick={() => selected.profile_picture_url && setLightbox(selected.profile_picture_url)}
-                   title={selected.profile_picture_url ? 'Ver foto ampliada' : undefined}
-                 >
-                   {selected.profile_picture_url ? (
-                     <img src={selected.profile_picture_url} alt={selected.contactName} className="w-full h-full object-cover" loading="lazy" />
-                   ) : (
-                     <span className="text-foreground font-bold text-lg md:text-xl">{getInitial(selected.contactName)}</span>
-                   )}
-                 </div>
-                 <div
-                   className="min-w-0 flex-1 cursor-pointer active:opacity-70 transition-opacity"
-                   onClick={() => {
-                     if (isMobile) {
-                       setShowDetailsPanel(true);
-                     } else {
-                       setClientPanelLeadId(selected.leadId);
-                     }
-                   }}
-                 >
-                   <div className="flex items-center gap-1">
-                     <h3 className="font-bold text-base md:text-lg leading-tight truncate">{selected.contactName || selected.contactPhone}</h3>
-                     <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-                   </div>
-                   <div className="text-[11px] md:text-xs text-muted-foreground uppercase tracking-wider font-semibold mt-0.5 md:mt-1 truncate">
-                     {selected.channel} <span className="mx-1">•</span> {selected.contactPhone}
-                   </div>
-                   {/* Área jurídica + especialista pré-atribuído — hidden on mobile */}
-                   <div className="hidden md:flex items-center gap-2 flex-wrap mt-1.5">
-                     {/* Badge de área — clicável para editar */}
-                     <div className="relative" ref={legalAreaDropdownRef}>
-                       <button
-                         onClick={(e) => { e.stopPropagation(); setShowLegalAreaDropdown(v => !v); }}
-                         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors hover:opacity-80 ${selected.legalArea ? 'bg-violet-500/15 text-violet-400 border-violet-500/20 hover:bg-violet-500/25' : 'bg-muted/50 text-muted-foreground border-border hover:bg-muted'}`}
-                         title="Clique para definir ou alterar a área de atendimento"
-                       >
-                         ⚖️ {selected.legalArea || 'Definir área'}
-                         <ChevronDown size={9} className="ml-0.5 opacity-70" />
-                       </button>
-                       {showLegalAreaDropdown && (
-                         <div className="absolute left-0 top-full mt-1 bg-card border border-border rounded-xl shadow-xl w-44 py-1 text-[12px] z-[200]">
-                           <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Área de Atendimento</p>
-                           {LEGAL_AREAS.map(area => (
-                             <button
-                               key={area}
-                               onClick={() => handleChangeLegalArea(area)}
-                               className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2 ${selected.legalArea === area ? 'text-violet-400 font-semibold' : 'text-foreground'}`}
-                             >
-                               ⚖️ {area}
-                             </button>
-                           ))}
-                           {selected.legalArea && (
-                             <button
-                               onClick={() => handleChangeLegalArea(null)}
-                               className="w-full text-left px-3 py-2 text-muted-foreground hover:bg-accent hover:text-destructive transition-colors text-[11px] border-t border-border mt-1"
-                             >
-                               Remover área
-                             </button>
-                           )}
-                         </div>
-                       )}
-                     </div>
-                     {fichaFinalizada && (
-                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/20">
-                         ✅ Ficha Finalizada
-                       </span>
-                     )}
-                     {selected.legalArea && (
-                       <div className="relative" ref={lawyerDropdownRef}>
-                         <button
-                           onClick={() => setShowLawyerDropdown(v => !v)}
-                           className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${selected.assignedLawyerName ? 'bg-primary/10 text-primary border-primary/20 hover:bg-primary/20' : 'bg-muted/50 text-muted-foreground border-border hover:bg-muted'}`}
-                           title="Clique para atribuir ou trocar o especialista"
-                         >
-                           <UserCheck size={10} />
-                           {selected.assignedLawyerName || 'Atribuir especialista'}
-                         </button>
-                         {showLawyerDropdown && (
-                           <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-xl shadow-xl w-56 py-1 text-[12px]" style={{ zIndex: 9999 }}>
-                             <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                               {selected.assignedLawyerName ? 'Trocar especialista' : 'Escolher especialista'}
-                             </p>
-                             {allSpecialists.length === 0 && (
-                               <p className="px-3 py-2 text-[11px] text-muted-foreground">Nenhum especialista cadastrado</p>
-                             )}
-                             {allSpecialists.map(u => (
-                               <button
-                                 key={u.id}
-                                 onClick={() => handleAssignLawyerInbox(u.id)}
-                                 className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2 ${u.id === selected.assignedLawyerId ? 'text-primary font-semibold' : 'text-foreground'}`}
-                               >
-                                 <span className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-bold text-primary shrink-0">
-                                   {u.name.charAt(0)}
-                                 </span>
-                                 <div>
-                                   <p className="leading-tight">{u.name}</p>
-                                   <p className="text-[9px] text-muted-foreground">{u.specialties.join(', ')}</p>
-                                 </div>
-                               </button>
-                             ))}
-                             {selected.assignedLawyerId && (
-                               <button
-                                 onClick={() => handleAssignLawyerInbox(null)}
-                                 className="w-full text-left px-3 py-2 text-muted-foreground hover:bg-accent hover:text-destructive transition-colors text-[11px] border-t border-border mt-1"
-                               >
-                                 Remover especialista
-                               </button>
-                             )}
-                           </div>
-                         )}
-                       </div>
-                     )}
-                   </div>
-                 </div>
-               </div>
-               <div className="flex flex-col items-end gap-2 shrink-0">
-                 {/* Badges informativos inline — mobile */}
-                 {isMobile && (
-                   <div className="flex items-center gap-1.5">
-                     {isRealConvo && (
-                       <span className={`w-2 h-2 rounded-full shrink-0 ${aiMode ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]' : 'bg-muted-foreground/40'}`} title={aiMode ? 'IA Ativa' : 'IA Inativa'} />
-                     )}
-                     {selected?.legalArea && (
-                       <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-400 text-[9px] font-bold border border-violet-500/20">
-                         ⚖️ {selected.legalArea}
-                       </span>
-                     )}
-                     {fichaFinalizada && (
-                       <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[9px] font-bold border border-emerald-500/20">
-                         ✅
-                       </span>
-                     )}
-                   </div>
-                 )}
-                 {/* Linha de botões de ação — desktop only */}
-                 <div className="hidden md:flex gap-2 items-center flex-wrap justify-end">
-                   {selected?.legalArea?.toLowerCase().includes('trabalhist') && (
-                     <>
-                       {!isClosed && (
-                         <button
-                           onClick={handleSendFormLink}
-                           title="Enviar link do formulário trabalhista ao lead"
-                           className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-bold border border-amber-500/20 hover:bg-amber-500/25 transition-colors"
-                         >
-                           <ClipboardList size={10} />
-                           Enviar Formulário
-                         </button>
-                       )}
-                       <button
-                         onClick={() => setFichaInboxVisible(true)}
-                         title="Visualizar ficha trabalhista"
-                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-400 text-[10px] font-bold border border-violet-500/20 hover:bg-violet-500/25 transition-colors"
-                       >
-                         <Eye size={10} />
-                         Visualizar Ficha
-                       </button>
-                     </>
-                   )}
-                   {isRealConvo && (
-                     <button
-                       onClick={handleToggleAiMode}
-                       title={aiMode ? 'Desativar IA' : 'Ativar IA'}
-                       className={`px-4 py-2 text-sm font-semibold border rounded-xl transition-colors flex items-center gap-2 ${
-                         aiMode
-                           ? 'text-primary bg-primary/10 border-primary/20 hover:bg-primary/20'
-                           : 'text-muted-foreground bg-muted/30 border-border hover:bg-muted/60'
-                       }`}
-                     >
-                       {aiMode ? <Bot size={16} /> : <BotOff size={16} />}
-                       {aiMode ? 'IA Ativa' : 'IA Inativa'}
-                     </button>
-                   )}
-                   {selected.status === 'WAITING' && isRealConvo && (
-                     <button
-                       onClick={handleAccept}
-                       className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-ring text-primary-foreground font-bold text-sm shadow-[0_0_15px_rgba(var(--primary),0.3)] hover:shadow-[0_0_20px_rgba(var(--primary),0.4)] hover:-translate-y-0.5 transition-all"
-                     >
-                       Aceitar Atendimento
-                     </button>
-                   )}
-                   {!isClosed && isRealConvo && (
-                     <button
-                       onClick={handleOpenTransferModal}
-                       title="Transferir conversa para outro operador"
-                       className="px-3 py-2 text-sm font-semibold text-sky-400 bg-sky-500/10 border border-sky-500/20 rounded-xl hover:bg-sky-500/20 transition-colors flex items-center gap-2"
-                     >
-                       <UserCheck size={16} />
-                       Transferir
-                     </button>
-                   )}
-                   {selected?.originAssignedUserId && selected?.assignedAgentId === currentUserId && !isClosed && (
-                     <>
-                       <button
-                         onClick={() => openReasonPopup('return', selected?.originAssignedUserName || 'atendente de origem')}
-                         title="Devolver conversa ao atendente de origem"
-                         className="px-3 py-2 text-sm font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl hover:bg-amber-500/20 transition-colors flex items-center gap-2"
-                       >
-                         <CornerDownLeft size={16} />
-                         Devolver
-                       </button>
-                       <button
-                         onClick={handleKeepInInbox}
-                         title="Manter conversa no meu inbox"
-                         className="px-3 py-2 text-sm font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl hover:bg-emerald-500/20 transition-colors flex items-center gap-2"
-                       >
-                         <Inbox size={16} />
-                         Manter Aqui
-                       </button>
-                     </>
-                   )}
-                   {!isClosed && isRealConvo && (
-                     <button
-                       onClick={handleClose}
-                       title="Fechar conversa"
-                       className="px-3 py-2 text-sm font-semibold text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl hover:bg-red-500/20 transition-colors flex items-center gap-2"
-                     >
-                       <XCircle size={16} />
-                       Fechar
-                     </button>
-                   )}
-                 </div>
-
-                 {/* Etapa do Funil (CRM) — hidden on mobile */}
-                 {isRealConvo && (() => {
-                   const stage = findStage(normalizeStage(leadStage));
-                   return (
-                     <div className="relative hidden md:flex items-center gap-2" ref={stageDropdownRef}>
-                       <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                         Etapa do Funil:
-                       </span>
-                       <button
-                         onClick={() => setShowStageDropdown(v => !v)}
-                         className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all hover:opacity-80"
-                         style={{ background: `${stage.color}18`, color: stage.color, borderColor: `${stage.color}35` }}
-                         title="Clique para trocar a etapa do funil"
-                       >
-                         {stage.emoji} {stage.label}
-                         <ChevronDown size={10} className="opacity-60" />
-                       </button>
-                       {showStageDropdown && (
-                         <div className="absolute top-full right-0 mt-1 bg-card border border-border rounded-xl shadow-xl w-56 py-1" style={{ zIndex: 9999 }}>
-                           <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Etapa do Funil</p>
-                           {CRM_STAGES.map(s => (
-                             <button
-                               key={s.id}
-                               onClick={() => handleChangeLeadStage(s.id)}
-                               className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2 text-[12px] ${normalizeStage(leadStage) === s.id ? 'font-semibold' : ''}`}
-                               style={{ color: normalizeStage(leadStage) === s.id ? s.color : undefined }}
-                             >
-                               <span>{s.emoji}</span>
-                               <span>{s.label}</span>
-                             </button>
-                           ))}
-                         </div>
-                       )}
-                     </div>
-                   );
-                 })()}
-               </div>
-            </header>
+            <ChatHeader
+              selected={selected}
+              selectedId={selectedId!}
+              isMobile={isMobile}
+              isRealConvo={!!isRealConvo}
+              isClosed={!!isClosed}
+              aiMode={aiMode}
+              leadStage={leadStage}
+              fichaFinalizada={fichaFinalizada}
+              allSpecialists={allSpecialists}
+              currentUserId={currentUserId}
+              showLegalAreaDropdown={showLegalAreaDropdown}
+              showLawyerDropdown={showLawyerDropdown}
+              showStageDropdown={showStageDropdown}
+              legalAreaDropdownRef={legalAreaDropdownRef}
+              lawyerDropdownRef={lawyerDropdownRef}
+              stageDropdownRef={stageDropdownRef}
+              onBack={() => { setSelectedId(null); setMobileMoreOpen(false); }}
+              onToggleLegalArea={() => setShowLegalAreaDropdown(v => !v)}
+              onChangeLegalArea={handleChangeLegalArea}
+              onToggleLawyer={() => setShowLawyerDropdown(v => !v)}
+              onAssignLawyer={handleAssignLawyerInbox}
+              onToggleAiMode={handleToggleAiMode}
+              onAccept={handleAccept}
+              onOpenTransferModal={handleOpenTransferModal}
+              onOpenReasonPopup={openReasonPopup}
+              onKeepInInbox={handleKeepInInbox}
+              onClose={handleClose}
+              onToggleStage={() => setShowStageDropdown(v => !v)}
+              onChangeStage={handleChangeLeadStage}
+              onSendFormLink={handleSendFormLink}
+              onShowFicha={() => setFichaInboxVisible(true)}
+              onShowDetails={() => setShowDetailsPanel(true)}
+              onSetClientPanelLeadId={setClientPanelLeadId}
+              onLightbox={setLightbox}
+            />
 
             {/* Banner de contexto da transferência (motivo + áudios — persiste após aceitar) */}
             {selectedId && transferContextMap[selectedId] && (() => {
