@@ -1923,6 +1923,22 @@ export default function Dashboard() {
                     <p className="font-bold text-foreground text-sm truncate">{selected.contactName}</p>
                     <p className="text-[10px] text-muted-foreground">Detalhes &amp; Ações</p>
                   </div>
+                  {/* Badge da etapa CRM — clicável para rolar até a seleção */}
+                  {(() => {
+                    const stage = findStage(normalizeStage(leadStage));
+                    return stage ? (
+                      <button
+                        onClick={() => document.getElementById('panel-stage-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                        className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-bold border transition-all hover:opacity-80 active:scale-95"
+                        style={{ background: `${stage.color}20`, color: stage.color, borderColor: `${stage.color}40` }}
+                        title="Clique para alterar a etapa"
+                      >
+                        <span>{stage.emoji}</span>
+                        <span className="hidden sm:inline">{stage.label}</span>
+                        <ChevronDown size={11} className="opacity-70" />
+                      </button>
+                    ) : null;
+                  })()}
                 </div>
 
                 {/* Scrollable content */}
@@ -1986,7 +2002,7 @@ export default function Dashboard() {
                   )}
 
                   {/* Etapa do Funil */}
-                  <section>
+                  <section id="panel-stage-section">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Etapa do Funil</p>
                     <div className="flex flex-wrap gap-1.5">
                       {CRM_STAGES.map(s => (
