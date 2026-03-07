@@ -80,6 +80,7 @@ export class ConversationsService {
       assignedLawyerName: (c as any).assigned_lawyer_id ? (userNameMap[(c as any).assigned_lawyer_id] || null) : null,
       originAssignedUserId: (c as any).origin_assigned_user_id || null,
       originAssignedUserName: (c as any).origin_assigned_user_id ? (userNameMap[(c as any).origin_assigned_user_id] || null) : null,
+      leadStage: c.lead?.stage || null,
     }));
   }
 

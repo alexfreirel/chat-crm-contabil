@@ -35,6 +35,7 @@ interface ConversationSummary {
   assignedLawyerName?: string | null;
   originAssignedUserId?: string | null;
   originAssignedUserName?: string | null;
+  leadStage?: string | null;
 }
 
 interface MessageItem {
@@ -732,6 +733,13 @@ export default function Dashboard() {
     if (!conv?.leadId) return;
     setLeadStage(newStage); // otimista
     setShowStageDropdown(false);
+    // Atualiza leadStage no objeto local para o filtro reagir imediatamente
+    setConversations(prev => prev.map(c => c.id === selectedId ? { ...c, leadStage: newStage } : c));
+    // Se marcado como Perdido, arquiva: sai da conversa e painel
+    if (newStage === 'PERDIDO') {
+      setSelectedId(null);
+      setShowDetailsPanel(false);
+    }
     try {
       await api.patch(`/leads/${conv.leadId}/stage`, { stage: newStage });
     } catch (e: any) {
@@ -937,8 +945,10 @@ export default function Dashboard() {
     } else if (leadFilter) {
       result = conversations.filter(c => c.status === leadFilter);
     } else {
-      result = conversations.filter(c => c.status !== 'CLOSED');
+      result = conversations;
     }
+    // Ocultar contatos arquivados (marcados como Perdido no CRM)
+    result = result.filter(c => normalizeStage(c.leadStage) !== 'PERDIDO');
     // Filtro de busca: nome do contato, telefone ou conteúdo da última mensagem
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
@@ -1165,7 +1175,7 @@ export default function Dashboard() {
 
           <div className="flex bg-muted rounded-xl p-1 w-full relative">
             {[
-              { value: '', label: 'Tudo', count: conversations.filter(c => c.status !== 'CLOSED').length },
+              { value: '', label: 'Tudo', count: conversations.filter(c => normalizeStage(c.leadStage) !== 'PERDIDO').length },
               { value: 'BOT', label: 'SophIA', count: conversations.filter(c => c.aiMode && c.assignedAgentId === currentUserId).length },
               { value: 'WAITING', label: 'Espera', count: conversations.filter(c => c.status === 'WAITING').length },
               { value: 'ACTIVE', label: 'Ativas', count: conversations.filter(myActiveConvs).length },
