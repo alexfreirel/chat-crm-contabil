@@ -937,7 +937,7 @@ export default function Dashboard() {
     } else if (leadFilter) {
       result = conversations.filter(c => c.status === leadFilter);
     } else {
-      result = conversations;
+      result = conversations.filter(c => c.status !== 'CLOSED');
     }
     // Filtro de busca: nome do contato, telefone ou conteúdo da última mensagem
     if (searchQuery.trim()) {
@@ -1165,7 +1165,7 @@ export default function Dashboard() {
 
           <div className="flex bg-muted rounded-xl p-1 w-full relative">
             {[
-              { value: '', label: 'Tudo', count: conversations.length },
+              { value: '', label: 'Tudo', count: conversations.filter(c => c.status !== 'CLOSED').length },
               { value: 'BOT', label: 'SophIA', count: conversations.filter(c => c.aiMode && c.assignedAgentId === currentUserId).length },
               { value: 'WAITING', label: 'Espera', count: conversations.filter(c => c.status === 'WAITING').length },
               { value: 'ACTIVE', label: 'Ativas', count: conversations.filter(myActiveConvs).length },
