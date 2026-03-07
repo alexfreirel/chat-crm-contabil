@@ -3,7 +3,16 @@
 import React, { memo } from 'react';
 import { Download, Mic, FileText, Trash2, Reply, Pencil, CheckCheck, Check } from 'lucide-react';
 import { AudioPlayer } from '@/components/AudioPlayer';
+import { LinkPreview } from '@/components/LinkPreview';
 import type { MessageItem } from '../types';
+
+const URL_REGEX = /https?:\/\/[^\s<>"')\]]+/gi;
+
+function extractFirstUrl(text: string | null): string | null {
+  if (!text) return null;
+  const match = text.match(URL_REGEX);
+  return match ? match[0] : null;
+}
 
 // ─── Helpers ────────────────────────────────────────────────────
 
@@ -144,7 +153,13 @@ function MessageBubbleInner({
           ) : isEmojiOnly(msg.text || '') ? (
             <p className="text-4xl leading-tight">{msg.text}</p>
           ) : (
-            <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+            <>
+              <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+              {(() => {
+                const url = extractFirstUrl(msg.text);
+                return url ? <LinkPreview url={url} isOut={isOut} /> : null;
+              })()}
+            </>
           )
         ) : msg.type === 'audio' ? (
           msg.media ? (

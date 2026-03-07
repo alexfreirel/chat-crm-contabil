@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, UserCheck, PanelLeftClose, PanelLeftOpen, CornerDownLeft, Inbox, Pencil, Search, ChevronDown, ClipboardList, ArrowLeft, MoreVertical, ChevronRight } from 'lucide-react';
+import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, UserCheck, PanelLeftClose, PanelLeftOpen, CornerDownLeft, Inbox, Pencil, Search, ChevronDown, ClipboardList, ArrowLeft, MoreVertical, ChevronRight, Bell } from 'lucide-react';
 import FichaTrabalhista from '@/components/FichaTrabalhista';
 import { AudioRecorder } from '@/components/AudioRecorder';
 import { AuthAudioPlayer } from '@/components/AuthAudioPlayer';
@@ -11,6 +11,14 @@ import { EmojiPickerButton } from '@/components/EmojiPickerButton';
 import { SophIAButton } from '@/components/SophIAButton';
 import { ClientPanel } from '@/components/ClientPanel';
 import { playNotificationSound } from '@/lib/notificationSounds';
+import {
+  isDesktopNotifSupported,
+  getDesktopNotifPermission,
+  isBannerDismissed,
+  dismissBanner,
+  requestNotificationPermission,
+  showDesktopNotification,
+} from '@/lib/desktopNotifications';
 import api from '@/lib/api';
 import { io, Socket } from 'socket.io-client';
 import { CRM_STAGES, findStage, normalizeStage } from '@/lib/crmStages';
@@ -18,6 +26,7 @@ import { showError, showSuccess } from '@/lib/toast';
 import type { ConversationSummary, MessageItem } from './types';
 import { MessageBubble } from './components/MessageBubble';
 import { TransferModals } from './components/TransferModals';
+import { CommandPalette } from './components/CommandPalette';
 
 function getWsUrl(): string {
   if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
@@ -131,6 +140,10 @@ export default function Dashboard() {
   const [isMobile, setIsMobile] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const mobileMoreRef = useRef<HTMLDivElement>(null);
+  // Command palette (Ctrl+K)
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  // Desktop notification banner (show only if permission is 'default' and user hasn't dismissed)
+  const [showNotifBanner, setShowNotifBanner] = useState(false);
   const [showDetailsPanel, setShowDetailsPanel] = useState(false);
   const [clientPanelLeadId, setClientPanelLeadId] = useState<string | null>(null);
   const [showLegalAreaDropdown, setShowLegalAreaDropdown] = useState(false);
@@ -216,6 +229,83 @@ export default function Dashboard() {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // ─── Tab title unread badge ───────────────────────────────────
+  useEffect(() => {
+    const total = Object.values(unreadCounts).reduce((sum, n) => sum + n, 0);
+    document.title = total > 0 ? `(${total}) Atendimento | LexCRM` : 'Atendimento | LexCRM';
+  }, [unreadCounts]);
+
+  // ─── Desktop notification banner check ────────────────────────
+  useEffect(() => {
+    if (isDesktopNotifSupported() && getDesktopNotifPermission() === 'default' && !isBannerDismissed()) {
+      setShowNotifBanner(true);
+    }
+  }, []);
+
+  // ─── Track recent conversations (for Command Palette) ────────
+  useEffect(() => {
+    if (!selectedId) return;
+    try {
+      const key = 'recent_convs';
+      const recent: string[] = JSON.parse(sessionStorage.getItem(key) || '[]');
+      const updated = [selectedId, ...recent.filter(id => id !== selectedId)].slice(0, 5);
+      sessionStorage.setItem(key, JSON.stringify(updated));
+    } catch { /* ignore */ }
+  }, [selectedId]);
+
+  // ─── Global keyboard shortcuts ────────────────────────────────
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInputFocused = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+
+      // Ctrl+K / Cmd+K: toggle command palette
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setCommandPaletteOpen(prev => !prev);
+        return;
+      }
+
+      // Escape: close modals in cascade
+      if (e.key === 'Escape') {
+        if (commandPaletteOpen) { setCommandPaletteOpen(false); return; }
+        if (lightbox) { setLightbox(null); return; }
+        if (docPreview) { setDocPreview(null); return; }
+        if (transferModal) { setTransferModal(false); return; }
+        if (showReasonPopup) { closeReasonPopup(); return; }
+        if (selectedId && !isInputFocused) { setSelectedId(null); return; }
+        return;
+      }
+
+      // Alt+ArrowUp / Alt+ArrowDown: navigate conversations
+      if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && !isInputFocused) {
+        e.preventDefault();
+        const list = filteredConversationsRef.current;
+        const currentIdx = list.findIndex(c => c.id === selectedId);
+        const nextIdx = e.key === 'ArrowUp'
+          ? Math.max(0, currentIdx - 1)
+          : Math.min(list.length - 1, currentIdx + 1);
+        if (list[nextIdx]) {
+          const nextConv = list[nextIdx];
+          setSelectedId(nextConv.id);
+          setUnreadCounts(prev => { const n = { ...prev }; delete n[nextConv.id]; return n; });
+        }
+        return;
+      }
+
+      // Ctrl+Shift+A: toggle AI mode
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+        e.preventDefault();
+        if (selectedId && !selectedId.startsWith('demo-')) handleToggleAiMode();
+        return;
+      }
+    };
+
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commandPaletteOpen, lightbox, docPreview, transferModal, showReasonPopup, selectedId]);
 
   // Sync aiMode when conversation changes
   useEffect(() => {
@@ -386,11 +476,18 @@ export default function Dashboard() {
     });
 
     // Incoming message notification — broadcast to all; each client filters by assignedUserId
-    socket.on('incoming_message_notification', (data: { conversationId: string; assignedUserId?: string | null }) => {
+    socket.on('incoming_message_notification', (data: { conversationId: string; contactName?: string; assignedUserId?: string | null }) => {
       const myId = currentUserIdRef.current;
       // Skip if assigned to someone else. Play if: assigned to me, unassigned, or can't determine current user
       if (myId && data?.assignedUserId && data.assignedUserId !== myId) return;
       playNotificationSound();
+      // Desktop notification (only when tab is not focused)
+      showDesktopNotification({
+        title: data?.contactName || 'Nova mensagem',
+        body: 'Nova mensagem recebida',
+        tag: `msg-${data.conversationId}`,
+        onClick: () => setSelectedId(data.conversationId),
+      });
       // Only mark unread when the user is NOT currently viewing that conversation
       if (data?.conversationId && data.conversationId !== selectedIdRef.current) {
         setUnreadCounts(prev => ({
@@ -403,6 +500,12 @@ export default function Dashboard() {
     // Transfer request: incoming popup + sound for target operator
     socket.on('transfer_request', (data: { conversationId: string; fromUserName: string; contactName: string; reason: string | null; audioIds?: string[] }) => {
       playNotificationSound();
+      showDesktopNotification({
+        title: 'Transferencia recebida',
+        body: `${data.fromUserName} transferiu "${data.contactName}"`,
+        tag: `transfer-${data.conversationId}`,
+        onClick: () => setSelectedId(data.conversationId),
+      });
       shownTransferIdsRef.current.add(data.conversationId);
       setIncomingTransfer(data);
       setShowDeclineInput(false);
@@ -1162,6 +1265,10 @@ export default function Dashboard() {
     });
   }, [conversations, leadFilter, debouncedSearch, currentUserId]);
 
+  // Keep ref in sync for keyboard shortcut handler (declared before useMemo)
+  const filteredConversationsRef = useRef(filteredConversations);
+  useEffect(() => { filteredConversationsRef.current = filteredConversations; }, [filteredConversations]);
+
   const selected = conversations.find((c) => c.id === selectedId);
   const isDemo = selectedId?.startsWith('demo-');
   const isRealConvo = selectedId && !isDemo;
@@ -1308,6 +1415,31 @@ export default function Dashboard() {
               </button>
             )}
           </div>
+
+          {/* Desktop notification permission banner */}
+          {showNotifBanner && (
+            <div className="p-2.5 bg-primary/5 border border-primary/20 rounded-xl flex items-center gap-2.5">
+              <Bell size={14} className="text-primary shrink-0" />
+              <p className="text-[11px] text-foreground flex-1">Ativar notificacoes do navegador?</p>
+              <button
+                onClick={async () => {
+                  const result = await requestNotificationPermission();
+                  setShowNotifBanner(false);
+                  if (result === 'granted') showSuccess('Notificacoes ativadas!');
+                }}
+                className="text-[10px] font-bold text-primary px-2 py-0.5 rounded-lg hover:bg-primary/10 transition-colors"
+              >
+                Ativar
+              </button>
+              <button
+                onClick={() => { dismissBanner(); setShowNotifBanner(false); }}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Dispensar"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
 
           {/* Transferências aguardando resposta */}
           {pendingTransfers.length > 0 && (
@@ -2553,6 +2685,24 @@ export default function Dashboard() {
         onClearTransferResponseMsg={() => setTransferResponseMsg(null)}
       />
 
+
+      {/* Command Palette (Ctrl+K) */}
+      {commandPaletteOpen && (
+        <CommandPalette
+          open={commandPaletteOpen}
+          onClose={() => setCommandPaletteOpen(false)}
+          conversations={conversations}
+          selectedId={selectedId}
+          onSelectConversation={(id) => {
+            setSelectedId(id);
+            setUnreadCounts(prev => { const n = { ...prev }; delete n[id]; return n; });
+            setCommandPaletteOpen(false);
+          }}
+          onToggleAI={handleToggleAiMode}
+          onOpenTransferModal={handleOpenTransferModal}
+          onCloseConversation={handleClose}
+        />
+      )}
 
       {/* Ficha Trabalhista Slide-over */}
       {fichaInboxVisible && selected?.leadId && (

@@ -16,18 +16,30 @@ interface LinkPreviewProps {
   isOut?: boolean;
 }
 
+// In-memory cache to avoid repeated API calls when scrolling through messages
+const previewCache = new Map<string, PreviewData | null>();
+
 export function LinkPreview({ url, isOut = false }: LinkPreviewProps) {
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Check cache first
+    if (previewCache.has(url)) {
+      setPreview(previewCache.get(url)!);
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
     api
       .get('/messages/link-preview', { params: { url } })
       .then((res) => {
+        previewCache.set(url, res.data);
         if (!cancelled) setPreview(res.data);
       })
       .catch(() => {
+        previewCache.set(url, null);
         if (!cancelled) setPreview(null);
       })
       .finally(() => {
