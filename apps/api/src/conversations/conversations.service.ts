@@ -14,7 +14,7 @@ export class ConversationsService {
     return this.prisma.conversation.create({ data });
   }
 
-  async findAll(status?: string, userId?: string, inboxId?: string) {
+  async findAll(status?: string, userId?: string, inboxId?: string, page = 1, limit = 50) {
     const where: any = {};
     if (status) where.status = status;
 
@@ -35,15 +35,23 @@ export class ConversationsService {
       }
     }
 
-    const conversations = await this.prisma.conversation.findMany({
-      where,
-      orderBy: { last_message_at: 'desc' },
-      include: {
-        lead: { select: { id: true, name: true, phone: true, email: true, stage: true, profile_picture_url: true } },
-        messages: { orderBy: { created_at: 'desc' }, take: 1, include: { media: true } },
-        assigned_user: { select: { id: true, name: true } },
-      },
-    });
+    const safePage = Math.max(1, page);
+    const safeLimit = Math.min(Math.max(1, limit), 200);
+
+    const [conversations, total] = await Promise.all([
+      this.prisma.conversation.findMany({
+        where,
+        orderBy: { last_message_at: 'desc' },
+        skip: (safePage - 1) * safeLimit,
+        take: safeLimit,
+        include: {
+          lead: { select: { id: true, name: true, phone: true, email: true, stage: true, profile_picture_url: true } },
+          messages: { orderBy: { created_at: 'desc' }, take: 1, include: { media: true } },
+          assigned_user: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.conversation.count({ where }),
+    ]);
 
     // Enrich with lawyer and origin-attendant names in a single query
     const lawyerIds = [...new Set(conversations.map((c: any) => c.assigned_lawyer_id).filter(Boolean))] as string[];
@@ -57,7 +65,7 @@ export class ConversationsService {
       : [];
     const userNameMap: Record<string, string> = Object.fromEntries(enrichUsers.map((u) => [u.id, u.name]));
 
-    return conversations.map((c) => ({
+    const data = conversations.map((c) => ({
       id: c.id,
       leadId: c.lead_id,
       inboxId: (c as any).inbox_id || null,
@@ -82,6 +90,8 @@ export class ConversationsService {
       originAssignedUserName: (c as any).origin_assigned_user_id ? (userNameMap[(c as any).origin_assigned_user_id] || null) : null,
       leadStage: c.lead?.stage || null,
     }));
+
+    return { data, total, page: safePage, limit: safeLimit, totalPages: Math.ceil(total / safeLimit) };
   }
 
   async findOne(id: string) {
@@ -89,7 +99,8 @@ export class ConversationsService {
       where: { id },
       include: {
         lead: { select: { id: true, name: true, phone: true, email: true, profile_picture_url: true } },
-        messages: { orderBy: { created_at: 'asc' }, include: { media: true } },
+        // Mensagens sao carregadas via GET /messages/conversation/:id com paginacao
+        messages: { orderBy: { created_at: 'desc' }, take: 100, include: { media: true } },
         assigned_user: { select: { id: true, name: true } },
       },
     });

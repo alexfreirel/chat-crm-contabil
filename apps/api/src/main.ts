@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
 import { Server as SocketIOServer } from 'socket.io';
+import { JwtService } from '@nestjs/jwt';
 import { ChatGateway } from './gateway/chat.gateway';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
@@ -52,6 +53,27 @@ async function bootstrap() {
   });
 
   chatGateway.server = io;
+
+  // JWT authentication middleware for WebSocket connections
+  const jwtService = app.get(JwtService);
+  io.use((socket, next) => {
+    const token =
+      socket.handshake.auth?.token ||
+      (socket.handshake.headers?.authorization as string)?.replace('Bearer ', '') ||
+      '';
+    if (!token) {
+      logger.warn(`[SOCKET] Conexao rejeitada — sem token JWT`);
+      return next(new Error('Authentication required'));
+    }
+    try {
+      const payload = jwtService.verify(token);
+      (socket as any).user = payload;
+      next();
+    } catch {
+      logger.warn(`[SOCKET] Conexao rejeitada — token JWT invalido`);
+      next(new Error('Invalid token'));
+    }
+  });
 
   io.on('connection', (socket) => {
     chatGateway.handleConnection(socket);

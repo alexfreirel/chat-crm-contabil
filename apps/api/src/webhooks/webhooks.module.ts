@@ -5,12 +5,15 @@ import { EvolutionController } from './evolution.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { LeadsModule } from '../leads/leads.module';
 import { InboxesModule } from '../inboxes/inboxes.module';
+import { SettingsModule } from '../settings/settings.module';
+import { HmacGuard } from './guards/hmac.guard';
 
 @Module({
   imports: [
     PrismaModule,
     LeadsModule,
     InboxesModule,
+    SettingsModule,
     BullModule.registerQueue({
       name: 'media-jobs',
     }),
@@ -19,7 +22,7 @@ import { InboxesModule } from '../inboxes/inboxes.module';
     }),
   ],
   controllers: [EvolutionController],
-  providers: [EvolutionService],
+  providers: [EvolutionService, HmacGuard],
   exports: [EvolutionService],
 })
 export class WebhooksModule {}

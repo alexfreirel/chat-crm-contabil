@@ -1,6 +1,10 @@
-import { Controller, Post, Body, Headers, HttpCode } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, UseGuards } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { EvolutionService } from './evolution.service';
+import { HmacGuard } from './guards/hmac.guard';
 
+@SkipThrottle()
+@UseGuards(HmacGuard)
 @Controller('webhooks/evolution')
 export class EvolutionController {
   constructor(private readonly evolutionService: EvolutionService) {}
@@ -10,7 +14,7 @@ export class EvolutionController {
   async handleWebhook(@Body() payload: any) {
     // Basic support for different event types
     const eventType = payload.event as string;
-    
+
     if (eventType === 'messages.upsert') {
       await this.evolutionService.handleMessagesUpsert(payload);
     } else if (eventType === 'messages.update') {

@@ -11,6 +11,7 @@ import {
   UseInterceptors,
   UploadedFile,
   Req,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { MessagesService } from './messages.service';
@@ -22,8 +23,16 @@ export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
 
   @Get('conversation/:id')
-  getMessages(@Param('id') conversationId: string) {
-    return this.messagesService.getMessages(conversationId);
+  getMessages(
+    @Param('id') conversationId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.messagesService.getMessages(
+      conversationId,
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 100,
+    );
   }
 
   @Get('link-preview')
@@ -43,7 +52,13 @@ export class MessagesController {
     @Req() req: any,
     @Body('replyToId') replyToId?: string,
   ) {
-    return this.messagesService.sendMessage(conversationId, text, replyToId, req.user?.id);
+    if (!text || !text.trim()) {
+      throw new BadRequestException('Texto nao pode ser vazio');
+    }
+    if (text.length > 5000) {
+      throw new BadRequestException('Texto excede o limite de 5000 caracteres');
+    }
+    return this.messagesService.sendMessage(conversationId, text.trim(), replyToId, req.user?.id);
   }
 
   @Post('send-audio')

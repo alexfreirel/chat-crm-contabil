@@ -3,6 +3,7 @@ import { Ubuntu_Sans } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers';
 import { GTMScript, GTMNoScript } from '@/components/GTMScript';
+import { Toaster } from 'react-hot-toast';
 
 const ubuntuSans = Ubuntu_Sans({
   subsets: ['latin'],
@@ -33,6 +34,7 @@ export default function RootLayout({
         {/* GTM noscript fallback */}
         <GTMNoScript />
         <Providers>
+          <Toaster position="top-right" toastOptions={{ style: { fontSize: '14px' } }} />
           <main className="min-h-screen flex flex-col">
             {children}
           </main>

@@ -16,6 +16,7 @@ import { playNotificationSound } from '@/lib/notificationSounds';
 import api from '@/lib/api';
 import { io, Socket } from 'socket.io-client';
 import { CRM_STAGES, findStage, normalizeStage } from '@/lib/crmStages';
+import { showError, showSuccess } from '@/lib/toast';
 
 interface ConversationSummary {
   id: string;
@@ -116,6 +117,10 @@ export default function Dashboard() {
   const [selectedInboxId, setSelectedInboxId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
+  const [msgTotalPages, setMsgTotalPages] = useState(1);
+  const [msgCurrentPage, setMsgCurrentPage] = useState(1);
+  const [loadingMoreMsgs, setLoadingMoreMsgs] = useState(false);
+  const [socketConnected, setSocketConnected] = useState(true);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -295,11 +300,13 @@ export default function Dashboard() {
   const fetchConversations = useCallback(async (inboxId?: string | null, silent = false) => {
     try {
       const res = await api.get('/conversations', {
-        params: { inboxId: inboxId || undefined },
+        params: { inboxId: inboxId || undefined, page: 1, limit: 50 },
         // silent=true: chamadas de background (inboxUpdate) não disparam redirect global de 401
         ...( silent ? { _silent401: true } as any : {} ),
       });
-      setConversations(res.data || []);
+      // Suporta resposta paginada { data, total, ... } ou array legado
+      const items = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+      setConversations(items);
     } catch (e: any) {
       if (e.response?.status === 401 && !silent) {
         // Deixa o interceptor global (api.ts) tratar via evento auth:logout
@@ -354,6 +361,7 @@ export default function Dashboard() {
     const socket = io(wsUrl, {
       path: getSocketPath(),
       transports: ['polling', 'websocket'],
+      auth: { token: localStorage.getItem('token') || '' },
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
@@ -362,6 +370,7 @@ export default function Dashboard() {
 
     socket.on('connect', () => {
       console.log('[SOCKET] Connected to dashboard ID:', socket.id);
+      setSocketConnected(true);
       // Re-join current conversation room on reconnect
       const currentConvoId = selectedIdRef.current;
       if (currentConvoId && !currentConvoId.startsWith('demo-')) {
@@ -379,6 +388,7 @@ export default function Dashboard() {
 
     socket.on('disconnect', () => {
       console.log('[SOCKET] Disconnected from dashboard');
+      setSocketConnected(false);
     });
 
     socket.on('connect_error', (err) => {
@@ -531,6 +541,8 @@ export default function Dashboard() {
     setReplyingTo(null);
     if (!selectedId || selectedId.startsWith('demo-')) {
       setMessages([]);
+      setMsgTotalPages(1);
+      setMsgCurrentPage(1);
       return;
     }
 
@@ -538,8 +550,14 @@ export default function Dashboard() {
 
     const fetchDetail = async () => {
       try {
-        const res = await api.get(`/conversations/${selectedId}`);
-        setMessages(res.data?.messages || []);
+        // Buscar mensagens via endpoint paginado (pagina mais recente primeiro)
+        const msgRes = await api.get(`/messages/conversation/${selectedId}`, {
+          params: { page: 1, limit: 100 },
+        });
+        const msgData = Array.isArray(msgRes.data) ? msgRes.data : (msgRes.data?.data || []);
+        setMessages(msgData);
+        setMsgTotalPages(msgRes.data?.totalPages || 1);
+        setMsgCurrentPage(1);
 
         if (socketRef.current) {
           // Leave previous room before joining new one
@@ -575,15 +593,15 @@ export default function Dashboard() {
     fetchDetail();
   }, [selectedId]);
 
-  // Auto-scroll
+  // Auto-scroll (only when NOT loading older messages)
   useEffect(() => {
-    if (scrollRef.current) {
+    if (scrollRef.current && !loadingMoreMsgs) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, loadingMoreMsgs]);
 
   const handleSend = async () => {
-    if (!text.trim() || !selectedId || selectedId.startsWith('demo-') || sending) return;
+    if (!text.trim() || !selectedId || selectedId.startsWith('demo-') || sending || text.length > 5000) return;
     const msgText = text;
     const replyId = replyingTo?.id;
     setSending(true);
@@ -603,8 +621,9 @@ export default function Dashboard() {
         });
       }
       inputRef.current?.focus();
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to send message', e);
+      showError(e.response?.data?.message || 'Falha ao enviar mensagem');
       setText(msgText); // Restaura o texto em caso de erro
     } finally {
       setSending(false);
@@ -618,6 +637,7 @@ export default function Dashboard() {
       fetchConversations();
     } catch (e) {
       console.error('Failed to accept', e);
+      showError('Falha ao aceitar conversa');
     }
   };
 
@@ -630,6 +650,7 @@ export default function Dashboard() {
       fetchConversations();
     } catch (e) {
       console.error('Failed to close', e);
+      showError('Falha ao fechar conversa');
     }
   };
 
@@ -724,6 +745,7 @@ export default function Dashboard() {
       fetchConversations(selectedInboxIdRef.current);
     } catch (e: any) {
       console.error('Failed to return to origin', e);
+      showError('Falha ao devolver conversa');
     }
   };
 
@@ -734,6 +756,7 @@ export default function Dashboard() {
       fetchConversations(selectedInboxIdRef.current);
     } catch (e: any) {
       console.error('Failed to keep in inbox', e);
+      showError('Falha ao manter no inbox');
     }
   };
 
@@ -909,6 +932,7 @@ export default function Dashboard() {
       }
     } catch (e) {
       console.error('Falha ao enviar arquivo', e);
+      showError('Falha ao enviar arquivo');
     } finally {
       setUploadingFile(false);
     }
@@ -1085,6 +1109,7 @@ export default function Dashboard() {
       setMessages(prev => prev.map((m: any) => m.id === msgId ? { ...m, text: res.data.transcription } : m));
     } catch (e) {
       console.error('Erro ao transcrever áudio', e);
+      showError('Falha ao transcrever áudio');
     } finally {
       setTranscribing(prev => ({ ...prev, [msgId]: false }));
     }
@@ -1096,7 +1121,7 @@ export default function Dashboard() {
       const res = await api.patch(`/messages/${msgId}`, { text: newText.trim() });
       setMessages(prev => prev.map((m: any) => m.id === msgId ? { ...m, ...res.data } : m));
       setEditingMsg(null);
-    } catch (e) { console.error('Erro ao editar mensagem', e); }
+    } catch (e) { console.error('Erro ao editar mensagem', e); showError('Falha ao editar mensagem'); }
   };
 
   const formatTime = (dateStr?: string) => {
@@ -1363,6 +1388,13 @@ export default function Dashboard() {
         )}
         {selected ? (
           <>
+            {/* Banner de reconexao WebSocket */}
+            {!socketConnected && (
+              <div className="bg-yellow-500 text-white text-center text-sm py-1.5 px-4 flex items-center justify-center gap-2 z-50 shrink-0">
+                <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse" />
+                Conexao perdida. Reconectando...
+              </div>
+            )}
             <header className="min-h-[60px] md:min-h-[80px] py-2 md:py-3 px-3 md:px-8 border-b border-border bg-card/50 backdrop-blur-md flex items-center justify-between z-30 shrink-0">
                <div className="flex items-center gap-2 md:gap-4 min-w-0 flex-1">
                  {/* Botão Voltar - mobile only */}
@@ -1699,6 +1731,46 @@ export default function Dashboard() {
               </div>
             <div className="absolute inset-0 px-1 sm:px-6 md:px-8 py-3 sm:py-5 md:py-8 overflow-y-auto custom-scrollbar" ref={scrollRef}>
               <div className="flex flex-col gap-3 md:gap-4 max-w-4xl mx-auto pb-4 relative z-10">
+                {/* Botao carregar mensagens anteriores */}
+                {isRealConvo && msgTotalPages > 1 && msgCurrentPage < msgTotalPages && (
+                  <div className="flex justify-center py-2">
+                    <button
+                      className="text-xs text-muted-foreground hover:text-foreground bg-muted/50 hover:bg-muted px-4 py-1.5 rounded-full transition-colors disabled:opacity-50"
+                      disabled={loadingMoreMsgs}
+                      onClick={async () => {
+                        if (!selectedId) return;
+                        setLoadingMoreMsgs(true);
+                        try {
+                          const nextPage = msgCurrentPage + 1;
+                          const res = await api.get(`/messages/conversation/${selectedId}`, {
+                            params: { page: nextPage, limit: 100 },
+                          });
+                          const olderMsgs = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+                          const scrollEl = scrollRef.current;
+                          const prevScrollHeight = scrollEl?.scrollHeight || 0;
+                          setMessages(prev => {
+                            const existingIds = new Set(prev.map(m => m.id));
+                            const newMsgs = olderMsgs.filter((m: any) => !existingIds.has(m.id));
+                            return [...newMsgs, ...prev];
+                          });
+                          setMsgCurrentPage(nextPage);
+                          // Manter posicao de scroll ao carregar msgs antigas
+                          requestAnimationFrame(() => {
+                            if (scrollEl) {
+                              scrollEl.scrollTop = scrollEl.scrollHeight - prevScrollHeight;
+                            }
+                          });
+                        } catch (e) {
+                          console.error('Falha ao carregar mensagens anteriores', e);
+                        } finally {
+                          setLoadingMoreMsgs(false);
+                        }
+                      }}
+                    >
+                      {loadingMoreMsgs ? 'Carregando...' : 'Carregar mensagens anteriores'}
+                    </button>
+                  </div>
+                )}
                 {isRealConvo && messages.length > 0 ? (
                   (() => {
                     let lastMsgDateKey = '';
@@ -2311,6 +2383,12 @@ export default function Dashboard() {
                         isRealConvo ? (isMobile ? 'pr-[7rem]' : 'pr-24') : 'pr-4'
                       }`}
                     />
+                    {/* Contador de caracteres */}
+                    {text.length > 4500 && (
+                      <div className={`absolute -top-5 right-2 text-[10px] font-medium ${text.length > 5000 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                        {text.length}/5000
+                      </div>
+                    )}
                     {/* Ícones internos (direita) */}
                     {isRealConvo && (
                       <div className="absolute bottom-2 right-2 flex items-center gap-0.5">
@@ -2372,7 +2450,7 @@ export default function Dashboard() {
                   {/* Botão Enviar */}
                   <button
                     onClick={handleSend}
-                    disabled={!isRealConvo || !text.trim() || sending}
+                    disabled={!isRealConvo || !text.trim() || sending || text.length > 5000}
                     className="bg-gradient-to-r from-primary to-ring p-3 md:p-4 rounded-xl shadow-lg disabled:opacity-50 hover:-translate-y-1 transition-transform shrink-0 mb-0.5"
                   >
                     <Send size={18} className="text-primary-foreground md:w-5 md:h-5" />

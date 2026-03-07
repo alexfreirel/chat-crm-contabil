@@ -19,12 +19,23 @@ export class MessagesService {
     private settings: SettingsService,
   ) {}
 
-  async getMessages(conversationId: string) {
-    return this.prisma.message.findMany({
-      where: { conversation_id: conversationId },
-      orderBy: { created_at: 'asc' },
-      include: { media: true }
-    });
+  async getMessages(conversationId: string, page = 1, limit = 100) {
+    const safePage = Math.max(1, page);
+    const safeLimit = Math.min(Math.max(1, limit), 500);
+
+    const where = { conversation_id: conversationId };
+    const [data, total] = await Promise.all([
+      this.prisma.message.findMany({
+        where,
+        orderBy: { created_at: 'asc' },
+        skip: (safePage - 1) * safeLimit,
+        take: safeLimit,
+        include: { media: true },
+      }),
+      this.prisma.message.count({ where }),
+    ]);
+
+    return { data, total, page: safePage, limit: safeLimit, totalPages: Math.ceil(total / safeLimit) };
   }
 
   /**
