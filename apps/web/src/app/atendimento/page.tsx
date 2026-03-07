@@ -1334,12 +1334,12 @@ export default function Dashboard() {
                    )}
                  </div>
                  <div
-                   className={`min-w-0 flex-1 ${isMobile ? 'cursor-pointer active:opacity-70 transition-opacity' : ''}`}
-                   onClick={() => isMobile && setShowDetailsPanel(true)}
+                   className="min-w-0 flex-1 cursor-pointer active:opacity-70 transition-opacity"
+                   onClick={() => setShowDetailsPanel(true)}
                  >
                    <div className="flex items-center gap-1">
                      <h3 className="font-bold text-base md:text-lg leading-tight truncate">{selected.contactName || selected.contactPhone}</h3>
-                     {isMobile && <ChevronRight size={14} className="text-muted-foreground shrink-0" />}
+                     <ChevronRight size={14} className="text-muted-foreground shrink-0" />
                    </div>
                    <div className="text-[11px] md:text-xs text-muted-foreground uppercase tracking-wider font-semibold mt-0.5 md:mt-1 truncate">
                      {selected.channel} <span className="mx-1">•</span> {selected.contactPhone}
@@ -1904,8 +1904,8 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* ═══ DETAILS PANEL — deslize ← para abrir ═══ */}
-            {isMobile && selectedId && selected && (
+            {/* ═══ DETAILS PANEL — deslize ← (mobile) ou clique no nome (desktop) ═══ */}
+            {selectedId && selected && (
               <div
                 className={`absolute inset-0 z-50 bg-background flex flex-col transition-transform duration-300 ease-in-out ${
                   showDetailsPanel ? 'translate-x-0' : 'translate-x-full'
