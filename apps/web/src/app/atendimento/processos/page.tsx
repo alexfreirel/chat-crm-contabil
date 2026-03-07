@@ -63,9 +63,10 @@ interface CaseTask {
   title: string;
   description: string | null;
   status: string;
-  due_at: string | null;
+  start_at: string;
   assigned_user_id: string | null;
   assigned_user: { id: string; name: string } | null;
+  created_by?: { id: string; name: string } | null;
   _count?: { comments: number };
 }
 
@@ -114,9 +115,9 @@ const EVENT_TYPES = [
 ];
 
 const TASK_STATUSES = [
-  { id: 'A_FAZER', label: 'A fazer', color: '#6b7280' },
-  { id: 'EM_ANDAMENTO', label: 'Em andamento', color: '#3b82f6' },
-  { id: 'CONCLUIDA', label: 'Concluída', color: '#10b981' },
+  { id: 'AGENDADO', label: 'A fazer', color: '#6b7280' },
+  { id: 'CONFIRMADO', label: 'Em andamento', color: '#3b82f6' },
+  { id: 'CONCLUIDO', label: 'Concluída', color: '#10b981' },
 ];
 
 // ─── ProcessoCard ──────────────────────────────────────────────
@@ -305,7 +306,7 @@ function ProcessoDetailPanel({
   const fetchTasks = useCallback(async () => {
     setLoadingTasks(true);
     try {
-      const res = await api.get(`/tasks/legal-case/${legalCase.id}`);
+      const res = await api.get(`/calendar/events/legal-case/${legalCase.id}`);
       setTasks(res.data || []);
     } catch {} finally { setLoadingTasks(false); }
   }, [legalCase.id]);
@@ -378,13 +379,18 @@ function ProcessoDetailPanel({
 
   const handleCreateTask = async () => {
     if (!newTaskTitle.trim()) return;
+    const startAt = newTaskDue ? new Date(newTaskDue).toISOString() : new Date().toISOString();
+    const endAt = new Date(new Date(startAt).getTime() + 30 * 60000).toISOString();
     try {
-      await api.post('/tasks', {
+      await api.post('/calendar/events', {
+        type: 'TAREFA',
         title: newTaskTitle,
         description: newTaskDesc || undefined,
         legal_case_id: legalCase.id,
         assigned_user_id: newTaskAssignee || undefined,
-        due_at: newTaskDue || undefined,
+        start_at: startAt,
+        end_at: endAt,
+        priority: 'NORMAL',
       });
       setNewTaskTitle(''); setNewTaskDesc(''); setNewTaskAssignee(''); setNewTaskDue('');
       setShowNewTask(false);
@@ -394,7 +400,7 @@ function ProcessoDetailPanel({
 
   const handleTaskStatusChange = async (taskId: string, status: string) => {
     try {
-      await api.patch(`/tasks/${taskId}`, { status });
+      await api.patch(`/calendar/events/${taskId}/status`, { status });
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status } : t));
     } catch {}
   };
@@ -402,7 +408,7 @@ function ProcessoDetailPanel({
   const fetchComments = async (taskId: string) => {
     setLoadingComments(true);
     try {
-      const res = await api.get(`/tasks/${taskId}/comments`);
+      const res = await api.get(`/calendar/events/${taskId}/comments`);
       setComments(res.data || []);
     } catch {} finally { setLoadingComments(false); }
   };
@@ -420,7 +426,7 @@ function ProcessoDetailPanel({
   const handleAddComment = async () => {
     if (!newComment.trim() || !expandedTask) return;
     try {
-      await api.post(`/tasks/${expandedTask}/comments`, { text: newComment });
+      await api.post(`/calendar/events/${expandedTask}/comments`, { text: newComment });
       setNewComment('');
       fetchComments(expandedTask);
     } catch {}
@@ -935,9 +941,9 @@ function ProcessoDetailPanel({
                                 <User size={9} /> {task.assigned_user.name}
                               </span>
                             )}
-                            {task.due_at && (
+                            {task.start_at && (
                               <span className="flex items-center gap-0.5">
-                                <Calendar size={9} /> {new Date(task.due_at).toLocaleDateString('pt-BR')}
+                                <Calendar size={9} /> {new Date(task.start_at).toLocaleDateString('pt-BR')}
                               </span>
                             )}
                             {(task._count?.comments ?? 0) > 0 && (

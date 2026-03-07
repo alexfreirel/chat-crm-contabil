@@ -60,7 +60,6 @@ export function Sidebar() {
     { label: 'Inbox (WhatsApp)', href: '/atendimento', icon: <MessageSquare size={22} strokeWidth={2} />, match: (p: string) => p === '/atendimento' || p.startsWith('/atendimento/chat'), badge: unreadTotal },
     { label: 'Leads & CRM', href: '/atendimento/crm', icon: <Briefcase size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/crm') },
     { label: 'Contatos', href: '/atendimento/contacts', icon: <Users size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/contacts') },
-    { label: 'Tarefas', href: '/atendimento/tasks', icon: <Check size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/tasks') },
     { label: 'Agenda', href: '/atendimento/agenda', icon: <Calendar size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/agenda') },
     { label: 'Advogado', href: '/atendimento/advogado', icon: <Scale size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/advogado') },
     { label: 'Processos', href: '/atendimento/processos', icon: <BookOpen size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/processos') },

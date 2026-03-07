@@ -59,6 +59,7 @@ export class CalendarService {
         legal_case: { select: { id: true, case_number: true, legal_area: true } },
         appointment_type: true,
         reminders: true,
+        _count: { select: { comments: true } },
       },
       orderBy: { start_at: 'asc' },
     });
@@ -74,6 +75,7 @@ export class CalendarService {
         legal_case: { select: { id: true, case_number: true, legal_area: true } },
         appointment_type: true,
         reminders: true,
+        _count: { select: { comments: true } },
       },
     });
     if (!event) throw new NotFoundException('Evento nao encontrado');
@@ -640,5 +642,133 @@ export class CalendarService {
 
     lines.push('END:VCALENDAR');
     return lines.join('\r\n');
+  }
+
+  // ─── Ownership Check ──────────────────────────────────
+
+  async checkOwnership(eventId: string, userId: string, userRole: string): Promise<boolean> {
+    if (userRole === 'ADMIN') return true;
+    const event = await this.prisma.calendarEvent.findUnique({
+      where: { id: eventId },
+      select: { created_by_id: true, assigned_user_id: true },
+    });
+    if (!event) throw new NotFoundException('Evento nao encontrado');
+    return event.created_by_id === userId || event.assigned_user_id === userId;
+  }
+
+  // ─── Comments ─────────────────────────────────────────
+
+  async addComment(eventId: string, userId: string, text: string) {
+    const comment = await (this.prisma as any).calendarEventComment.create({
+      data: { event_id: eventId, user_id: userId, text },
+      include: { user: { select: { id: true, name: true } } },
+    });
+
+    // Notificar assigned e creator (exceto quem comentou)
+    const event = await this.prisma.calendarEvent.findUnique({
+      where: { id: eventId },
+      select: { assigned_user_id: true, created_by_id: true, title: true },
+    });
+    if (event) {
+      const notifyIds = new Set<string>();
+      if (event.assigned_user_id && event.assigned_user_id !== userId) notifyIds.add(event.assigned_user_id);
+      if (event.created_by_id !== userId) notifyIds.add(event.created_by_id);
+      for (const uid of notifyIds) {
+        try { this.chatGateway.server?.to(`user_${uid}`).emit('calendar_update'); } catch {}
+      }
+    }
+
+    return comment;
+  }
+
+  async findComments(eventId: string) {
+    return (this.prisma as any).calendarEventComment.findMany({
+      where: { event_id: eventId },
+      include: { user: { select: { id: true, name: true } } },
+      orderBy: { created_at: 'asc' },
+    });
+  }
+
+  // ─── Legal Case Tasks ─────────────────────────────────
+
+  async findByLegalCase(legalCaseId: string) {
+    return this.prisma.calendarEvent.findMany({
+      where: { legal_case_id: legalCaseId, type: 'TAREFA' },
+      include: {
+        assigned_user: { select: { id: true, name: true } },
+        created_by: { select: { id: true, name: true } },
+        _count: { select: { comments: true } },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+  }
+
+  // ─── Migrate Tasks ────────────────────────────────────
+
+  async migrateOrphanTasks() {
+    const orphanTasks = await this.prisma.task.findMany({
+      where: { calendar_event_id: null },
+      include: { comments: true },
+    });
+
+    let migrated = 0;
+    for (const task of orphanTasks) {
+      const creatorId = task.assigned_user_id || (await this.prisma.user.findFirst({ where: { role: 'ADMIN' }, select: { id: true } }))?.id;
+      if (!creatorId) continue;
+
+      const event = await this.prisma.calendarEvent.create({
+        data: {
+          type: 'TAREFA',
+          title: task.title,
+          description: task.description,
+          start_at: task.due_at || task.created_at,
+          end_at: task.due_at ? new Date(task.due_at.getTime() + 30 * 60000) : null,
+          status: task.status === 'CONCLUIDO' || task.status === 'CONCLUIDA' ? 'CONCLUIDO'
+                : task.status === 'CANCELADA' ? 'CANCELADO'
+                : 'AGENDADO',
+          assigned_user_id: task.assigned_user_id,
+          created_by_id: creatorId,
+          lead_id: task.lead_id,
+          conversation_id: task.conversation_id,
+          legal_case_id: task.legal_case_id,
+          tenant_id: task.tenant_id,
+        },
+      });
+
+      await this.prisma.task.update({
+        where: { id: task.id },
+        data: { calendar_event_id: event.id },
+      });
+
+      // Migrar comentários
+      for (const c of task.comments) {
+        await (this.prisma as any).calendarEventComment.create({
+          data: { event_id: event.id, user_id: c.user_id, text: c.text, created_at: c.created_at },
+        });
+      }
+      migrated++;
+    }
+
+    // Migrar comentários de tasks já vinculadas
+    const linkedTasks = await this.prisma.task.findMany({
+      where: { calendar_event_id: { not: null } },
+      include: { comments: true },
+    });
+    let commentsMigrated = 0;
+    for (const task of linkedTasks) {
+      for (const c of task.comments) {
+        const exists = await (this.prisma as any).calendarEventComment.findFirst({
+          where: { event_id: task.calendar_event_id!, user_id: c.user_id, text: c.text },
+        });
+        if (!exists) {
+          await (this.prisma as any).calendarEventComment.create({
+            data: { event_id: task.calendar_event_id!, user_id: c.user_id, text: c.text, created_at: c.created_at },
+          });
+          commentsMigrated++;
+        }
+      }
+    }
+
+    return { orphanTasksMigrated: migrated, commentsMigrated };
   }
 }

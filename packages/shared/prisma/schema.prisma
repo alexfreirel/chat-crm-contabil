@@ -45,6 +45,7 @@ model User {
   calendar_events_assigned CalendarEvent[] @relation("EventAssigned")
   calendar_events_created  CalendarEvent[] @relation("EventCreator")
   schedules                UserSchedule[]
+  calendar_event_comments  CalendarEventComment[]
 }
 
 model Lead {
@@ -440,6 +441,7 @@ model CalendarEvent {
   appointment_type    AppointmentType? @relation(fields: [appointment_type_id], references: [id])
 
   reminders           EventReminder[]
+  comments            CalendarEventComment[]
   task                Task?
   tenant              Tenant?          @relation(fields: [tenant_id], references: [id])
 
@@ -498,4 +500,17 @@ model Holiday {
   tenant           Tenant?  @relation(fields: [tenant_id], references: [id])
 
   @@index([tenant_id, date])
+}
+
+model CalendarEventComment {
+  id         String        @id @default(uuid())
+  event_id   String
+  user_id    String
+  text       String
+  created_at DateTime      @default(now())
+
+  event      CalendarEvent @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  user       User          @relation(fields: [user_id], references: [id])
+
+  @@index([event_id, created_at])
 }

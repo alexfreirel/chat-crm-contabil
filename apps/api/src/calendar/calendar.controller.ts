@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Request, Put, Res, Header } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Request, Put, Res, ForbiddenException } from '@nestjs/common';
 import type { Response } from 'express';
 import { CalendarService } from './calendar.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -19,18 +19,28 @@ export class CalendarController {
     @Query('leadId') leadId: string | undefined,
     @Query('legalCaseId') legalCaseId: string | undefined,
     @Query('search') search: string | undefined,
+    @Query('showAll') showAll: string | undefined,
     @Request() req: any,
   ) {
+    // Default: mostra apenas eventos do usuario logado
+    // showAll=true: mostra todos (opcionalmente filtrado por userId)
+    const effectiveUserId = showAll === 'true' ? userId : (userId || req.user.id);
     return this.calendarService.findAll({
       start,
       end,
       type,
-      userId,
+      userId: effectiveUserId,
       leadId,
       legalCaseId,
       search,
       tenantId: req.user?.tenant_id,
     });
+  }
+
+  // IMPORTANTE: rotas com paths fixos ANTES de :id para evitar conflito
+  @Get('events/legal-case/:caseId')
+  findByLegalCase(@Param('caseId') caseId: string) {
+    return this.calendarService.findByLegalCase(caseId);
   }
 
   @Get('events/:id')
@@ -48,11 +58,15 @@ export class CalendarController {
   }
 
   @Patch('events/:id')
-  update(
+  async update(
     @Param('id') id: string,
     @Body() data: any,
-    @Query('updateScope') updateScope?: string,
+    @Query('updateScope') updateScope: string | undefined,
+    @Request() req: any,
   ) {
+    const canEdit = await this.calendarService.checkOwnership(id, req.user.id, req.user.role);
+    if (!canEdit) throw new ForbiddenException('Sem permissao para editar este evento');
+
     if (updateScope === 'all') {
       return this.calendarService.updateRecurrenceAll(id, data);
     }
@@ -60,19 +74,37 @@ export class CalendarController {
   }
 
   @Patch('events/:id/status')
-  updateStatus(@Param('id') id: string, @Body('status') status: string) {
+  async updateStatus(@Param('id') id: string, @Body('status') status: string, @Request() req: any) {
+    const canEdit = await this.calendarService.checkOwnership(id, req.user.id, req.user.role);
+    if (!canEdit) throw new ForbiddenException('Sem permissao para alterar status deste evento');
     return this.calendarService.updateStatus(id, status);
   }
 
   @Delete('events/:id')
-  remove(
+  async remove(
     @Param('id') id: string,
-    @Query('deleteScope') deleteScope?: string,
+    @Query('deleteScope') deleteScope: string | undefined,
+    @Request() req: any,
   ) {
+    const canEdit = await this.calendarService.checkOwnership(id, req.user.id, req.user.role);
+    if (!canEdit) throw new ForbiddenException('Sem permissao para remover este evento');
+
     if (deleteScope === 'all') {
       return this.calendarService.removeRecurrenceAll(id);
     }
     return this.calendarService.remove(id);
+  }
+
+  // ─── Event Comments ──────────────────────────────────
+
+  @Get('events/:id/comments')
+  findComments(@Param('id') id: string) {
+    return this.calendarService.findComments(id);
+  }
+
+  @Post('events/:id/comments')
+  addComment(@Param('id') id: string, @Body('text') text: string, @Request() req: any) {
+    return this.calendarService.addComment(id, req.user.id, text);
   }
 
   // ─── Conflict Detection ─────────────────────────────────
@@ -201,5 +233,13 @@ export class CalendarController {
       'Content-Disposition': 'attachment; filename="calendar-export.ics"',
     });
     res.send(icsContent);
+  }
+
+  // ─── Migration ────────────────────────────────────────
+
+  @Post('migrate-tasks')
+  async migrateTasks(@Request() req: any) {
+    if (req.user.role !== 'ADMIN') throw new ForbiddenException('Apenas ADMIN pode migrar');
+    return this.calendarService.migrateOrphanTasks();
   }
 }

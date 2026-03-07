@@ -10,7 +10,7 @@ import '@schedule-x/theme-default/dist/index.css';
 import {
   Plus, X, Calendar as CalendarIcon, Filter, ChevronDown,
   Clock, MapPin, User, FileText, Gavel, AlertTriangle, CheckCircle2, Bell,
-  Search, Download, Copy, Repeat
+  Search, Download, Copy, Repeat, MessageSquare, Users, Send
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 import api from '@/lib/api';
@@ -35,10 +35,19 @@ interface CalendarEvent {
   conversation_id?: string | null;
   legal_case_id?: string | null;
   assigned_user_id?: string | null;
+  created_by_id?: string | null;
   assigned_user?: { id: string; name: string } | null;
   created_by?: { id: string; name: string } | null;
   lead?: { id: string; name: string | null; phone: string } | null;
   legal_case?: { id: string; case_number: string | null; legal_area: string | null } | null;
+  _count?: { comments: number };
+}
+
+interface EventComment {
+  id: string;
+  text: string;
+  created_at: string;
+  user: { id: string; name: string };
 }
 
 interface UserOption {
@@ -176,6 +185,15 @@ export default function AgendaPage() {
     recurrence_days: [] as number[],
   });
 
+  // Usuario logado + controle de acesso
+  const [currentUserId, setCurrentUserId] = useState<string>('');
+  const [currentUserRole, setCurrentUserRole] = useState<string>('');
+  const [showAllUsers, setShowAllUsers] = useState(false);
+
+  // Comentarios do evento
+  const [eventComments, setEventComments] = useState<EventComment[]>([]);
+  const [newComment, setNewComment] = useState('');
+
   // Real-time & UX
   const [reminderToast, setReminderToast] = useState<{ eventId: string; title: string; type: string; start_at: string; minutesBefore: number } | null>(null);
   const [conflictWarning, setConflictWarning] = useState<{ id: string; title: string; start_at: string; end_at: string }[]>([]);
@@ -203,7 +221,11 @@ export default function AgendaPage() {
       const params: any = {};
       if (start) params.start = start;
       if (end) params.end = end;
-      if (filterUserId) params.userId = filterUserId;
+      if (showAllUsers) {
+        params.showAll = 'true';
+        if (filterUserId) params.userId = filterUserId;
+      }
+      // Quando showAllUsers=false, backend filtra automaticamente pelo user logado
       const res = await api.get('/calendar/events', { params });
       setEvents(res.data || []);
     } catch {
@@ -211,7 +233,7 @@ export default function AgendaPage() {
     } finally {
       setLoading(false);
     }
-  }, [filterUserId]);
+  }, [filterUserId, showAllUsers]);
 
   // Drag-and-drop persistence
   const handleDragUpdate = useCallback(async (updatedEvent: any) => {
@@ -261,6 +283,12 @@ export default function AgendaPage() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) { router.push('/atendimento/login'); return; }
+    // Extrair userId e role do JWT
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      if (payload?.sub) setCurrentUserId(payload.sub);
+      if (payload?.role) setCurrentUserRole(payload.role);
+    } catch {}
     // Buscar usuarios e leads para dropdowns
     api.get('/users').then(r => setUsers(r.data || [])).catch(() => {});
     api.get('/leads').then(r => setLeads((r.data || []).map((l: any) => ({ id: l.id, name: l.name, phone: l.phone })))).catch(() => {});
@@ -272,7 +300,7 @@ export default function AgendaPage() {
     const filtered = events.filter(e => filterTypes.includes(e.type));
     const calEvents = filtered.map(e => ({
       id: e.id,
-      title: `${EVENT_TYPES.find(t => t.id === e.type)?.emoji || ''} ${e.title}${(e as any).recurrence_rule || (e as any).parent_event_id ? ' 🔁' : ''}`,
+      title: `${EVENT_TYPES.find(t => t.id === e.type)?.emoji || ''} ${e.title}${(e as any).recurrence_rule || (e as any).parent_event_id ? ' 🔁' : ''}${e._count?.comments ? ` 💬${e._count.comments}` : ''}`,
       start: toLocalDateTime(e.start_at),
       end: e.end_at ? toLocalDateTime(e.end_at) : toLocalDateTime(new Date(new Date(e.start_at).getTime() + 30 * 60000).toISOString()),
       calendarId: e.type,
@@ -286,7 +314,7 @@ export default function AgendaPage() {
     if (rangeRef.current) {
       fetchEvents(rangeRef.current.start, rangeRef.current.end);
     }
-  }, [filterUserId, fetchEvents]);
+  }, [filterUserId, showAllUsers, fetchEvents]);
 
   // ─── Socket.io Real-Time ─────────────────────────────
   useEffect(() => {
@@ -340,7 +368,7 @@ export default function AgendaPage() {
       all_day: false,
       priority: 'NORMAL',
       location: '',
-      assigned_user_id: '',
+      assigned_user_id: currentUserId,
       lead_id: '',
       legal_case_id: '',
       reminders: [{ minutes_before: 30, channel: 'WHATSAPP' }],
@@ -349,6 +377,8 @@ export default function AgendaPage() {
       recurrence_days: [],
     });
     setEditingEvent(null);
+    setEventComments([]);
+    setNewComment('');
     setConflictWarning([]);
     setShowModal(true);
   };
@@ -374,7 +404,30 @@ export default function AgendaPage() {
     });
     setEditingEvent(ev);
     setConflictWarning([]);
+    setNewComment('');
+    // Buscar comentarios
+    api.get(`/calendar/events/${ev.id}/comments`).then(r => setEventComments(r.data || [])).catch(() => setEventComments([]));
     setShowModal(true);
+  };
+
+  const fetchEventComments = async (eventId: string) => {
+    try {
+      const res = await api.get(`/calendar/events/${eventId}/comments`);
+      setEventComments(res.data || []);
+    } catch {
+      setEventComments([]);
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!editingEvent || !newComment.trim()) return;
+    try {
+      await api.post(`/calendar/events/${editingEvent.id}/comments`, { text: newComment.trim() });
+      setNewComment('');
+      fetchEventComments(editingEvent.id);
+    } catch (e: any) {
+      alert('Erro ao comentar: ' + (e?.response?.data?.message || e?.message));
+    }
   };
 
   const handleSave = async (forceIgnoreConflict = false) => {
@@ -591,15 +644,30 @@ export default function AgendaPage() {
               <Filter size={14} />
               Filtros
             </button>
-            {/* Filtro por advogado */}
-            <select
-              value={filterUserId}
-              onChange={e => setFilterUserId(e.target.value)}
-              className="hidden md:block px-3 py-2 rounded-lg border border-border bg-card text-sm text-foreground"
+            {/* Toggle Meus eventos / Todos */}
+            <button
+              onClick={() => setShowAllUsers(v => !v)}
+              className={`hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                showAllUsers
+                  ? 'border-primary/40 bg-primary/10 text-primary'
+                  : 'border-border text-muted-foreground hover:bg-accent'
+              }`}
+              title={showAllUsers ? 'Mostrando todos' : 'Mostrando meus eventos'}
             >
-              <option value="">Todos os advogados</option>
-              {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
+              {showAllUsers ? <Users size={14} /> : <User size={14} />}
+              {showAllUsers ? 'Todos' : 'Meus eventos'}
+            </button>
+            {/* Filtro por advogado (so aparece quando "Todos" ativo) */}
+            {showAllUsers && (
+              <select
+                value={filterUserId}
+                onChange={e => setFilterUserId(e.target.value)}
+                className="hidden md:block px-3 py-2 rounded-lg border border-border bg-card text-sm text-foreground"
+              >
+                <option value="">Todos os advogados</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            )}
             {/* Search */}
             <div className="relative hidden md:block">
               <div className="flex items-center gap-1 px-3 py-2 rounded-lg border border-border bg-card text-sm">
@@ -675,14 +743,27 @@ export default function AgendaPage() {
                 {t.emoji} {t.label}
               </button>
             ))}
-            <select
-              value={filterUserId}
-              onChange={e => setFilterUserId(e.target.value)}
-              className="px-2.5 py-1.5 rounded-lg border border-border bg-card text-xs text-foreground"
+            <button
+              onClick={() => setShowAllUsers(v => !v)}
+              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                showAllUsers
+                  ? 'border-primary/40 bg-primary/10 text-primary'
+                  : 'border-border text-muted-foreground'
+              }`}
             >
-              <option value="">Todos</option>
-              {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
+              {showAllUsers ? <Users size={12} /> : <User size={12} />}
+              {showAllUsers ? 'Todos' : 'Meus'}
+            </button>
+            {showAllUsers && (
+              <select
+                value={filterUserId}
+                onChange={e => setFilterUserId(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg border border-border bg-card text-xs text-foreground"
+              >
+                <option value="">Todos</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            )}
           </div>
         )}
       </div>
@@ -799,10 +880,25 @@ export default function AgendaPage() {
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
             {/* Modal header */}
+            {(() => {
+              const canEdit = !editingEvent || currentUserRole === 'ADMIN'
+                || editingEvent.created_by_id === currentUserId
+                || editingEvent.assigned_user_id === currentUserId
+                || editingEvent.created_by?.id === currentUserId
+                || editingEvent.assigned_user?.id === currentUserId;
+              return (<>
             <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-border">
-              <h2 className="text-base font-bold text-foreground">
-                {editingEvent ? 'Editar Evento' : 'Novo Evento'}
-              </h2>
+              <div>
+                <h2 className="text-base font-bold text-foreground">
+                  {editingEvent ? (canEdit ? 'Editar Evento' : 'Visualizar Evento') : 'Novo Evento'}
+                </h2>
+                {editingEvent?.created_by && (
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Criado por: {editingEvent.created_by.name}
+                    {!canEdit && ' · Somente leitura'}
+                  </p>
+                )}
+              </div>
               <button onClick={() => setShowModal(false)} className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground">
                 <X size={18} />
               </button>
@@ -814,12 +910,13 @@ export default function AgendaPage() {
                 {EVENT_STATUSES.map(s => (
                   <button
                     key={s.id}
-                    onClick={() => handleStatusChange(s.id)}
+                    onClick={() => canEdit && handleStatusChange(s.id)}
+                    disabled={!canEdit}
                     className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-all border ${
                       editingEvent.status === s.id
                         ? 'text-white shadow-sm'
                         : 'opacity-50 hover:opacity-80'
-                    }`}
+                    } ${!canEdit ? 'cursor-not-allowed' : ''}`}
                     style={{
                       borderColor: s.color + '60',
                       background: editingEvent.status === s.id ? s.color : 'transparent',
@@ -832,6 +929,7 @@ export default function AgendaPage() {
               </div>
             )}
 
+            <fieldset disabled={!canEdit} className="contents">
             <div className="p-5 space-y-4">
               {/* Conflict warning */}
               {conflictWarning.length > 0 && (
@@ -1099,11 +1197,55 @@ export default function AgendaPage() {
                 />
               </div>
             </div>
+            </fieldset>
+
+              {/* Comentarios (sempre visivel, qualquer usuario pode comentar) */}
+              {editingEvent && (
+                <div className="px-5 pb-4">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1">
+                    <MessageSquare size={11} /> Comentarios ({eventComments.length})
+                  </label>
+                  {eventComments.length > 0 && (
+                    <div className="space-y-2 mb-3 max-h-40 overflow-y-auto">
+                      {eventComments.map(c => (
+                        <div key={c.id} className="p-2 rounded-lg bg-accent/30 border border-border/30">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <span className="text-[10px] font-bold text-foreground">{c.user.name}</span>
+                            <span className="text-[9px] text-muted-foreground">
+                              {new Date(c.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                              {' '}
+                              {new Date(c.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <p className="text-xs text-foreground/80">{c.text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newComment}
+                      onChange={e => setNewComment(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleAddComment(); }}
+                      placeholder="Adicionar comentario..."
+                      className="flex-1 px-3 py-1.5 rounded-lg border border-border bg-background text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                    <button
+                      onClick={handleAddComment}
+                      disabled={!newComment.trim()}
+                      className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1"
+                    >
+                      <Send size={11} />
+                    </button>
+                  </div>
+                </div>
+              )}
 
             {/* Modal footer */}
             <div className="flex items-center justify-between px-5 py-4 border-t border-border">
               <div className="flex items-center gap-1">
-                {editingEvent && (
+                {editingEvent && canEdit && (
                   <>
                     <button
                       onClick={() => handleDelete()}
@@ -1118,14 +1260,16 @@ export default function AgendaPage() {
                     >
                       <Copy size={12} /> Duplicar
                     </button>
-                    <button
-                      onClick={() => handleExportICS(editingEvent.id)}
-                      className="px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-accent rounded-lg transition-colors inline-flex items-center gap-1"
-                      title="Exportar .ics"
-                    >
-                      <Download size={12} /> .ics
-                    </button>
                   </>
+                )}
+                {editingEvent && (
+                  <button
+                    onClick={() => handleExportICS(editingEvent.id)}
+                    className="px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-accent rounded-lg transition-colors inline-flex items-center gap-1"
+                    title="Exportar .ics"
+                  >
+                    <Download size={12} /> .ics
+                  </button>
                 )}
               </div>
               <div className="flex gap-2">
@@ -1133,17 +1277,21 @@ export default function AgendaPage() {
                   onClick={() => setShowModal(false)}
                   className="px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-accent rounded-lg transition-colors"
                 >
-                  Cancelar
+                  {canEdit ? 'Cancelar' : 'Fechar'}
                 </button>
-                <button
-                  onClick={() => handleSave()}
-                  disabled={!formData.title.trim() || !formData.date}
-                  className="px-5 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors shadow-md disabled:opacity-40 disabled:pointer-events-none"
-                >
-                  {editingEvent ? 'Salvar' : 'Criar'}
-                </button>
+                {canEdit && (
+                  <button
+                    onClick={() => handleSave()}
+                    disabled={!formData.title.trim() || !formData.date}
+                    className="px-5 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors shadow-md disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    {editingEvent ? 'Salvar' : 'Criar'}
+                  </button>
+                )}
               </div>
             </div>
+              </>); // end canEdit IIFE
+            })()}
           </div>
         </div>
       )}

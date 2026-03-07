@@ -115,7 +115,6 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
   ];
 
   const moreItems = [
-    { label: 'Tarefas', href: '/atendimento/tasks', icon: Check, match: (p: string) => p.startsWith('/atendimento/tasks') },
     { label: 'Agenda', href: '/atendimento/agenda', icon: Calendar, match: (p: string) => p.startsWith('/atendimento/agenda') },
     { label: 'Advogado', href: '/atendimento/advogado', icon: Scale, match: (p: string) => p.startsWith('/atendimento/advogado') },
     { label: 'Processos', href: '/atendimento/processos', icon: BookOpen, match: (p: string) => p.startsWith('/atendimento/processos') },
