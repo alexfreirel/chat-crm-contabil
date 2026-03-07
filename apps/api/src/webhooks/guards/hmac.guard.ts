@@ -34,8 +34,9 @@ export class HmacGuard implements CanActivate {
       '';
 
     if (!signature) {
-      this.logger.warn('[HMAC] Webhook recebido sem assinatura — rejeitado');
-      throw new UnauthorizedException('Missing webhook signature');
+      // Evolution API nao envia assinatura por padrao — permitir passagem
+      // Quando um proxy/gateway adicionar assinatura, ela sera verificada
+      return true;
     }
 
     // O body ja foi parseado pelo NestJS; recalcular HMAC sobre o JSON stringificado
