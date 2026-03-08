@@ -2,8 +2,10 @@ import { Controller, Get, Post, Body, Patch, Delete, Param, Query, UseGuards, Re
 import { LeadsService } from './leads.service';
 import { LeadsCleanupService } from './leads-cleanup.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { Prisma } from '@crm/shared';
-import { UpdateLeadDto } from './dto/create-lead.dto';
+import { CreateLeadDto, UpdateLeadDto, UpdateStageDto } from './dto/create-lead.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('leads')
@@ -14,12 +16,18 @@ export class LeadsController {
   ) {}
 
   @Post()
-  create(@Body() createLeadDto: Prisma.LeadCreateInput, @Request() req: any) {
-    // Associar ao tenant do usuário logado se existir
-    if (req.user?.tenant_id) {
-       createLeadDto.tenant = { connect: { id: req.user.tenant_id } };
-    }
-    return this.leadsService.create(createLeadDto);
+  create(@Body() dto: CreateLeadDto, @Request() req: any) {
+    // Constrói o input do Prisma a partir do DTO validado
+    // O tenant_id vem sempre do token JWT — nunca do body
+    const data: Prisma.LeadCreateInput = {
+      name: dto.name,
+      phone: dto.phone,
+      ...(dto.email && { email: dto.email }),
+      ...(dto.tags && { tags: dto.tags }),
+      ...(dto.origin && { origin: dto.origin }),
+      ...(req.user?.tenant_id && { tenant: { connect: { id: req.user.tenant_id } } }),
+    };
+    return this.leadsService.create(data);
   }
 
   @Get()
@@ -47,8 +55,8 @@ export class LeadsController {
   }
 
   @Patch(':id/stage')
-  updateStage(@Param('id') id: string, @Body('stage') stage: string) {
-    return this.leadsService.updateStatus(id, stage);
+  updateStage(@Param('id') id: string, @Body() dto: UpdateStageDto) {
+    return this.leadsService.updateStatus(id, dto.stage);
   }
 
   @Delete(':id/memory')
@@ -66,6 +74,8 @@ export class LeadsController {
   }
 
   @Post('cleanup/deduplicate')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
   deduplicatePhones() {
     return this.leadsCleanupService.deduplicatePhones();
   }
