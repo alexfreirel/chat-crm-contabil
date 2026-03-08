@@ -9,10 +9,10 @@ export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
   @Get()
-  findAll(@Query('page') page?: string, @Query('limit') limit?: string) {
+  findAll(@Query('page') page?: string, @Query('limit') limit?: string, @Request() req?: any) {
     const p = page ? parseInt(page, 10) : undefined;
     const l = limit ? parseInt(limit, 10) : undefined;
-    return this.tasksService.findAll(p, l);
+    return this.tasksService.findAll(req?.user?.tenant_id, p, l);
   }
 
   @Get('legal-case/:caseId')
@@ -30,22 +30,22 @@ export class TasksController {
   }
 
   @Patch(':id/status')
-  updateStatus(@Param('id') id: string, @Body('status') status: string) {
-    return this.tasksService.updateStatus(id, status);
+  updateStatus(@Param('id') id: string, @Body('status') status: string, @Request() req: any) {
+    return this.tasksService.updateStatus(id, status, req.user?.tenant_id);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() data: UpdateTaskDto) {
-    return this.tasksService.update(id, data);
+  update(@Param('id') id: string, @Body() data: UpdateTaskDto, @Request() req: any) {
+    return this.tasksService.update(id, data, req.user?.tenant_id);
   }
 
   @Post(':id/comments')
   addComment(@Param('id') id: string, @Body('text') text: string, @Request() req: any) {
-    return this.tasksService.addComment(id, req.user.id, text);
+    return this.tasksService.addComment(id, req.user.id, text, req.user?.tenant_id);
   }
 
   @Get(':id/comments')
-  findComments(@Param('id') id: string) {
-    return this.tasksService.findComments(id);
+  findComments(@Param('id') id: string, @Request() req: any) {
+    return this.tasksService.findComments(id, req.user?.tenant_id);
   }
 }

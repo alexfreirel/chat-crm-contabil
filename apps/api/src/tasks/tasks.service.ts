@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatGateway } from '../gateway/chat.gateway';
 import { CalendarService } from '../calendar/calendar.service';
@@ -13,7 +13,20 @@ export class TasksService {
     private calendarService: CalendarService,
   ) {}
 
-  async findAll(page?: number, limit?: number) {
+  private tenantWhere(tenantId?: string) {
+    return tenantId ? { OR: [{ tenant_id: tenantId }, { tenant_id: null }] } : {};
+  }
+
+  private async verifyTenantOwnership(id: string, tenantId?: string) {
+    if (!tenantId) return;
+    const task = await this.prisma.task.findUnique({ where: { id }, select: { tenant_id: true } });
+    if (task?.tenant_id && task.tenant_id !== tenantId) {
+      throw new ForbiddenException('Acesso negado a este recurso');
+    }
+  }
+
+  async findAll(tenantId?: string, page?: number, limit?: number) {
+    const where = this.tenantWhere(tenantId);
     const includeOpts = {
       lead: true,
       assigned_user: true,
@@ -23,17 +36,19 @@ export class TasksService {
     if (page && limit) {
       const [data, total] = await this.prisma.$transaction([
         this.prisma.task.findMany({
+          where,
           include: includeOpts,
           orderBy: { created_at: 'desc' },
           skip: (page - 1) * limit,
           take: limit,
         }),
-        this.prisma.task.count(),
+        this.prisma.task.count({ where }),
       ]);
       return { data, total, page, limit };
     }
 
     return this.prisma.task.findMany({
+      where,
       include: includeOpts,
       orderBy: { created_at: 'desc' },
     });
@@ -72,7 +87,8 @@ export class TasksService {
     return task;
   }
 
-  async updateStatus(id: string, status: string) {
+  async updateStatus(id: string, status: string, tenantId?: string) {
+    await this.verifyTenantOwnership(id, tenantId);
     const task = await this.prisma.task.update({
       where: { id },
       data: { status },
@@ -99,7 +115,8 @@ export class TasksService {
     status?: string;
     due_at?: string | Date | null;
     assigned_user_id?: string | null;
-  }) {
+  }, tenantId?: string) {
+    await this.verifyTenantOwnership(id, tenantId);
     const updateData: any = {};
     if (data.title !== undefined) updateData.title = data.title;
     if (data.description !== undefined) updateData.description = data.description;
@@ -173,7 +190,8 @@ export class TasksService {
 
   // ─── Task Comments ─────────────────────────────────────────────
 
-  async addComment(taskId: string, userId: string, text: string) {
+  async addComment(taskId: string, userId: string, text: string, tenantId?: string) {
+    await this.verifyTenantOwnership(taskId, tenantId);
     const comment = await this.prisma.taskComment.create({
       data: { task_id: taskId, user_id: userId, text },
       include: { user: { select: { id: true, name: true } } },
@@ -197,7 +215,8 @@ export class TasksService {
     return comment;
   }
 
-  async findComments(taskId: string) {
+  async findComments(taskId: string, tenantId?: string) {
+    await this.verifyTenantOwnership(taskId, tenantId);
     return this.prisma.taskComment.findMany({
       where: { task_id: taskId },
       include: { user: { select: { id: true, name: true } } },

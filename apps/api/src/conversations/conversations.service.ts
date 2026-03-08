@@ -18,13 +18,18 @@ export class ConversationsService {
     return this.prisma.conversation.create({ data });
   }
 
-  async findAll(status?: string, userId?: string, inboxId?: string) {
+  async findAll(status?: string, userId?: string, inboxId?: string, tenantId?: string) {
     const where: any = {};
     if (status) {
       where.status = status;
     } else {
       // Por padrão excluir conversas fechadas do inbox
       where.status = { not: 'FECHADO' };
+    }
+
+    // Tenant isolation
+    if (tenantId) {
+      where.OR = [{ tenant_id: tenantId }, { tenant_id: null }];
     }
 
     // Se um inboxId específico foi solicitado, filtramos por ele

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Inject, forwardRef, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatGateway } from '../gateway/chat.gateway';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
@@ -15,6 +15,18 @@ export class LegalCasesService {
     @Inject(forwardRef(() => WhatsappService)) private whatsappService: WhatsappService,
     private calendarService: CalendarService,
   ) {}
+
+  private tenantWhere(tenantId?: string) {
+    return tenantId ? { OR: [{ tenant_id: tenantId }, { tenant_id: null }] } : {};
+  }
+
+  private async verifyTenantOwnership(id: string, tenantId?: string) {
+    if (!tenantId) return;
+    const lc = await this.prisma.legalCase.findUnique({ where: { id }, select: { tenant_id: true } });
+    if (lc?.tenant_id && lc.tenant_id !== tenantId) {
+      throw new ForbiddenException('Acesso negado a este recurso');
+    }
+  }
 
   // ─── CRUD ───────────────────────────────────────────────────────
 
@@ -38,8 +50,8 @@ export class LegalCasesService {
     });
   }
 
-  async findAll(lawyerId?: string, stage?: string, archived?: boolean, inTracking?: boolean, page?: number, limit?: number) {
-    const where: any = {};
+  async findAll(lawyerId?: string, stage?: string, archived?: boolean, inTracking?: boolean, page?: number, limit?: number, tenantId?: string) {
+    const where: any = { ...this.tenantWhere(tenantId) };
     if (lawyerId) where.lawyer_id = lawyerId;
     if (stage) where.stage = stage;
     if (archived !== undefined) where.archived = archived;
@@ -86,7 +98,8 @@ export class LegalCasesService {
     });
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, tenantId?: string) {
+    await this.verifyTenantOwnership(id, tenantId);
     const legalCase = await this.prisma.legalCase.findUnique({
       where: { id },
       include: {
@@ -161,7 +174,8 @@ export class LegalCasesService {
 
   // ─── STAGE TRANSITIONS ─────────────────────────────────────────
 
-  async updateStage(id: string, newStage: string, userId: string) {
+  async updateStage(id: string, newStage: string, userId: string, tenantId?: string) {
+    await this.verifyTenantOwnership(id, tenantId);
     const validStage = LEGAL_STAGES.find(s => s.id === newStage);
     if (!validStage) throw new BadRequestException(`Stage inválido: ${newStage}`);
 
@@ -184,7 +198,8 @@ export class LegalCasesService {
 
   // ─── ARCHIVE / UNARCHIVE ───────────────────────────────────────
 
-  async archive(id: string, reason: string, notifyLead: boolean) {
+  async archive(id: string, reason: string, notifyLead: boolean, tenantId?: string) {
+    await this.verifyTenantOwnership(id, tenantId);
     const legalCase = await this.prisma.legalCase.update({
       where: { id },
       data: { archived: true, archive_reason: reason },
@@ -211,7 +226,8 @@ export class LegalCasesService {
     return legalCase;
   }
 
-  async unarchive(id: string) {
+  async unarchive(id: string, tenantId?: string) {
+    await this.verifyTenantOwnership(id, tenantId);
     return this.prisma.legalCase.update({
       where: { id },
       data: { archived: false, archive_reason: null, stage: 'VIABILIDADE' },
@@ -220,7 +236,8 @@ export class LegalCasesService {
 
   // ─── CASE NUMBER ────────────────────────────────────────────────
 
-  async setCaseNumber(id: string, caseNumber: string, court?: string) {
+  async setCaseNumber(id: string, caseNumber: string, court?: string, tenantId?: string) {
+    await this.verifyTenantOwnership(id, tenantId);
     return this.prisma.legalCase.update({
       where: { id },
       data: {
@@ -230,14 +247,16 @@ export class LegalCasesService {
     });
   }
 
-  async updateNotes(id: string, notes: string) {
+  async updateNotes(id: string, notes: string, tenantId?: string) {
+    await this.verifyTenantOwnership(id, tenantId);
     return this.prisma.legalCase.update({
       where: { id },
       data: { notes },
     });
   }
 
-  async updateCourt(id: string, court: string) {
+  async updateCourt(id: string, court: string, tenantId?: string) {
+    await this.verifyTenantOwnership(id, tenantId);
     return this.prisma.legalCase.update({
       where: { id },
       data: { court },
@@ -253,7 +272,8 @@ export class LegalCasesService {
     source?: string;
     reference_url?: string;
     event_date?: Date;
-  }) {
+  }, tenantId?: string) {
+    await this.verifyTenantOwnership(caseId, tenantId);
     const caseEvent = await this.prisma.caseEvent.create({
       data: {
         case_id: caseId,
@@ -346,7 +366,8 @@ export class LegalCasesService {
 
   // ─── PROTOCOLO → PROCESSOS ─────────────────────────────────────
 
-  async sendToTracking(id: string, caseNumber: string, court?: string) {
+  async sendToTracking(id: string, caseNumber: string, court?: string, tenantId?: string) {
+    await this.verifyTenantOwnership(id, tenantId);
     const lc = await this.prisma.legalCase.findUnique({ where: { id } });
     if (!lc) throw new NotFoundException('Caso não encontrado');
     if (lc.archived) throw new BadRequestException('Caso arquivado não pode ser protocolado.');
@@ -375,7 +396,8 @@ export class LegalCasesService {
     return updated;
   }
 
-  async updateTrackingStage(id: string, trackingStage: string) {
+  async updateTrackingStage(id: string, trackingStage: string, tenantId?: string) {
+    await this.verifyTenantOwnership(id, tenantId);
     const valid = TRACKING_STAGES.find(s => s.id === trackingStage);
     if (!valid) throw new BadRequestException(`Stage inválido: ${trackingStage}`);
 

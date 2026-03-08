@@ -16,7 +16,7 @@ export class ConversationsController {
     @Request() req?: any,
   ) {
     const userId = req?.user?.id;
-    return this.conversationsService.findAll(undefined, userId, inboxId);
+    return this.conversationsService.findAll(undefined, userId, inboxId, req?.user?.tenant_id);
   }
 
   @Get('pending-transfers')

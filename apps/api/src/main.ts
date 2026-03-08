@@ -115,6 +115,13 @@ async function bootstrap() {
 
   io.on('connection', (socket) => {
     chatGateway.handleConnection(socket);
+
+    // Auto-join tenant room for scoped broadcasts
+    const socketUser = (socket as any).user;
+    if (socketUser?.tenant_id) {
+      socket.join(`tenant:${socketUser.tenant_id}`);
+    }
+
     socket.on('disconnect', () => {
       socketRateLimits.delete(socket.id);
       chatGateway.handleDisconnect(socket);

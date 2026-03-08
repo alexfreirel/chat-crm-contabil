@@ -48,12 +48,12 @@ export class LegalCasesController {
     const inTrackingBool = inTracking === 'true' ? true : inTracking === 'false' ? false : undefined;
     const p = page ? parseInt(page, 10) : undefined;
     const l = limit ? parseInt(limit, 10) : undefined;
-    return this.service.findAll(lawyerId, stage, archivedBool, inTrackingBool, p, l);
+    return this.service.findAll(lawyerId, stage, archivedBool, inTrackingBool, p, l, req.user?.tenant_id);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(id);
+  findOne(@Param('id') id: string, @Request() req: any) {
+    return this.service.findOne(id, req.user?.tenant_id);
   }
 
   @Post()
@@ -69,45 +69,46 @@ export class LegalCasesController {
 
   @Patch(':id/stage')
   updateStage(@Param('id') id: string, @Body('stage') stage: string, @Request() req: any) {
-    return this.service.updateStage(id, stage, req.user.id);
+    return this.service.updateStage(id, stage, req.user.id, req.user?.tenant_id);
   }
 
   @Patch(':id/archive')
   archive(
     @Param('id') id: string,
     @Body() body: { reason: string; notifyLead?: boolean },
+    @Request() req: any,
   ) {
-    return this.service.archive(id, body.reason, body.notifyLead ?? false);
+    return this.service.archive(id, body.reason, body.notifyLead ?? false, req.user?.tenant_id);
   }
 
   @Patch(':id/unarchive')
-  unarchive(@Param('id') id: string) {
-    return this.service.unarchive(id);
+  unarchive(@Param('id') id: string, @Request() req: any) {
+    return this.service.unarchive(id, req.user?.tenant_id);
   }
 
   @Patch(':id/case-number')
-  setCaseNumber(@Param('id') id: string, @Body() body: { caseNumber: string; court?: string }) {
-    return this.service.setCaseNumber(id, body.caseNumber, body.court);
+  setCaseNumber(@Param('id') id: string, @Body() body: { caseNumber: string; court?: string }, @Request() req: any) {
+    return this.service.setCaseNumber(id, body.caseNumber, body.court, req.user?.tenant_id);
   }
 
   @Patch(':id/send-to-tracking')
-  sendToTracking(@Param('id') id: string, @Body() body: { caseNumber: string; court?: string }) {
-    return this.service.sendToTracking(id, body.caseNumber, body.court);
+  sendToTracking(@Param('id') id: string, @Body() body: { caseNumber: string; court?: string }, @Request() req: any) {
+    return this.service.sendToTracking(id, body.caseNumber, body.court, req.user?.tenant_id);
   }
 
   @Patch(':id/tracking-stage')
-  updateTrackingStage(@Param('id') id: string, @Body('trackingStage') trackingStage: string) {
-    return this.service.updateTrackingStage(id, trackingStage);
+  updateTrackingStage(@Param('id') id: string, @Body('trackingStage') trackingStage: string, @Request() req: any) {
+    return this.service.updateTrackingStage(id, trackingStage, req.user?.tenant_id);
   }
 
   @Patch(':id/notes')
-  updateNotes(@Param('id') id: string, @Body('notes') notes: string) {
-    return this.service.updateNotes(id, notes);
+  updateNotes(@Param('id') id: string, @Body('notes') notes: string, @Request() req: any) {
+    return this.service.updateNotes(id, notes, req.user?.tenant_id);
   }
 
   @Patch(':id/court')
-  updateCourt(@Param('id') id: string, @Body('court') court: string) {
-    return this.service.updateCourt(id, court);
+  updateCourt(@Param('id') id: string, @Body('court') court: string, @Request() req: any) {
+    return this.service.updateCourt(id, court, req.user?.tenant_id);
   }
 
   @Post(':id/events')
@@ -121,8 +122,9 @@ export class LegalCasesController {
       reference_url?: string;
       event_date?: Date;
     },
+    @Request() req: any,
   ) {
-    return this.service.addEvent(id, body);
+    return this.service.addEvent(id, body, req.user?.tenant_id);
   }
 
   @Get(':id/events')
