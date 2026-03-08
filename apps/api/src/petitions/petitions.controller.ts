@@ -10,12 +10,16 @@ import {
   Request,
 } from '@nestjs/common';
 import { PetitionsService } from './petitions.service';
+import { PetitionAiService } from './petition-ai.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)
 @Controller('petitions')
 export class PetitionsController {
-  constructor(private readonly service: PetitionsService) {}
+  constructor(
+    private readonly service: PetitionsService,
+    private readonly aiService: PetitionAiService,
+  ) {}
 
   @Get('case/:caseId')
   findByCaseId(
@@ -38,6 +42,23 @@ export class PetitionsController {
     @Request() req: any,
   ) {
     return this.service.create(caseId, body, req.user.id, req.user.tenant_id);
+  }
+
+  @Post('case/:caseId/generate')
+  createAndGenerate(
+    @Param('caseId') caseId: string,
+    @Body() body: { title: string; type: string },
+    @Request() req: any,
+  ) {
+    return this.aiService.createAndGenerate(caseId, body, req.user.id, req.user.tenant_id);
+  }
+
+  @Post(':id/generate')
+  generate(
+    @Param('id') id: string,
+    @Request() req: any,
+  ) {
+    return this.aiService.generate(id, req.user.tenant_id);
   }
 
   @Get(':id')

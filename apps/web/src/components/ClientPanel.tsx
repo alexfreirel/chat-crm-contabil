@@ -181,6 +181,8 @@ export function ClientPanel({
 
   // Casos jurídicos
   const [casesOpen, setCasesOpen] = useState(false);
+  const [creatingCase, setCreatingCase] = useState(false);
+  const [newCaseArea, setNewCaseArea] = useState('');
 
   // Modal de nova tarefa
   const [taskModal, setTaskModal] = useState(false);
@@ -661,61 +663,114 @@ export function ClientPanel({
             </div>
 
             {/* Casos Jurídicos */}
-            {(lead.legal_cases?.length ?? 0) > 0 && (
-              <div className="border-t border-border">
-                <button
-                  className="w-full px-6 py-4 flex items-center justify-between hover:bg-accent/30 transition-colors"
-                  onClick={() => setCasesOpen(!casesOpen)}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Scale size={15} className="text-violet-400" />
-                    <span className="text-[13px] font-bold text-foreground">Casos Jurídicos</span>
-                    <span className="text-[11px] text-muted-foreground bg-foreground/[0.06] px-2 py-0.5 rounded-full font-mono">{lead.legal_cases!.length}</span>
-                  </div>
-                  {casesOpen ? <ChevronUp size={15} className="text-muted-foreground" /> : <ChevronDown size={15} className="text-muted-foreground" />}
-                </button>
-                {casesOpen && (
-                  <div className="px-6 pb-5 flex flex-col gap-2.5">
-                    {lead.legal_cases!.map(c => {
-                      const stageBadge = CASE_STAGE_MAP[c.stage] ?? { label: c.stage, color: 'bg-gray-500/15 text-gray-400 border-gray-500/20' };
-                      return (
-                        <div key={c.id} className="bg-foreground/[0.03] border border-border rounded-xl p-3.5 flex flex-col gap-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${stageBadge.color}`}>
-                              {stageBadge.label}
-                            </span>
-                            {c.case_number && (
-                              <span className="text-[10px] text-muted-foreground font-mono">#{c.case_number}</span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {c.legal_area && (
-                              <span className="text-[11px] text-violet-400 font-medium">⚖️ {c.legal_area}</span>
-                            )}
-                            {c.lawyer && (
-                              <span className="text-[11px] text-blue-400">
-                                <UserCheck size={10} className="inline mr-0.5" />
-                                {c.lawyer.name.replace(/^(Dra?\.?)\s+/i, '')}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center justify-between mt-1">
-                            <p className="text-[10px] text-muted-foreground/60">Criado em {formatDateShort(c.created_at)}</p>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); router.push(`/atendimento/workspace/${c.id}`); }}
-                              className="inline-flex items-center gap-1 text-[10px] font-medium text-violet-400 hover:text-violet-300 transition-colors"
-                            >
-                              <ExternalLink size={10} />
-                              Workspace
-                            </button>
-                          </div>
+            <div className="border-t border-border">
+              <button
+                className="w-full px-6 py-4 flex items-center justify-between hover:bg-accent/30 transition-colors"
+                onClick={() => setCasesOpen(!casesOpen)}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Scale size={15} className="text-violet-400" />
+                  <span className="text-[13px] font-bold text-foreground">Casos Jurídicos</span>
+                  <span className="text-[11px] text-muted-foreground bg-foreground/[0.06] px-2 py-0.5 rounded-full font-mono">{lead.legal_cases?.length ?? 0}</span>
+                </div>
+                {casesOpen ? <ChevronUp size={15} className="text-muted-foreground" /> : <ChevronDown size={15} className="text-muted-foreground" />}
+              </button>
+              {casesOpen && (
+                <div className="px-6 pb-5 flex flex-col gap-2.5">
+                  {/* Lista de casos existentes */}
+                  {(lead.legal_cases || []).map(c => {
+                    const stageBadge = CASE_STAGE_MAP[c.stage] ?? { label: c.stage, color: 'bg-gray-500/15 text-gray-400 border-gray-500/20' };
+                    return (
+                      <div key={c.id} className="bg-foreground/[0.03] border border-border rounded-xl p-3.5 flex flex-col gap-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${stageBadge.color}`}>
+                            {stageBadge.label}
+                          </span>
+                          {c.case_number && (
+                            <span className="text-[10px] text-muted-foreground font-mono">#{c.case_number}</span>
+                          )}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {c.legal_area && (
+                            <span className="text-[11px] text-violet-400 font-medium">{c.legal_area}</span>
+                          )}
+                          {c.lawyer && (
+                            <span className="text-[11px] text-blue-400">
+                              <UserCheck size={10} className="inline mr-0.5" />
+                              {c.lawyer.name.replace(/^(Dra?\.?)\s+/i, '')}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between mt-1">
+                          <p className="text-[10px] text-muted-foreground/60">Criado em {formatDateShort(c.created_at)}</p>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); router.push(`/atendimento/workspace/${c.id}`); }}
+                            className="inline-flex items-center gap-1 text-[10px] font-medium text-violet-400 hover:text-violet-300 transition-colors"
+                          >
+                            <ExternalLink size={10} />
+                            Workspace
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Criar novo caso */}
+                  {!creatingCase ? (
+                    <button
+                      onClick={() => setCreatingCase(true)}
+                      className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-dashed border-violet-500/30 text-violet-400 hover:bg-violet-500/5 transition-colors text-[11px] font-medium"
+                    >
+                      <Plus size={12} />
+                      Novo Caso Jurídico
+                    </button>
+                  ) : (
+                    <div className="bg-foreground/[0.03] border border-violet-500/30 rounded-xl p-3.5 flex flex-col gap-2.5">
+                      <select
+                        value={newCaseArea}
+                        onChange={(e) => setNewCaseArea(e.target.value)}
+                        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-[12px] text-foreground focus:outline-none focus:ring-1 focus:ring-violet-500"
+                      >
+                        <option value="">Área jurídica (opcional)</option>
+                        <option value="TRABALHISTA">Trabalhista</option>
+                        <option value="CIVIL">Civil</option>
+                        <option value="PREVIDENCIARIO">Previdenciário</option>
+                        <option value="PENAL">Penal</option>
+                        <option value="TRIBUTARIO">Tributário</option>
+                        <option value="ADMINISTRATIVO">Administrativo</option>
+                      </select>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => { setCreatingCase(false); setNewCaseArea(''); }}
+                          className="flex-1 py-1.5 rounded-lg text-[11px] text-muted-foreground hover:bg-accent/30 transition-colors"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await api.post('/legal-cases', {
+                                lead_id: lead.id,
+                                conversation_id: resolvedConvId || undefined,
+                                legal_area: newCaseArea || undefined,
+                              });
+                              setCreatingCase(false);
+                              setNewCaseArea('');
+                              router.push(`/atendimento/workspace/${res.data.id}`);
+                            } catch {
+                              // silently fail
+                            }
+                          }}
+                          className="flex-1 py-1.5 rounded-lg bg-violet-600 text-white text-[11px] font-medium hover:bg-violet-500 transition-colors"
+                        >
+                          Criar Caso
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Nova Tarefa rápida */}
             <div className="border-t border-border">
