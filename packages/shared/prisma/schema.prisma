@@ -24,6 +24,7 @@ model Tenant {
   case_deadlines    CaseDeadline[]
   petitions         CasePetition[]
   legal_templates   LegalTemplate[]
+  case_honorarios   CaseHonorario[]
 }
 
 model User {
@@ -390,6 +391,7 @@ model LegalCase {
   documents         CaseDocument[]
   deadlines         CaseDeadline[]
   petitions         CasePetition[]
+  honorarios        CaseHonorario[]
 
   @@index([lawyer_id, stage])
   @@index([lead_id])
@@ -742,4 +744,41 @@ model LegalTemplate {
   tenant        Tenant?  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
 
   @@index([legal_area, type])
+}
+
+model CaseHonorario {
+  id                String             @id @default(uuid())
+  tenant_id         String?
+  legal_case_id     String
+  type              String             // FIXO, EXITO, MISTO
+  total_value       Decimal
+  installment_count Int                @default(1)
+  contract_date     DateTime?
+  notes             String?
+  created_at        DateTime           @default(now())
+  updated_at        DateTime           @updatedAt
+
+  legal_case        LegalCase          @relation(fields: [legal_case_id], references: [id], onDelete: Cascade)
+  tenant            Tenant?            @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  payments          HonorarioPayment[]
+
+  @@index([legal_case_id])
+  @@index([tenant_id])
+}
+
+model HonorarioPayment {
+  id              String        @id @default(uuid())
+  honorario_id    String
+  amount          Decimal
+  due_date        DateTime
+  paid_at         DateTime?
+  payment_method  String?       // PIX, BOLETO, CARTAO, DINHEIRO, TRANSFERENCIA
+  status          String        @default("PENDENTE") // PENDENTE, PAGO, ATRASADO
+  notes           String?
+  created_at      DateTime      @default(now())
+
+  honorario       CaseHonorario @relation(fields: [honorario_id], references: [id], onDelete: Cascade)
+
+  @@index([honorario_id, due_date])
+  @@index([status])
 }

@@ -3,10 +3,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Activity, Loader2, FileText, Calendar, Gavel, MessageSquare,
-  ArrowRight, ExternalLink,
+  ExternalLink, Plus, Trash2,
 } from 'lucide-react';
 import api from '@/lib/api';
-import { showError } from '@/lib/toast';
+import { showError, showSuccess } from '@/lib/toast';
+
+const EVENT_TYPES = [
+  { id: 'MOVIMENTACAO', label: 'Movimentação' },
+  { id: 'AUDIENCIA', label: 'Audiência' },
+  { id: 'DECISAO', label: 'Decisão' },
+  { id: 'DESPACHO', label: 'Despacho' },
+  { id: 'PUBLICACAO', label: 'Publicação' },
+  { id: 'PRAZO', label: 'Prazo' },
+  { id: 'PETICAO', label: 'Petição' },
+  { id: 'OUTRO', label: 'Outro' },
+];
 
 interface CaseEvent {
   id: string;
@@ -94,6 +105,13 @@ export default function TabTimeline({ caseId }: { caseId: string }) {
   const [djenPublications, setDjenPublications] = useState<DjenPublication[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedDjen, setExpandedDjen] = useState<Set<string>>(new Set());
+  const [showNewEvent, setShowNewEvent] = useState(false);
+  const [newType, setNewType] = useState('MOVIMENTACAO');
+  const [newTitle, setNewTitle] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [newDate, setNewDate] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -126,6 +144,49 @@ export default function TabTimeline({ caseId }: { caseId: string }) {
     });
   };
 
+  // ─── Create / Delete event ────────────────────────────────
+
+  const handleCreateEvent = async () => {
+    if (!newTitle.trim()) {
+      showError('Informe o título do evento');
+      return;
+    }
+    setCreating(true);
+    try {
+      await api.post(`/legal-cases/${caseId}/events`, {
+        type: newType,
+        title: newTitle.trim(),
+        description: newDesc.trim() || undefined,
+        event_date: newDate ? new Date(newDate).toISOString() : undefined,
+      });
+      showSuccess('Evento criado');
+      setNewTitle('');
+      setNewDesc('');
+      setNewDate('');
+      setNewType('MOVIMENTACAO');
+      setShowNewEvent(false);
+      fetchData();
+    } catch {
+      showError('Erro ao criar evento');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    if (!confirm('Deseja remover este evento?')) return;
+    setDeletingId(eventId);
+    try {
+      await api.delete(`/legal-cases/events/${eventId}`);
+      showSuccess('Evento removido');
+      fetchData();
+    } catch {
+      showError('Erro ao remover evento');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   // Merge events into unified timeline
   const timeline: TimelineItem[] = [
     ...events.map(e => ({
@@ -138,6 +199,7 @@ export default function TabTimeline({ caseId }: { caseId: string }) {
         eventType: e.type,
         source: e.source,
         referenceUrl: e.reference_url,
+        originalId: e.id,
       },
     })),
     ...calendarEvents.map(e => ({
@@ -171,13 +233,80 @@ export default function TabTimeline({ caseId }: { caseId: string }) {
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-4">
-      <h2 className="text-base font-semibold flex items-center gap-2">
-        <Activity className="h-4 w-4 text-primary" />
-        Timeline do Caso
-        {timeline.length > 0 && (
-          <span className="text-xs text-base-content/50">({timeline.length} eventos)</span>
-        )}
-      </h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-semibold flex items-center gap-2">
+          <Activity className="h-4 w-4 text-primary" />
+          Timeline do Caso
+          {timeline.length > 0 && (
+            <span className="text-xs text-base-content/50">({timeline.length} eventos)</span>
+          )}
+        </h2>
+        <button
+          onClick={() => setShowNewEvent(!showNewEvent)}
+          className="btn btn-primary btn-sm gap-1"
+        >
+          <Plus className="h-3.5 w-3.5" /> Novo Evento
+        </button>
+      </div>
+
+      {/* Create event form */}
+      {showNewEvent && (
+        <div className="rounded-lg border border-primary/30 bg-base-200/50 p-4 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="label text-xs">Tipo</label>
+              <select
+                className="select select-bordered select-sm w-full"
+                value={newType}
+                onChange={(e) => setNewType(e.target.value)}
+              >
+                {EVENT_TYPES.map(t => (
+                  <option key={t.id} value={t.id}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label text-xs">Título</label>
+              <input
+                className="input input-bordered input-sm w-full"
+                placeholder="Ex: Audiência de instrução"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                autoFocus
+              />
+            </div>
+          </div>
+          <div>
+            <label className="label text-xs">Data do evento</label>
+            <input
+              type="datetime-local"
+              className="input input-bordered input-sm w-full md:w-1/2"
+              value={newDate}
+              onChange={(e) => setNewDate(e.target.value)}
+            />
+          </div>
+          <textarea
+            className="textarea textarea-bordered textarea-sm w-full"
+            placeholder="Descrição (opcional)"
+            value={newDesc}
+            onChange={(e) => setNewDesc(e.target.value)}
+            rows={2}
+          />
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setShowNewEvent(false)} className="btn btn-ghost btn-sm">
+              Cancelar
+            </button>
+            <button
+              onClick={handleCreateEvent}
+              disabled={!newTitle.trim() || creating}
+              className="btn btn-primary btn-sm gap-1"
+            >
+              {creating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Criar evento
+            </button>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-12">
@@ -199,7 +328,7 @@ export default function TabTimeline({ caseId }: { caseId: string }) {
               const borderColor = getEventColor(eventType);
 
               return (
-                <div key={item.id} className="relative flex gap-4 pl-2">
+                <div key={item.id} className="relative flex gap-4 pl-2 group">
                   {/* Dot on timeline */}
                   <div className={`relative z-10 mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-base-200 border-2 ${borderColor}`}>
                     {getEventIcon(eventType)}
@@ -274,6 +403,20 @@ export default function TabTimeline({ caseId }: { caseId: string }) {
                       </p>
                     )}
                   </div>
+
+                  {/* Delete button — only for manual events */}
+                  {item.type === 'event' && item.extra.originalId && (
+                    <button
+                      onClick={() => handleDeleteEvent(item.extra.originalId)}
+                      disabled={deletingId === item.extra.originalId}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity self-start mt-1 btn btn-ghost btn-xs btn-square text-error"
+                      title="Remover evento"
+                    >
+                      {deletingId === item.extra.originalId
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <Trash2 className="h-3.5 w-3.5" />}
+                    </button>
+                  )}
                 </div>
               );
             })}
