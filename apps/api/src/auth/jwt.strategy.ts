@@ -1,20 +1,21 @@
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor() {
     const secret = process.env.JWT_SECRET;
     if (!secret) {
-      new Logger('JwtStrategy').error(
-        '⚠️  JWT_SECRET não definido! Usando fallback INSEGURO.',
+      throw new Error(
+        '[JwtStrategy] JWT_SECRET não está definido. ' +
+        'Configure a variável de ambiente JWT_SECRET antes de iniciar o servidor.',
       );
     }
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: secret || '__INSECURE_DEV_FALLBACK_CHANGE_ME__',
+      secretOrKey: secret,
     });
   }
 

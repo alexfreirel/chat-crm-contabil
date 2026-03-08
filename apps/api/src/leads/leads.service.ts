@@ -130,7 +130,7 @@ export class LeadsService {
     });
   }
 
-  async updateStatus(id: string, stage: string): Promise<Lead> {
+  async updateStatus(id: string, stage: string): Promise<Lead & { _legalCase?: { created: boolean; error?: string } }> {
     const lead = await this.prisma.lead.update({
       where: { id },
       data: { stage },
@@ -138,6 +138,9 @@ export class LeadsService {
 
     // Auto-criação de LegalCase quando lead atinge FINALIZADO
     if (stage === 'FINALIZADO') {
+      let legalCaseCreated = false;
+      let legalCaseError: string | undefined;
+
       try {
         const conv = await this.prisma.conversation.findFirst({
           where: { lead_id: id, assigned_lawyer_id: { not: null } },
@@ -152,10 +155,18 @@ export class LeadsService {
             conv.tenant_id ?? undefined,
           );
           this.logger.log(`Auto-created LegalCase for lead ${id} → lawyer ${conv.assigned_lawyer_id}`);
+          legalCaseCreated = true;
+        } else {
+          // Sem advogado atribuído — caso não criado, mas não é um erro
+          legalCaseError = 'Nenhum advogado atribuído à conversa. Crie o caso jurídico manualmente.';
+          this.logger.warn(`Lead ${id} finalizado sem advogado atribuído — LegalCase não criado automaticamente`);
         }
       } catch (err) {
-        this.logger.warn(`Failed to auto-create LegalCase for lead ${id}: ${err}`);
+        legalCaseError = 'Falha ao criar caso jurídico automaticamente. Crie-o manualmente na aba Jurídico.';
+        this.logger.error(`Failed to auto-create LegalCase for lead ${id}: ${err}`);
       }
+
+      return { ...(lead as any), _legalCase: { created: legalCaseCreated, error: legalCaseError } };
     }
 
     return lead;

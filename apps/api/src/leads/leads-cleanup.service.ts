@@ -23,57 +23,80 @@ export class LeadsCleanupService {
       errors: [],
     };
 
-    const allLeads = await this.prisma.lead.findMany();
+    // Processa em batches para não carregar todos os leads na memória de uma vez
+    const BATCH_SIZE = 500;
+    let cursor: string | undefined = undefined;
+    let totalProcessed = 0;
 
-    // Encontrar leads com formato antigo (13 dígitos com nono dígito)
-    const leadsWithOldFormat = allLeads.filter((lead) => {
-      const cleaned = lead.phone.replace(/\D/g, '');
-      return (
-        cleaned.length === 13 &&
-        cleaned.startsWith('55') &&
-        cleaned[4] === '9'
-      );
-    });
+    this.logger.log('Iniciando deduplicação de telefones em batches...');
 
-    this.logger.log(
-      `Encontrados ${leadsWithOldFormat.length} leads com formato antigo (13 dígitos)`,
-    );
+    while (true) {
+      // Busca apenas id e phone para minimizar uso de memória
+      const batch = await this.prisma.lead.findMany({
+        take: BATCH_SIZE,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+        select: { id: true, phone: true },
+        orderBy: { id: 'asc' },
+      });
 
-    for (const oldLead of leadsWithOldFormat) {
-      try {
-        const normalizedPhone = normalizeBrazilianPhone(oldLead.phone);
+      if (batch.length === 0) break;
 
-        const normalizedLead = await this.prisma.lead.findUnique({
-          where: { phone: normalizedPhone },
-        });
+      // Filtra apenas os que precisam de normalização (formato antigo: 13 dígitos)
+      const leadsWithOldFormat = batch.filter((lead) => {
+        const cleaned = lead.phone.replace(/\D/g, '');
+        return (
+          cleaned.length === 13 &&
+          cleaned.startsWith('55') &&
+          cleaned[4] === '9'
+        );
+      });
 
-        if (normalizedLead && normalizedLead.id !== oldLead.id) {
-          // DUPLICATA: ambos existem — merge
-          result.totalDuplicatesFound++;
-          await this.mergeLeads(oldLead.id, normalizedLead.id);
-          result.mergedLeads++;
-          this.logger.log(
-            `Merge: ${oldLead.id} (${oldLead.phone}) → ${normalizedLead.id} (${normalizedPhone})`,
-          );
-        } else {
-          // Sem duplicata: apenas atualizar phone
-          await this.prisma.lead.update({
-            where: { id: oldLead.id },
-            data: { phone: normalizedPhone },
+      for (const oldLead of leadsWithOldFormat) {
+        try {
+          const normalizedPhone = normalizeBrazilianPhone(oldLead.phone);
+
+          const normalizedLead = await this.prisma.lead.findUnique({
+            where: { phone: normalizedPhone },
+            select: { id: true },
           });
-          result.updatedPhones++;
-          this.logger.log(
-            `Atualizado: ${oldLead.id}: ${oldLead.phone} → ${normalizedPhone}`,
-          );
+
+          if (normalizedLead && normalizedLead.id !== oldLead.id) {
+            // DUPLICATA: ambos existem — merge
+            result.totalDuplicatesFound++;
+            await this.mergeLeads(oldLead.id, normalizedLead.id);
+            result.mergedLeads++;
+            this.logger.log(
+              `Merge: ${oldLead.id} (${oldLead.phone}) → ${normalizedLead.id} (${normalizedPhone})`,
+            );
+          } else {
+            // Sem duplicata: apenas atualizar phone
+            await this.prisma.lead.update({
+              where: { id: oldLead.id },
+              data: { phone: normalizedPhone },
+            });
+            result.updatedPhones++;
+            this.logger.log(
+              `Atualizado: ${oldLead.id}: ${oldLead.phone} → ${normalizedPhone}`,
+            );
+          }
+        } catch (error) {
+          const msg = `Erro ao processar lead ${oldLead.id} (${oldLead.phone}): ${error.message}`;
+          this.logger.error(msg);
+          result.errors.push(msg);
         }
-      } catch (error) {
-        const msg = `Erro ao processar lead ${oldLead.id} (${oldLead.phone}): ${error.message}`;
-        this.logger.error(msg);
-        result.errors.push(msg);
       }
+
+      totalProcessed += batch.length;
+      cursor = batch[batch.length - 1].id;
+
+      if (batch.length < BATCH_SIZE) break;
+
+      this.logger.log(`Batch processado: ${totalProcessed} leads verificados até agora...`);
     }
 
-    this.logger.log(`Limpeza concluída: ${JSON.stringify(result)}`);
+    this.logger.log(
+      `Deduplicação concluída. Total verificado: ${totalProcessed}. Resultado: ${JSON.stringify(result)}`,
+    );
     return result;
   }
 
