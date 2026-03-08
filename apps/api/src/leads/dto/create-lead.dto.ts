@@ -1,6 +1,12 @@
 import { IsString, IsOptional, IsEmail, IsArray, IsIn } from 'class-validator';
 
-const VALID_STAGES = ['NOVO', 'QUALIFICADO', 'EM_ATENDIMENTO', 'FINALIZADO', 'PERDIDO'];
+const VALID_STAGES = [
+  // Stages atuais do funil CRM
+  'INICIAL', 'QUALIFICANDO', 'AGUARDANDO_FORM', 'REUNIAO_AGENDADA',
+  'AGUARDANDO_DOCS', 'AGUARDANDO_PROC', 'FINALIZADO', 'PERDIDO',
+  // Legado (ainda podem existir no banco)
+  'NOVO', 'QUALIFICADO', 'EM_ATENDIMENTO',
+];
 
 export class CreateLeadDto {
   @IsString({ message: 'Nome e obrigatorio' })
