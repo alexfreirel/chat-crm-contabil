@@ -145,4 +145,10 @@ export class ChatGateway {
     this.logger.log(`[SOCKET] Emitting calendar_reminder to user:${userId} — ${data.title} em ${data.minutesBefore}min`);
     this.server.to(`user:${userId}`).emit('calendar_reminder', data);
   }
+
+  // ─── Typing Indicator ────────────────────────────────────────
+
+  emitTypingIndicator(conversationId: string, data: { userId: string; userName: string; isTyping: boolean }) {
+    this.server.to(conversationId).emit('typing_indicator', data);
+  }
 }

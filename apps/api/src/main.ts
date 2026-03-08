@@ -132,6 +132,16 @@ async function bootstrap() {
       }
       chatGateway.handleJoinUser(userId, socket);
     });
+    socket.on('typing', (data: { conversationId: string; isTyping: boolean }) => {
+      if (!checkSocketRateLimit(socket.id, 'typing', 30)) return;
+      const user = (socket as any).user;
+      if (!user?.sub || !data?.conversationId) return;
+      chatGateway.emitTypingIndicator(data.conversationId, {
+        userId: user.sub,
+        userName: user.name || 'Operador',
+        isTyping: data.isTyping,
+      });
+    });
   });
 
   logger.log(`[SOCKET] Socket.IO attached to HTTP server on port ${port}, path /socket.io`);

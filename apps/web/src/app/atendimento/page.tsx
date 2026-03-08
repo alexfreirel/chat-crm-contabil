@@ -146,6 +146,9 @@ export default function Dashboard() {
   const [showNotifBanner, setShowNotifBanner] = useState(false);
   const [showDetailsPanel, setShowDetailsPanel] = useState(false);
   const [clientPanelLeadId, setClientPanelLeadId] = useState<string | null>(null);
+  // Typing indicators
+  const [typingUsers, setTypingUsers] = useState<Record<string, { userName: string; timeout: ReturnType<typeof setTimeout> }>>({});
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showLegalAreaDropdown, setShowLegalAreaDropdown] = useState(false);
   const legalAreaDropdownRef = useRef<HTMLDivElement>(null);
   const touchStartXRef = useRef<number>(0);
@@ -475,6 +478,31 @@ export default function Dashboard() {
       fetchPendingTransfers(true);
     });
 
+    // Typing indicator
+    socket.on('typing_indicator', (data: { userId: string; userName: string; isTyping: boolean }) => {
+      const myId = currentUserIdRef.current;
+      if (data.userId === myId) return; // ignore own typing
+      setTypingUsers(prev => {
+        const next = { ...prev };
+        if (data.isTyping) {
+          // Clear previous timeout for this user
+          if (next[data.userId]) clearTimeout(next[data.userId].timeout);
+          const timeout = setTimeout(() => {
+            setTypingUsers(p => {
+              const n = { ...p };
+              delete n[data.userId];
+              return n;
+            });
+          }, 4000);
+          next[data.userId] = { userName: data.userName, timeout };
+        } else {
+          if (next[data.userId]) clearTimeout(next[data.userId].timeout);
+          delete next[data.userId];
+        }
+        return next;
+      });
+    });
+
     // Incoming message notification — broadcast to all; each client filters by assignedUserId
     socket.on('incoming_message_notification', (data: { conversationId: string; contactName?: string; assignedUserId?: string | null }) => {
       const myId = currentUserIdRef.current;
@@ -646,6 +674,12 @@ export default function Dashboard() {
         setMsgTotalPages(msgRes.data?.totalPages || 1);
         setMsgCurrentPage(1);
 
+        // Clear typing users on conversation switch
+        setTypingUsers(prev => {
+          Object.values(prev).forEach(u => clearTimeout(u.timeout));
+          return {};
+        });
+
         if (socketRef.current) {
           // Leave previous room before joining new one
           if (prevId && prevId !== selectedId) {
@@ -795,6 +829,9 @@ export default function Dashboard() {
     setSending(true);
     setText('');
     setReplyingTo(null);
+    // Stop typing indicator on send
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    socketRef.current?.emit('typing', { conversationId: selectedId, isTyping: false });
 
     // Optimistic UI: adicionar msg na lista imediatamente
     const optimisticId = `optimistic_${Date.now()}`;
@@ -1518,6 +1555,18 @@ export default function Dashboard() {
               );
             })()}
 
+            {/* Typing indicator */}
+            {Object.keys(typingUsers).length > 0 && (
+              <div className="px-4 py-1 text-xs text-muted-foreground bg-muted/30 border-b border-border animate-pulse">
+                {(() => {
+                  const names = Object.values(typingUsers).map(u => u.userName);
+                  if (names.length === 1) return `${names[0]} está digitando...`;
+                  if (names.length === 2) return `${names[0]} e ${names[1]} estão digitando...`;
+                  return `${names[0]} e outros estão digitando...`;
+                })()}
+              </div>
+            )}
+
             {/* Wrapper: watermark fixo + scroll area sobre ele */}
             <div
               className="flex-1 relative overflow-hidden"
@@ -1982,6 +2031,14 @@ export default function Dashboard() {
                         setText(e.target.value);
                         e.target.style.height = 'auto';
                         e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+                        // Emit typing indicator (debounced 2s)
+                        if (selectedId && socketRef.current) {
+                          socketRef.current.emit('typing', { conversationId: selectedId, isTyping: true });
+                          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+                          typingTimeoutRef.current = setTimeout(() => {
+                            socketRef.current?.emit('typing', { conversationId: selectedId, isTyping: false });
+                          }, 2000);
+                        }
                       }}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
