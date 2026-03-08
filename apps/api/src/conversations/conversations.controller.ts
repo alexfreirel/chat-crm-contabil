@@ -2,6 +2,7 @@ import { Controller, Get, Param, Patch, Body, Post, Query, UseGuards, Request } 
 import { ConversationsService } from './conversations.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Prisma } from '@crm/shared';
+import { TransferRequestDto, TransferToLawyerDto, ReturnToOriginDto } from './dto/transfer-request.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('conversations')
@@ -60,7 +61,7 @@ export class ConversationsController {
   @Post(':id/transfer-request')
   transferRequest(
     @Param('id') id: string,
-    @Body() body: { toUserId: string; reason?: string; audioIds?: string[] },
+    @Body() body: TransferRequestDto,
     @Request() req: any,
   ) {
     return this.conversationsService.requestTransfer(id, body.toUserId, req.user.id, body.reason || null, body.audioIds);
@@ -84,7 +85,7 @@ export class ConversationsController {
   @Post(':id/transfer-to-lawyer')
   transferToLawyer(
     @Param('id') id: string,
-    @Body() body: { reason?: string; audioIds?: string[] },
+    @Body() body: TransferToLawyerDto,
     @Request() req: any,
   ) {
     return this.conversationsService.transferToAssignedLawyer(id, req.user.id, body.reason, body.audioIds);
@@ -93,7 +94,7 @@ export class ConversationsController {
   @Patch(':id/return-to-origin')
   returnToOrigin(
     @Param('id') id: string,
-    @Body() body: { reason?: string; audioIds?: string[] },
+    @Body() body: ReturnToOriginDto,
     @Request() req: any,
   ) {
     return this.conversationsService.returnToOrigin(id, body.reason, body.audioIds, req.user?.id);

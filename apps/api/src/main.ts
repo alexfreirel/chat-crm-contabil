@@ -1,9 +1,10 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { Logger } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { Server as SocketIOServer } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ChatGateway } from './gateway/chat.gateway';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 
@@ -31,6 +32,17 @@ async function bootstrap() {
   logger.log(`DATABASE_URL carregada: ${dbUrl ? 'SIM (inicia com ' + dbUrl.substring(0, 20) + '...)' : 'NAO'}`);
 
   const app = await NestFactory.create(AppModule);
+
+  // Validacao global de DTOs via class-validator
+  app.useGlobalPipes(new ValidationPipe({
+    whitelist: true,
+    transform: true,
+    forbidNonWhitelisted: false,
+  }));
+
+  // Catch-all exception filter — retorna JSON padronizado
+  app.useGlobalFilters(new AllExceptionsFilter());
+
   app.enableCors({
     origin: '*',
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',

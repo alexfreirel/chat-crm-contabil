@@ -3,6 +3,7 @@ import { LeadsService } from './leads.service';
 import { LeadsCleanupService } from './leads-cleanup.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Prisma } from '@crm/shared';
+import { UpdateLeadDto } from './dto/create-lead.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('leads')
@@ -40,7 +41,7 @@ export class LeadsController {
   @Patch(':id')
   update(
     @Param('id') id: string,
-    @Body() body: { name?: string; email?: string; tags?: string[] },
+    @Body() body: UpdateLeadDto,
   ) {
     return this.leadsService.update(id, body);
   }

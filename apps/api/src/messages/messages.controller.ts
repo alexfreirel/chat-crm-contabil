@@ -17,6 +17,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { MessagesService } from './messages.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { SendMessageDto } from './dto/send-message.dto';
 
 // Whitelist de MIME types para upload
 const ALLOWED_MEDIA_RE = /^(image|video|audio)\//;
@@ -61,18 +62,13 @@ export class MessagesController {
   @Throttle({ default: { ttl: 60000, limit: 30 } })
   @Post('send')
   sendMessage(
-    @Body('conversationId') conversationId: string,
-    @Body('text') text: string,
+    @Body() dto: SendMessageDto,
     @Req() req: any,
-    @Body('replyToId') replyToId?: string,
   ) {
-    if (!text || !text.trim()) {
+    if (!dto.text || !dto.text.trim()) {
       throw new BadRequestException('Texto nao pode ser vazio');
     }
-    if (text.length > 5000) {
-      throw new BadRequestException('Texto excede o limite de 5000 caracteres');
-    }
-    return this.messagesService.sendMessage(conversationId, text.trim(), replyToId, req.user?.id);
+    return this.messagesService.sendMessage(dto.conversationId, dto.text.trim(), dto.replyToId, req.user?.id);
   }
 
   @Throttle({ default: { ttl: 60000, limit: 10 } })
