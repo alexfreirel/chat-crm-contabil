@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, User } from '@crm/shared';
 import * as argon2 from 'argon2';
@@ -7,15 +7,29 @@ import * as argon2 from 'argon2';
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
-  async findAgents(): Promise<{ id: string; name: string; specialties: string[] }[]> {
+  private tenantWhere(tenantId?: string) {
+    return tenantId ? { OR: [{ tenant_id: tenantId }, { tenant_id: null }] } : {};
+  }
+
+  private async verifyTenantOwnership(id: string, tenantId?: string) {
+    if (!tenantId) return;
+    const user = await this.prisma.user.findUnique({ where: { id }, select: { tenant_id: true } });
+    if (user?.tenant_id && user.tenant_id !== tenantId) {
+      throw new ForbiddenException('Acesso negado a este recurso');
+    }
+  }
+
+  async findAgents(tenantId?: string): Promise<{ id: string; name: string; specialties: string[] }[]> {
     return (this.prisma as any).user.findMany({
+      where: this.tenantWhere(tenantId),
       select: { id: true, name: true, specialties: true },
       orderBy: { name: 'asc' },
     });
   }
 
-  async findAll(): Promise<Omit<User, 'password_hash'>[]> {
+  async findAll(tenantId?: string): Promise<Omit<User, 'password_hash'>[]> {
     const users = await (this.prisma as any).user.findMany({
+      where: this.tenantWhere(tenantId),
       orderBy: { created_at: 'desc' },
       include: {
         inboxes: { select: { id: true, name: true } },
@@ -30,7 +44,8 @@ export class UsersService {
     return this.prisma.user.findUnique({ where: { email } });
   }
 
-  async findById(id: string): Promise<Omit<User, 'password_hash'> | null> {
+  async findById(id: string, tenantId?: string): Promise<Omit<User, 'password_hash'> | null> {
+    await this.verifyTenantOwnership(id, tenantId);
     const user = await (this.prisma as any).user.findUnique({
       where: { id },
       include: {
@@ -80,7 +95,8 @@ export class UsersService {
     return result as any;
   }
 
-  async update(id: string, data: { name?: string; email?: string; role?: string; password?: string; inboxIds?: string[]; specialties?: string[]; phone?: string }): Promise<Omit<User, 'password_hash'>> {
+  async update(id: string, data: { name?: string; email?: string; role?: string; password?: string; inboxIds?: string[]; specialties?: string[]; phone?: string }, tenantId?: string): Promise<Omit<User, 'password_hash'>> {
+    await this.verifyTenantOwnership(id, tenantId);
     const updateData: Prisma.UserUpdateInput = {};
     if (data.name) updateData.name = data.name;
     if (data.email) updateData.email = data.email;
@@ -108,16 +124,17 @@ export class UsersService {
     return result as any;
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, tenantId?: string): Promise<void> {
+    await this.verifyTenantOwnership(id, tenantId);
     await this.prisma.user.delete({ where: { id } });
   }
 
   // ─── Lawyer / Intern helpers ──────────────────────────────────
 
   /** Lista advogados (users com specialties não-vazio) */
-  async findLawyers() {
+  async findLawyers(tenantId?: string) {
     return this.prisma.user.findMany({
-      where: { specialties: { isEmpty: false } },
+      where: { specialties: { isEmpty: false }, ...this.tenantWhere(tenantId) },
       select: { id: true, name: true, specialties: true },
       orderBy: { name: 'asc' },
     });

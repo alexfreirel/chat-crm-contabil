@@ -8,13 +8,13 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('agents')
-  findAgents() {
-    return this.usersService.findAgents();
+  findAgents(@Request() req: any) {
+    return this.usersService.findAgents(req.user?.tenant_id);
   }
 
   @Get('lawyers')
-  findLawyers() {
-    return this.usersService.findLawyers();
+  findLawyers(@Request() req: any) {
+    return this.usersService.findLawyers(req.user?.tenant_id);
   }
 
   @Get()
@@ -22,7 +22,7 @@ export class UsersController {
     if (req.user.role !== 'ADMIN') {
       throw new ForbiddenException('Apenas administradores podem listar usuários');
     }
-    return this.usersService.findAll();
+    return this.usersService.findAll(req.user?.tenant_id);
   }
 
   @Get(':id')
@@ -30,7 +30,7 @@ export class UsersController {
     if (req.user.role !== 'ADMIN' && req.user.id !== id) {
       throw new ForbiddenException('Sem permissão');
     }
-    return this.usersService.findById(id);
+    return this.usersService.findById(id, req.user?.tenant_id);
   }
 
   @Post()
@@ -46,7 +46,7 @@ export class UsersController {
     if (req.user.role !== 'ADMIN') {
       throw new ForbiddenException('Apenas administradores podem editar usuários');
     }
-    return this.usersService.update(id, data);
+    return this.usersService.update(id, data, req.user?.tenant_id);
   }
 
   @Get(':id/interns')
@@ -74,6 +74,6 @@ export class UsersController {
     if (req.user.id === id) {
       throw new ForbiddenException('Você não pode remover a si mesmo');
     }
-    return this.usersService.remove(id);
+    return this.usersService.remove(id, req.user?.tenant_id);
   }
 }

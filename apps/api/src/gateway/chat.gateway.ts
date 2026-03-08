@@ -106,10 +106,15 @@ export class ChatGateway {
     this.server.to(conversationId).emit('messageUpdate', message);
   }
 
-  // TODO: Escalar — quando houver multi-tenant, emitir apenas para rooms do tenant
   emitConversationsUpdate(tenantId: string | null) {
-    this.logger.log(`[SOCKET] Emitting inboxUpdate to all clients`);
-    this.server.emit('inboxUpdate');
+    if (tenantId) {
+      this.logger.log(`[SOCKET] Emitting inboxUpdate to tenant:${tenantId}`);
+      this.server.to(`tenant:${tenantId}`).emit('inboxUpdate');
+    } else {
+      // Fallback global para single-tenant (sem tenant_id) — broadcast para todos
+      this.logger.log(`[SOCKET] Emitting inboxUpdate to all clients (no tenant)`);
+      this.server.emit('inboxUpdate');
+    }
   }
 
   /** Broadcast incoming message notification to all clients; each client filters by assignedUserId */
