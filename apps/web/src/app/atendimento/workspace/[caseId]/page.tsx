@@ -5,9 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft, FileText, ListTodo, Clock, MessageSquare, Activity,
   Loader2, AlertTriangle, ClipboardList, FileSignature, BookOpen,
+  DollarSign, Archive, ArchiveRestore, Send,
 } from 'lucide-react';
 import api from '@/lib/api';
-import { showError } from '@/lib/toast';
+import { showError, showSuccess } from '@/lib/toast';
 import TabResumo from './components/TabResumo';
 import TabDocumentos from './components/TabDocumentos';
 import TabTarefas from './components/TabTarefas';
@@ -16,6 +17,7 @@ import TabComunicacoes from './components/TabComunicacoes';
 import TabTimeline from './components/TabTimeline';
 import TabPeticoes from './components/TabPeticoes';
 import TabBancoPecas from './components/TabBancoPecas';
+import TabHonorarios from './components/TabHonorarios';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -70,7 +72,27 @@ interface WorkspaceData {
   };
 }
 
-type TabId = 'resumo' | 'documentos' | 'peticoes' | 'banco' | 'tarefas' | 'prazos' | 'comunicacoes' | 'timeline';
+type TabId = 'resumo' | 'documentos' | 'peticoes' | 'banco' | 'tarefas' | 'prazos' | 'honorarios' | 'comunicacoes' | 'timeline';
+
+const LEGAL_STAGES = [
+  { id: 'VIABILIDADE', label: 'Viabilidade' },
+  { id: 'DOCUMENTACAO', label: 'Documentação' },
+  { id: 'PETICAO', label: 'Petição Inicial' },
+  { id: 'REVISAO', label: 'Revisão' },
+  { id: 'PROTOCOLO', label: 'Protocolo' },
+];
+
+const TRACKING_STAGES = [
+  { id: 'DISTRIBUIDO', label: 'Distribuído' },
+  { id: 'CITACAO', label: 'Citação/Intimação' },
+  { id: 'CONTESTACAO', label: 'Contestação' },
+  { id: 'INSTRUCAO', label: 'Instrução' },
+  { id: 'JULGAMENTO', label: 'Julgamento/Sentença' },
+  { id: 'RECURSO', label: 'Recurso' },
+  { id: 'TRANSITADO', label: 'Trânsito em Julgado' },
+  { id: 'EXECUCAO', label: 'Execução' },
+  { id: 'ENCERRADO', label: 'Encerrado' },
+];
 
 const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: 'resumo', label: 'Resumo', icon: ClipboardList },
@@ -79,6 +101,7 @@ const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: 'banco', label: 'Peças', icon: BookOpen },
   { id: 'tarefas', label: 'Tarefas', icon: ListTodo },
   { id: 'prazos', label: 'Prazos', icon: Clock },
+  { id: 'honorarios', label: 'Honorários', icon: DollarSign },
   { id: 'comunicacoes', label: 'Comunicações', icon: MessageSquare },
   { id: 'timeline', label: 'Timeline', icon: Activity },
 ];
@@ -94,6 +117,14 @@ export default function WorkspacePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<TabId>('resumo');
+  const [changingStage, setChangingStage] = useState(false);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [archiveReason, setArchiveReason] = useState('');
+  const [archiving, setArchiving] = useState(false);
+  const [showTrackingModal, setShowTrackingModal] = useState(false);
+  const [trackingCaseNumber, setTrackingCaseNumber] = useState('');
+  const [trackingCourt, setTrackingCourt] = useState('');
+  const [sendingToTracking, setSendingToTracking] = useState(false);
 
   const fetchWorkspace = useCallback(async () => {
     try {
@@ -139,8 +170,76 @@ export default function WorkspacePage() {
     );
   }
 
+  // ─── Stage / Archive / Tracking handlers ─────────────────
+
+  const handleStageChange = async (newStage: string) => {
+    setChangingStage(true);
+    try {
+      if (data.in_tracking) {
+        await api.patch(`/legal-cases/${caseId}/tracking-stage`, { trackingStage: newStage });
+      } else {
+        await api.patch(`/legal-cases/${caseId}/stage`, { stage: newStage });
+      }
+      showSuccess('Etapa atualizada');
+      fetchWorkspace();
+    } catch (e: any) {
+      showError(e?.response?.data?.message || 'Erro ao alterar etapa');
+    } finally {
+      setChangingStage(false);
+    }
+  };
+
+  const handleSendToTracking = async () => {
+    if (!trackingCaseNumber.trim()) return;
+    setSendingToTracking(true);
+    try {
+      await api.patch(`/legal-cases/${caseId}/send-to-tracking`, {
+        caseNumber: trackingCaseNumber.trim(),
+        court: trackingCourt.trim() || undefined,
+      });
+      showSuccess('Caso protocolado e enviado para acompanhamento');
+      setShowTrackingModal(false);
+      setTrackingCaseNumber('');
+      setTrackingCourt('');
+      fetchWorkspace();
+    } catch (e: any) {
+      showError(e?.response?.data?.message || 'Erro ao protocolar');
+    } finally {
+      setSendingToTracking(false);
+    }
+  };
+
+  const handleArchive = async () => {
+    setArchiving(true);
+    try {
+      await api.patch(`/legal-cases/${caseId}/archive`, {
+        reason: archiveReason.trim() || 'Sem motivo informado',
+      });
+      showSuccess('Caso arquivado');
+      setShowArchiveModal(false);
+      setArchiveReason('');
+      fetchWorkspace();
+    } catch (e: any) {
+      showError(e?.response?.data?.message || 'Erro ao arquivar');
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  const handleUnarchive = async () => {
+    try {
+      await api.patch(`/legal-cases/${caseId}/unarchive`);
+      showSuccess('Caso desarquivado');
+      fetchWorkspace();
+    } catch (e: any) {
+      showError(e?.response?.data?.message || 'Erro ao desarquivar');
+    }
+  };
+
   const clientName = data.lead?.name || 'Cliente sem nome';
   const stageLabel = data.in_tracking ? (data.tracking_stage || data.stage) : data.stage;
+  const currentStages = data.in_tracking ? TRACKING_STAGES : LEGAL_STAGES;
+  const currentStageValue = data.in_tracking ? (data.tracking_stage || '') : data.stage;
 
   // ─── Render ─────────────────────────────────────────────────
 
@@ -178,18 +277,57 @@ export default function WorkspacePage() {
               </>
             )}
             <span className="text-base-content/30">•</span>
-            <span className="badge badge-xs badge-primary">{stageLabel}</span>
+            <select
+              className="select select-xs select-bordered select-primary font-medium h-5 min-h-0"
+              value={currentStageValue}
+              onChange={(e) => handleStageChange(e.target.value)}
+              disabled={changingStage || data.archived}
+            >
+              {currentStages.map(s => (
+                <option key={s.id} value={s.id}>{s.label}</option>
+              ))}
+            </select>
+            {data.in_tracking && (
+              <span className="badge badge-xs badge-info">Em acompanhamento</span>
+            )}
             <span className="text-base-content/30">•</span>
             <span>Adv: {data.lawyer.name}</span>
           </div>
         </div>
 
-        {data.archived && (
-          <span className="badge badge-warning badge-sm gap-1">
-            <AlertTriangle className="h-3 w-3" />
-            Arquivado
-          </span>
-        )}
+        {/* Header action buttons */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {!data.in_tracking && data.stage === 'PROTOCOLO' && !data.archived && (
+            <button
+              onClick={() => setShowTrackingModal(true)}
+              className="btn btn-xs btn-outline btn-success gap-1"
+              title="Protocolar e enviar para acompanhamento"
+            >
+              <Send className="h-3 w-3" />
+              Protocolar
+            </button>
+          )}
+
+          {data.archived ? (
+            <button
+              onClick={handleUnarchive}
+              className="btn btn-xs btn-outline btn-info gap-1"
+              title="Desarquivar caso"
+            >
+              <ArchiveRestore className="h-3 w-3" />
+              Desarquivar
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowArchiveModal(true)}
+              className="btn btn-xs btn-outline btn-warning gap-1"
+              title="Arquivar caso"
+            >
+              <Archive className="h-3 w-3" />
+              Arquivar
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Body: sidebar tabs + content */}
@@ -243,6 +381,9 @@ export default function WorkspacePage() {
           {activeTab === 'prazos' && (
             <TabPrazos caseId={caseId} />
           )}
+          {activeTab === 'honorarios' && (
+            <TabHonorarios caseId={caseId} />
+          )}
           {activeTab === 'comunicacoes' && (
             <TabComunicacoes caseId={caseId} />
           )}
@@ -251,6 +392,83 @@ export default function WorkspacePage() {
           )}
         </main>
       </div>
+
+      {/* Archive Modal */}
+      {showArchiveModal && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-md">
+            <h3 className="font-bold text-lg">Arquivar Caso</h3>
+            <p className="text-sm text-base-content/60 mt-2">
+              Informe o motivo do arquivamento:
+            </p>
+            <textarea
+              className="textarea textarea-bordered w-full mt-3"
+              placeholder="Motivo do arquivamento..."
+              value={archiveReason}
+              onChange={(e) => setArchiveReason(e.target.value)}
+              rows={3}
+            />
+            <div className="modal-action">
+              <button onClick={() => setShowArchiveModal(false)} className="btn btn-ghost btn-sm">
+                Cancelar
+              </button>
+              <button
+                onClick={handleArchive}
+                disabled={archiving}
+                className="btn btn-warning btn-sm gap-1"
+              >
+                {archiving && <Loader2 className="h-4 w-4 animate-spin" />}
+                Arquivar
+              </button>
+            </div>
+          </div>
+          <div className="modal-backdrop" onClick={() => setShowArchiveModal(false)} />
+        </div>
+      )}
+
+      {/* Send to Tracking Modal */}
+      {showTrackingModal && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-md">
+            <h3 className="font-bold text-lg">Protocolar / Enviar para Acompanhamento</h3>
+            <div className="space-y-3 mt-4">
+              <div>
+                <label className="label text-xs">Número do Processo *</label>
+                <input
+                  className="input input-bordered input-sm w-full"
+                  placeholder="Ex: 0000123-45.2024.5.19.0001"
+                  value={trackingCaseNumber}
+                  onChange={(e) => setTrackingCaseNumber(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="label text-xs">Vara / Tribunal</label>
+                <input
+                  className="input input-bordered input-sm w-full"
+                  placeholder="Ex: 1ª Vara do Trabalho de Maceió"
+                  value={trackingCourt}
+                  onChange={(e) => setTrackingCourt(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="modal-action">
+              <button onClick={() => setShowTrackingModal(false)} className="btn btn-ghost btn-sm">
+                Cancelar
+              </button>
+              <button
+                onClick={handleSendToTracking}
+                disabled={!trackingCaseNumber.trim() || sendingToTracking}
+                className="btn btn-success btn-sm gap-1"
+              >
+                {sendingToTracking && <Loader2 className="h-4 w-4 animate-spin" />}
+                Protocolar
+              </button>
+            </div>
+          </div>
+          <div className="modal-backdrop" onClick={() => setShowTrackingModal(false)} />
+        </div>
+      )}
     </div>
   );
 }
