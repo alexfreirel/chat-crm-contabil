@@ -2,7 +2,9 @@ import { Controller, Get, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SkipThrottle } from '@nestjs/throttler';
 import Redis from 'ioredis';
+import { Public } from '../../auth/decorators/public.decorator';
 
+@Public()
 @SkipThrottle()
 @Controller('health')
 export class HealthController {

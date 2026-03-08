@@ -9,7 +9,9 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaS3Service } from './s3.service';
+import { Public } from '../auth/decorators/public.decorator';
 
+@Public()
 @Controller('media')
 export class MediaController {
   private readonly logger = new Logger(MediaController.name);
