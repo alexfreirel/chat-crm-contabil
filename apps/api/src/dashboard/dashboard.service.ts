@@ -39,8 +39,8 @@ export class DashboardService {
         };
 
     const pendingTransferWhere = isAdmin
-      ? { pending_transfer_to: { not: null }, status: { not: 'FECHADO' }, ...tw }
-      : { pending_transfer_to: userId, status: { not: 'FECHADO' } };
+      ? { pending_transfer_to_id: { not: null }, status: { not: 'FECHADO' }, ...tw }
+      : { pending_transfer_to_id: userId, status: { not: 'FECHADO' } };
 
     // ─── Case filters ──
     const caseWhere = isAdmin
