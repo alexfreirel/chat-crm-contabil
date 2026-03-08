@@ -140,6 +140,13 @@ function MessageBubbleInner({
           </div>
         )}
 
+        {/* Deleted by contact banner — content preserved for evidence */}
+        {msg.status === 'apagado_pelo_contato' && (
+          <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-medium text-red-400/80 italic">
+            <span>🚫</span> Apagada pelo contato
+          </div>
+        )}
+
         {/* Message content by type */}
         {msg.type === 'deleted' ? (
           <p className="text-sm italic opacity-50">&#128683; Mensagem apagada</p>

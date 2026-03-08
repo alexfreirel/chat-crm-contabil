@@ -520,19 +520,18 @@ export class EvolutionService {
     });
     if (!msg) return;
 
-    await this.prisma.message.update({
+    // Preserva conteúdo original (texto, tipo, mídia) para uso como prova.
+    // Apenas marca o status — não altera type nem text.
+    const updated = await this.prisma.message.update({
       where: { id: msg.id },
-      data: { type: 'deleted', text: null },
+      data: { status: 'apagado_pelo_contato' },
+      include: { media: true },
     });
 
     // Emite messageUpdate — frontend ja escuta e atualiza
-    this.chatGateway.emitMessageUpdate(msg.conversation_id, {
-      id: msg.id,
-      type: 'deleted',
-      text: null,
-    });
+    this.chatGateway.emitMessageUpdate(msg.conversation_id, updated);
 
-    this.logger.log(`[WEBHOOK] Message ${msg.id} marked as deleted`);
+    this.logger.log(`[WEBHOOK] Message ${msg.id} marked as deleted by contact (content preserved)`);
   }
 
   // ─── contacts.update ──────────────────────────────────────────

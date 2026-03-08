@@ -777,6 +777,12 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                           <p className={`text-[11px] py-1 pr-2 line-clamp-2 ${isOut ? 'text-white/60' : 'text-muted-foreground'}`}>{msg.reply_to_text}</p>
                         </div>
                       )}
+                      {/* Deleted by contact banner — content preserved */}
+                      {msg.status === 'apagado_pelo_contato' && (
+                        <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-medium text-red-400/80 italic">
+                          <span>🚫</span> Apagada pelo contato
+                        </div>
+                      )}
                       {msg.type === 'deleted' ? (
                         <p className="text-sm italic opacity-50">🚫 Mensagem apagada</p>
                       ) : msg.type === 'text' || !msg.type ? (
