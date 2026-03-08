@@ -64,6 +64,7 @@ export interface MessageBubbleProps {
   onDocPreview: (preview: { url: string; name: string; mime: string }) => void;
   onImageDownload: (url: string) => void;
   onDocDownload: (url: string, name: string) => void;
+  onReact?: (id: string, emoji: string) => void;
 }
 
 // ─── Component ──────────────────────────────────────────────────
@@ -82,6 +83,7 @@ function MessageBubbleInner({
   onDocPreview,
   onImageDownload,
   onDocDownload,
+  onReact,
 }: MessageBubbleProps) {
   return (
     <div id={`msg-${msg.id}`} className={`w-full flex items-end gap-1 ${isOut ? 'justify-end' : 'justify-start'} group rounded-xl transition-all duration-300`}>
@@ -104,6 +106,16 @@ function MessageBubbleInner({
           >
             <Trash2 size={13} />
           </button>
+          {onReact && msg.type !== 'deleted' && (
+            <div className="relative group/react">
+              <button className="p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary text-[11px]" title="Reagir">😊</button>
+              <div className="absolute bottom-full left-0 mb-1 hidden group-hover/react:flex bg-card border border-border rounded-full shadow-lg px-1 py-0.5 gap-0.5 z-10">
+                {['👍','❤️','😂','😮','😢','🙏'].map(e => (
+                  <button key={e} onClick={() => onReact(msg.id, e)} className="p-1 hover:bg-muted rounded-full text-sm transition-transform hover:scale-125">{e}</button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -268,6 +280,30 @@ function MessageBubbleInner({
             <StatusIcon status={msg.status} isOut={isOut} />
           </div>
         )}
+        {/* Reactions display */}
+        {msg.reactions && msg.reactions.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1.5 -mb-1">
+            {Object.entries(
+              msg.reactions.reduce((acc: Record<string, number>, r) => {
+                acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+                return acc;
+              }, {} as Record<string, number>)
+            ).map(([emoji, count]) => (
+              <button
+                key={emoji}
+                onClick={() => onReact?.(msg.id, emoji)}
+                className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs border transition-colors ${
+                  isOut
+                    ? 'bg-white/10 border-white/20 hover:bg-white/25'
+                    : 'bg-muted/60 border-border hover:bg-muted'
+                }`}
+              >
+                <span>{emoji}</span>
+                {(count as number) > 1 && <span className="text-[10px] font-medium">{count as number}</span>}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Hover actions - outgoing */}
@@ -299,6 +335,16 @@ function MessageBubbleInner({
           >
             <Trash2 size={16} />
           </button>
+          {onReact && msg.type !== 'deleted' && (
+            <div className="relative group/react">
+              <button className="p-1.5 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary text-[11px]" title="Reagir">😊</button>
+              <div className="absolute bottom-full right-0 mb-1 hidden group-hover/react:flex bg-card border border-border rounded-full shadow-lg px-1 py-0.5 gap-0.5 z-10">
+                {['👍','❤️','😂','😮','😢','🙏'].map(e => (
+                  <button key={e} onClick={() => onReact(msg.id, e)} className="p-1 hover:bg-muted rounded-full text-sm transition-transform hover:scale-125">{e}</button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -312,6 +358,7 @@ export const MessageBubble = memo(MessageBubbleInner, (prev, next) => {
     prev.msg.status === next.msg.status &&
     prev.msg.type === next.msg.type &&
     prev.msg.media === next.msg.media &&
+    prev.msg.reactions === next.msg.reactions &&
     prev.isOut === next.isOut &&
     prev.editingMsg?.id === next.editingMsg?.id &&
     (prev.editingMsg?.id !== prev.msg.id || prev.editingMsg?.text === next.editingMsg?.text) &&

@@ -20,6 +20,15 @@ export interface ConversationSummary {
   leadStage?: string | null;
 }
 
+export interface MessageReaction {
+  id: string;
+  message_id: string;
+  user_id?: string | null;
+  contact_jid?: string | null;
+  emoji: string;
+  created_at: string;
+}
+
 export interface MessageItem {
   id: string;
   conversation_id: string;
@@ -32,4 +41,5 @@ export interface MessageItem {
   reply_to_id?: string | null;
   reply_to_text?: string | null;
   media?: { original_url?: string; mime_type?: string; duration?: number | null; original_name?: string | null } | null;
+  reactions?: MessageReaction[];
 }

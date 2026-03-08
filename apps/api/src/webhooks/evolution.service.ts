@@ -52,6 +52,39 @@ export class EvolutionService {
       const remoteJidAlt = key.remoteJidAlt as string;
       if (!remoteJid || remoteJid.includes('@g.us')) continue;
 
+      // ─── Handle incoming reactions ───────────────────────────────
+      if (data.message?.reactionMessage) {
+        const reaction = data.message.reactionMessage;
+        const reactionKey = reaction.key;
+        const emoji = reaction.text || '';
+        if (reactionKey?.id) {
+          const targetMsg = await this.prisma.message.findUnique({
+            where: { external_message_id: reactionKey.id },
+          });
+          if (targetMsg) {
+            if (emoji === '') {
+              await (this.prisma as any).messageReaction.deleteMany({
+                where: { message_id: targetMsg.id, contact_jid: remoteJid },
+              });
+            } else {
+              await (this.prisma as any).messageReaction.upsert({
+                where: { message_id_contact_jid: { message_id: targetMsg.id, contact_jid: remoteJid } },
+                update: { emoji },
+                create: { message_id: targetMsg.id, contact_jid: remoteJid, emoji },
+              });
+            }
+            const allReactions = await (this.prisma as any).messageReaction.findMany({
+              where: { message_id: targetMsg.id },
+            });
+            this.chatGateway.emitMessageReaction(targetMsg.conversation_id, {
+              messageId: targetMsg.id,
+              reactions: allReactions,
+            });
+          }
+        }
+        continue;
+      }
+
       const phone = (remoteJidAlt || remoteJid).split('@')[0];
       // pushName from outgoing messages (fromMe=true) is the business account name, not the client.
       // Only use it as the contact name for incoming messages.

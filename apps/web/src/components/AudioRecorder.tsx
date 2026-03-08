@@ -8,9 +8,10 @@ interface AudioRecorderProps {
   conversationId: string;
   onSent: (msg: any) => void;
   disabled?: boolean;
+  onRecordingStart?: () => void;
 }
 
-export function AudioRecorder({ conversationId, onSent, disabled }: AudioRecorderProps) {
+export function AudioRecorder({ conversationId, onSent, disabled, onRecordingStart }: AudioRecorderProps) {
   const [recording, setRecording] = useState(false);
   const [sending, setSending] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -29,6 +30,7 @@ export function AudioRecorder({ conversationId, onSent, disabled }: AudioRecorde
       };
       recorder.start();
       setRecording(true);
+      onRecordingStart?.();
     } catch {
       alert('Permissão de microfone negada ou não disponível.');
     }

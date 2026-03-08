@@ -122,11 +122,26 @@ model Message {
   reply_to_text       String?
   skill_id            String?      // Qual PromptSkill gerou esta resposta IA
   media               Media?
+  reactions           MessageReaction[]
   conversation        Conversation @relation(fields: [conversation_id], references: [id])
   tasks               Task[]
 
   @@index([conversation_id, created_at])
   @@index([external_message_id])
+}
+
+model MessageReaction {
+  id          String   @id @default(uuid())
+  message_id  String
+  user_id     String?
+  contact_jid String?
+  emoji       String
+  created_at  DateTime @default(now())
+  message     Message  @relation(fields: [message_id], references: [id], onDelete: Cascade)
+
+  @@unique([message_id, user_id])
+  @@unique([message_id, contact_jid])
+  @@index([message_id])
 }
 
 model Media {

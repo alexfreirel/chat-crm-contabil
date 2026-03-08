@@ -112,6 +112,35 @@ export class WhatsappService {
     });
   }
 
+  // --- REAÇÕES ---
+
+  async sendReaction(instanceName: string, key: { remoteJid: string; fromMe: boolean; id: string }, emoji: string) {
+    const inst = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'crm_instance';
+    return this.request('POST', `message/sendReaction/${inst}`, { key, reaction: emoji });
+  }
+
+  // --- PRESENÇA & LEITURA ---
+
+  async markAsRead(instanceName: string, readMessages: { remoteJid: string; fromMe: false; id: string }[]) {
+    const inst = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'crm_instance';
+    return this.request('POST', `chat/markMessageAsRead/${inst}`, { readMessages });
+  }
+
+  async sendPresence(instanceName: string, number: string, presence: 'composing' | 'recording' | 'paused') {
+    const inst = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'crm_instance';
+    return this.request('POST', `chat/sendPresence/${inst}`, {
+      number,
+      options: { delay: 2000, presence },
+    });
+  }
+
+  // --- CONFIGURAÇÕES DE INSTÂNCIA ---
+
+  async setInstanceSettings(instanceName: string, settings: Record<string, any>) {
+    const inst = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'crm_instance';
+    return this.request('POST', `settings/set/${inst}`, settings);
+  }
+
   // --- GESTÃO DE INSTÂNCIAS ---
 
   async listInstances() {
@@ -161,6 +190,9 @@ export class WhatsappService {
       token: randomToken,
       integration: 'WHATSAPP-BAILEYS',
       qrcode: true,
+      rejectCall: true,
+      msgCall: 'No momento estamos atendendo apenas por mensagem de texto. Por favor, envie sua mensagem aqui.',
+      alwaysOnline: true,
     };
 
     // Automação: Configurar Webhook diretamente no create para Evolution v2

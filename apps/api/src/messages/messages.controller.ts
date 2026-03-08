@@ -18,6 +18,7 @@ import { Throttle } from '@nestjs/throttler';
 import { MessagesService } from './messages.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SendMessageDto } from './dto/send-message.dto';
+import { ReactMessageDto } from './dto/react-message.dto';
 
 // Whitelist de MIME types para upload
 const ALLOWED_MEDIA_RE = /^(image|video|audio)\//;
@@ -131,6 +132,15 @@ export class MessagesController {
   @Post(':id/transcribe')
   transcribeAudio(@Param('id') messageId: string) {
     return this.messagesService.transcribeAudio(messageId);
+  }
+
+  @Post(':id/react')
+  reactToMessage(
+    @Param('id') id: string,
+    @Body() dto: ReactMessageDto,
+    @Req() req: any,
+  ) {
+    return this.messagesService.reactToMessage(id, dto.emoji, req.user.id);
   }
 
   @Patch(':id')

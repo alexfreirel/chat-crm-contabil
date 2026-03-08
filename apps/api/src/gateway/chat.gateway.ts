@@ -147,6 +147,13 @@ export class ChatGateway {
     this.server.to(`user:${userId}`).emit('calendar_reminder', data);
   }
 
+  // ─── Reactions ──────────────────────────────────────────────
+
+  emitMessageReaction(conversationId: string, data: { messageId: string; reactions: any[] }) {
+    this.logger.log(`[SOCKET] Emitting messageReaction to room ${conversationId}`);
+    this.server.to(conversationId).emit('messageReaction', data);
+  }
+
   // ─── Typing Indicator ────────────────────────────────────────
 
   emitTypingIndicator(conversationId: string, data: { userId: string; userName: string; isTyping: boolean }) {

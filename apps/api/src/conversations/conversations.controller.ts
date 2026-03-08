@@ -3,6 +3,7 @@ import { ConversationsService } from './conversations.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Prisma } from '@crm/shared';
 import { TransferRequestDto, TransferToLawyerDto, ReturnToOriginDto } from './dto/transfer-request.dto';
+import { SendPresenceDto } from './dto/presence.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('conversations')
@@ -103,6 +104,16 @@ export class ConversationsController {
   @Patch(':id/keep-in-inbox')
   keepInInbox(@Param('id') id: string) {
     return this.conversationsService.keepInInbox(id);
+  }
+
+  @Post(':id/mark-read')
+  markAsRead(@Param('id') id: string) {
+    return this.conversationsService.markAsRead(id);
+  }
+
+  @Post(':id/presence')
+  sendPresence(@Param('id') id: string, @Body() dto: SendPresenceDto) {
+    return this.conversationsService.sendPresence(id, dto.presence);
   }
 
   @Patch(':id/assign-lawyer')

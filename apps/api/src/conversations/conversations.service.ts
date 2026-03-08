@@ -1,13 +1,17 @@
-import { Injectable, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatGateway } from '../gateway/chat.gateway';
+import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { Prisma, Conversation } from '@crm/shared';
 
 @Injectable()
 export class ConversationsService {
+  private readonly logger = new Logger(ConversationsService.name);
+
   constructor(
     private prisma: PrismaService,
     private chatGateway: ChatGateway,
+    private whatsappService: WhatsappService,
   ) {}
 
   async create(data: Prisma.ConversationCreateInput): Promise<Conversation> {
@@ -417,5 +421,68 @@ export class ConversationsService {
 
     this.chatGateway.emitConversationsUpdate(null);
     return { success: true };
+  }
+
+  // ── Mark as Read (envia tick azul ao contato) ───────────────────────────────
+
+  async markAsRead(conversationId: string) {
+    const convo = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: { lead: true },
+    });
+
+    if (!convo || !convo.lead?.phone || !convo.instance_name) {
+      return { marked: 0 };
+    }
+
+    const unreadMessages = await this.prisma.message.findMany({
+      where: {
+        conversation_id: conversationId,
+        direction: 'in',
+        status: { in: ['recebido', 'entregue'] },
+        external_message_id: { not: null },
+      },
+      select: { id: true, external_message_id: true },
+    });
+
+    if (unreadMessages.length === 0) return { marked: 0 };
+
+    const remoteJid = convo.external_id || `${convo.lead.phone}@s.whatsapp.net`;
+    const readPayload = unreadMessages.map((m) => ({
+      remoteJid,
+      fromMe: false as const,
+      id: m.external_message_id!,
+    }));
+
+    try {
+      await this.whatsappService.markAsRead(convo.instance_name, readPayload);
+    } catch (e) {
+      this.logger.warn(`Falha ao enviar markAsRead via Evolution: ${e?.message}`);
+    }
+
+    await this.prisma.message.updateMany({
+      where: { id: { in: unreadMessages.map((m) => m.id) } },
+      data: { status: 'lido' },
+    });
+
+    return { marked: unreadMessages.length };
+  }
+
+  // ── Send Presence (digitando / gravando) ────────────────────────────────────
+
+  async sendPresence(conversationId: string, presence: 'composing' | 'recording' | 'paused') {
+    const convo = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: { lead: true },
+    });
+
+    if (!convo?.lead?.phone || !convo.instance_name) return { sent: false };
+
+    try {
+      await this.whatsappService.sendPresence(convo.instance_name, convo.lead.phone, presence);
+      return { sent: true };
+    } catch {
+      return { sent: false };
+    }
   }
 }

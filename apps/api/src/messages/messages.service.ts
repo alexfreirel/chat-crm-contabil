@@ -30,7 +30,7 @@ export class MessagesService {
         orderBy: { created_at: 'asc' },
         skip: (safePage - 1) * safeLimit,
         take: safeLimit,
-        include: { media: true },
+        include: { media: true, reactions: true },
       }),
       this.prisma.message.count({ where }),
     ]);
@@ -610,6 +610,58 @@ export class MessagesService {
       this.logger.warn(`[LinkPreview] Falha ao obter preview para ${url}: ${e.message}`);
       return { url, title: null, description: null, image: null, domain };
     }
+  }
+
+  async reactToMessage(messageId: string, emoji: string, userId: string) {
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      include: { conversation: { include: { lead: true } } },
+    });
+
+    if (!message) throw new NotFoundException('Mensagem não encontrada');
+
+    // Best-effort: send reaction to WhatsApp
+    if (message.external_message_id && message.conversation.lead?.phone) {
+      const remoteJid = `${message.conversation.lead.phone}@s.whatsapp.net`;
+      try {
+        await this.whatsapp.sendReaction(
+          message.conversation.instance_name || '',
+          {
+            remoteJid,
+            fromMe: message.direction === 'out',
+            id: message.external_message_id,
+          },
+          emoji,
+        );
+      } catch (e) {
+        this.logger.warn(`Falha ao enviar reação via WhatsApp: ${e.message}`);
+      }
+    }
+
+    // Upsert or delete reaction in DB
+    if (!emoji || emoji === '') {
+      await (this.prisma as any).messageReaction.deleteMany({
+        where: { message_id: messageId, user_id: userId },
+      });
+    } else {
+      await (this.prisma as any).messageReaction.upsert({
+        where: { message_id_user_id: { message_id: messageId, user_id: userId } },
+        update: { emoji },
+        create: { message_id: messageId, user_id: userId, emoji },
+      });
+    }
+
+    // Fetch all reactions and broadcast
+    const reactions = await (this.prisma as any).messageReaction.findMany({
+      where: { message_id: messageId },
+    });
+
+    this.chatGateway.emitMessageReaction(message.conversation_id, {
+      messageId,
+      reactions,
+    });
+
+    return { messageId, reactions };
   }
 
   private streamToBuffer(stream: Readable): Promise<Buffer> {

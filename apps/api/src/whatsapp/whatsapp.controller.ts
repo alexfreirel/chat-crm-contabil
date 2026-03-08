@@ -64,4 +64,12 @@ export class WhatsappController {
     const tenantId = req.user?.tenant_id;
     return this.whatsappService.syncContacts(name, tenantId);
   }
+
+  @Post('instances/:name/settings')
+  async setInstanceSettings(
+    @Param('name') name: string,
+    @Body() body: { rejectCall?: boolean; msgCall?: string; alwaysOnline?: boolean },
+  ) {
+    return this.whatsappService.setInstanceSettings(name, body);
+  }
 }

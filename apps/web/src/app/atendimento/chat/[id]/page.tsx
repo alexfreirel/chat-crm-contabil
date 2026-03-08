@@ -96,6 +96,8 @@ export default function ChatPage({ params }: { params: { id: string } }) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
+  const lastPresenceSentRef = useRef(0);
+  const pauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -300,6 +302,28 @@ export default function ChatPage({ params }: { params: { id: string } }) {
     });
   };
 
+  const handleTypingPresence = () => {
+    if (!convoId) return;
+    const now = Date.now();
+    if (now - lastPresenceSentRef.current < 3000) return; // debounce 3s
+    lastPresenceSentRef.current = now;
+    api.post(`/conversations/${convoId}/presence`, { presence: 'composing' }).catch(() => {});
+    // Auto-pause after 5s without typing
+    if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
+    pauseTimerRef.current = setTimeout(() => {
+      api.post(`/conversations/${convoId}/presence`, { presence: 'paused' }).catch(() => {});
+    }, 5000);
+  };
+
+  const handleReact = async (msgId: string, emoji: string) => {
+    try {
+      const res = await api.post(`/messages/${msgId}/react`, { emoji });
+      setMessages(prev => prev.map((m: any) => m.id === msgId ? { ...m, reactions: res.data.reactions } : m));
+    } catch (e) {
+      console.error('Erro ao reagir', e);
+    }
+  };
+
   const handleReturnToOrigin = async () => {
     if (!convoId) return;
     if (!confirm('Devolver esta conversa ao atendente comercial de origem?')) return;
@@ -404,6 +428,9 @@ export default function ChatPage({ params }: { params: { id: string } }) {
             );
           }).catch(() => {});
 
+          // Mark as read on open (sends blue ticks to contact)
+          api.post(`/conversations/${convo.id}/mark-read`).catch(() => {});
+
           // Sync WhatsApp history on open (background, non-blocking)
           api.post(`/messages/conversation/${convo.id}/sync-history`)
             .then(async (syncRes) => {
@@ -441,7 +468,11 @@ export default function ChatPage({ params }: { params: { id: string } }) {
               if (exists) return prev;
               return [...prev, msg];
             });
-            if (msg.direction === 'in') playNotificationSound();
+            if (msg.direction === 'in') {
+              playNotificationSound();
+              // Auto mark-read since operator is viewing the chat
+              api.post(`/conversations/${convo.id}/mark-read`).catch(() => {});
+            }
           });
 
           socketRef.current.on('messageUpdate', (updatedMsg: any) => {
@@ -450,6 +481,10 @@ export default function ChatPage({ params }: { params: { id: string } }) {
 
           socketRef.current.on('mediaReady', (updatedMsg: any) => {
             setMessages(prev => prev.map((m: any) => m.id === updatedMsg.id ? updatedMsg : m));
+          });
+
+          socketRef.current.on('messageReaction', (data: { messageId: string; reactions: any[] }) => {
+            setMessages(prev => prev.map((m: any) => m.id === data.messageId ? { ...m, reactions: data.reactions } : m));
           });
         }
       } catch (e: any) {
@@ -467,8 +502,10 @@ export default function ChatPage({ params }: { params: { id: string } }) {
         s.off('newMessage');
         s.off('messageUpdate');
         s.off('mediaReady');
+        s.off('messageReaction');
         s.disconnect();
       }
+      if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
     };
   }, [params.id, router]);
 
@@ -698,6 +735,16 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                         >
                           <Trash2 size={13} />
                         </button>
+                        {msg.type !== 'deleted' && (
+                          <div className="relative group/react">
+                            <button className="p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary text-[11px]" title="Reagir">😊</button>
+                            <div className="absolute bottom-full left-0 mb-1 hidden group-hover/react:flex bg-card border border-border rounded-full shadow-lg px-1 py-0.5 gap-0.5 z-10">
+                              {['👍','❤️','😂','😮','😢','🙏'].map(e => (
+                                <button key={e} onClick={() => handleReact(msg.id, e)} className="p-1 hover:bg-muted rounded-full text-sm transition-transform hover:scale-125">{e}</button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                     <div className={`max-w-[80%] p-4 shadow-sm ${
@@ -869,6 +916,30 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                           <StatusIcon status={msg.status} isOut={isOut} />
                         </div>
                       )}
+                      {/* Reactions display */}
+                      {msg.reactions && msg.reactions.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5 -mb-1">
+                          {Object.entries(
+                            (msg.reactions as any[]).reduce((acc: Record<string, number>, r: any) => {
+                              acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+                              return acc;
+                            }, {} as Record<string, number>)
+                          ).map(([emoji, count]) => (
+                            <button
+                              key={emoji}
+                              onClick={() => handleReact(msg.id, emoji)}
+                              className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs border transition-colors ${
+                                isOut
+                                  ? 'bg-white/10 border-white/20 hover:bg-white/25'
+                                  : 'bg-muted/60 border-border hover:bg-muted'
+                              }`}
+                            >
+                              <span>{emoji}</span>
+                              {(count as number) > 1 && <span className="text-[10px] font-medium">{count as number}</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     {isOut && (
                       <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mb-1">
@@ -895,6 +966,16 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                         >
                           <Trash2 size={13} />
                         </button>
+                        {msg.type !== 'deleted' && (
+                          <div className="relative group/react">
+                            <button className="p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary text-[11px]" title="Reagir">😊</button>
+                            <div className="absolute bottom-full right-0 mb-1 hidden group-hover/react:flex bg-card border border-border rounded-full shadow-lg px-1 py-0.5 gap-0.5 z-10">
+                              {['👍','❤️','😂','😮','😢','🙏'].map(e => (
+                                <button key={e} onClick={() => handleReact(msg.id, e)} className="p-1 hover:bg-muted rounded-full text-sm transition-transform hover:scale-125">{e}</button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -950,6 +1031,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                     const el = e.target;
                     el.style.height = 'auto';
                     el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+                    handleTypingPresence();
                   }}
                   onKeyDown={e => {
                     if (e.key === 'Enter' && !e.shiftKey) {
@@ -976,6 +1058,9 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                       if (prev.some((m: any) => m.id === msg.id)) return prev;
                       return [...prev, msg];
                     });
+                  }}
+                  onRecordingStart={() => {
+                    if (convoId) api.post(`/conversations/${convoId}/presence`, { presence: 'recording' }).catch(() => {});
                   }}
                 />
               )}
