@@ -2,7 +2,9 @@ import { Controller, Post, Body, HttpCode, UseGuards } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import { EvolutionService } from './evolution.service';
 import { HmacGuard } from './guards/hmac.guard';
+import { Public } from '../auth/decorators/public.decorator';
 
+@Public()
 @SkipThrottle()
 @UseGuards(HmacGuard)
 @Controller('webhooks/evolution')
