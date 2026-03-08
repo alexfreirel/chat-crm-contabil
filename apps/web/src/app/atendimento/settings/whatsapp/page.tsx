@@ -44,6 +44,7 @@ export default function WhatsappIntegrationPage() {
   // Configurações Globais
   const [apiUrl, setApiUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const [apiKeyMasked, setApiKeyMasked] = useState('');  // versão mascarada p/ display
   const [webhookUrl, setWebhookUrl] = useState('');
   const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [isEditingConfig, setIsEditingConfig] = useState(false);
@@ -67,7 +68,8 @@ export default function WhatsappIntegrationPage() {
         const config = configRes.data;
         
         setApiUrl(config.apiUrl || 'api.andrelustosaadvogados.com.br');
-        setApiKey(config.apiKey || '');
+        setApiKeyMasked(config.apiKey || '');  // valor mascarado do backend
+        setApiKey('');  // input de edição começa vazio
         setWebhookUrl(config.webhookUrl || `${process.env.NEXT_PUBLIC_API_URL || 'https://andrelustosaadvogados.com.br/api'}/webhooks/evolution`);
         
         // Checa a saúde da API em paralelo
@@ -102,8 +104,14 @@ export default function WhatsappIntegrationPage() {
   const handleSaveConfig = async () => {
     setSavingConfig(true);
     try {
-      await api.post('/settings/whatsapp-config', { apiUrl, apiKey, webhookUrl });
+      const payload: any = { apiUrl, webhookUrl };
+      // Só envia apiKey se o usuário digitou uma nova (campo não vazio)
+      if (apiKey.trim()) {
+        payload.apiKey = apiKey.trim();
+      }
+      await api.post('/settings/whatsapp-config', payload);
       setIsEditingConfig(false);
+      setApiKey('');  // limpar input após salvar
       alert('Configurações atualizadas com sucesso!');
       fetchInstances(); // Isso já chama o checkApiHealth
     } catch (error) {
@@ -262,13 +270,16 @@ export default function WhatsappIntegrationPage() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-muted-foreground uppercase ml-1">Global API Key</label>
-                  <input 
-                    type="password" 
+                  <input
+                    type="password"
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="Sua chave secreta global"
+                    placeholder={apiKeyMasked ? 'Deixe vazio para manter a chave atual' : 'Sua chave secreta global'}
                     className="w-full bg-muted/50 border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary/50 transition-all font-mono"
                   />
+                  {apiKeyMasked && (
+                    <p className="text-[10px] text-muted-foreground ml-1">Chave atual: {apiKeyMasked}</p>
+                  )}
                 </div>
                 <div className="md:col-span-2 space-y-2">
                   <label className="text-xs font-bold text-muted-foreground uppercase ml-1">Webhook URL (Recebimento de Mensagens)</label>
@@ -300,7 +311,7 @@ export default function WhatsappIntegrationPage() {
                    </div>
                    <div className="flex flex-col">
                       <span className="text-muted-foreground font-semibold uppercase tracking-tighter text-[9px]">Chave Global</span>
-                      <span className="text-foreground font-mono">{apiKey ? '••••••••••••' : 'Não configurada'}</span>
+                      <span className="text-foreground font-mono">{apiKeyMasked ? apiKeyMasked : 'Não configurada'}</span>
                    </div>
                    <div className="flex flex-col">
                       <span className="text-muted-foreground font-semibold uppercase tracking-tighter text-[9px]">Webhook (Sistema)</span>

@@ -19,6 +19,9 @@ import { FollowupModule } from './followup/followup.module';
       connection: {
         host: process.env.REDIS_HOST || 'localhost',
         port: parseInt(process.env.REDIS_PORT || '6379'),
+        maxRetriesPerRequest: null,        // BullMQ requer null
+        enableReadyCheck: false,           // evita erros de startup
+        retryStrategy: (times: number) => Math.min(times * 500, 5000),
       },
     }),
     MediaModule,

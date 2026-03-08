@@ -190,28 +190,32 @@ export class ConversationsService {
   }
 
   async requestTransfer(id: string, toUserId: string, fromUserId: string, reason: string | null, audioIds?: string[]) {
-    // Verifica se a conversa está atribuída ao operador que está solicitando a transferência
-    const existing = await (this.prisma as any).conversation.findUnique({
-      where: { id },
-      select: { assigned_user_id: true },
-    });
-    if (!existing || existing.assigned_user_id !== fromUserId) {
-      throw new ForbiddenException('Você só pode transferir conversas atribuídas a você.');
-    }
-
-    const [fromUser, conv] = await Promise.all([
-      this.prisma.user.findUnique({ where: { id: fromUserId }, select: { name: true } }),
-      (this.prisma as any).conversation.update({
+    // Transação atômica: verificar ownership + atualizar em uma só operação
+    const { fromUser, conv } = await this.prisma.$transaction(async (tx) => {
+      const existing = await (tx as any).conversation.findUnique({
         where: { id },
-        data: {
-          pending_transfer_to_id: toUserId,
-          pending_transfer_from_id: fromUserId,
-          pending_transfer_reason: reason,
-          ...(audioIds?.length ? { pending_transfer_audio_ids: audioIds } : {}),
-        },
-        include: { lead: { select: { name: true, phone: true } } },
-      }),
-    ]);
+        select: { assigned_user_id: true },
+      });
+      if (!existing || existing.assigned_user_id !== fromUserId) {
+        throw new ForbiddenException('Você só pode transferir conversas atribuídas a você.');
+      }
+
+      const [fromUser, conv] = await Promise.all([
+        tx.user.findUnique({ where: { id: fromUserId }, select: { name: true } }),
+        (tx as any).conversation.update({
+          where: { id },
+          data: {
+            pending_transfer_to_id: toUserId,
+            pending_transfer_from_id: fromUserId,
+            pending_transfer_reason: reason,
+            ...(audioIds?.length ? { pending_transfer_audio_ids: audioIds } : {}),
+          },
+          include: { lead: { select: { name: true, phone: true } } },
+        }),
+      ]);
+
+      return { fromUser, conv };
+    });
 
     this.chatGateway.emitTransferRequest(toUserId, {
       conversationId: id,
@@ -230,25 +234,30 @@ export class ConversationsService {
   }
 
   async acceptTransfer(id: string, userId: string) {
-    const current = await (this.prisma as any).conversation.findUnique({
-      where: { id },
-      select: { pending_transfer_from_id: true, lead: { select: { name: true, phone: true } } },
-    });
-
-    const [acceptingUser, conv] = await Promise.all([
-      this.prisma.user.findUnique({ where: { id: userId }, select: { name: true } }),
-      (this.prisma as any).conversation.update({
+    // Transação atômica: ler estado atual + atualizar
+    const { current, acceptingUser, conv } = await this.prisma.$transaction(async (tx) => {
+      const current = await (tx as any).conversation.findUnique({
         where: { id },
-        data: {
-          assigned_user_id: userId,
-          ai_mode: false,
-          pending_transfer_to_id: null,
-          pending_transfer_from_id: null,
-          pending_transfer_reason: null,
-          pending_transfer_audio_ids: [],
-        },
-      }),
-    ]);
+        select: { pending_transfer_from_id: true, lead: { select: { name: true, phone: true } } },
+      });
+
+      const [acceptingUser, conv] = await Promise.all([
+        tx.user.findUnique({ where: { id: userId }, select: { name: true } }),
+        (tx as any).conversation.update({
+          where: { id },
+          data: {
+            assigned_user_id: userId,
+            ai_mode: false,
+            pending_transfer_to_id: null,
+            pending_transfer_from_id: null,
+            pending_transfer_reason: null,
+            pending_transfer_audio_ids: [],
+          },
+        }),
+      ]);
+
+      return { current, acceptingUser, conv };
+    });
 
     if (current?.pending_transfer_from_id) {
       this.chatGateway.emitTransferResponse(current.pending_transfer_from_id, {
@@ -262,19 +271,24 @@ export class ConversationsService {
   }
 
   async declineTransfer(id: string, reason: string | null) {
-    const current = await (this.prisma as any).conversation.findUnique({
-      where: { id },
-      select: { pending_transfer_from_id: true, lead: { select: { name: true, phone: true } } },
-    });
+    // Transação atômica: ler estado + limpar campos de transferência
+    const current = await this.prisma.$transaction(async (tx) => {
+      const current = await (tx as any).conversation.findUnique({
+        where: { id },
+        select: { pending_transfer_from_id: true, lead: { select: { name: true, phone: true } } },
+      });
 
-    await (this.prisma as any).conversation.update({
-      where: { id },
-      data: {
-        pending_transfer_to_id: null,
-        pending_transfer_from_id: null,
-        pending_transfer_reason: null,
-        pending_transfer_audio_ids: [],
-      },
+      await (tx as any).conversation.update({
+        where: { id },
+        data: {
+          pending_transfer_to_id: null,
+          pending_transfer_from_id: null,
+          pending_transfer_reason: null,
+          pending_transfer_audio_ids: [],
+        },
+      });
+
+      return current;
     });
 
     if (current?.pending_transfer_from_id) {

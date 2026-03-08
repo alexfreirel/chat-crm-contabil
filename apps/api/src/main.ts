@@ -37,16 +37,21 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,
     transform: true,
-    forbidNonWhitelisted: false,
+    forbidNonWhitelisted: true,
   }));
 
   // Catch-all exception filter — retorna JSON padronizado
   app.useGlobalFilters(new AllExceptionsFilter());
 
+  // CORS: se ALLOWED_ORIGINS definido, restringe; senão fallback '*' (dev)
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+    : null;
+
   app.enableCors({
-    origin: '*',
+    origin: allowedOrigins || '*',
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true,
+    credentials: !!allowedOrigins,  // credentials só com origins explícitas
   });
 
   await app.listen(port, '0.0.0.0');
@@ -58,10 +63,11 @@ async function bootstrap() {
   const chatGateway = app.get(ChatGateway);
 
   const io = new SocketIOServer(httpServer, {
-    cors: { origin: '*' },
+    cors: { origin: allowedOrigins || '*' },
     path: '/socket.io',
     addTrailingSlash: false,
     transports: ['polling', 'websocket'],
+    maxHttpBufferSize: 1e6,  // 1MB max payload — previne abuse
   });
 
   chatGateway.server = io;

@@ -1,11 +1,20 @@
-import { Controller, Get, Post, Patch, Delete, Body, UseGuards, Request, ForbiddenException, Param, Put } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, UseGuards, Request, ForbiddenException, Param, Put, Logger } from '@nestjs/common';
 import { SettingsService } from './settings.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 
+/** Mascara uma chave de API, mostrando apenas os primeiros 4 e últimos 4 caracteres */
+function maskApiKey(key: string | null | undefined): string | null {
+  if (!key) return null;
+  if (key.length <= 10) return '****';
+  return `${key.slice(0, 4)}${'*'.repeat(Math.min(key.length - 8, 20))}${key.slice(-4)}`;
+}
+
 @Controller('settings')
 @UseGuards(JwtAuthGuard)
 export class SettingsController {
+  private readonly logger = new Logger(SettingsController.name);
+
   constructor(
     private readonly settingsService: SettingsService,
     private readonly whatsappService: WhatsappService,
@@ -45,19 +54,19 @@ export class SettingsController {
     if (req.user.role !== 'ADMIN') {
       throw new ForbiddenException('Apenas administradores podem ver configurações de API');
     }
-    return this.settingsService.getWhatsAppConfig();
+    const config = await this.settingsService.getWhatsAppConfig();
+    return { ...config, apiKey: maskApiKey(config.apiKey) };
   }
 
   @Post('whatsapp-config')
   async setWhatsAppConfig(
     @Request() req: any,
-    @Body() data: { apiUrl: string; apiKey: string; webhookUrl?: string }
+    @Body() data: { apiUrl: string; apiKey?: string; webhookUrl?: string }
   ) {
     if (req.user.role !== 'ADMIN') {
       throw new ForbiddenException('Apenas administradores podem alterar configurações de API');
     }
 
-    console.log('Salvando configurações:', data);
     await this.settingsService.setWhatsAppConfig(data.apiUrl, data.apiKey, data.webhookUrl);
 
     // Reaplicar webhook em todas as instâncias existentes
@@ -68,9 +77,9 @@ export class SettingsController {
         await Promise.allSettled(
           names.map((name) => this.whatsappService.setWebhook(name, data.webhookUrl!)),
         );
-        console.log(`Webhook atualizado em ${names.length} instância(s):`, names);
+        this.logger.log(`Webhook atualizado em ${names.length} instância(s)`);
       } catch (e) {
-        console.error('Falha ao reaplicar webhook nas instâncias:', e);
+        this.logger.error('Falha ao reaplicar webhook nas instâncias:', e?.message);
       }
     }
 
@@ -82,7 +91,8 @@ export class SettingsController {
     if (req.user.role !== 'ADMIN') {
       throw new ForbiddenException('Apenas administradores podem ver configurações de IA');
     }
-    return this.settingsService.getAiConfig();
+    const config = await this.settingsService.getAiConfig();
+    return { ...config, apiKey: maskApiKey(config.apiKey) };
   }
 
   @Post('ai-config')

@@ -79,8 +79,6 @@ export class SettingsService {
     const dbApiKey = await this.get('EVOLUTION_GLOBAL_APIKEY');
     const dbWebhookUrl = await this.get('WEBHOOK_URL');
 
-    console.log('Configurações carregadas do Banco:', { dbApiUrl, dbApiKey, dbWebhookUrl });
-
     return {
       apiUrl: dbApiUrl || process.env.EVOLUTION_API_URL,
       apiKey: dbApiKey || process.env.EVOLUTION_GLOBAL_APIKEY,
@@ -88,9 +86,11 @@ export class SettingsService {
     };
   }
 
-  async setWhatsAppConfig(apiUrl: string, apiKey: string, webhookUrl?: string) {
+  async setWhatsAppConfig(apiUrl: string, apiKey?: string, webhookUrl?: string) {
     await this.set('EVOLUTION_API_URL', apiUrl);
-    await this.set('EVOLUTION_GLOBAL_APIKEY', apiKey);
+    if (apiKey) {
+      await this.set('EVOLUTION_GLOBAL_APIKEY', apiKey);
+    }
     if (webhookUrl) {
       await this.set('WEBHOOK_URL', webhookUrl);
     }

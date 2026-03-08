@@ -106,6 +106,7 @@ export class ChatGateway {
     this.server.to(conversationId).emit('messageUpdate', message);
   }
 
+  // TODO: Escalar — quando houver multi-tenant, emitir apenas para rooms do tenant
   emitConversationsUpdate(tenantId: string | null) {
     this.logger.log(`[SOCKET] Emitting inboxUpdate to all clients`);
     this.server.emit('inboxUpdate');

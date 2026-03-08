@@ -34,8 +34,13 @@ export class HmacGuard implements CanActivate {
       '';
 
     if (!signature) {
-      // Evolution API nao envia assinatura por padrao — permitir passagem
-      // Quando um proxy/gateway adicionar assinatura, ela sera verificada
+      // Se WEBHOOK_HMAC_REQUIRED=true, rejeitar sem assinatura (fail-closed)
+      if (process.env.WEBHOOK_HMAC_REQUIRED === 'true') {
+        this.logger.warn('[HMAC] Webhook sem assinatura — rejeitado (HMAC obrigatório)');
+        throw new UnauthorizedException('Webhook signature required');
+      }
+      // Evolution API nao envia assinatura por padrao — permitir passagem (compat)
+      this.logger.debug('[HMAC] Webhook sem assinatura — permitido (HMAC não obrigatório)');
       return true;
     }
 

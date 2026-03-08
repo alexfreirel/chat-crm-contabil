@@ -318,6 +318,9 @@ export default function AgendaPage() {
 
   // ─── Socket.io Real-Time ─────────────────────────────
   useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;  // sem token, não tenta conectar
+
     const wsUrl = getWsUrl();
     const socket = io(wsUrl, {
       path: getSocketPath(),
@@ -325,29 +328,34 @@ export default function AgendaPage() {
       reconnection: true,
       reconnectionAttempts: Infinity,
       timeout: 10000,
+      auth: { token },  // necessário para o middleware JWT do socket
     });
 
     socket.on('connect', () => {
-      const token = localStorage.getItem('token');
-      if (token) {
-        try {
-          const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-          if (payload?.sub) socket.emit('join_user', payload.sub);
-        } catch {}
-      }
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+        if (payload?.sub) socket.emit('join_user', payload.sub);
+      } catch {}
     });
 
-    socket.on('calendar_update', () => {
+    const handleCalendarUpdate = () => {
       if (rangeRef.current) fetchEvents(rangeRef.current.start, rangeRef.current.end);
-    });
+    };
 
-    socket.on('calendar_reminder', (data: { eventId: string; title: string; type: string; start_at: string; minutesBefore: number }) => {
+    const handleCalendarReminder = (data: { eventId: string; title: string; type: string; start_at: string; minutesBefore: number }) => {
       setReminderToast(data);
       try { playNotificationSound(); } catch {}
       setTimeout(() => setReminderToast(null), 10000);
-    });
+    };
 
-    return () => { socket.disconnect(); };
+    socket.on('calendar_update', handleCalendarUpdate);
+    socket.on('calendar_reminder', handleCalendarReminder);
+
+    return () => {
+      socket.off('calendar_update', handleCalendarUpdate);
+      socket.off('calendar_reminder', handleCalendarReminder);
+      socket.disconnect();
+    };
   }, [fetchEvents]);
 
   // ─── Modal Handlers ─────────────────────────────────
