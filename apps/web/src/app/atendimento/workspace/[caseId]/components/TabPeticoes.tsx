@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FileSignature, Loader2, Plus, ArrowLeft, Save, Clock,
-  ChevronDown, Trash2,
+  ChevronDown, Trash2, Sparkles, RefreshCw,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { showError, showSuccess } from '@/lib/toast';
@@ -226,6 +226,7 @@ function CreatePetitionForm({
   const [title, setTitle] = useState('');
   const [type, setType] = useState('INICIAL');
   const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
   const handleCreate = async () => {
     if (!title.trim()) {
@@ -244,6 +245,25 @@ function CreatePetitionForm({
     }
   };
 
+  const handleGenerateAI = async () => {
+    if (!title.trim()) {
+      showError('Informe o título da petição');
+      return;
+    }
+    setGenerating(true);
+    try {
+      const res = await api.post(`/petitions/case/${caseId}/generate`, { title, type });
+      showSuccess('Petição gerada com IA');
+      onCreated(res.data.id);
+    } catch (e: any) {
+      showError(e?.response?.data?.message || 'Erro ao gerar petição com IA');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const busy = saving || generating;
+
   return (
     <div className="rounded-lg border border-primary/30 bg-base-200/50 p-4 space-y-3">
       <h3 className="text-sm font-semibold">Nova Petição</h3>
@@ -255,7 +275,7 @@ function CreatePetitionForm({
           onChange={(e) => setTitle(e.target.value)}
           className="input input-bordered input-sm flex-1"
           autoFocus
-          onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+          onKeyDown={(e) => e.key === 'Enter' && !busy && handleCreate()}
         />
         <select
           value={type}
@@ -267,17 +287,31 @@ function CreatePetitionForm({
           ))}
         </select>
       </div>
+      {generating && (
+        <div className="flex items-center gap-2 text-xs text-primary animate-pulse">
+          <Sparkles className="h-3.5 w-3.5" />
+          Gerando petição com IA... isso pode levar até 30 segundos
+        </div>
+      )}
       <div className="flex justify-end gap-2">
-        <button onClick={onCancel} className="btn btn-ghost btn-sm">
+        <button onClick={onCancel} disabled={busy} className="btn btn-ghost btn-sm">
           Cancelar
         </button>
         <button
           onClick={handleCreate}
-          disabled={saving}
-          className="btn btn-primary btn-sm gap-1"
+          disabled={busy}
+          className="btn btn-outline btn-sm gap-1"
         >
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-          Criar
+          Criar vazia
+        </button>
+        <button
+          onClick={handleGenerateAI}
+          disabled={busy}
+          className="btn btn-primary btn-sm gap-1"
+        >
+          {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+          Gerar com IA
         </button>
       </div>
     </div>
@@ -301,8 +335,11 @@ function PetitionEditor({
   const [showVersions, setShowVersions] = useState(false);
   const [savingVersion, setSavingVersion] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [contentKey, setContentKey] = useState(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestContentRef = useRef<{ json: any; html: string } | null>(null);
+  const [currentContent, setCurrentContent] = useState(petition.content_json);
 
   const isEditable = status === 'RASCUNHO' || status === 'EM_REVISAO';
 
@@ -409,6 +446,23 @@ function PetitionEditor({
     }
   };
 
+  // ─── Regenerate with AI ────────────────────────────────────
+
+  const handleRegenerate = async () => {
+    if (!confirm('Isso substituirá o conteúdo atual da petição pelo gerado pela IA. Deseja continuar?')) return;
+    setRegenerating(true);
+    try {
+      const res = await api.post(`/petitions/${petition.id}/generate`);
+      setCurrentContent(res.data.content_json);
+      setContentKey(prev => prev + 1);
+      showSuccess('Petição regenerada com IA');
+    } catch (e: any) {
+      showError(e?.response?.data?.message || 'Erro ao regenerar petição');
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
   // ─── Status transitions ────────────────────────────────────
 
   const transitions: Record<string, string[]> = {
@@ -486,6 +540,19 @@ function PetitionEditor({
           <ChevronDown className={`h-3 w-3 transition-transform ${showVersions ? 'rotate-180' : ''}`} />
         </button>
 
+        {/* Regenerate with AI */}
+        {isEditable && (
+          <button
+            onClick={handleRegenerate}
+            disabled={regenerating}
+            className="btn btn-ghost btn-xs gap-1 text-primary"
+            title="Regenerar conteúdo com IA"
+          >
+            {regenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+            {regenerating ? 'Gerando...' : 'Regenerar com IA'}
+          </button>
+        )}
+
         <div className="flex-1" />
 
         {/* Status transitions */}
@@ -535,12 +602,20 @@ function PetitionEditor({
 
       {/* Editor */}
       <div className="flex-1 overflow-y-auto p-4">
-        <TiptapEditor
-          initialContent={petition.content_json}
-          onChange={handleEditorChange}
-          editable={isEditable}
-          placeholder="Comece a redigir sua petição..."
-        />
+        {regenerating ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Sparkles className="h-8 w-8 text-primary animate-pulse" />
+            <p className="text-sm text-base-content/60">Gerando petição com IA... isso pode levar até 30 segundos</p>
+          </div>
+        ) : (
+          <TiptapEditor
+            key={contentKey}
+            initialContent={currentContent}
+            onChange={handleEditorChange}
+            editable={isEditable}
+            placeholder="Comece a redigir sua petição..."
+          />
+        )}
       </div>
     </div>
   );

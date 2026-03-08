@@ -29,6 +29,18 @@ interface CalendarEvent {
   assigned_user: { id: string; name: string } | null;
 }
 
+interface DjenPublication {
+  id: string;
+  comunicacao_id: number;
+  data_disponibilizacao: string;
+  numero_processo: string;
+  classe_processual: string | null;
+  assunto: string | null;
+  tipo_comunicacao: string | null;
+  conteudo: string;
+  nome_advogado: string | null;
+}
+
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('pt-BR', {
     day: '2-digit', month: 'short', year: 'numeric',
@@ -43,7 +55,7 @@ function formatDateTime(d: string) {
 
 type TimelineItem = {
   id: string;
-  type: 'event' | 'calendar';
+  type: 'event' | 'calendar' | 'djen';
   date: string;
   title: string;
   description: string | null;
@@ -52,6 +64,7 @@ type TimelineItem = {
 
 function getEventIcon(type: string) {
   switch (type.toUpperCase()) {
+    case 'DJEN':
     case 'PUBLICACAO':
     case 'DECISAO': return <Gavel className="h-3.5 w-3.5" />;
     case 'AUDIENCIA': return <Calendar className="h-3.5 w-3.5" />;
@@ -64,6 +77,7 @@ function getEventIcon(type: string) {
 
 function getEventColor(type: string): string {
   switch (type.toUpperCase()) {
+    case 'DJEN': return 'border-violet-500';
     case 'PUBLICACAO':
     case 'DECISAO': return 'border-secondary';
     case 'AUDIENCIA': return 'border-primary';
@@ -77,17 +91,21 @@ function getEventColor(type: string): string {
 export default function TabTimeline({ caseId }: { caseId: string }) {
   const [events, setEvents] = useState<CaseEvent[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [djenPublications, setDjenPublications] = useState<DjenPublication[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedDjen, setExpandedDjen] = useState<Set<string>>(new Set());
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [eventsRes, calRes] = await Promise.all([
+      const [eventsRes, calRes, djenRes] = await Promise.all([
         api.get(`/legal-cases/${caseId}/events`),
         api.get('/calendar/events', { params: { legalCaseId: caseId } }),
+        api.get(`/djen/case/${caseId}`).catch(() => ({ data: [] })),
       ]);
       setEvents(eventsRes.data || []);
       setCalendarEvents(calRes.data || []);
+      setDjenPublications(djenRes.data || []);
     } catch {
       showError('Erro ao carregar timeline');
     } finally {
@@ -98,6 +116,15 @@ export default function TabTimeline({ caseId }: { caseId: string }) {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const toggleDjenExpand = (id: string) => {
+    setExpandedDjen(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // Merge events into unified timeline
   const timeline: TimelineItem[] = [
@@ -123,6 +150,21 @@ export default function TabTimeline({ caseId }: { caseId: string }) {
         eventType: e.type,
         status: e.status,
         assignedUser: e.assigned_user,
+      },
+    })),
+    ...djenPublications.map(d => ({
+      id: `djen-${d.id}`,
+      type: 'djen' as const,
+      date: d.data_disponibilizacao,
+      title: `DJEN: ${d.tipo_comunicacao || 'Publicação'}`,
+      description: d.conteudo,
+      extra: {
+        eventType: 'DJEN',
+        tipoComunicacao: d.tipo_comunicacao,
+        classeProcessual: d.classe_processual,
+        assunto: d.assunto,
+        nomeAdvogado: d.nome_advogado,
+        numeroProcesso: d.numero_processo,
       },
     })),
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -169,17 +211,42 @@ export default function TabTimeline({ caseId }: { caseId: string }) {
                       <span className="text-xs text-base-content/50">
                         {formatDateTime(item.date)}
                       </span>
-                      <span className="badge badge-xs badge-outline">{eventType}</span>
+                      <span className={`badge badge-xs ${item.type === 'djen' ? 'badge-secondary' : 'badge-outline'}`}>
+                        {item.type === 'djen' ? (item.extra.tipoComunicacao || 'DJEN') : eventType}
+                      </span>
                       {item.extra.status && (
                         <span className="badge badge-xs badge-ghost">{item.extra.status}</span>
                       )}
+                      {item.extra.classeProcessual && (
+                        <span className="badge badge-xs badge-outline">{item.extra.classeProcessual}</span>
+                      )}
                     </div>
                     <p className="text-sm font-medium mt-0.5">{item.title}</p>
-                    {item.description && (
+
+                    {/* DJEN expandable content */}
+                    {item.type === 'djen' && item.description && (
+                      <div className="mt-1">
+                        <p className={`text-xs text-base-content/50 ${expandedDjen.has(item.id) ? '' : 'line-clamp-2'}`}>
+                          {item.description}
+                        </p>
+                        {item.description.length > 150 && (
+                          <button
+                            onClick={() => toggleDjenExpand(item.id)}
+                            className="text-xs text-primary hover:underline mt-0.5"
+                          >
+                            {expandedDjen.has(item.id) ? 'Ver menos' : 'Ver mais'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Regular event description */}
+                    {item.type !== 'djen' && item.description && (
                       <p className="text-xs text-base-content/50 mt-0.5 line-clamp-3">
                         {item.description}
                       </p>
                     )}
+
                     {item.extra.source && (
                       <p className="text-xs text-base-content/40 mt-0.5">
                         Fonte: {item.extra.source}
@@ -199,6 +266,11 @@ export default function TabTimeline({ caseId }: { caseId: string }) {
                     {item.extra.assignedUser && (
                       <p className="text-xs text-base-content/40 mt-0.5">
                         Responsável: {item.extra.assignedUser.name}
+                      </p>
+                    )}
+                    {item.extra.nomeAdvogado && (
+                      <p className="text-xs text-base-content/40 mt-0.5">
+                        Advogado: {item.extra.nomeAdvogado}
                       </p>
                     )}
                   </div>
