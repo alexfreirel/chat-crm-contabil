@@ -2,7 +2,6 @@ import { Controller, Get, Post, Body, Patch, Delete, Param, Query, UseGuards, Re
 import { LeadsService } from './leads.service';
 import { LeadsCleanupService } from './leads-cleanup.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Prisma } from '@crm/shared';
 import { CreateLeadDto, UpdateLeadDto, UpdateStageDto } from './dto/create-lead.dto';
@@ -42,39 +41,37 @@ export class LeadsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.leadsService.findOne(id);
+  findOne(@Param('id') id: string, @Request() req: any) {
+    return this.leadsService.findOne(id, req.user?.tenant_id);
   }
 
   @Patch(':id')
   update(
     @Param('id') id: string,
     @Body() body: UpdateLeadDto,
+    @Request() req: any,
   ) {
-    return this.leadsService.update(id, body);
+    return this.leadsService.update(id, body, req.user?.tenant_id);
   }
 
   @Patch(':id/stage')
-  updateStage(@Param('id') id: string, @Body() dto: UpdateStageDto) {
-    return this.leadsService.updateStatus(id, dto.stage);
+  updateStage(@Param('id') id: string, @Body() dto: UpdateStageDto, @Request() req: any) {
+    return this.leadsService.updateStatus(id, dto.stage, req.user?.tenant_id);
   }
 
   @Delete(':id/memory')
-  resetMemory(@Param('id') id: string) {
-    return this.leadsService.resetMemory(id);
+  resetMemory(@Param('id') id: string, @Request() req: any) {
+    return this.leadsService.resetMemory(id, req.user?.tenant_id);
   }
 
   // DELETE /leads/:id — exclui contato e TODOS os seus dados (somente ADMIN)
   @Delete(':id')
-  deleteContact(@Param('id') id: string, @Request() req: any) {
-    if (req.user?.role !== 'ADMIN') {
-      throw new ForbiddenException('Apenas administradores podem excluir contatos.');
-    }
+  @Roles('ADMIN')
+  deleteContact(@Param('id') id: string) {
     return this.leadsService.deleteContact(id);
   }
 
   @Post('cleanup/deduplicate')
-  @UseGuards(RolesGuard)
   @Roles('ADMIN')
   deduplicatePhones() {
     return this.leadsCleanupService.deduplicatePhones();
