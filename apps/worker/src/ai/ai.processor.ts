@@ -860,6 +860,19 @@ export class AiProcessor extends WorkerHost {
       // 3. Verificar ai_mode ativo
       if (!convo || !convo.ai_mode) return;
 
+      // 3b. Anti-stale check — aborta job duplicado/obsoleto
+      // Mensagens carregadas em ordem DESC: convo.messages[0] = mais recente.
+      // Se a mensagem mais recente já é outbound (IA/operador respondeu), não há nada a responder.
+      // Isso ocorre quando dois jobs são enfileirados quase ao mesmo tempo (race condition)
+      // e o segundo encontra a conversa já respondida pelo primeiro.
+      const mostRecentMsg = convo.messages[0];
+      if (mostRecentMsg && mostRecentMsg.direction === 'out') {
+        this.logger.warn(
+          `[AI] Job ${job.id} abortado — última msg já é outbound (race condition evitada) para conv ${conversation_id}`,
+        );
+        return;
+      }
+
       // 4. (Debounce gerenciado no enqueue — evolution.service.ts)
       // O job só chega aqui após o silêncio do lead (delay configurável em Ajustes IA).
       // Não há mais cooldown guard aqui; o processor simplesmente processa todas as
@@ -1113,10 +1126,30 @@ REGRAS DE ATENDIMENTO — OBRIGATÓRIAS:
 5. Mensagens curtas: máximo 4 linhas por resposta. WhatsApp não é e-mail.
 6. Se o cliente fizer uma pergunta jurídica diretamente, responda em no máximo 2 linhas e volte imediatamente à coleta de informações.
 
+AVALIAÇÃO DE VIABILIDADE DO CASO — OBRIGATÓRIA ANTES DE COLETAR DADOS:
+Antes de iniciar qualquer coleta de ficha ou formulário, avalie se o caso tem viabilidade econômica e jurídica.
+
+CASOS CLARAMENTE INVIÁVEIS → use next_step="perdido" + loss_reason e encerre gentilmente:
+- Atraso de pagamento de APENAS 1 a 3 dias sem outros problemas (ex: "salário pago com 1 dia de atraso, mas foi pago")
+- Valor em discussão irrisório (ex: "diferença de R$ 10" em situação pontual, sem recorrência)
+- Situação que já foi resolvida pelo próprio cliente sem prejuízo
+- Caso sem violação real de direito (ex: desconto autorizado em contrato, situação normal de trabalho)
+- Reclamação sobre algo subjetivo sem base legal (ex: "não gostei do chefe")
+
+AO ENCERRAR POR INVIABILIDADE:
+1. Explique brevemente (1-2 linhas) por que aquele ponto específico pode não justificar uma ação judicial.
+2. Pergunte se há OUTROS problemas no vínculo de trabalho (horas extras, FGTS, verbas rescisórias, acidente etc.).
+3. Só use next_step="perdido" + loss_reason se NÃO houver nenhum outro direito a investigar.
+4. Se houver outros problemas além do inviável → continue a triagem normalmente focando nos problemas viáveis.
+
+Exemplo de resposta para atraso de 1 dia de salário:
+"Entendi! Um atraso de apenas 1 dia geralmente não justifica uma ação judicial, pois os custos do processo costumam ser bem maiores que o que seria obtido. Mas me conta: além desse atraso, teve algum outro problema — como horas extras não pagas, FGTS em aberto, verbas rescisórias devidas ou qualquer outra situação?"
+
 FICHA TRABALHISTA (apenas quando area = Trabalhista):
-Quando a área for TRABALHISTA, você DEVE coletar ATIVAMENTE todos os campos da ficha através de perguntas.
-NÃO envie o link do formulário até ter coletado todos os campos essenciais. O formulário serve para REVISÃO, não para preenchimento.
-Siga o ROTEIRO DE COLETA no final do prompt. Inclua "form_data" no JSON a cada resposta. Se NÃO for trabalhista: form_data: null.
+Quando a área for TRABALHISTA e o caso for VIÁVEL, você DEVE coletar ATIVAMENTE todos os campos da ficha através de perguntas.
+- Ao iniciar as perguntas da ficha (após confirmar viabilidade), use next_step = "entrevista".
+- NÃO envie o link do formulário até ter coletado todos os campos essenciais. O formulário serve para REVISÃO, não para preenchimento.
+- Siga o ROTEIRO DE COLETA no final do prompt. Inclua "form_data" no JSON a cada resposta. Se NÃO for trabalhista: form_data: null.
 
 ═══════════════════════════════════════════════════
 HORÁRIOS DISPONÍVEIS DO ADVOGADO:
@@ -1224,12 +1257,10 @@ REGRAS DE COLETA:
 5. nome_empregador = nome da EMPRESA (DIFERENTE do nome_completo).
 6. Salário: use EXATAMENTE o que o cliente disse. NUNCA calcule valores.
 
-QUANDO ENVIAR O FORMULÁRIO (next_step = "formulario"):
-SOMENTE use next_step = "formulario" quando TODOS estes campos estiverem preenchidos:
-nome_completo, nome_empregador, funcao, data_admissao, situacao_atual, salario,
-horario_entrada, horario_saida, fazia_horas_extras, fgts_depositado, possui_testemunhas.
-
-Se ainda faltam campos essenciais → next_step = "duvidas" e continue perguntando.
+REGRAS DE NEXT_STEP DURANTE A FICHA (Trabalhista):
+- next_step = "entrevista": use SEMPRE que estiver coletando campos da ficha (FASE 1 a FASE 7), ou seja, enquanto ainda faltam campos essenciais. Isso inclui desde a primeira pergunta de identificação até antes de enviar o link.
+- next_step = "formulario": use SOMENTE quando enviar o link — ou seja, quando TODOS estes campos estiverem preenchidos: nome_completo, nome_empregador, funcao, data_admissao, situacao_atual, salario, horario_entrada, horario_saida, fazia_horas_extras, fgts_depositado, possui_testemunhas.
+- NUNCA use next_step = "duvidas" quando área for Trabalhista e você já iniciou a coleta da ficha.
 
 LINK DO FORMULÁRIO: {{form_url}}
 Quando next_step = "formulario", inclua o link na reply:
@@ -1238,7 +1269,10 @@ Quando next_step = "formulario", inclua o link na reply:
 FORMATO DO JSON:
 {"reply":"texto","updates":{"name":"João","status":"QUALIFICANDO","area":"Trabalhista","lead_summary":"resumo","next_step":"duvidas","notes":"","loss_reason":null,"form_data":{"nome_completo":"João da Silva","nome_empregador":"Empresa X","funcao":"Operador","salario":"2000","fazia_horas_extras":"Sim"}},"scheduling_action":null}
 
-Valores válidos para updates.next_step: duvidas | triagem_concluida | formulario | reuniao | documentos | procuracao | encerrado | perdido
+Valores válidos para updates.next_step: duvidas | triagem_concluida | entrevista | formulario | reuniao | documentos | procuracao | encerrado | perdido
+  - "duvidas": triagem em andamento (área não identificada ou não é Trabalhista)
+  - "entrevista": coletando campos da ficha trabalhista (Fases 1-7 em andamento)
+  - "formulario": ficha concluída, link enviado ao cliente para revisão
 updates.loss_reason: motivo da perda em português (ex: "Sem interesse"). Obrigatório quando next_step="perdido". Null nos demais casos.
 
 scheduling_action: Use SOMENTE quando agendar reunião.
@@ -1272,7 +1306,7 @@ ROTEIRO (siga na ordem, UMA pergunta por vez):
 Retorne SOMENTE JSON válido: {"reply":"texto para enviar","updates":{"name":null,"status":"INICIAL","area":null,"lead_summary":"resumo","next_step":"duvidas","notes":"","loss_reason":null,"form_data":null},"scheduling_action":null}
 
 Valores válidos para updates.status: INICIAL | QUALIFICANDO | AGUARDANDO_FORM | REUNIAO_AGENDADA | AGUARDANDO_DOCS | AGUARDANDO_PROC | FINALIZADO | PERDIDO
-Valores válidos para updates.next_step: duvidas | triagem_concluida | formulario | reuniao | documentos | procuracao | encerrado | perdido
+Valores válidos para updates.next_step: duvidas | triagem_concluida | entrevista | formulario | reuniao | documentos | procuracao | encerrado | perdido
 updates.loss_reason: motivo da perda em português (ex: "Sem interesse"). Obrigatório quando next_step="perdido". Null nos demais casos.
 form_data: objeto com campos trabalhistas extraídos (só quando area=Trabalhista). Null quando não se aplica.
 scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} quando confirmar agendamento. Null quando não se aplica.`;

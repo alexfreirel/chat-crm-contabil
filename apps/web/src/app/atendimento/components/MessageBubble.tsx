@@ -54,6 +54,7 @@ function getDocLabel(mime: string, name?: string) {
 const NEXT_STEP_LABELS: Record<string, string> = {
   duvidas:           '❓ Dúvidas',
   triagem_concluida: '✅ Triagem',
+  entrevista:        '📝 Entrevista',
   formulario:        '📋 Formulário',
   reuniao:           '📞 Reunião',
   documentos:        '📎 Documentos',
