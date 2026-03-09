@@ -29,9 +29,28 @@ export interface LPFooter {
   };
 }
 
+export interface LPPracticeArea {
+  iconName: string;
+  title: string;
+  description: string;
+}
+
+export interface LPSectionLabels {
+  servicesTag?: string;
+  servicesTitle?: string;
+  servicesDescription?: string;
+  bannerTitle?: string;
+  officeTag?: string;
+  officeTitle?: string;
+  officeDescription?: string;
+  excellenceTitle?: string;
+}
+
 export interface LPTemplateContent {
   hero: LPHero;
   steps?: LPStep[];
   faq?: LPFaqItem[];
   footer?: LPFooter;
+  practiceAreas?: LPPracticeArea[];
+  sectionLabels?: LPSectionLabels;
 }

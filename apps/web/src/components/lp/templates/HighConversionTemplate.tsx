@@ -39,8 +39,24 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { LPTemplateContent } from "@/types/landing-page";
+import { LPTemplateContent, LPPracticeArea } from "@/types/landing-page";
 import { trackWhatsappClick } from "../LPTracker";
+import {
+  AlertTriangle,
+  AlertCircle,
+  CircleDollarSign,
+  HardHat,
+  Timer,
+  Handshake,
+  type LucideIcon,
+} from "lucide-react";
+
+const iconMap: Record<string, LucideIcon> = {
+  Briefcase, ShoppingCart, HeartPulse, Users, Gavel, FileText, Building2, Landmark,
+  Clock, AlertTriangle, Shield, ShieldCheck, AlertCircle, Scale, Award, Globe,
+  CheckCircle2, MessageCircle, Search, Zap, Lightbulb, Bot, Headphones, Phone,
+  CircleDollarSign, HardHat, Timer, Handshake,
+};
 
 interface HighConversionTemplateProps {
   content: LPTemplateContent;
@@ -53,7 +69,7 @@ export function HighConversionTemplate({
   whatsappNumber,
   onWhatsAppClick,
 }: HighConversionTemplateProps) {
-  const { hero, steps = [], faq = [], footer } = content;
+  const { hero, steps = [], faq = [], footer, practiceAreas, sectionLabels } = content;
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isShining, setIsShining] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
@@ -595,16 +611,18 @@ export function HighConversionTemplate({
           {/* Header */}
           <div className="text-center mb-[clamp(3rem,5vw,5rem)] px-4">
             <span className="text-[#A89048] font-bold tracking-widest uppercase text-sm mb-4 block">
-              NOSSOS SERVIÇOS
+              {sectionLabels?.servicesTag ?? "NOSSOS SERVIÇOS"}
             </span>
-            <h2 className="text-[clamp(1.75rem,3.5vw,3rem)] 2xl:text-[clamp(2.25rem,4vw,4rem)] font-extrabold text-[#FAFAFA] mb-6 leading-tight">
-              Escritório de Advocacia <br /> em{" "}
-              <span className="text-[#A89048]">Arapiraca-AL</span>
-            </h2>
+            {sectionLabels?.servicesTitle ? (
+              <h2 className="text-[clamp(1.75rem,3.5vw,3rem)] 2xl:text-[clamp(2.25rem,4vw,4rem)] font-extrabold text-[#FAFAFA] mb-6 leading-tight" dangerouslySetInnerHTML={{ __html: sectionLabels.servicesTitle }} />
+            ) : (
+              <h2 className="text-[clamp(1.75rem,3.5vw,3rem)] 2xl:text-[clamp(2.25rem,4vw,4rem)] font-extrabold text-[#FAFAFA] mb-6 leading-tight">
+                Escritório de Advocacia <br /> em{" "}
+                <span className="text-[#A89048]">Arapiraca-AL</span>
+              </h2>
+            )}
             <p className="text-[clamp(1rem,1.1vw,1.125rem)] 2xl:text-[clamp(1.125rem,1.5vw,1.375rem)] text-[#9a9a9a] max-w-3xl mx-auto leading-relaxed">
-              Somos um escritório de advocacia com atendimento &quot;FULL
-              SERVICE&quot;, e estamos comprometidos com a excelência na atuação
-              em diferentes áreas do direito.
+              {sectionLabels?.servicesDescription ?? 'Somos um escritório de advocacia com atendimento "FULL SERVICE", e estamos comprometidos com a excelência na atuação em diferentes áreas do direito.'}
             </p>
           </div>
 
@@ -624,56 +642,63 @@ export function HighConversionTemplate({
               },
             }}
           >
-            {[
-              {
-                icon: Briefcase,
-                title: "Direito Trabalhista",
-                description:
-                  "Protege os direitos dos trabalhadores, regulando relações como salários, jornada, férias, FGTS e demissões. Atuamos na defesa de quem busca justiça nas relações de emprego.",
-              },
-              {
-                icon: ShoppingCart,
-                title: "Direito do Consumidor",
-                description:
-                  "Garante a proteção contra práticas abusivas nas relações de consumo. Atuamos na defesa de clientes lesados por empresas, cobranças indevidas, produtos defeituosos ou serviços mal prestados.",
-              },
-              {
-                icon: HeartPulse,
-                title: "Direito Previdenciário",
-                description:
-                  "Voltado à garantia de benefícios como aposentadoria, pensão, auxílio-doença e BPC/LOAS. Defendemos os direitos de quem busca amparo do INSS em momentos de necessidade.",
-              },
-              {
-                icon: Users,
-                title: "Direito de Família",
-                description:
-                  "Cuida das relações familiares, como divórcio, guarda de filhos, pensão alimentícia e inventário. Atuamos com sensibilidade e firmeza na defesa dos seus direitos e da sua família.",
-              },
-              {
-                icon: Gavel,
-                title: "Direito Criminal",
-                description:
-                  "Defesa em processos criminais, desde inquérito até julgamento. Atuamos com estratégia e compromisso na proteção dos direitos do acusado, sempre respeitando o devido processo legal.",
-              },
-              {
-                icon: FileText,
-                title: "Direito Civil",
-                description:
-                  "Abrange questões do dia a dia como contratos, indenizações, posse, propriedade e responsabilidade civil. Atuamos na prevenção e resolução de conflitos com segurança jurídica.",
-              },
-              {
-                icon: Building2,
-                title: "Direito Imobiliário",
-                description:
-                  "Atuação em compra e venda de imóveis, contratos de locação, usucapião, inventário de bens imóveis e regularização fundiária. Protegemos seu patrimônio com segurança jurídica.",
-              },
-              {
-                icon: Landmark,
-                title: "Direito das Sucessões",
-                description:
-                  "Regula a transferência do patrimônio após o falecimento. Atuamos em inventários, partilhas, testamentos e planejamento sucessório, garantindo segurança jurídica e respeito à vontade dos herdeiros.",
-              },
-            ].map((area, index) => {
+            {(practiceAreas
+              ? practiceAreas.map((pa) => ({
+                  icon: iconMap[pa.iconName] || Briefcase,
+                  title: pa.title,
+                  description: pa.description,
+                }))
+              : [
+                  {
+                    icon: Briefcase,
+                    title: "Direito Trabalhista",
+                    description:
+                      "Protege os direitos dos trabalhadores, regulando relações como salários, jornada, férias, FGTS e demissões. Atuamos na defesa de quem busca justiça nas relações de emprego.",
+                  },
+                  {
+                    icon: ShoppingCart,
+                    title: "Direito do Consumidor",
+                    description:
+                      "Garante a proteção contra práticas abusivas nas relações de consumo. Atuamos na defesa de clientes lesados por empresas, cobranças indevidas, produtos defeituosos ou serviços mal prestados.",
+                  },
+                  {
+                    icon: HeartPulse,
+                    title: "Direito Previdenciário",
+                    description:
+                      "Voltado à garantia de benefícios como aposentadoria, pensão, auxílio-doença e BPC/LOAS. Defendemos os direitos de quem busca amparo do INSS em momentos de necessidade.",
+                  },
+                  {
+                    icon: Users,
+                    title: "Direito de Família",
+                    description:
+                      "Cuida das relações familiares, como divórcio, guarda de filhos, pensão alimentícia e inventário. Atuamos com sensibilidade e firmeza na defesa dos seus direitos e da sua família.",
+                  },
+                  {
+                    icon: Gavel,
+                    title: "Direito Criminal",
+                    description:
+                      "Defesa em processos criminais, desde inquérito até julgamento. Atuamos com estratégia e compromisso na proteção dos direitos do acusado, sempre respeitando o devido processo legal.",
+                  },
+                  {
+                    icon: FileText,
+                    title: "Direito Civil",
+                    description:
+                      "Abrange questões do dia a dia como contratos, indenizações, posse, propriedade e responsabilidade civil. Atuamos na prevenção e resolução de conflitos com segurança jurídica.",
+                  },
+                  {
+                    icon: Building2,
+                    title: "Direito Imobiliário",
+                    description:
+                      "Atuação em compra e venda de imóveis, contratos de locação, usucapião, inventário de bens imóveis e regularização fundiária. Protegemos seu patrimônio com segurança jurídica.",
+                  },
+                  {
+                    icon: Landmark,
+                    title: "Direito das Sucessões",
+                    description:
+                      "Regula a transferência do patrimônio após o falecimento. Atuamos em inventários, partilhas, testamentos e planejamento sucessório, garantindo segurança jurídica e respeito à vontade dos herdeiros.",
+                  },
+                ]
+            ).map((area, index) => {
               const Icon = area.icon;
               return (
                 <motion.div
@@ -759,10 +784,14 @@ export function HighConversionTemplate({
           >
             {/* Left Title */}
             <div className="lg:w-1/3 text-center lg:text-left">
-              <h3 className="text-[clamp(1.5rem,4vw,2rem)] lg:text-[clamp(1.25rem,2vw,1.75rem)] 2xl:text-[clamp(1.5rem,2.5vw,2rem)] font-black text-slate-800 leading-snug md:leading-tight">
-                Referência em <span className="text-[#A89048]">direito</span> na
-                cidade de <br className="md:block" /> Arapiraca-AL
-              </h3>
+              {sectionLabels?.bannerTitle ? (
+                <h3 className="text-[clamp(1.5rem,4vw,2rem)] lg:text-[clamp(1.25rem,2vw,1.75rem)] 2xl:text-[clamp(1.5rem,2.5vw,2rem)] font-black text-slate-800 leading-snug md:leading-tight" dangerouslySetInnerHTML={{ __html: sectionLabels.bannerTitle }} />
+              ) : (
+                <h3 className="text-[clamp(1.5rem,4vw,2rem)] lg:text-[clamp(1.25rem,2vw,1.75rem)] 2xl:text-[clamp(1.5rem,2.5vw,2rem)] font-black text-slate-800 leading-snug md:leading-tight">
+                  Referência em <span className="text-[#A89048]">direito</span> na
+                  cidade de <br className="md:block" /> Arapiraca-AL
+                </h3>
+              )}
             </div>
 
             {/* Divider & Arrow icon from reference */}
@@ -843,30 +872,40 @@ export function HighConversionTemplate({
             <div className="space-y-10 flex flex-col items-center lg:items-start text-center lg:text-left w-full h-auto min-w-0">
               <div className="px-4 w-full">
                 <span className="text-[#A89048] font-bold tracking-widest md:tracking-[.3em] uppercase text-sm mb-4 block">
-                  INFRAESTRUTURA & VALORES
+                  {sectionLabels?.officeTag ?? "INFRAESTRUTURA & VALORES"}
                 </span>
-                <h2 className="text-[clamp(2.15rem,5vw,3rem)] lg:text-[clamp(1.75rem,3.5vw,3rem)] 2xl:text-[clamp(2.25rem,4vw,4rem)] font-black text-[#FAFAFA] leading-[1.1] mb-6">
-                  Excelência no Atendimento <br className="hidden md:block" />
-                  <span className="text-[#A89048]">Presencial ou Online!</span>
-                </h2>
+                {sectionLabels?.officeTitle ? (
+                  <h2 className="text-[clamp(2.15rem,5vw,3rem)] lg:text-[clamp(1.75rem,3.5vw,3rem)] 2xl:text-[clamp(2.25rem,4vw,4rem)] font-black text-[#FAFAFA] leading-[1.1] mb-6" dangerouslySetInnerHTML={{ __html: sectionLabels.officeTitle }} />
+                ) : (
+                  <h2 className="text-[clamp(2.15rem,5vw,3rem)] lg:text-[clamp(1.75rem,3.5vw,3rem)] 2xl:text-[clamp(2.25rem,4vw,4rem)] font-black text-[#FAFAFA] leading-[1.1] mb-6">
+                    Excelência no Atendimento <br className="hidden md:block" />
+                    <span className="text-[#A89048]">Presencial ou Online!</span>
+                  </h2>
+                )}
                 <div className="space-y-4 text-[clamp(1.125rem,2vw,1.25rem)] lg:text-[clamp(0.9rem,1.1vw,1.125rem)] text-slate-400 font-medium max-w-2xl lg:max-w-none">
-                  <p>
-                    O escritório{" "}
-                    <span className="text-[#FAFAFA] font-bold">
-                      André Lustosa Advogados
-                    </span>{" "}
-                    consolidou-se como referência jurídica em Arapiraca e
-                    região, unindo tradição e modernidade para entregar
-                    resultados concretos aos nossos clientes.
-                  </p>
-                  <p>
-                    Contamos com uma infraestrutura moderna e acolhedora,
-                    projetada para garantir o máximo de sigilo e conforto
-                    durante as consultas presenciais. Além disso, operamos com
-                    um sistema 100% digital, permitindo que você resolva seus
-                    problemas jurídicos sem sair de casa, com a mesma segurança
-                    e proximidade.
-                  </p>
+                  {sectionLabels?.officeDescription ? (
+                    <div dangerouslySetInnerHTML={{ __html: sectionLabels.officeDescription }} />
+                  ) : (
+                    <>
+                      <p>
+                        O escritório{" "}
+                        <span className="text-[#FAFAFA] font-bold">
+                          André Lustosa Advogados
+                        </span>{" "}
+                        consolidou-se como referência jurídica em Arapiraca e
+                        região, unindo tradição e modernidade para entregar
+                        resultados concretos aos nossos clientes.
+                      </p>
+                      <p>
+                        Contamos com uma infraestrutura moderna e acolhedora,
+                        projetada para garantir o máximo de sigilo e conforto
+                        durante as consultas presenciais. Além disso, operamos com
+                        um sistema 100% digital, permitindo que você resolva seus
+                        problemas jurídicos sem sair de casa, com a mesma segurança
+                        e proximidade.
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1127,11 +1166,15 @@ export function HighConversionTemplate({
                 </span>
                 <div className="h-[2px] w-12 bg-[#A89048]" />
               </div>
-              <h2 className="text-[clamp(1.5rem,2.8vw,2.75rem)] 2xl:text-[clamp(2rem,3.2vw,3.5rem)] font-black text-[#1A1A1A] leading-[1.1] uppercase wrap-break-word hyphens-auto mb-8">
-                O ESCRITÓRIO JURÍDICO <br />
-                <span className="text-[#A89048]">ANDRÉ LUSTOSA</span> <br />
-                <span className="text-[#A89048]">ADVOGADOS!</span>
-              </h2>
+              {sectionLabels?.excellenceTitle ? (
+                <h2 className="text-[clamp(1.5rem,2.8vw,2.75rem)] 2xl:text-[clamp(2rem,3.2vw,3.5rem)] font-black text-[#1A1A1A] leading-[1.1] uppercase wrap-break-word hyphens-auto mb-8" dangerouslySetInnerHTML={{ __html: sectionLabels.excellenceTitle }} />
+              ) : (
+                <h2 className="text-[clamp(1.5rem,2.8vw,2.75rem)] 2xl:text-[clamp(2rem,3.2vw,3.5rem)] font-black text-[#1A1A1A] leading-[1.1] uppercase wrap-break-word hyphens-auto mb-8">
+                  O ESCRITÓRIO JURÍDICO <br />
+                  <span className="text-[#A89048]">ANDRÉ LUSTOSA</span> <br />
+                  <span className="text-[#A89048]">ADVOGADOS!</span>
+                </h2>
+              )}
             </motion.div>
             <motion.div
               initial={{ opacity: 0, y: 20 }}
