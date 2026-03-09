@@ -45,9 +45,22 @@ async function bootstrap() {
   app.useGlobalFilters(new AllExceptionsFilter());
 
   // CORS: se ALLOWED_ORIGINS definido, restringe; senão fallback '*' (dev)
+  const isProduction = process.env.NODE_ENV === 'production';
   const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
     : null;
+
+  if (isProduction && !allowedOrigins) {
+    throw new Error(
+      '[Bootstrap] ALLOWED_ORIGINS não está definido em ambiente de produção. ' +
+      'Configure com as origens permitidas (ex: ALLOWED_ORIGINS=https://seu-dominio.com). ' +
+      'Em desenvolvimento, defina NODE_ENV=development para ignorar esta verificação.',
+    );
+  }
+
+  if (!isProduction && !allowedOrigins) {
+    logger.warn('[Bootstrap] ALLOWED_ORIGINS não definido — CORS aberto para todas as origens (*). Defina ALLOWED_ORIGINS em produção.');
+  }
 
   app.enableCors({
     origin: allowedOrigins || '*',
@@ -64,7 +77,7 @@ async function bootstrap() {
   const chatGateway = app.get(ChatGateway);
 
   const io = new SocketIOServer(httpServer, {
-    cors: { origin: allowedOrigins || '*' },
+    cors: { origin: allowedOrigins || (isProduction ? false : '*') },
     path: '/socket.io',
     addTrailingSlash: false,
     transports: ['polling', 'websocket'],

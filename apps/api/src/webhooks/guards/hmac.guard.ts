@@ -11,7 +11,10 @@ import { SettingsService } from '../../settings/settings.service';
 /**
  * Verifica assinatura HMAC-SHA256 dos webhooks da Evolution API.
  * Header esperado: `x-webhook-signature` ou `x-signature`.
- * Se a apiKey nao estiver configurada no banco, permite passagem (compatibilidade).
+ *
+ * Comportamento por configuração:
+ * - WEBHOOK_HMAC_REQUIRED=true  → rejeita qualquer webhook sem apiKey ou sem assinatura válida (fail-closed)
+ * - WEBHOOK_HMAC_REQUIRED=false → permite webhooks quando apiKey não está configurada (compatibilidade)
  */
 @Injectable()
 export class HmacGuard implements CanActivate {
@@ -21,10 +24,19 @@ export class HmacGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
+    const hmacRequired = process.env.WEBHOOK_HMAC_REQUIRED === 'true';
 
     const { apiKey } = await this.settings.getWhatsAppConfig();
     if (!apiKey) {
-      // Sem apiKey configurada — desabilitar verificacao para compatibilidade
+      if (hmacRequired) {
+        this.logger.warn(
+          '[HMAC] WEBHOOK_HMAC_REQUIRED=true mas nenhuma API key configurada — rejeitando webhook. ' +
+          'Configure a API key do WhatsApp em Ajustes > Integração.',
+        );
+        throw new UnauthorizedException('Webhook HMAC não configurado no servidor.');
+      }
+      // Sem apiKey e HMAC não obrigatório — permitir para compatibilidade com Evolution API
+      this.logger.debug('[HMAC] API key não configurada — webhook permitido (defina WEBHOOK_HMAC_REQUIRED=true para bloquear)');
       return true;
     }
 
