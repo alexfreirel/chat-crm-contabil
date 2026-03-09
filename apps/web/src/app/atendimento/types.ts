@@ -18,6 +18,7 @@ export interface ConversationSummary {
   originAssignedUserId?: string | null;
   originAssignedUserName?: string | null;
   leadStage?: string | null;
+  stageEnteredAt?: string | null;
   nextStep?: string | null;
 }
 
