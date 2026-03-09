@@ -49,7 +49,7 @@ export class AiEventsService implements OnModuleInit, OnModuleDestroy {
         // Busca a mensagem salva com dados completos
         const message = await this.prisma.message.findUnique({
           where: { id: messageId },
-          include: { media: true },
+          include: { media: true, skill: { select: { id: true, name: true, area: true } } },
         });
 
         if (!message) {

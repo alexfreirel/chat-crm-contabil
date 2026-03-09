@@ -41,7 +41,7 @@ export class MessagesService {
         orderBy: { created_at: 'asc' },
         skip: (safePage - 1) * safeLimit,
         take: safeLimit,
-        include: { media: true, reactions: true },
+        include: { media: true, reactions: true, skill: { select: { id: true, name: true, area: true } } },
       }),
       this.prisma.message.count({ where }),
     ]);
