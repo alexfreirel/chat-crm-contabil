@@ -50,6 +50,17 @@ function getDocLabel(mime: string, name?: string) {
 
 // ─── Props ──────────────────────────────────────────────────────
 
+// Fase atual da conversa (next_step do Conversation)
+const NEXT_STEP_LABELS: Record<string, string> = {
+  duvidas:           '❓ Dúvidas',
+  triagem_concluida: '✅ Triagem',
+  formulario:        '📋 Formulário',
+  reuniao:           '📞 Reunião',
+  documentos:        '📎 Documentos',
+  procuracao:        '✍️ Procuração',
+  encerrado:         '🔒 Encerrado',
+};
+
 export interface MessageBubbleProps {
   msg: MessageItem;
   isOut: boolean;
@@ -65,6 +76,8 @@ export interface MessageBubbleProps {
   onImageDownload: (url: string) => void;
   onDocDownload: (url: string, name: string) => void;
   onReact?: (id: string, emoji: string) => void;
+  /** Fase atual da conversa (exibida no badge da IA) */
+  nextStep?: string | null;
 }
 
 // ─── Component ──────────────────────────────────────────────────
@@ -80,6 +93,7 @@ function MessageBubbleInner({
   onDelete,
   onTranscribe,
   onLightbox,
+  nextStep,
   onDocPreview,
   onImageDownload,
   onDocDownload,
@@ -122,11 +136,18 @@ function MessageBubbleInner({
       {/* Bubble wrapper (badge + bolha empilhados) */}
       <div className="flex flex-col items-end gap-0.5 max-w-[74%] md:max-w-[65%]">
 
-        {/* Badge de especialista IA — visível apenas para mensagens da IA com skill */}
+        {/* Badge de especialista IA + fase da conversa */}
         {isOut && msg.skill && (
-          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted/70 border border-border text-[10px] text-muted-foreground font-medium">
-            <Bot size={9} className="shrink-0" />
-            <span>{msg.skill.name}</span>
+          <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted/70 border border-border text-[10px] text-muted-foreground font-medium">
+              <Bot size={9} className="shrink-0" />
+              <span>{msg.skill.name}</span>
+            </div>
+            {nextStep && (
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted/70 border border-border text-[10px] text-muted-foreground font-medium">
+                <span>{NEXT_STEP_LABELS[nextStep] ?? nextStep}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -381,6 +402,7 @@ export const MessageBubble = memo(MessageBubbleInner, (prev, next) => {
     prev.isOut === next.isOut &&
     prev.editingMsg?.id === next.editingMsg?.id &&
     (prev.editingMsg?.id !== prev.msg.id || prev.editingMsg?.text === next.editingMsg?.text) &&
-    prev.transcribing[prev.msg.id] === next.transcribing[next.msg.id]
+    prev.transcribing[prev.msg.id] === next.transcribing[next.msg.id] &&
+    prev.nextStep === next.nextStep
   );
 });

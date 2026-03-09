@@ -1630,6 +1630,8 @@ export default function Dashboard() {
                 {isRealConvo && messages.length > 0 ? (
                   (() => {
                     let lastMsgDateKey = '';
+                    // Fase atual da conversa — exibida no badge de IA
+                    const convNextStep = conversations.find(c => c.id === selectedId)?.nextStep || null;
                     // Dedup: remove mensagens com mesmo id (safety net contra race conditions)
                     const seen = new Set<string>();
                     const uniqueMessages = messages.filter(m => {
@@ -1667,6 +1669,7 @@ export default function Dashboard() {
                         onDocPreview={setDocPreview}
                         onImageDownload={handleImageDownload}
                         onDocDownload={handleDocDownload}
+                        nextStep={convNextStep}
                       />
                         </Fragment>
                       );

@@ -18,6 +18,7 @@ export interface ConversationSummary {
   originAssignedUserId?: string | null;
   originAssignedUserName?: string | null;
   leadStage?: string | null;
+  nextStep?: string | null;
 }
 
 export interface MessageReaction {

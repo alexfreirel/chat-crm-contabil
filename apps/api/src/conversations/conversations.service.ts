@@ -98,6 +98,7 @@ export class ConversationsService {
       originAssignedUserId: (c as any).origin_assigned_user_id || null,
       originAssignedUserName: (c as any).origin_assigned_user_id ? (userNameMap[(c as any).origin_assigned_user_id] || null) : null,
       leadStage: c.lead?.stage || null,
+      nextStep: (c as any).next_step || null,
     }));
 
     return { data, total };
