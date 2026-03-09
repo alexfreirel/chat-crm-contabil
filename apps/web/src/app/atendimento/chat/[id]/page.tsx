@@ -397,10 +397,15 @@ export default function ChatPage({ params }: { params: { id: string } }) {
       setText(msgText);
     } finally {
       setSending(false);
-      // Focus após setSending(false): o textarea só fica habilitado depois do re-render
-      setTimeout(() => inputRef.current?.focus(), 0);
     }
   };
+
+  // Restaura foco no textarea sempre que terminar de enviar
+  useEffect(() => {
+    if (!sending) {
+      inputRef.current?.focus();
+    }
+  }, [sending]);
 
   // ── Socket + data fetch ───────────────────────────────────────────────────
 
@@ -1059,8 +1064,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                     }
                   }}
                   placeholder="Digite sua mensagem..."
-                  disabled={sending}
-                  className="w-full bg-card border border-border rounded-xl pl-5 pr-24 py-4 focus:outline-none focus:ring-2 focus:ring-primary shadow-sm text-foreground disabled:opacity-50 resize-none overflow-y-auto leading-relaxed"
+                  className="w-full bg-card border border-border rounded-xl pl-5 pr-24 py-4 focus:outline-none focus:ring-2 focus:ring-primary shadow-sm text-foreground resize-none overflow-y-auto leading-relaxed"
                   style={{ minHeight: '56px', maxHeight: '160px' }}
                 />
                 <div className="absolute inset-y-0 right-3 flex items-center gap-1">
