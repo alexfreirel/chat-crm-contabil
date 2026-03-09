@@ -600,17 +600,16 @@ export default function Dashboard() {
   }, [fetchConversations, fetchPendingTransfers, selectedInboxId]);
 
   // Auto-abrir conversa vinda do CRM (via sessionStorage 'crm_open_conv')
+  // Roda uma vez no mount — não depende da lista de conversas estar carregada.
+  // As mensagens são buscadas via API usando o ID diretamente.
   useEffect(() => {
-    if (!conversations.length) return;
     const pendingConvId = sessionStorage.getItem('crm_open_conv');
     if (pendingConvId) {
-      const match = conversations.find(c => c.id === pendingConvId);
-      if (match) {
-        setSelectedId(pendingConvId);
-        sessionStorage.removeItem('crm_open_conv');
-      }
+      setSelectedId(pendingConvId);
+      sessionStorage.removeItem('crm_open_conv');
     }
-  }, [conversations]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Buscar stage do lead ao selecionar conversa
   useEffect(() => {

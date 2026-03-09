@@ -15,6 +15,7 @@ interface Contact {
   phone: string;
   email: string;
   conversations: number;
+  conversationId?: string | null;
   lastMessage: string;
   origin: string;
   instanceName?: string;
@@ -961,6 +962,7 @@ export default function ContactsPage() {
         phone: lead.phone,
         email: lead.email || '-',
         conversations: lead._count?.conversations || 0,
+        conversationId: lead.conversations?.[0]?.id || null,
         lastMessage: lead.conversations?.[0]?.messages?.[0]?.text || '-',
         origin: lead.origin || 'crm',
         instanceName: lead.conversations?.[0]?.instance_name,
@@ -1284,7 +1286,11 @@ export default function ContactsPage() {
                       <td className="px-6 py-5">
                         <button
                           onClick={() => {
-                            sessionStorage.setItem('crm_open_lead', contact.id);
+                            if (contact.conversationId) {
+                              sessionStorage.setItem('crm_open_conv', contact.conversationId);
+                            } else {
+                              sessionStorage.setItem('crm_open_lead', contact.id);
+                            }
                             router.push('/atendimento');
                           }}
                           title="Abrir no chat"
