@@ -1,7 +1,7 @@
 'use client';
 
 import React, { memo } from 'react';
-import { Download, Mic, FileText, Trash2, Reply, Pencil, CheckCheck, Check } from 'lucide-react';
+import { Download, Mic, FileText, Trash2, Reply, Pencil, CheckCheck, Check, Bot } from 'lucide-react';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { LinkPreview } from '@/components/LinkPreview';
 import type { MessageItem } from '../types';
@@ -119,12 +119,23 @@ function MessageBubbleInner({
         </div>
       )}
 
-      {/* Bubble content */}
-      <div className={`max-w-[74%] md:max-w-[65%] min-w-[60px] p-3 md:p-4 shadow-sm break-words overflow-hidden ${
-        isOut
-          ? 'bg-gradient-to-tr from-primary/90 to-ring/90 text-primary-foreground rounded-2xl rounded-tr-sm'
-          : 'bg-card border border-border rounded-2xl rounded-tl-sm'
-      }`}>
+      {/* Bubble wrapper (badge + bolha empilhados) */}
+      <div className="flex flex-col items-end gap-0.5 max-w-[74%] md:max-w-[65%]">
+
+        {/* Badge de especialista IA — visível apenas para mensagens da IA com skill */}
+        {isOut && msg.skill && (
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted/70 border border-border text-[10px] text-muted-foreground font-medium">
+            <Bot size={9} className="shrink-0" />
+            <span>{msg.skill.name}</span>
+          </div>
+        )}
+
+        {/* Bubble content */}
+        <div className={`w-full min-w-[60px] p-3 md:p-4 shadow-sm break-words overflow-hidden ${
+          isOut
+            ? 'bg-gradient-to-tr from-primary/90 to-ring/90 text-primary-foreground rounded-2xl rounded-tr-sm'
+            : 'bg-card border border-border rounded-2xl rounded-tl-sm'
+        }`}>
         {/* Reply context */}
         {msg.reply_to_text && msg.type !== 'deleted' && (
           <div
@@ -311,7 +322,8 @@ function MessageBubbleInner({
             ))}
           </div>
         )}
-      </div>
+        </div>{/* /bubble content */}
+      </div>{/* /bubble wrapper */}
 
       {/* Hover actions - outgoing */}
       {isOut && (

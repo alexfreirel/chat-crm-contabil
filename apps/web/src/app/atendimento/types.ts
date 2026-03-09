@@ -42,4 +42,5 @@ export interface MessageItem {
   reply_to_text?: string | null;
   media?: { original_url?: string; mime_type?: string; duration?: number | null; original_name?: string | null } | null;
   reactions?: MessageReaction[];
+  skill?: { id: string; name: string; area: string } | null;
 }
