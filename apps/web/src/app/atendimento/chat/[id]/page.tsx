@@ -372,10 +372,27 @@ export default function ChatPage({ params }: { params: { id: string } }) {
   };
 
   // ── Foco robusto no textarea ────────────────────────────────────────────
-  const focusInput = useCallback(() => {
-    requestAnimationFrame(() => {
-      inputRef.current?.focus();
-    });
+
+  // Callback ref: foca o textarea assim que o React o anexa ao DOM
+  const attachInputRef = useCallback((node: HTMLTextAreaElement | null) => {
+    inputRef.current = node;
+    if (node) {
+      // Tenta foco imediato + retries escalonados para cobrir hidratação SSR
+      node.focus();
+      [100, 300, 600, 1200].forEach(ms =>
+        setTimeout(() => {
+          if (document.activeElement !== node) node.focus();
+        }, ms),
+      );
+    }
+  }, []);
+
+  // Clicar na área de mensagens foca o textarea (padrão WhatsApp Web)
+  const handleChatAreaClick = useCallback((e: React.MouseEvent) => {
+    const tag = (e.target as HTMLElement).tagName;
+    if (['BUTTON', 'A', 'INPUT', 'TEXTAREA', 'IMG', 'VIDEO', 'AUDIO'].includes(tag)) return;
+    if ((e.target as HTMLElement).closest('button, a, input, textarea')) return;
+    inputRef.current?.focus();
   }, []);
 
   const handleSend = async () => {
@@ -406,23 +423,10 @@ export default function ChatPage({ params }: { params: { id: string } }) {
       setText(msgText);
     } finally {
       setSending(false);
-      // Foco após re-render do React
-      focusInput();
+      // Foco após re-render completo
+      requestAnimationFrame(() => inputRef.current?.focus());
     }
   };
-
-  // Foco ao abrir chat / trocar conversa — múltiplas tentativas para cobrir hidratação
-  useEffect(() => {
-    const timers = [0, 100, 300, 600].map(delay =>
-      setTimeout(() => inputRef.current?.focus(), delay)
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [convoId]);
-
-  // Foco quando o envio termina
-  useEffect(() => {
-    if (!sending) focusInput();
-  }, [sending, focusInput]);
 
   // ── Socket + data fetch ───────────────────────────────────────────────────
 
@@ -733,8 +737,8 @@ export default function ChatPage({ params }: { params: { id: string } }) {
           </div>
         </header>
 
-        {/* Messages */}
-        <div className="flex-1 p-8 overflow-y-auto custom-scrollbar" ref={scrollRef}>
+        {/* Messages — click em área vazia foca o textarea (UX WhatsApp Web) */}
+        <div className="flex-1 p-8 overflow-y-auto custom-scrollbar" ref={scrollRef} onClick={handleChatAreaClick}>
           <div className="flex flex-col gap-4 max-w-4xl mx-auto pb-4">
             {renderItems.length === 0 ? (
               <div className="text-center text-muted-foreground py-20">Nenhuma mensagem nesta conversa.</div>
@@ -1064,7 +1068,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
 
               <div className="relative flex-1">
                 <textarea
-                  ref={inputRef}
+                  ref={attachInputRef}
                   rows={1}
                   value={text}
                   onChange={e => {
@@ -1081,7 +1085,6 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                     }
                   }}
                   placeholder="Digite sua mensagem..."
-                  autoFocus
                   className="w-full bg-card border border-border rounded-xl pl-5 pr-24 py-4 focus:outline-none focus:ring-2 focus:ring-primary shadow-sm text-foreground resize-none overflow-y-auto leading-relaxed"
                   style={{ minHeight: '56px', maxHeight: '160px' }}
                 />
