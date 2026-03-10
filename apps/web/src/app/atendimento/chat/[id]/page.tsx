@@ -1098,10 +1098,26 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                   autoFocus
                   value={text}
                   onChange={e => {
-                    setText(e.target.value);
+                    const val = e.target.value;
+                    setText(val);
                     const el = e.target;
                     el.style.height = 'auto';
                     el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+
+                    // ── Auto-disable AI upon typing ──
+                    if (aiMode && val.trim().length > 0 && convoId) {
+                      setAiMode(false);
+                      (async () => {
+                        try {
+                          await api.patch(`/conversations/${convoId}/ai-mode`, { ai_mode: false });
+                          toast?.({ description: '👤 IA pausada automaticamente pela digitação.' });
+                        } catch (error) {
+                          setAiMode(true);
+                          console.error('Failed to auto-disable AI:', error);
+                        }
+                      })();
+                    }
+
                     handleTypingPresence();
                   }}
                   onKeyDown={e => {

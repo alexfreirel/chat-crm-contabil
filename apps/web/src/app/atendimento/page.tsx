@@ -2072,9 +2072,26 @@ export default function Dashboard() {
                       rows={1}
                       value={text}
                       onChange={(e) => {
-                        setText(e.target.value);
+                        const val = e.target.value;
+                        setText(val);
                         e.target.style.height = 'auto';
                         e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+
+                        // ── Auto-disable AI upon typing ──
+                        if (aiMode && val.trim().length > 0 && selectedId) {
+                          setAiMode(false); // Optimistic UI previne chamadas duplicadas
+                          (async () => {
+                            try {
+                              await api.patch(`/conversations/${selectedId}/ai-mode`, { ai_mode: false });
+                              setConversations(prev => prev.map(c => c.id === selectedId ? { ...c, aiMode: false } : c));
+                              showSuccess('👤 IA pausada automaticamente pela digitação.');
+                            } catch (error) {
+                              setAiMode(true); // Rollback
+                              console.error('Failed to auto-disable AI:', error);
+                            }
+                          })();
+                        }
+
                         // Emit typing indicator (debounced 2s)
                         if (selectedId && socketRef.current) {
                           socketRef.current.emit('typing', { conversationId: selectedId, isTyping: true });
