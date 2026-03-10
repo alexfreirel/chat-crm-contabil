@@ -25,6 +25,7 @@ import type { ConversationSummary, MessageItem } from './types';
 import { MessageBubble } from './components/MessageBubble';
 import { TransferModals } from './components/TransferModals';
 import { CommandPalette } from './components/CommandPalette';
+import ContratoTrabalhistaModal from '@/components/modals/ContratoTrabalhistaModal';
 import { InboxSidebar } from './components/InboxSidebar';
 import { ChatHeader } from './components/ChatHeader';
 
@@ -146,6 +147,7 @@ export default function Dashboard() {
   const [showNotifBanner, setShowNotifBanner] = useState(false);
   const [showDetailsPanel, setShowDetailsPanel] = useState(false);
   const [clientPanelLeadId, setClientPanelLeadId] = useState<string | null>(null);
+  const [showContratoModal, setShowContratoModal] = useState(false);
   // Typing indicators
   const [typingUsers, setTypingUsers] = useState<Record<string, { userName: string; timeout: ReturnType<typeof setTimeout> }>>({});
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -854,6 +856,15 @@ export default function Dashboard() {
 
   const handleSend = async () => {
     if (!text.trim() || !selectedId || selectedId.startsWith('demo-') || sending || text.length > 5000) return;
+
+    // ── Slash commands ──────────────────────────────────────────────────────
+    if (text.trim().toLowerCase() === '/contrato_trabalhista') {
+      setText('');
+      setShowContratoModal(true);
+      return;
+    }
+    // ───────────────────────────────────────────────────────────────────────
+
     const msgText = text;
     const replyId = replyingTo?.id;
     setSending(true);
@@ -1960,6 +1971,16 @@ export default function Dashboard() {
                             Enviar Form.
                           </button>
                         )}
+                        {!isClosed && (
+                          <button
+                            onClick={() => setShowContratoModal(true)}
+                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm font-semibold active:bg-emerald-500/20 transition-colors"
+                            title="Gerar e enviar contrato trabalhista via WhatsApp (/contrato_trabalhista)"
+                          >
+                            <FileText size={17} />
+                            Contrato
+                          </button>
+                        )}
                       </div>
                     </section>
                   )}
@@ -2362,6 +2383,13 @@ export default function Dashboard() {
           onCloseConversation={handleClose}
         />
       )}
+
+      {/* Modal Contrato Trabalhista */}
+      <ContratoTrabalhistaModal
+        open={showContratoModal}
+        conversationId={selectedId}
+        onClose={() => setShowContratoModal(false)}
+      />
 
       {/* Ficha Trabalhista Slide-over */}
       {fichaInboxVisible && selected?.leadId && (
