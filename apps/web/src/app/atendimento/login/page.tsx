@@ -37,18 +37,37 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
+    let retries = 0;
+    const MAX_RETRIES = 10;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
     const checkDb = async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/health/db`);
         const data = await res.json();
-        setDbStatus(data.status === 'ok' ? 'online' : 'offline');
+        if (data.status === 'ok') {
+          setDbStatus('online');
+          retries = 0; // reset para próximas verificações periódicas
+        } else {
+          throw new Error('not ok');
+        }
       } catch {
-        setDbStatus('offline');
+        if (retries < MAX_RETRIES) {
+          // Nos primeiros 10 erros, tenta novamente a cada 3s (cobre startup da API)
+          retries++;
+          retryTimer = setTimeout(checkDb, 3000);
+        } else {
+          setDbStatus('offline');
+        }
       }
     };
+
     checkDb();
-    const interval = setInterval(checkDb, 30000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => { retries = 0; checkDb(); }, 30000);
+    return () => {
+      clearInterval(interval);
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, []);
 
   const handleSubmit = async (e: FormEvent) => {

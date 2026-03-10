@@ -34,19 +34,35 @@ export function Sidebar() {
   }, []);
 
   useEffect(() => {
+    let retries = 0;
+    const MAX_RETRIES = 10;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
     const checkDb = async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/health/db`);
         const data = await res.json();
-        setDbStatus(data.status === 'ok' ? 'online' : 'offline');
-      } catch (error) {
-        setDbStatus('offline');
+        if (data.status === 'ok') {
+          setDbStatus('online');
+          retries = 0;
+        } else {
+          throw new Error('not ok');
+        }
+      } catch {
+        if (retries < MAX_RETRIES) {
+          retries++;
+          retryTimer = setTimeout(checkDb, 3000);
+        } else {
+          setDbStatus('offline');
+        }
       }
     };
 
     checkDb();
-    const interval = setInterval(checkDb, 30000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => { retries = 0; checkDb(); }, 30000);
+    return () => {
+      clearInterval(interval);
+      if (retryTimer) clearTimeout(retryTimer);
   }, []);
 
   useEffect(() => {
