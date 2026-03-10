@@ -263,6 +263,15 @@ export class ContractsService {
 
   // ── 2. Gerar DOCX + upload S3 + enviar via WhatsApp + salvar mensagem ────
 
+  // ── Gera apenas o buffer (para download direto no PC) ─────────────────────
+
+  async generateBuffer(variaveis: ContratoVariaveis): Promise<Buffer> {
+    variaveis.PERCENTUAL_EXTENSO =
+      PCT_EXTENSO[variaveis.PERCENTUAL] || String(variaveis.PERCENTUAL);
+    const doc = buildDocx(variaveis);
+    return Packer.toBuffer(doc);
+  }
+
   async generateAndSend(
     conversationId: string,
     variaveis: ContratoVariaveis,

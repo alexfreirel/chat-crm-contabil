@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText, X, Send, AlertCircle, CheckCircle2,
-  Loader2, ChevronDown, ChevronUp,
+  Loader2, ChevronDown, ChevronUp, Download,
 } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -70,6 +70,7 @@ const PCT_EXTENSO: Record<number, string> = {
 export default function ContratoTrabalhistaModal({ open, conversationId, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [variaveis, setVariaveis] = useState<ContratoVariaveis | null>(null);
@@ -118,6 +119,28 @@ export default function ContratoTrabalhistaModal({ open, conversationId, onClose
       setError(e?.response?.data?.message || 'Erro ao enviar contrato.');
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!variaveis) return;
+    setDownloading(true);
+    setError(null);
+    try {
+      const res = await api.post('/contracts/trabalhista/download', { variaveis }, {
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      const clientName = variaveis.NOME_CONTRATANTE.split(' ')[0] || 'contrato';
+      a.href = url;
+      a.download = `Contrato_Trabalhista_${clientName}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError('Erro ao gerar o arquivo para download.');
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -292,6 +315,19 @@ export default function ContratoTrabalhistaModal({ open, conversationId, onClose
                   className="px-4 py-2.5 rounded-xl border border-white/10 text-slate-400 text-sm font-semibold hover:bg-white/5 transition-colors"
                 >
                   Cancelar
+                </button>
+                <button
+                  onClick={handleDownload}
+                  disabled={downloading || sending}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-400 text-sm font-semibold hover:bg-blue-500/20 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                  title="Baixar .docx no PC"
+                >
+                  {downloading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  Baixar .docx
                 </button>
                 <button
                   onClick={handleSend}

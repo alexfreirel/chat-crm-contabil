@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Body, Query, Req,
+  Controller, Get, Post, Body, Query, Req, Res,
   UseGuards, Logger,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -43,5 +43,28 @@ export class ContractsController {
       publicApiUrl,
       senderId,
     );
+  }
+
+  /**
+   * POST /contracts/trabalhista/download
+   * Gera o DOCX e retorna como download direto (sem enviar via WhatsApp).
+   */
+  @Post('trabalhista/download')
+  async download(
+    @Body() body: { variaveis: ContratoVariaveis },
+    @Res() res: any,
+  ) {
+    const buffer = await this.contracts.generateBuffer(body.variaveis);
+    const clientName = (body.variaveis.NOME_CONTRATANTE || 'contrato')
+      .split(' ')[0]
+      .replace(/\s+/g, '_');
+    const fileName = `Contrato_Trabalhista_${clientName}.docx`;
+
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'Content-Disposition': `attachment; filename="${fileName}"`,
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
   }
 }
