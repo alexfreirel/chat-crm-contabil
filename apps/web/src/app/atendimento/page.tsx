@@ -29,6 +29,17 @@ import ContratoTrabalhistaModal from '@/components/modals/ContratoTrabalhistaMod
 import { InboxSidebar } from './components/InboxSidebar';
 import { ChatHeader } from './components/ChatHeader';
 
+// ─── Slash commands registrados ───────────────────────────────────────────────
+const SLASH_COMMANDS = [
+  {
+    id: 'contrato_trabalhista',
+    label: 'Contrato Trabalhista',
+    description: 'Gerar e enviar contrato via WhatsApp',
+    Icon: FileText,
+  },
+] as const;
+type SlashCommandId = typeof SLASH_COMMANDS[number]['id'];
+
 function getWsUrl(): string {
   if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005';
@@ -148,6 +159,7 @@ export default function Dashboard() {
   const [showDetailsPanel, setShowDetailsPanel] = useState(false);
   const [clientPanelLeadId, setClientPanelLeadId] = useState<string | null>(null);
   const [showContratoModal, setShowContratoModal] = useState(false);
+  const [slashMenuIndex, setSlashMenuIndex] = useState(0);
   // Typing indicators
   const [typingUsers, setTypingUsers] = useState<Record<string, { userName: string; timeout: ReturnType<typeof setTimeout> }>>({});
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -854,13 +866,28 @@ export default function Dashboard() {
     prevSelectedIdForDraft.current = selectedId;
   }, [selectedId, text]);
 
+  // ─── Slash command menu ────────────────────────────────────────────────────
+  const slashQuery = text.startsWith('/') && !text.includes(' ') ? text.slice(1).toLowerCase() : null;
+  const filteredSlashCommands = slashQuery !== null
+    ? SLASH_COMMANDS.filter(cmd =>
+        cmd.id.includes(slashQuery) || cmd.label.toLowerCase().includes(slashQuery)
+      )
+    : [];
+  const showSlashMenu = slashQuery !== null && filteredSlashCommands.length > 0;
+
+  const executeSlashCommand = (cmdId: SlashCommandId) => {
+    setText('');
+    setSlashMenuIndex(0);
+    if (cmdId === 'contrato_trabalhista') setShowContratoModal(true);
+  };
+  // ──────────────────────────────────────────────────────────────────────────
+
   const handleSend = async () => {
     if (!text.trim() || !selectedId || selectedId.startsWith('demo-') || sending || text.length > 5000) return;
 
-    // ── Slash commands ──────────────────────────────────────────────────────
-    if (text.trim().toLowerCase() === '/contrato_trabalhista') {
-      setText('');
-      setShowContratoModal(true);
+    // ── Slash command selecionado pelo menu ─────────────────────────────────
+    if (slashQuery !== null && filteredSlashCommands.length > 0) {
+      executeSlashCommand(filteredSlashCommands[slashMenuIndex]?.id ?? filteredSlashCommands[0].id);
       return;
     }
     // ───────────────────────────────────────────────────────────────────────
@@ -2088,6 +2115,38 @@ export default function Dashboard() {
 
                   {/* ── Textarea + ícones internos ──────────────────── */}
                   <div className="relative flex-1">
+
+                    {/* Slash command picker */}
+                    {showSlashMenu && (
+                      <div className="absolute bottom-full left-0 mb-2 w-80 bg-card border border-border rounded-xl shadow-2xl z-50 overflow-hidden">
+                        <div className="px-3 py-2 border-b border-border">
+                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Atalhos de envio</p>
+                        </div>
+                        {filteredSlashCommands.map((cmd, i) => (
+                          <button
+                            key={cmd.id}
+                            onMouseDown={(e) => { e.preventDefault(); executeSlashCommand(cmd.id); }}
+                            onMouseEnter={() => setSlashMenuIndex(i)}
+                            className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+                              i === slashMenuIndex ? 'bg-primary/10' : 'hover:bg-accent'
+                            }`}
+                          >
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                              i === slashMenuIndex ? 'bg-primary/20' : 'bg-foreground/[0.06]'
+                            }`}>
+                              <cmd.Icon size={15} className={i === slashMenuIndex ? 'text-primary' : 'text-muted-foreground'} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className={`text-[13px] font-bold ${i === slashMenuIndex ? 'text-primary' : 'text-foreground'}`}>
+                                /{cmd.id}
+                              </p>
+                              <p className="text-[11px] text-muted-foreground truncate">{cmd.description}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
                     <textarea
                       ref={inputRef}
                       rows={1}
@@ -2095,6 +2154,7 @@ export default function Dashboard() {
                       onChange={(e) => {
                         const val = e.target.value;
                         setText(val);
+                        setSlashMenuIndex(0); // reset seleção ao digitar
                         e.target.style.height = 'auto';
                         e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
 
@@ -2123,6 +2183,23 @@ export default function Dashboard() {
                         }
                       }}
                       onKeyDown={(e) => {
+                        if (showSlashMenu) {
+                          if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            setSlashMenuIndex(i => Math.min(i + 1, filteredSlashCommands.length - 1));
+                            return;
+                          }
+                          if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            setSlashMenuIndex(i => Math.max(i - 1, 0));
+                            return;
+                          }
+                          if (e.key === 'Escape') {
+                            e.preventDefault();
+                            setText('');
+                            return;
+                          }
+                        }
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
                           handleSend();
