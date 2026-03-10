@@ -307,6 +307,16 @@ export default function Dashboard() {
         if (selectedId && !selectedId.startsWith('demo-')) handleToggleAiMode();
         return;
       }
+
+      // ── Global keyboard redirect to chat input ──
+      if (selectedId && !selectedId.startsWith('demo-')) {
+        if (document.activeElement === inputRef.current) return;
+        if (isInputFocused) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        if (e.key.length > 1 && !['Backspace', 'Delete'].includes(e.key)) return;
+        
+        inputRef.current?.focus();
+      }
     };
 
     document.addEventListener('keydown', handleGlobalKeyDown);
@@ -903,6 +913,7 @@ export default function Dashboard() {
       setText(msgText);
     } finally {
       setSending(false);
+      requestAnimationFrame(() => inputRef.current?.focus());
     }
   };
 
@@ -1282,6 +1293,14 @@ export default function Dashboard() {
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
+  // Clicar na área de mensagens foca o textarea
+  const handleChatAreaClick = useCallback((e: React.MouseEvent) => {
+    const tag = (e.target as HTMLElement).tagName;
+    if (['BUTTON', 'A', 'INPUT', 'TEXTAREA', 'IMG', 'VIDEO', 'AUDIO'].includes(tag)) return;
+    if ((e.target as HTMLElement).closest('button, a, input, textarea')) return;
+    inputRef.current?.focus();
+  }, []);
+
   const handleDeleteMessage = async (msgId: string) => {
     if (!confirm('Apagar esta mensagem para todos?')) return;
     try {
@@ -1607,7 +1626,7 @@ export default function Dashboard() {
                 <Image src="/landing/LOGO SEM FUNDO 01.png" alt="" width={883} height={453}
                   style={{ width: '620px', height: 'auto', opacity: 0.13 }} aria-hidden />
               </div>
-            <div className="absolute inset-0 px-1 sm:px-6 md:px-8 py-3 sm:py-5 md:py-8 overflow-y-auto custom-scrollbar" ref={scrollRef}>
+            <div className="absolute inset-0 px-1 sm:px-6 md:px-8 py-3 sm:py-5 md:py-8 overflow-y-auto custom-scrollbar" ref={scrollRef} onClick={handleChatAreaClick}>
               <div className="flex flex-col gap-3 md:gap-4 max-w-4xl mx-auto pb-4 relative z-10">
                 {/* Skeleton de carregamento de mensagens */}
                 {loadingMessages && (
