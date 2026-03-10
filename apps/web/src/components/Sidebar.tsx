@@ -63,6 +63,7 @@ export function Sidebar() {
     return () => {
       clearInterval(interval);
       if (retryTimer) clearTimeout(retryTimer);
+    };
   }, []);
 
   useEffect(() => {
