@@ -177,6 +177,38 @@ export class EvolutionService {
         });
       }
 
+      // ── Auto-merge de conversa LID ─────────────────────────────────────────
+      // Se o remoteJid era um LID (14+ dígitos) e conseguimos o telefone real via
+      // remoteJidAlt, verifica se existe uma conversa "gêmea" do LID e mescla
+      // todas as mensagens na conversa do telefone real, encerrando a do LID.
+      const rawLidPhone = remoteJid.split('@')[0];
+      if (rawLidPhone.length > 13 && phone !== rawLidPhone) {
+        const lidLead = await this.prisma.lead.findFirst({ where: { phone: rawLidPhone } });
+        if (lidLead && lidLead.id !== lead.id) {
+          const lidConvs = await this.prisma.conversation.findMany({
+            where: { lead_id: lidLead.id, channel: 'whatsapp' },
+          });
+          for (const lidConv of lidConvs) {
+            // Move todas as mensagens da conversa LID → conversa do telefone real
+            await this.prisma.message.updateMany({
+              where: { conversation_id: lidConv.id },
+              data: { conversation_id: conv.id },
+            });
+            // Fecha a conversa LID duplicada
+            await this.prisma.conversation.update({
+              where: { id: lidConv.id },
+              data: { status: 'FECHADO' },
+            });
+            this.logger.log(
+              `[AUTO-MERGE] Conv LID ${lidConv.id} (${rawLidPhone}) → conv telefone ${conv.id} (${phone}) — ${lidConvs.length} conv(s) mescladas`,
+            );
+          }
+          // Notifica a inbox para atualizar (remove duplicata da tela)
+          this.chatGateway.emitConversationsUpdate(conv.tenant_id ?? null);
+        }
+      }
+      // ──────────────────────────────────────────────────────────────────────
+
       // Auto-assign via round-robin se conversa sem operador atribuído
       if (inboxId && !conv.assigned_user_id) {
         const nextUserId = await this.inboxesService.getNextAssignee(inboxId);
