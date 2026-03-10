@@ -42,8 +42,12 @@ export default function LoginPage() {
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
     const checkDb = async () => {
+      const controller = new AbortController();
+      // Timeout de 5s para evitar fetch pendurado quando a API está subindo
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       try {
-        const res = await fetch(`${API_BASE_URL}/health/db`);
+        const res = await fetch(`${API_BASE_URL}/health/db`, { signal: controller.signal });
+        clearTimeout(timeoutId);
         const data = await res.json();
         if (data.status === 'ok') {
           setDbStatus('online');
@@ -52,6 +56,7 @@ export default function LoginPage() {
           throw new Error('not ok');
         }
       } catch {
+        clearTimeout(timeoutId);
         if (retries < MAX_RETRIES) {
           // Nos primeiros 10 erros, tenta novamente a cada 3s (cobre startup da API)
           retries++;

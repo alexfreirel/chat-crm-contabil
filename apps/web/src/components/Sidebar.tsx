@@ -39,8 +39,12 @@ export function Sidebar() {
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
     const checkDb = async () => {
+      const controller = new AbortController();
+      // Timeout de 5s para evitar fetch pendurado quando a API está subindo
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       try {
-        const res = await fetch(`${API_BASE_URL}/health/db`);
+        const res = await fetch(`${API_BASE_URL}/health/db`, { signal: controller.signal });
+        clearTimeout(timeoutId);
         const data = await res.json();
         if (data.status === 'ok') {
           setDbStatus('online');
@@ -49,6 +53,7 @@ export function Sidebar() {
           throw new Error('not ok');
         }
       } catch {
+        clearTimeout(timeoutId);
         if (retries < MAX_RETRIES) {
           retries++;
           retryTimer = setTimeout(checkDb, 3000);
