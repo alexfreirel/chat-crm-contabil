@@ -282,6 +282,82 @@ export class ClicksignService {
     }
   }
 
+  // ── Mapa de eventos de erro biométrico ────────────────────────────────────
+
+  private readonly BIOMETRIC_ERROR_EVENTS: Record<string, string> = {
+    liveness_refused:             'selfie dinâmica',
+    liveness_attempts_exceeded:   'selfie dinâmica (tentativas esgotadas)',
+    facematch_refused:            'biometria facial',
+    facematch_attempts_exceeded:  'biometria facial (tentativas esgotadas)',
+    biometric_refused:            'biometria facial SERPRO',
+    documentscopy_refused:        'análise do documento',
+    ocr_refused:                  'leitura do documento (OCR)',
+  };
+
+  // ── Handler de erros biométricos — envia tutorial ao cliente ──────────────
+
+  private async handleBiometricError(eventName: string, documentKey: string): Promise<void> {
+    const errorType = this.BIOMETRIC_ERROR_EVENTS[eventName] ?? 'verificação';
+
+    const sig = await this.prisma.contractSignature.findUnique({
+      where: { cs_document_key: documentKey },
+      include: { conversation: { include: { lead: true } } },
+    });
+
+    if (!sig?.conversation?.lead) {
+      this.logger.warn(`[Clicksign][Biometria] Documento ${documentKey} não encontrado`);
+      return;
+    }
+
+    const lead          = sig.conversation.lead;
+    const instanceName  = sig.conversation.instance_name ?? undefined;
+    const signingUrl    = sig.signing_url;
+
+    // Atualizar status no banco
+    await this.prisma.contractSignature.update({
+      where: { id: sig.id },
+      data:  { status: 'ERRO_BIOMETRIA' },
+    });
+
+    // Mensagem de tutorial para o cliente via WhatsApp
+    const lines = [
+      `⚠️ *Tivemos um problema na etapa de ${errorType}* do seu contrato.`,
+      ``,
+      `*Para tentar novamente, siga estas dicas:*`,
+      `📱 Use o celular com câmera frontal`,
+      `💡 Fique em local bem iluminado (luz natural é melhor)`,
+      `👓 Retire óculos, boné ou qualquer acessório no rosto`,
+      `🙂 Olhe diretamente para a câmera, rosto centralizado`,
+      `🚫 Evite janelas ou luz forte atrás de você`,
+      `📷 Segure o celular na altura do rosto, sem inclinação`,
+      ``,
+      ...(signingUrl
+        ? [`✍️ *Acesse o link abaixo para assinar novamente:*\n${signingUrl}`]
+        : [`Entre em contato conosco para receber um novo link de assinatura.`]),
+    ];
+
+    try {
+      await this.whatsapp.sendText(lead.phone, lines.join('\n'), instanceName);
+      this.logger.log(`[Clicksign][Biometria] Tutorial enviado para ${lead.phone} (${eventName})`);
+    } catch (e: any) {
+      this.logger.warn(`[Clicksign][Biometria] Falha ao enviar tutorial: ${e.message}`);
+    }
+
+    // Notificar atendente via WebSocket
+    try {
+      this.chatGateway.server
+        ?.to(sig.conversation_id)
+        .emit('contract:biometric_error', {
+          conversationId: sig.conversation_id,
+          leadName:       lead.name ?? 'Cliente',
+          eventName,
+          errorType,
+        });
+    } catch (e: any) {
+      this.logger.warn(`[Clicksign][Biometria] Falha WebSocket: ${e.message}`);
+    }
+  }
+
   // ── Processar evento do webhook ───────────────────────────────────────────
 
   async handleWebhookEvent(payload: any): Promise<void> {
@@ -297,6 +373,12 @@ export class ClicksignService {
     this.logger.log(
       `[Clicksign] Webhook recebido — event: ${eventName}, doc: ${documentKey}, status: ${documentStatus}`,
     );
+
+    // Tratar erros biométricos antes de qualquer outra lógica
+    if (this.BIOMETRIC_ERROR_EVENTS[eventName]) {
+      await this.handleBiometricError(eventName, documentKey);
+      return;
+    }
 
     // Só processar quando o documento foi totalmente assinado (status "closed")
     if (documentStatus !== 'closed') {

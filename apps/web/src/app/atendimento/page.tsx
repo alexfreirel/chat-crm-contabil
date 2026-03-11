@@ -604,6 +604,11 @@ export default function Dashboard() {
       showSuccess(`✅ Contrato assinado por ${data.leadName}!`);
     });
 
+    // Erro biométrico na assinatura (Clicksign) — tutorial enviado ao cliente automaticamente
+    socket.on('contract:biometric_error', (data: { conversationId: string; leadName: string; eventName: string; errorType: string }) => {
+      showError(`⚠️ Erro de ${data.errorType} para ${data.leadName}. Tutorial enviado ao cliente via WhatsApp.`);
+    });
+
     // WhatsApp instance connection status (connect/disconnect)
     socket.on('connection_status_update', (data: { instanceName: string; state: string }) => {
       setInstanceStatuses(prev => ({ ...prev, [data.instanceName]: data.state }));
