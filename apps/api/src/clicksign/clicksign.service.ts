@@ -464,15 +464,27 @@ export class ClicksignService {
     }
 
     // Notificar atendente via WebSocket
+    // — emite para a sala da conversa (atendente com a conversa aberta)
+    // — E para a sala pessoal do atendente (independente de qual tela está)
     try {
+      const eventPayload = {
+        conversationId: sig.conversation_id,
+        signatureId:    sig.id,
+        leadName,
+        signedAt:       signedAt.toISOString(),
+      };
       this.chatGateway.server
         ?.to(sig.conversation_id)
-        .emit('contract:signed', {
-          conversationId: sig.conversation_id,
-          leadName,
-          signedAt: signedAt.toISOString(),
-        });
-      this.logger.log(`[Clicksign] Evento contract:signed emitido para sala ${sig.conversation_id}`);
+        .emit('contract:signed', eventPayload);
+
+      if (convo.assigned_user_id) {
+        this.chatGateway.server
+          ?.to(`user:${convo.assigned_user_id}`)
+          .emit('contract:signed', eventPayload);
+        this.logger.log(`[Clicksign] contract:signed emitido para sala conv:${sig.conversation_id} e user:${convo.assigned_user_id}`);
+      } else {
+        this.logger.log(`[Clicksign] contract:signed emitido para sala ${sig.conversation_id} (sem atendente atribuído)`);
+      }
     } catch (e: any) {
       this.logger.warn(`[Clicksign] Falha ao emitir WebSocket: ${e.message}`);
     }

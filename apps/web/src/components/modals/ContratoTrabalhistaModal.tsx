@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText, X, Send, AlertCircle, CheckCircle2,
   Loader2, ChevronDown, ChevronUp, Download, PenLine, Copy, Check as CheckIcon,
+  Clock, FileCheck2,
 } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -82,7 +83,18 @@ export default function ContratoTrabalhistaModal({ open, conversationId, onClose
   const [signingUrl, setSigningUrl] = useState<string | null>(null);
   const [urlCopied, setUrlCopied] = useState(false);
 
-  // Carregar preview ao abrir
+  // Status de assinatura existente
+  type SignatureStatus = {
+    id: string;
+    status: string;        // PENDENTE | ASSINADO | CANCELADO | EXPIRADO | ERRO_BIOMETRIA
+    signing_url: string | null;
+    signed_at: string | null;
+    created_at: string;
+  };
+  const [existingSignature, setExistingSignature] = useState<SignatureStatus | null>(null);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  // Carregar preview + status de assinatura ao abrir
   useEffect(() => {
     if (!open || !conversationId) return;
     setSent(false);
@@ -90,16 +102,41 @@ export default function ContratoTrabalhistaModal({ open, conversationId, onClose
     setSigningState('idle');
     setSigningUrl(null);
     setUrlCopied(false);
+    setExistingSignature(null);
     setLoading(true);
-    api
-      .get(`/contracts/trabalhista/preview?conversationId=${conversationId}`)
-      .then((res) => {
-        setVariaveis(res.data.variaveis);
-        setCamposFaltando(res.data.camposFaltando || []);
+
+    Promise.all([
+      api.get(`/contracts/trabalhista/preview?conversationId=${conversationId}`),
+      api.get(`/contracts/clicksign/status/${conversationId}`).catch(() => ({ data: null })),
+    ])
+      .then(([previewRes, statusRes]) => {
+        setVariaveis(previewRes.data.variaveis);
+        setCamposFaltando(previewRes.data.camposFaltando || []);
+        if (statusRes.data) setExistingSignature(statusRes.data);
       })
       .catch(() => setError('Não foi possível carregar os dados do contrato.'))
       .finally(() => setLoading(false));
   }, [open, conversationId]);
+
+  const handleDownloadSignedPdf = async () => {
+    if (!existingSignature) return;
+    setDownloadingPdf(true);
+    try {
+      const res = await api.get(`/contracts/clicksign/signed-pdf/${existingSignature.id}`, {
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Contrato_Assinado_${variaveis?.NOME_CONTRATANTE?.split(' ')[0] || 'cliente'}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError('Erro ao baixar o PDF assinado.');
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
 
   const handleChange = (key: keyof ContratoVariaveis, value: string | number) => {
     setVariaveis((prev) => {
@@ -244,6 +281,68 @@ export default function ContratoTrabalhistaModal({ open, conversationId, onClose
                   >
                     Fechar
                   </button>
+                </div>
+              )}
+
+              {/* Painel de status de assinatura existente */}
+              {!loading && !sent && existingSignature && (
+                <div className={`rounded-xl border p-4 space-y-2 ${
+                  existingSignature.status === 'ASSINADO'
+                    ? 'border-emerald-500/30 bg-emerald-500/10'
+                    : existingSignature.status === 'ERRO_BIOMETRIA'
+                    ? 'border-red-500/30 bg-red-500/10'
+                    : 'border-amber-500/30 bg-amber-500/10'
+                }`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 font-semibold text-sm">
+                      {existingSignature.status === 'ASSINADO' ? (
+                        <><FileCheck2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                          <span className="text-emerald-400">Contrato assinado digitalmente ✅</span></>
+                      ) : existingSignature.status === 'ERRO_BIOMETRIA' ? (
+                        <><AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
+                          <span className="text-red-400">Erro na verificação biométrica</span></>
+                      ) : (
+                        <><Clock className="h-4 w-4 text-amber-400 shrink-0 animate-pulse" />
+                          <span className="text-amber-400">Aguardando assinatura do cliente…</span></>
+                      )}
+                    </div>
+                    {existingSignature.signed_at && (
+                      <span className="text-[11px] text-slate-500 shrink-0">
+                        {new Date(existingSignature.signed_at).toLocaleString('pt-BR')}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Botão de download do PDF assinado */}
+                  {existingSignature.status === 'ASSINADO' && (
+                    <button
+                      onClick={handleDownloadSignedPdf}
+                      disabled={downloadingPdf}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-xs font-semibold hover:bg-emerald-500/20 disabled:opacity-60 transition-colors"
+                    >
+                      {downloadingPdf
+                        ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Baixando…</>
+                        : <><Download className="h-3.5 w-3.5" /> Baixar PDF assinado</>
+                      }
+                    </button>
+                  )}
+
+                  {/* Link de assinatura se pendente */}
+                  {existingSignature.status !== 'ASSINADO' && existingSignature.signing_url && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        readOnly
+                        value={existingSignature.signing_url}
+                        className="flex-1 rounded-lg border border-white/10 bg-black/30 text-slate-400 text-xs px-2 py-1 focus:outline-none truncate"
+                      />
+                      <button
+                        onClick={() => navigator.clipboard.writeText(existingSignature.signing_url!).catch(() => {})}
+                        className="px-2 py-1 rounded-lg border border-white/10 bg-white/5 text-slate-400 text-xs hover:bg-white/10 transition-colors shrink-0"
+                      >
+                        <Copy className="h-3 w-3" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
