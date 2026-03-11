@@ -3,6 +3,7 @@ import {
   Document, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel,
   BorderStyle, convertInchesToTwip,
 } from 'docx';
+import PDFDocument from 'pdfkit';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaS3Service } from '../media/s3.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
@@ -272,6 +273,147 @@ export class ContractsService {
     return Packer.toBuffer(doc);
   }
 
+  // ── Gera o contrato como PDF (para envio via WhatsApp) ────────────────────
+
+  async generatePdfBuffer(variaveis: ContratoVariaveis): Promise<Buffer> {
+    variaveis.PERCENTUAL_EXTENSO =
+      PCT_EXTENSO[variaveis.PERCENTUAL] || String(variaveis.PERCENTUAL);
+
+    return new Promise<Buffer>((resolve, reject) => {
+      // A4: 595 x 842 pt  |  1 inch = 72 pt
+      const doc = new PDFDocument({
+        size: 'A4',
+        margins: { top: 86, bottom: 86, left: 101, right: 86 }, // 1.2 / 1.2 / 1.4 / 1.2 in
+        info: { Title: 'Contrato de Prestação de Serviços Advocatícios' },
+      });
+
+      const chunks: Buffer[] = [];
+      doc.on('data', (c: Buffer) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const pctStr = `${variaveis.PERCENTUAL}% (${variaveis.PERCENTUAL_EXTENSO} por cento)`;
+      const W = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+
+      const heading = (text: string) => {
+        doc.font('Times-Bold').fontSize(12)
+          .text(text, { align: 'center', lineGap: 2 })
+          .moveDown(0.6);
+      };
+
+      const body = (text: string) => {
+        doc.font('Times-Roman').fontSize(11)
+          .text(text, { align: 'justify', lineGap: 3 })
+          .moveDown(0.5);
+      };
+
+      const clause = (label: string, text: string) => {
+        doc.font('Times-Bold').fontSize(11)
+          .text(label + ' \u2013 ', { continued: true, lineGap: 3 });
+        doc.font('Times-Roman')
+          .text(text, { align: 'justify', lineGap: 3 });
+        doc.moveDown(0.5);
+      };
+
+      const sub = (text: string) => {
+        const indent = 36; // 0.5 inch
+        doc.font('Times-Roman').fontSize(11)
+          .text(text, doc.page.margins.left + indent, doc.y,
+            { align: 'justify', lineGap: 3, width: W - indent });
+        doc.moveDown(0.4);
+      };
+
+      const space = () => doc.moveDown(0.4);
+
+      const sigLine = (label: string) => {
+        doc.moveDown(1.8);
+        const y = doc.y;
+        const pad = W * 0.10;
+        doc.moveTo(doc.page.margins.left + pad, y)
+          .lineTo(doc.page.margins.left + W - pad, y)
+          .strokeColor('#000000').stroke();
+        doc.moveDown(0.3);
+        doc.font('Times-Roman').fontSize(10)
+          .text(label, { align: 'center' });
+        doc.moveDown(0.3);
+      };
+
+      // ── Conteúdo ──────────────────────────────────────────────────────────
+
+      heading('CONTRATO DE PRESTAÇÃO DE SERVIÇOS E HONORÁRIOS ADVOCATÍCIOS');
+      space();
+
+      body(
+        `Pelo presente Instrumento Particular, de um lado ${variaveis.NOME_CONTRATANTE.toUpperCase()}, ` +
+        `${variaveis.NACIONALIDADE}, ${variaveis.ESTADO_CIVIL}, nascido(a) aos ${variaveis.DATA_NASCIMENTO}, ` +
+        `filho(a) de ${variaveis.NOME_MAE} e ${variaveis.NOME_PAI}, inscrito(a) no CPF sob o nº ${variaveis.CPF}, ` +
+        `com residência na ${variaveis.ENDERECO}, ${variaveis.BAIRRO}, CEP ${variaveis.CEP}, ${variaveis.CIDADE_UF}, ` +
+        `doravante denominado(a) simplesmente CONTRATANTE, e, de outro, ` +
+        `ANDRÉ FREIRE LUSTOSA, brasileiro, divorciado, advogado, inscrito na OAB/AL sob o nº 14.209, ` +
+        `e GIANNY KARLA OLIVEIRA SILVA, brasileira, solteira, advogada, inscrita na OAB/AL sob o nº 21.897, ` +
+        `ambos com escritório profissional na Rua Francisco Rodrigues Viana, nº 242, bairro Baixa Grande, ` +
+        `Arapiraca/AL, CEP 57307-260, doravantes denominados simplesmente CONTRATADOS, têm entre si, ` +
+        `justo e avençado, o presente Contrato de Prestação de Serviços Advocatícios, regido segundo as ` +
+        `cláusulas e condições a seguir pactuadas:`,
+      );
+
+      space();
+      clause(
+        'CLÁUSULA 1ª',
+        `Os advogados contratados obrigam-se, face ao mandado judicial que lhes foi outorgado, ` +
+        `a prestar seus serviços profissionais na defesa dos direitos do contratante ao trâmite ` +
+        `e condução do seu ${variaveis.DESCRICAO_CAUSA}.`,
+      );
+      sub(
+        `Parágrafo único. O presente contrato não engloba recursos em segunda instância no tribunal ` +
+        `ou em órgão administrativo, devendo ser celebrado outro contrato caso haja interesse do contratante.`,
+      );
+
+      space();
+      clause(
+        'CLÁUSULA 2ª',
+        `Em remuneração aos serviços profissionais ora pactuados (honorários), a Contratante pagará ` +
+        `a importância de ${pctStr} a ser pago no momento da homologação da ação trabalhista pela CONTRATANTE.`,
+      );
+      sub(
+        `Parágrafo único \u2013 O percentual de ${pctStr} previsto, incidirá sobre todos os valores que o ` +
+        `CONTRATANTE vier a receber em decorrência da ${variaveis.DESCRICAO_CAUSA}, incluindo, para todos os fins, ` +
+        `quaisquer quantias percebidas a título de seguro-desemprego, por se tratar de benefício ` +
+        `diretamente relacionado à rescisão contratual objeto da demanda.`,
+      );
+
+      space();
+      clause(
+        'CLÁUSULA 3ª',
+        `O total dos honorários poderá ser exigido imediatamente pelo contratado, se houver composição ` +
+        `amigável realizada por qualquer dos litigantes, ou ainda, se lhe for cassado o mandato sem culpa.`,
+      );
+
+      space();
+      clause(
+        'CLÁUSULA 4ª',
+        `As partes contratantes elegem o foro desta cidade para o fim de dirimir qualquer ação oriunda ` +
+        `do presente contrato.`,
+      );
+
+      space();
+      body(
+        `E para firmeza e como prova de assim haverem contratado, fizeram este instrumento particular, ` +
+        `impresso em duas vias de igual teor e forma, assinado pelas partes abaixo, a tudo presentes.`,
+      );
+
+      space();
+      doc.font('Times-Roman').fontSize(11)
+        .text(`${variaveis.CIDADE_CONTRATO}, ${variaveis.DATA_CONTRATO}.`, { align: 'center' });
+
+      sigLine('Contratante');
+      sigLine('Contratado \u2013 André Freire Lustosa \u2013 OAB/AL 14.209');
+      sigLine('Contratada \u2013 Gianny Karla Oliveira Silva \u2013 OAB/AL 21.897');
+
+      doc.end();
+    });
+  }
+
   async generateAndSend(
     conversationId: string,
     variaveis: ContratoVariaveis,
@@ -289,14 +431,13 @@ export class ContractsService {
       PCT_EXTENSO[variaveis.PERCENTUAL] ||
       `${variaveis.PERCENTUAL}`;
 
-    // 1. Gerar buffer do DOCX
-    const doc = buildDocx(variaveis);
-    const buffer = await Packer.toBuffer(doc);
+    // 1. Gerar PDF (para WhatsApp e S3)
+    const buffer = await this.generatePdfBuffer(variaveis);
 
     // 2. Criar registro de mensagem para obter ID
     const tempExtId = `out_contrato_${Date.now()}`;
     const clientName = variaveis.NOME_CONTRATANTE.split(' ')[0] || 'cliente';
-    const fileName = `Contrato_Trabalhista_${clientName.replace(/\s+/g, '_')}.docx`;
+    const fileName = `Contrato_Trabalhista_${clientName.replace(/\s+/g, '_')}.pdf`;
 
     const msg = await this.prisma.message.create({
       data: {
@@ -310,19 +451,15 @@ export class ContractsService {
     });
 
     // 3. Upload para S3
-    const s3Key = `contracts/${msg.id}.docx`;
-    await this.s3.uploadBuffer(
-      s3Key,
-      buffer,
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    );
+    const s3Key = `contracts/${msg.id}.pdf`;
+    await this.s3.uploadBuffer(s3Key, buffer, 'application/pdf');
 
     // 4. Criar registro de mídia
     await this.prisma.media.create({
       data: {
         message_id: msg.id,
         s3_key: s3Key,
-        mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        mime_type: 'application/pdf',
         size: buffer.length,
         original_name: fileName,
       },
@@ -330,7 +467,7 @@ export class ContractsService {
 
     // 5. Montar base64 puro (sem prefixo data URI) para a Evolution API
     const base64Media = buffer.toString('base64');
-    this.logger.log(`[CONTRATO] Enviando documento via base64 para ${convo.lead.phone}`);
+    this.logger.log(`[CONTRATO] Enviando PDF via base64 para ${convo.lead.phone}`);
 
     // 6. Enviar via WhatsApp como documento
     let sendStatus = 'enviado';
