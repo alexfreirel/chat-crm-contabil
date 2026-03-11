@@ -18,7 +18,7 @@ import { SkipThrottle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Public } from '../auth/decorators/public.decorator';
 import { ClicksignService } from './clicksign.service';
-import { ContratoVariaveis } from '../contracts/contracts.service';
+import type { ContratoVariaveis } from '../contracts/contracts.service';
 
 // ─── DTO ──────────────────────────────────────────────────────────────────────
 

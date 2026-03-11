@@ -4,7 +4,8 @@ import {
 } from '@nestjs/common';
 import { IsString, IsObject } from 'class-validator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { ContractsService, ContratoVariaveis } from './contracts.service';
+import { ContractsService } from './contracts.service';
+import type { ContratoVariaveis } from './contracts.service';
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
