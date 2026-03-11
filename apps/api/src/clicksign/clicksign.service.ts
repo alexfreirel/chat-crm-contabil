@@ -490,15 +490,61 @@ export class ClicksignService {
     }
   }
 
-  // ── Servir PDF assinado do S3 ─────────────────────────────────────────────
+  // ── Servir PDF assinado ────────────────────────────────────────────────────
+  // Tenta S3 primeiro; se signed_s3_key não existir, baixa do Clicksign
+  // on-demand, salva no S3 e atualiza o banco antes de retornar o stream.
 
   async getSignedPdfStream(signatureId: string) {
     const sig = await this.prisma.contractSignature.findUnique({
       where: { id: signatureId },
     });
-    if (!sig?.signed_s3_key)
-      throw new BadRequestException('PDF assinado não disponível');
+    if (!sig) throw new BadRequestException('Assinatura não encontrada');
 
-    return this.s3.getObjectStream(sig.signed_s3_key);
+    // 1. Caminho feliz: PDF já no S3
+    if (sig.signed_s3_key) {
+      return this.s3.getObjectStream(sig.signed_s3_key);
+    }
+
+    // 2. Fallback: baixar do Clicksign agora (webhook pode ter falhado)
+    if (!sig.cs_document_key) {
+      throw new BadRequestException('PDF assinado não disponível — chave do documento ausente');
+    }
+
+    this.logger.log(`[Clicksign] Baixando PDF assinado on-demand para sig ${sig.id}`);
+    let pdfBuffer: Buffer;
+    try {
+      const dlResult = await this.clicksignFetch<{ buffer?: Buffer }>(
+        'GET',
+        `/documents/${sig.cs_document_key}/download`,
+      );
+
+      if (!dlResult?.buffer || dlResult.buffer.length === 0) {
+        throw new Error('Resposta vazia do Clicksign');
+      }
+      pdfBuffer = dlResult.buffer;
+    } catch (e: any) {
+      this.logger.error(`[Clicksign] Falha ao baixar PDF on-demand: ${e.message}`);
+      throw new BadRequestException(
+        'Não foi possível baixar o PDF assinado. O documento pode ainda estar sendo processado pelo Clicksign.',
+      );
+    }
+
+    // Salva no S3 e atualiza o banco para downloads futuros
+    const s3Key = `contracts-signed/${sig.id}.pdf`;
+    try {
+      await this.s3.uploadBuffer(s3Key, pdfBuffer, 'application/pdf');
+      await this.prisma.contractSignature.update({
+        where: { id: sig.id },
+        data: { signed_s3_key: s3Key },
+      });
+      this.logger.log(`[Clicksign] PDF assinado salvo no S3 (on-demand): ${s3Key}`);
+      return this.s3.getObjectStream(s3Key);
+    } catch (e: any) {
+      // Se o upload falhar, retorna o buffer diretamente como stream
+      this.logger.warn(`[Clicksign] Falha ao salvar no S3, retornando buffer direto: ${e.message}`);
+      const { Readable } = await import('stream');
+      const stream = Readable.from(pdfBuffer);
+      return { stream, contentType: 'application/pdf', contentLength: pdfBuffer.length };
+    }
   }
 }

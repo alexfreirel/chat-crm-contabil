@@ -121,18 +121,29 @@ export default function ContratoTrabalhistaModal({ open, conversationId, onClose
   const handleDownloadSignedPdf = async () => {
     if (!existingSignature) return;
     setDownloadingPdf(true);
+    setError(null);
     try {
       const res = await api.get(`/contracts/clicksign/signed-pdf/${existingSignature.id}`, {
         responseType: 'blob',
       });
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      // Se o servidor retornou um blob de JSON de erro (axios + blob)
+      const blob = new Blob([res.data], { type: res.headers['content-type'] || 'application/pdf' });
+      if (blob.type.includes('application/json')) {
+        const text = await blob.text();
+        const parsed = JSON.parse(text);
+        throw new Error(parsed?.message || 'Erro ao baixar PDF');
+      }
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `Contrato_Assinado_${variaveis?.NOME_CONTRATANTE?.split(' ')[0] || 'cliente'}.pdf`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch {
-      setError('Erro ao baixar o PDF assinado.');
+    } catch (e: any) {
+      const msg = e?.response?.data?.message || e?.message || 'Erro ao baixar o PDF assinado.';
+      setError(msg);
     } finally {
       setDownloadingPdf(false);
     }
