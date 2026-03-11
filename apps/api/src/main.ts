@@ -7,6 +7,7 @@ import { ChatGateway } from './gateway/chat.gateway';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import * as express from 'express';
 
 // Carregar .env da raiz do projeto antes de qualquer coisa
 const possiblePaths = [
@@ -32,7 +33,20 @@ async function bootstrap() {
   logger.log('Iniciando Bootstrap...');
   logger.log(`DATABASE_URL carregada: ${dbUrl ? 'SIM (inicia com ' + dbUrl.substring(0, 20) + '...)' : 'NAO'}`);
 
-  const app = await NestFactory.create(AppModule);
+  // Desabilitar body parser padrão para configurar limite manualmente
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+
+  // Body parser com limite de 50MB (webhooks da Evolution enviam mídia em base64)
+  // Também captura rawBody para verificação HMAC do Clicksign
+  app.use(
+    express.json({
+      limit: '50mb',
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf.toString('utf8');
+      },
+    }),
+  );
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // Validacao global de DTOs via class-validator
   app.useGlobalPipes(new ValidationPipe({

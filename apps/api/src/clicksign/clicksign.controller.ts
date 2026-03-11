@@ -55,11 +55,12 @@ export class ClicksignController {
 
   /**
    * GET /contracts/clicksign/status/:conversationId
-   * Retorna o status do ContractSignature mais recente da conversa.
+   * Retorna o status do ContractSignature mais recente da conversa,
+   * incluindo a URL do painel Clicksign para download manual.
    */
   @Get('status/:conversationId')
   async getStatus(@Param('conversationId') conversationId: string) {
-    return this.clicksign['prisma'].contractSignature.findFirst({
+    const sig = await this.clicksign['prisma'].contractSignature.findFirst({
       where: { conversation_id: conversationId },
       orderBy: { created_at: 'desc' },
       select: {
@@ -68,8 +69,27 @@ export class ClicksignController {
         signing_url: true,
         signed_at: true,
         created_at: true,
+        cs_document_key: true,
+        signed_s3_key: true,
       },
     });
+    if (!sig) return null;
+
+    // URL do painel Clicksign para download manual (útil quando sandbox não serve o PDF)
+    const cfg = await this.clicksign['getCfg']();
+    const dashboardUrl = sig.cs_document_key
+      ? `${cfg.baseUrl}/documents/${sig.cs_document_key}`
+      : null;
+
+    return {
+      id: sig.id,
+      status: sig.status,
+      signing_url: sig.signing_url,
+      signed_at: sig.signed_at,
+      created_at: sig.created_at,
+      has_pdf: !!sig.signed_s3_key,    // indica se PDF já está no S3
+      dashboard_url: dashboardUrl,      // link direto ao documento no Clicksign
+    };
   }
 
   /**
