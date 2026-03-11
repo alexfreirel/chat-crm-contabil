@@ -82,11 +82,12 @@ model Lead {
   tenant             Tenant?            @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
   tasks              Task[]
   legal_cases        LegalCase[]
-  ficha_trabalhista  FichaTrabalhista?
-  calendar_events    CalendarEvent[]
-  last_followup_at   DateTime?
-  notes              LeadNote[]
-  stage_history      LeadStageHistory[]
+  ficha_trabalhista   FichaTrabalhista?
+  calendar_events     CalendarEvent[]
+  last_followup_at    DateTime?
+  notes               LeadNote[]
+  stage_history       LeadStageHistory[]
+  contract_signatures ContractSignature[]
 
   @@index([tenant_id, phone])
   @@index([stage])
@@ -121,9 +122,10 @@ model Conversation {
   inbox            Inbox?    @relation(fields: [inbox_id], references: [id], onDelete: SetNull)
   messages         Message[]
   tasks            Task[]
-  legal_cases      LegalCase[]
-  calendar_events  CalendarEvent[]
-  transfer_audios  TransferAudio[]
+  legal_cases         LegalCase[]
+  calendar_events     CalendarEvent[]
+  transfer_audios     TransferAudio[]
+  contract_signatures ContractSignature[]
 
   @@index([lead_id])
   @@index([last_message_at(sort: Desc)])
@@ -780,5 +782,38 @@ model HonorarioPayment {
   honorario       CaseHonorario @relation(fields: [honorario_id], references: [id], onDelete: Cascade)
 
   @@index([honorario_id, due_date])
+  @@index([status])
+}
+
+// ===============================================
+// Contract Signatures (integração Clicksign)
+// ===============================================
+
+model ContractSignature {
+  id                        String    @id @default(uuid())
+  lead_id                   String
+  conversation_id           String
+
+  // Referências Clicksign
+  cs_document_key           String    @unique
+  cs_signer_key             String?
+  cs_request_signature_key  String?
+  signing_url               String?
+
+  // PDF assinado (preenchido após webhook de conclusão)
+  signed_s3_key             String?
+
+  status                    String    @default("PENDENTE")
+  signed_at                 DateTime?
+
+  created_at                DateTime  @default(now())
+  updated_at                DateTime  @updatedAt
+
+  lead         Lead         @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+
+  @@index([lead_id])
+  @@index([conversation_id])
+  @@index([cs_document_key])
   @@index([status])
 }

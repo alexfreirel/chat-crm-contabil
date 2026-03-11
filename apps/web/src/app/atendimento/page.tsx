@@ -597,6 +597,11 @@ export default function Dashboard() {
       setTimeout(() => setTransferResponseMsg(null), 8000);
     });
 
+    // Contrato assinado digitalmente (Clicksign)
+    socket.on('contract:signed', (data: { conversationId: string; leadName: string; signedAt: string }) => {
+      showSuccess(`✅ Contrato assinado por ${data.leadName}!`);
+    });
+
     // WhatsApp instance connection status (connect/disconnect)
     socket.on('connection_status_update', (data: { instanceName: string; state: string }) => {
       setInstanceStatuses(prev => ({ ...prev, [data.instanceName]: data.state }));

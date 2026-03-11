@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText, X, Send, AlertCircle, CheckCircle2,
-  Loader2, ChevronDown, ChevronUp, Download,
+  Loader2, ChevronDown, ChevronUp, Download, PenLine, Copy, Check as CheckIcon,
 } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -77,11 +77,19 @@ export default function ContratoTrabalhistaModal({ open, conversationId, onClose
   const [camposFaltando, setCamposFaltando] = useState<string[]>([]);
   const [showPreview, setShowPreview] = useState(false);
 
+  // Assinatura digital
+  const [signingState, setSigningState] = useState<'idle' | 'loading' | 'sent'>('idle');
+  const [signingUrl, setSigningUrl] = useState<string | null>(null);
+  const [urlCopied, setUrlCopied] = useState(false);
+
   // Carregar preview ao abrir
   useEffect(() => {
     if (!open || !conversationId) return;
     setSent(false);
     setError(null);
+    setSigningState('idle');
+    setSigningUrl(null);
+    setUrlCopied(false);
     setLoading(true);
     api
       .get(`/contracts/trabalhista/preview?conversationId=${conversationId}`)
@@ -97,7 +105,6 @@ export default function ContratoTrabalhistaModal({ open, conversationId, onClose
     setVariaveis((prev) => {
       if (!prev) return prev;
       const updated = { ...prev, [key]: value };
-      // Atualizar extenso automaticamente
       if (key === 'PERCENTUAL') {
         updated.PERCENTUAL_EXTENSO = PCT_EXTENSO[Number(value)] || String(value);
       }
@@ -110,10 +117,7 @@ export default function ContratoTrabalhistaModal({ open, conversationId, onClose
     setSending(true);
     setError(null);
     try {
-      await api.post('/contracts/trabalhista/send', {
-        conversationId,
-        variaveis,
-      });
+      await api.post('/contracts/trabalhista/send', { conversationId, variaveis });
       setSent(true);
     } catch (e: any) {
       setError(e?.response?.data?.message || 'Erro ao enviar contrato.');
@@ -142,6 +146,30 @@ export default function ContratoTrabalhistaModal({ open, conversationId, onClose
     } finally {
       setDownloading(false);
     }
+  };
+
+  const handleRequestSignature = async () => {
+    if (!conversationId || !variaveis) return;
+    setSigningState('loading');
+    setError(null);
+    try {
+      const res = await api.post('/contracts/clicksign/request', {
+        conversationId,
+        variaveis,
+      });
+      setSigningUrl(res.data.signingUrl);
+      setSigningState('sent');
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'Erro ao solicitar assinatura digital.');
+      setSigningState('idle');
+    }
+  };
+
+  const handleCopyUrl = async () => {
+    if (!signingUrl) return;
+    await navigator.clipboard.writeText(signingUrl).catch(() => {});
+    setUrlCopied(true);
+    setTimeout(() => setUrlCopied(false), 2000);
   };
 
   if (!open) return null;
@@ -198,7 +226,7 @@ export default function ContratoTrabalhistaModal({ open, conversationId, onClose
                 </div>
               )}
 
-              {/* Enviado com sucesso */}
+              {/* Enviado (DOCX via WhatsApp) */}
               {sent && (
                 <div className="flex flex-col items-center justify-center py-10 gap-4 text-center">
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 border border-emerald-500/20">
@@ -230,6 +258,35 @@ export default function ContratoTrabalhistaModal({ open, conversationId, onClose
                         <strong>Campos não encontrados na ficha:</strong>{' '}
                         {camposFaltando.join(', ')}. Preencha manualmente abaixo.
                       </span>
+                    </div>
+                  )}
+
+                  {/* Banner: link de assinatura enviado */}
+                  {signingState === 'sent' && signingUrl && (
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 space-y-2">
+                      <div className="flex items-center gap-2 text-sm text-emerald-400 font-semibold">
+                        <CheckCircle2 className="h-4 w-4 shrink-0" />
+                        Link de assinatura enviado por WhatsApp ao cliente!
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          readOnly
+                          value={signingUrl}
+                          className="flex-1 rounded-lg border border-white/10 bg-black/30 text-slate-300 text-xs px-3 py-1.5 focus:outline-none truncate"
+                        />
+                        <button
+                          onClick={handleCopyUrl}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 bg-white/5 text-slate-400 text-xs hover:bg-white/10 transition-colors shrink-0"
+                        >
+                          {urlCopied
+                            ? <><CheckIcon className="h-3 w-3 text-emerald-400" /> Copiado</>
+                            : <><Copy className="h-3 w-3" /> Copiar</>
+                          }
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        Assinatura via SMS + Selfie · Válida juridicamente (Lei 14.063/2020)
+                      </p>
                     </div>
                   )}
 
@@ -309,43 +366,57 @@ export default function ContratoTrabalhistaModal({ open, conversationId, onClose
 
             {/* Footer */}
             {!loading && !sent && variaveis && (
-              <div className="flex items-center justify-between px-6 py-4 border-t border-white/10 gap-3">
+              <div className="flex flex-wrap items-center justify-between px-6 py-4 border-t border-white/10 gap-2">
+                {/* Esquerda: cancelar */}
                 <button
                   onClick={onClose}
                   className="px-4 py-2.5 rounded-xl border border-white/10 text-slate-400 text-sm font-semibold hover:bg-white/5 transition-colors"
                 >
                   Cancelar
                 </button>
-                <button
-                  onClick={handleDownload}
-                  disabled={downloading || sending}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-400 text-sm font-semibold hover:bg-blue-500/20 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-                  title="Baixar .docx no PC"
-                >
-                  {downloading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Download className="h-4 w-4" />
-                  )}
-                  Baixar .docx
-                </button>
-                <button
-                  onClick={handleSend}
-                  disabled={sending}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-black text-sm font-bold shadow-lg hover:shadow-amber-500/30 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-                >
-                  {sending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Gerando e enviando…
-                    </>
-                  ) : (
-                    <>
-                      <Send className="h-4 w-4" />
-                      Enviar contrato por WhatsApp
-                    </>
-                  )}
-                </button>
+
+                {/* Direita: ações */}
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  {/* Baixar DOCX */}
+                  <button
+                    onClick={handleDownload}
+                    disabled={downloading || sending || signingState === 'loading'}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-400 text-sm font-semibold hover:bg-blue-500/20 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                    title="Baixar .docx no PC"
+                  >
+                    {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                    Baixar
+                  </button>
+
+                  {/* Solicitar assinatura digital */}
+                  <button
+                    onClick={handleRequestSignature}
+                    disabled={signingState === 'loading' || sending}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 text-sm font-semibold hover:bg-violet-500/20 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                    title="Enviar link de assinatura digital Clicksign via WhatsApp"
+                  >
+                    {signingState === 'loading' ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" /> Preparando…</>
+                    ) : signingState === 'sent' ? (
+                      <><CheckCircle2 className="h-4 w-4 text-emerald-400" /> Assinatura enviada</>
+                    ) : (
+                      <><PenLine className="h-4 w-4" /> Solicitar Assinatura</>
+                    )}
+                  </button>
+
+                  {/* Enviar DOCX via WhatsApp */}
+                  <button
+                    onClick={handleSend}
+                    disabled={sending || signingState === 'loading'}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-black text-sm font-bold shadow-lg hover:shadow-amber-500/30 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                  >
+                    {sending ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" /> Enviando…</>
+                    ) : (
+                      <><Send className="h-4 w-4" /> Enviar WhatsApp</>
+                    )}
+                  </button>
+                </div>
               </div>
             )}
           </motion.div>

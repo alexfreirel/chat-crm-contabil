@@ -30,6 +30,7 @@ import { LegalTemplatesModule } from './legal-templates/legal-templates.module';
 import { HonorariosModule } from './honorarios/honorarios.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ContractsModule } from './contracts/contracts.module';
+import { ClicksignModule } from './clicksign/clicksign.module';
 
 import { HealthController } from './common/controllers/health.controller';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
@@ -83,6 +84,7 @@ import { RolesGuard } from './auth/guards/roles.guard';
     HonorariosModule,
     DashboardModule,
     ContractsModule,
+    ClicksignModule,
   ],
   controllers: [AppController, HealthController],
   providers: [
