@@ -13,6 +13,7 @@ import {
   BadRequestException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { IsString, IsObject } from 'class-validator';
 import { SkipThrottle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Public } from '../auth/decorators/public.decorator';
@@ -22,7 +23,10 @@ import { ContratoVariaveis } from '../contracts/contracts.service';
 // ─── DTO ──────────────────────────────────────────────────────────────────────
 
 class RequestSignatureDto {
+  @IsString()
   conversationId: string;
+
+  @IsObject()
   variaveis: ContratoVariaveis;
 }
 

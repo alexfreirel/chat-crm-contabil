@@ -2,8 +2,24 @@ import {
   Controller, Get, Post, Body, Query, Req, Res,
   UseGuards, Logger,
 } from '@nestjs/common';
+import { IsString, IsObject } from 'class-validator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ContractsService, ContratoVariaveis } from './contracts.service';
+
+// ─── DTOs ─────────────────────────────────────────────────────────────────────
+
+class SendContractDto {
+  @IsString()
+  conversationId: string;
+
+  @IsObject()
+  variaveis: ContratoVariaveis;
+}
+
+class DownloadContractDto {
+  @IsObject()
+  variaveis: ContratoVariaveis;
+}
 
 @UseGuards(JwtAuthGuard)
 @Controller('contracts')
@@ -27,7 +43,7 @@ export class ContractsController {
    */
   @Post('trabalhista/send')
   async send(
-    @Body() body: { conversationId: string; variaveis: ContratoVariaveis },
+    @Body() body: SendContractDto,
     @Req() req: any,
   ) {
     // Deriva a URL pública da API a partir do request (igual ao sendAudio)
@@ -51,7 +67,7 @@ export class ContractsController {
    */
   @Post('trabalhista/download')
   async download(
-    @Body() body: { variaveis: ContratoVariaveis },
+    @Body() body: DownloadContractDto,
     @Res() res: any,
   ) {
     const buffer = await this.contracts.generateBuffer(body.variaveis);
