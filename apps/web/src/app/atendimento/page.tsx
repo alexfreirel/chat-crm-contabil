@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback, useMemo, Fragment } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, UserCheck, PanelLeftOpen, CornerDownLeft, Inbox, Pencil, Search, ChevronDown, ClipboardList, ArrowLeft, MoreVertical } from 'lucide-react';
@@ -160,6 +161,7 @@ export default function Dashboard() {
   const [clientPanelLeadId, setClientPanelLeadId] = useState<string | null>(null);
   const [showContratoModal, setShowContratoModal] = useState(false);
   const [slashMenuIndex, setSlashMenuIndex] = useState(0);
+  const [slashMenuPos, setSlashMenuPos] = useState<{ bottom: number; left: number } | null>(null);
   // Typing indicators
   const [typingUsers, setTypingUsers] = useState<Record<string, { userName: string; timeout: ReturnType<typeof setTimeout> }>>({});
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -879,6 +881,16 @@ export default function Dashboard() {
       )
     : [];
   const showSlashMenu = slashQuery !== null && filteredSlashCommands.length > 0;
+
+  // Posição do menu: calcula sempre que showSlashMenu muda (portal fixed)
+  useEffect(() => {
+    if (showSlashMenu && inputRef.current) {
+      const rect = inputRef.current.getBoundingClientRect();
+      setSlashMenuPos({ bottom: window.innerHeight - rect.top + 8, left: rect.left });
+    } else {
+      setSlashMenuPos(null);
+    }
+  }, [showSlashMenu]);
 
   const executeSlashCommand = (cmdId: SlashCommandId) => {
     setText('');
@@ -2121,36 +2133,7 @@ export default function Dashboard() {
                   {/* ── Textarea + ícones internos ──────────────────── */}
                   <div className="relative flex-1">
 
-                    {/* Slash command picker */}
-                    {showSlashMenu && (
-                      <div className="absolute bottom-full left-0 mb-2 w-80 bg-card border border-border rounded-xl shadow-2xl z-50 overflow-hidden">
-                        <div className="px-3 py-2 border-b border-border">
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Atalhos de envio</p>
-                        </div>
-                        {filteredSlashCommands.map((cmd, i) => (
-                          <button
-                            key={cmd.id}
-                            onMouseDown={(e) => { e.preventDefault(); executeSlashCommand(cmd.id); }}
-                            onMouseEnter={() => setSlashMenuIndex(i)}
-                            className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
-                              i === slashMenuIndex ? 'bg-primary/10' : 'hover:bg-accent'
-                            }`}
-                          >
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                              i === slashMenuIndex ? 'bg-primary/20' : 'bg-foreground/[0.06]'
-                            }`}>
-                              <cmd.Icon size={15} className={i === slashMenuIndex ? 'text-primary' : 'text-muted-foreground'} />
-                            </div>
-                            <div className="min-w-0">
-                              <p className={`text-[13px] font-bold ${i === slashMenuIndex ? 'text-primary' : 'text-foreground'}`}>
-                                /{cmd.id}
-                              </p>
-                              <p className="text-[11px] text-muted-foreground truncate">{cmd.description}</p>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    {/* Slash command picker — renderizado via portal (evita clipping por overflow-hidden) */}
 
                     <textarea
                       ref={inputRef}
@@ -2464,6 +2447,39 @@ export default function Dashboard() {
           onOpenTransferModal={handleOpenTransferModal}
           onCloseConversation={handleClose}
         />
+      )}
+
+      {/* Slash command picker — portal para evitar clipping por overflow-hidden */}
+      {slashMenuPos && typeof document !== 'undefined' && createPortal(
+        <div
+          className="bg-card border border-border rounded-xl shadow-2xl overflow-hidden"
+          style={{ position: 'fixed', bottom: slashMenuPos.bottom, left: slashMenuPos.left, width: 320, zIndex: 9999 }}
+        >
+          <div className="px-3 py-2 border-b border-border">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Atalhos de envio</p>
+          </div>
+          {filteredSlashCommands.map((cmd, i) => (
+            <button
+              key={cmd.id}
+              onMouseDown={(e) => { e.preventDefault(); executeSlashCommand(cmd.id); }}
+              onMouseEnter={() => setSlashMenuIndex(i)}
+              className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+                i === slashMenuIndex ? 'bg-primary/10' : 'hover:bg-accent'
+              }`}
+            >
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                i === slashMenuIndex ? 'bg-primary/20' : 'bg-foreground/[0.06]'
+              }`}>
+                <cmd.Icon size={15} className={i === slashMenuIndex ? 'text-primary' : 'text-muted-foreground'} />
+              </div>
+              <div className="min-w-0">
+                <p className={`text-[13px] font-bold ${i === slashMenuIndex ? 'text-primary' : 'text-foreground'}`}>/{cmd.id}</p>
+                <p className="text-[11px] text-muted-foreground truncate">{cmd.description}</p>
+              </div>
+            </button>
+          ))}
+        </div>,
+        document.body
       )}
 
       {/* Modal Contrato Trabalhista */}

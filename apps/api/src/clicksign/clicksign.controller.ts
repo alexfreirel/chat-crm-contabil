@@ -111,7 +111,7 @@ export class ClicksignWebhookController {
         : JSON.stringify(payload);
     const signature = hmacHeader ?? '';
 
-    if (signature && !this.clicksign.verifyWebhookSignature(rawBody, signature)) {
+    if (signature && !(await this.clicksign.verifyWebhookSignature(rawBody, signature))) {
       this.logger.warn('[Clicksign] Assinatura HMAC inválida no webhook — rejeitado');
       throw new UnauthorizedException('Webhook signature inválida');
     }

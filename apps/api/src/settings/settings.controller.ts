@@ -160,4 +160,38 @@ export class SettingsController {
     }
     return this.settingsService.getAiCosts();
   }
+
+  // ─── Clicksign ────────────────────────────────────────
+
+  @Get('clicksign')
+  async getClicksign(@Request() req: any) {
+    if (req.user.role !== 'ADMIN') throw new ForbiddenException('Apenas administradores');
+    const cfg = await this.settingsService.getClicksignConfig();
+    return {
+      ...cfg,
+      apiToken:     maskApiKey(cfg.apiToken),
+      webhookToken: maskApiKey(cfg.webhookToken),
+    };
+  }
+
+  @Patch('clicksign')
+  async setClicksign(@Request() req: any, @Body() body: { baseUrl?: string; apiToken?: string; webhookToken?: string }) {
+    if (req.user.role !== 'ADMIN') throw new ForbiddenException('Apenas administradores');
+    await this.settingsService.setClicksignConfig(body);
+    return { ok: true };
+  }
+
+  // ─── Contrato Trabalhista ─────────────────────────────
+
+  @Get('contract')
+  async getContract() {
+    return this.settingsService.getContractConfig();
+  }
+
+  @Patch('contract')
+  async setContract(@Request() req: any, @Body() body: Record<string, string>) {
+    if (req.user.role !== 'ADMIN') throw new ForbiddenException('Apenas administradores');
+    await this.settingsService.setContractConfig(body);
+    return { ok: true };
+  }
 }

@@ -10,6 +10,7 @@ import { MediaS3Service } from '../media/s3.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { ChatGateway } from '../gateway/chat.gateway';
 import { ContractsService, ContratoVariaveis } from '../contracts/contracts.service';
+import { SettingsService } from '../settings/settings.service';
 
 // ─── Tipos internos ───────────────────────────────────────────────────────────
 
@@ -37,9 +38,6 @@ interface ClicksignList {
 @Injectable()
 export class ClicksignService {
   private readonly logger = new Logger(ClicksignService.name);
-  private readonly baseUrl: string;
-  private readonly token: string;
-  private readonly webhookToken: string;
   private readonly publicApiUrl: string;
 
   constructor(
@@ -48,12 +46,20 @@ export class ClicksignService {
     private whatsapp: WhatsappService,
     private chatGateway: ChatGateway,
     private contracts: ContractsService,
+    private settings: SettingsService,
   ) {
-    this.baseUrl =
-      (process.env.CLICKSIGN_BASE_URL ?? 'https://sandbox.clicksign.com').replace(/\/$/, '');
-    this.token = process.env.CLICKSIGN_API_TOKEN ?? '';
-    this.webhookToken = process.env.CLICKSIGN_WEBHOOK_TOKEN ?? '';
     this.publicApiUrl = process.env.PUBLIC_API_URL ?? '';
+  }
+
+  // ── Obtém configuração do DB (com fallback para env vars) ──────────────────
+
+  private async getCfg() {
+    const cfg = await this.settings.getClicksignConfig();
+    return {
+      baseUrl: cfg.baseUrl.replace(/\/$/, ''),
+      token: cfg.apiToken,
+      webhookToken: cfg.webhookToken,
+    };
   }
 
   // ── Utilitário: faz chamadas HTTP para a API Clicksign ─────────────────────
@@ -63,7 +69,8 @@ export class ClicksignService {
     path: string,
     body?: object,
   ): Promise<T> {
-    const url = `${this.baseUrl}/api/v1${path}?access_token=${this.token}`;
+    const { baseUrl, token } = await this.getCfg();
+    const url = `${baseUrl}/api/v1${path}?access_token=${token}`;
     const init: RequestInit = {
       method,
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -189,9 +196,10 @@ export class ClicksignService {
     variaveis: ContratoVariaveis;
   }): Promise<{ signingUrl: string }> {
     const { conversationId, variaveis } = params;
+    const { baseUrl, token } = await this.getCfg();
 
-    if (!this.token)
-      throw new BadRequestException('CLICKSIGN_API_TOKEN não configurado');
+    if (!token)
+      throw new BadRequestException('Clicksign não configurado — acesse Configurações › Contratos & Assinatura');
 
     // Busca dados da conversa
     const convo = await this.prisma.conversation.findUnique({
@@ -221,7 +229,7 @@ export class ClicksignService {
     const requestSignatureKey = await this.addSignerToDocument(documentKey, signerKey);
 
     // 5. Montar URL de assinatura
-    const signingUrl = `${this.baseUrl}/sign/${requestSignatureKey}`;
+    const signingUrl = `${baseUrl}/sign/${requestSignatureKey}`;
 
     // 6. Persistir no banco
     const signature = await this.prisma.contractSignature.create({
@@ -257,13 +265,14 @@ export class ClicksignService {
 
   // ── Verificar assinatura HMAC do webhook ──────────────────────────────────
 
-  verifyWebhookSignature(payload: string, signature: string): boolean {
-    if (!this.webhookToken) {
-      this.logger.warn('[Clicksign] CLICKSIGN_WEBHOOK_TOKEN não configurado — verificação ignorada');
+  async verifyWebhookSignature(payload: string, signature: string): Promise<boolean> {
+    const { webhookToken } = await this.getCfg();
+    if (!webhookToken) {
+      this.logger.warn('[Clicksign] webhookToken não configurado — verificação ignorada');
       return true;
     }
     const expected = crypto
-      .createHmac('sha256', this.webhookToken)
+      .createHmac('sha256', webhookToken)
       .update(payload)
       .digest('hex');
     try {

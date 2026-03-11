@@ -571,6 +571,58 @@ Você prepara o caso. O advogado decide.
     }>;
   }
 
+  // ─── Clicksign ──────────────────────────────────────────────────────────────
+
+  async getClicksignConfig() {
+    const baseUrl   = await this.get('CLICKSIGN_BASE_URL');
+    const apiToken  = await this.get('CLICKSIGN_API_TOKEN');
+    const webhookToken = await this.get('CLICKSIGN_WEBHOOK_TOKEN');
+    return {
+      baseUrl:       baseUrl      || process.env.CLICKSIGN_BASE_URL      || 'https://sandbox.clicksign.com',
+      apiToken:      apiToken     || process.env.CLICKSIGN_API_TOKEN      || '',
+      webhookToken:  webhookToken || process.env.CLICKSIGN_WEBHOOK_TOKEN  || '',
+      isConfigured:  !!(apiToken  || process.env.CLICKSIGN_API_TOKEN),
+    };
+  }
+
+  async setClicksignConfig(data: {
+    baseUrl?: string;
+    apiToken?: string;
+    webhookToken?: string;
+  }) {
+    if (data.baseUrl      !== undefined) await this.set('CLICKSIGN_BASE_URL',      data.baseUrl);
+    if (data.apiToken     !== undefined) await this.set('CLICKSIGN_API_TOKEN',     data.apiToken);
+    if (data.webhookToken !== undefined) await this.set('CLICKSIGN_WEBHOOK_TOKEN', data.webhookToken);
+  }
+
+  // ─── Contrato Trabalhista — dados fixos ────────────────────────────────────
+
+  async getContractConfig() {
+    const raw = await this.get('CONTRACT_CONFIG');
+    const defaults = {
+      advogado1_nome:   'André Freire Lustosa',
+      advogado1_oab:    'OAB/AL 14.209',
+      advogado2_nome:   'Gianny Karla Oliveira Silva',
+      advogado2_oab:    'OAB/AL 21.897',
+      escritorio_logradouro: 'Rua Francisco Rodrigues Viana, nº 242, bairro Baixa Grande',
+      escritorio_cidade: 'Arapiraca/AL',
+      escritorio_cep:    '57307-260',
+      foro:              'Arapiraca/AL',
+      publicApiUrl:      process.env.PUBLIC_API_URL || '',
+    };
+    if (!raw) return defaults;
+    try {
+      return { ...defaults, ...JSON.parse(raw) };
+    } catch {
+      return defaults;
+    }
+  }
+
+  async setContractConfig(data: Record<string, string>) {
+    const current = await this.getContractConfig();
+    await this.set('CONTRACT_CONFIG', JSON.stringify({ ...current, ...data }));
+  }
+
   async getAiCosts() {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
