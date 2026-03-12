@@ -188,12 +188,6 @@ export default function ContactsPage() {
 
   // ─── Helpers de seleção ────────────────────────────────────
 
-  const currentList = view === 'active' ? activeContacts : filteredArchivedLeads;
-
-  const allCurrentSelected = currentList.length > 0 && currentList.every(c => selectedIds.has(c.id));
-  const someSelected = selectedIds.size > 0;
-  const indeterminate = someSelected && !allCurrentSelected;
-
   function toggleSelectAll() {
     if (allCurrentSelected) {
       setSelectedIds(new Set());
@@ -261,6 +255,11 @@ export default function ContactsPage() {
         c.phone.includes(search)
       )
     : archivedLeads;
+
+  const currentList = view === 'active' ? activeContacts : filteredArchivedLeads;
+  const allCurrentSelected = currentList.length > 0 && currentList.every(c => selectedIds.has(c.id));
+  const someSelected = selectedIds.size > 0;
+  const indeterminate = someSelected && !allCurrentSelected;
 
   // Barra de ação em massa
   const BulkActionBar = () => {
