@@ -118,7 +118,7 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
   const moreItems = [
     { label: 'Dashboard', href: '/atendimento/dashboard', icon: LayoutDashboard, match: (p: string) => p.startsWith('/atendimento/dashboard') },
     { label: 'Agenda', href: '/atendimento/agenda', icon: Calendar, match: (p: string) => p.startsWith('/atendimento/agenda') },
-    { label: 'Confecção', href: '/atendimento/advogado', icon: FileEdit, match: (p: string) => p.startsWith('/atendimento/advogado') },
+    { label: 'Triagem e Peticionamento', href: '/atendimento/advogado', icon: FileEdit, match: (p: string) => p.startsWith('/atendimento/advogado') },
     { label: 'Processos', href: '/atendimento/processos', icon: BookOpen, match: (p: string) => p.startsWith('/atendimento/processos') },
     { label: 'Marketing', href: '/atendimento/marketing/analytics', icon: Megaphone, match: (p: string) => p.startsWith('/atendimento/marketing') },
     { label: 'Ajustes', href: '/atendimento/settings', icon: Settings, match: (p: string) => p.startsWith('/atendimento/settings') },
