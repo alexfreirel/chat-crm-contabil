@@ -1,7 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, User, Phone, Loader2, MessageSquare, FolderOpen, RotateCcw, ArrowLeft, UserPlus, AlertCircle, RefreshCw } from 'lucide-react';
+import {
+  Search, User, Phone, Loader2, MessageSquare, FolderOpen, RotateCcw,
+  ArrowLeft, UserPlus, AlertCircle, RefreshCw, Archive, CheckSquare,
+  Square, Trash2, X,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { formatPhone } from '@/lib/utils';
@@ -42,16 +46,21 @@ export default function ContactsPage() {
   const [loading, setLoading] = useState(true);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
-  // 'active' = tela principal | 'archived' = tela de arquivados
   const [view, setView] = useState<'active' | 'archived'>('active');
   const [archivedLeads, setArchivedLeads] = useState<Contact[]>([]);
   const [loadingArchived, setLoadingArchived] = useState(false);
   const [showNewContact, setShowNewContact] = useState(false);
   const [isAdmin] = useState<boolean>(getIsAdminFromToken);
-  // Paginacao
+
+  // Paginação
   const [page, setPage] = useState(1);
   const [totalContacts, setTotalContacts] = useState(0);
   const PAGE_SIZE = 50;
+
+  // ─── Seleção em massa ──────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkArchiving, setBulkArchiving] = useState(false);
+  const [bulkUnarchiving, setBulkUnarchiving] = useState(false);
 
   // Debounce search — 300ms
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -59,12 +68,14 @@ export default function ContactsPage() {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     searchTimerRef.current = setTimeout(() => {
       setDebouncedSearch(search);
-      setPage(1); // Reset para pagina 1 ao buscar
+      setPage(1);
     }, 300);
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
   }, [search]);
 
-  // Abre o painel do cliente via query param ?lead=<id> (sem useSearchParams para evitar Suspense)
+  // Limpa seleção ao mudar de view/página
+  useEffect(() => { setSelectedIds(new Set()); }, [view, page, debouncedSearch]);
+
   useEffect(() => {
     const leadId = new URLSearchParams(window.location.search).get('lead');
     if (leadId) setSelectedLeadId(leadId);
@@ -84,7 +95,6 @@ export default function ContactsPage() {
       const response = await api.get('/leads', { params });
       const result = response.data;
 
-      // Backend retorna { data, total, page, limit } quando paginado
       const leads = Array.isArray(result) ? result : (result.data || []);
       const total = result.total ?? leads.length;
       setTotalContacts(total);
@@ -107,7 +117,7 @@ export default function ContactsPage() {
       setContacts(mappedContacts);
     } catch {
       setLoadError(true);
-      showError('Nao foi possivel carregar contatos.');
+      showError('Não foi possível carregar contatos.');
     } finally {
       setLoading(false);
     }
@@ -130,6 +140,7 @@ export default function ContactsPage() {
   const handleContactDeleted = (deletedId: string) => {
     setContacts(prev => prev.filter(c => c.id !== deletedId));
     setSelectedLeadId(null);
+    setSelectedIds(prev => { const n = new Set(prev); n.delete(deletedId); return n; });
   };
 
   const handleUnarchive = async (contactId: string) => {
@@ -171,12 +182,77 @@ export default function ContactsPage() {
     }
   }, []);
 
-  // Carrega arquivados ao abrir a aba
   useEffect(() => {
     if (view === 'archived') fetchArchivedContacts();
   }, [view, fetchArchivedContacts]);
 
-  // Busca agora e server-side via debouncedSearch; filtragem local so por stage
+  // ─── Helpers de seleção ────────────────────────────────────
+
+  const currentList = view === 'active' ? activeContacts : filteredArchivedLeads;
+
+  const allCurrentSelected = currentList.length > 0 && currentList.every(c => selectedIds.has(c.id));
+  const someSelected = selectedIds.size > 0;
+  const indeterminate = someSelected && !allCurrentSelected;
+
+  function toggleSelectAll() {
+    if (allCurrentSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(currentList.map(c => c.id)));
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // ─── Arquivar em massa ─────────────────────────────────────
+
+  const handleBulkArchive = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkArchiving(true);
+    const ids = Array.from(selectedIds);
+    try {
+      await Promise.allSettled(
+        ids.map(id => api.patch(`/leads/${id}/stage`, { stage: 'PERDIDO' }))
+      );
+      setContacts(prev => prev.filter(c => !selectedIds.has(c.id)));
+      setSelectedIds(new Set());
+      showSuccess(`${ids.length} contato${ids.length !== 1 ? 's' : ''} arquivado${ids.length !== 1 ? 's' : ''} com sucesso.`);
+    } catch {
+      showError('Erro ao arquivar contatos. Tente novamente.');
+      fetchAllContacts();
+    } finally {
+      setBulkArchiving(false);
+    }
+  };
+
+  // ─── Desarquivar em massa ──────────────────────────────────
+
+  const handleBulkUnarchive = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkUnarchiving(true);
+    const ids = Array.from(selectedIds);
+    try {
+      await Promise.allSettled(
+        ids.map(id => api.patch(`/leads/${id}/stage`, { stage: 'INICIAL' }))
+      );
+      setArchivedLeads(prev => prev.filter(c => !selectedIds.has(c.id)));
+      setSelectedIds(new Set());
+      showSuccess(`${ids.length} contato${ids.length !== 1 ? 's' : ''} desarquivado${ids.length !== 1 ? 's' : ''} com sucesso.`);
+    } catch {
+      showError('Erro ao desarquivar contatos. Tente novamente.');
+      fetchArchivedContacts();
+    } finally {
+      setBulkUnarchiving(false);
+    }
+  };
+
   const activeContacts = contacts.filter(c => c.stage !== 'PERDIDO');
   const archivedCount  = archivedLeads.length;
   const filteredArchivedLeads = search.trim()
@@ -186,7 +262,57 @@ export default function ContactsPage() {
       )
     : archivedLeads;
 
-  // ─── Tela de Arquivados ───────────────────────────────────────────────────
+  // Barra de ação em massa
+  const BulkActionBar = () => {
+    if (selectedIds.size === 0) return null;
+    const isArchiveView = view === 'archived';
+    return (
+      <div className="mx-8 mb-4 flex items-center justify-between gap-3 px-5 py-3 rounded-xl bg-primary/8 border border-primary/20 animate-in slide-in-from-top-2 duration-200">
+        <div className="flex items-center gap-3">
+          <CheckSquare size={16} className="text-primary shrink-0" />
+          <span className="text-[13px] font-semibold text-foreground">
+            {selectedIds.size} contato{selectedIds.size !== 1 ? 's' : ''} selecionado{selectedIds.size !== 1 ? 's' : ''}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {!isArchiveView ? (
+            <button
+              onClick={handleBulkArchive}
+              disabled={bulkArchiving}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
+            >
+              {bulkArchiving
+                ? <Loader2 size={14} className="animate-spin" />
+                : <Archive size={14} />
+              }
+              {bulkArchiving ? 'Arquivando...' : 'Arquivar selecionados'}
+            </button>
+          ) : (
+            <button
+              onClick={handleBulkUnarchive}
+              disabled={bulkUnarchiving}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-semibold bg-primary text-primary-foreground hover:opacity-90 transition-colors disabled:opacity-50"
+            >
+              {bulkUnarchiving
+                ? <Loader2 size={14} className="animate-spin" />
+                : <RotateCcw size={14} />
+              }
+              {bulkUnarchiving ? 'Desarquivando...' : 'Desarquivar selecionados'}
+            </button>
+          )}
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            title="Cancelar seleção"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // ─── Tela de Arquivados ────────────────────────────────────
   if (view === 'archived') {
     return (
       <div className="flex h-screen bg-background overflow-hidden text-foreground">
@@ -195,7 +321,7 @@ export default function ContactsPage() {
           <header className="px-8 py-6 shrink-0 flex items-center justify-between border-b border-border bg-card/30 backdrop-blur-md z-10">
             <div className="flex items-center gap-4">
               <button
-                onClick={() => { setView('active'); setSearch(''); }}
+                onClick={() => { setView('active'); setSearch(''); setSelectedIds(new Set()); }}
                 className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors text-[13px] font-medium"
               >
                 <ArrowLeft size={16} />
@@ -240,8 +366,13 @@ export default function ContactsPage() {
             </div>
           </header>
 
+          {/* Barra de ações em massa */}
+          <div className="pt-4">
+            <BulkActionBar />
+          </div>
+
           {/* Table */}
-          <div className="flex-1 overflow-y-auto p-8 bg-foreground/[0.01]">
+          <div className="flex-1 overflow-y-auto px-8 pb-8 bg-foreground/[0.01]">
             {loadingArchived ? (
               <div className="flex flex-col items-center justify-center py-20 opacity-50">
                 <Loader2 className="w-10 h-10 animate-spin mb-4" />
@@ -252,54 +383,84 @@ export default function ContactsPage() {
                 <table className="w-full text-left table-auto">
                   <thead>
                     <tr className="bg-red-500/[0.04] border-b border-red-500/20">
-                      <th className="px-6 py-4 text-[10px] font-bold text-red-400 uppercase tracking-widest">Nome</th>
+                      {/* Checkbox "Selecionar todos" */}
+                      <th className="pl-5 pr-2 py-4 w-10">
+                        <button
+                          onClick={toggleSelectAll}
+                          className="text-red-400 hover:text-red-300 transition-colors"
+                          title={allCurrentSelected ? 'Desmarcar todos' : 'Selecionar todos'}
+                        >
+                          {allCurrentSelected
+                            ? <CheckSquare size={16} />
+                            : indeterminate
+                              ? <CheckSquare size={16} className="opacity-50" />
+                              : <Square size={16} />
+                          }
+                        </button>
+                      </th>
+                      <th className="px-4 py-4 text-[10px] font-bold text-red-400 uppercase tracking-widest">Nome</th>
                       <th className="px-6 py-4 text-[10px] font-bold text-red-400 uppercase tracking-widest">Telefone</th>
                       <th className="px-6 py-4 text-[10px] font-bold text-red-400 uppercase tracking-widest">Email</th>
                       <th className="px-6 py-4 text-[10px] font-bold text-red-400 uppercase tracking-widest">Ação</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-red-500/[0.06]">
-                    {filteredArchivedLeads.map((contact) => (
-                      <tr key={contact.id} className="hover:bg-red-500/[0.03] transition-colors group">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-4">
-                            <div
-                              className={`w-9 h-9 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center overflow-hidden shrink-0 shadow-sm grayscale ${contact.profile_picture_url ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
-                              onClick={contact.profile_picture_url ? (e) => { e.stopPropagation(); setLightbox(contact.profile_picture_url!); } : undefined}
+                    {filteredArchivedLeads.map((contact) => {
+                      const isSelected = selectedIds.has(contact.id);
+                      return (
+                        <tr
+                          key={contact.id}
+                          className={`transition-colors group ${isSelected ? 'bg-red-500/[0.06]' : 'hover:bg-red-500/[0.03]'}`}
+                        >
+                          {/* Checkbox */}
+                          <td className="pl-5 pr-2 py-4 w-10">
+                            <button
+                              onClick={() => toggleSelect(contact.id)}
+                              className={`transition-colors ${isSelected ? 'text-primary' : 'text-muted-foreground/30 hover:text-muted-foreground'}`}
                             >
-                              {contact.profile_picture_url ? (
-                                <img src={contact.profile_picture_url} alt={contact.name} className="w-full h-full object-cover" loading="lazy" />
-                              ) : (
-                                <span className="text-red-400 font-bold text-xs">{contact.name.charAt(0).toUpperCase()}</span>
-                              )}
+                              {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                            </button>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-4">
+                              <div
+                                className={`w-9 h-9 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center overflow-hidden shrink-0 shadow-sm grayscale ${contact.profile_picture_url ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+                                onClick={contact.profile_picture_url ? (e) => { e.stopPropagation(); setLightbox(contact.profile_picture_url!); } : undefined}
+                              >
+                                {contact.profile_picture_url ? (
+                                  <img src={contact.profile_picture_url} alt={contact.name} className="w-full h-full object-cover" loading="lazy" />
+                                ) : (
+                                  <span className="text-red-400 font-bold text-xs">{contact.name.charAt(0).toUpperCase()}</span>
+                                )}
+                              </div>
+                              <span
+                                className="text-[14px] font-semibold text-muted-foreground tracking-tight cursor-pointer hover:text-foreground transition-colors"
+                                onClick={() => setSelectedLeadId(contact.id)}
+                              >
+                                {contact.name}
+                              </span>
                             </div>
-                            <span
-                              className="text-[14px] font-semibold text-muted-foreground tracking-tight cursor-pointer hover:text-foreground transition-colors"
-                              onClick={() => setSelectedLeadId(contact.id)}
+                          </td>
+                          <td className="px-6 py-4 text-[13px] text-muted-foreground/70 font-medium">
+                            {formatPhone(contact.phone)}
+                          </td>
+                          <td className="px-6 py-4 text-[13px] text-muted-foreground/70 font-medium">{contact.email || '-'}</td>
+                          <td className="px-6 py-4">
+                            <button
+                              onClick={() => handleUnarchive(contact.id)}
+                              title="Desarquivar lead (mover para Inicial)"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-foreground/[0.05] text-muted-foreground hover:bg-primary/10 hover:text-primary text-[11px] font-semibold border border-transparent hover:border-primary/20 transition-all"
                             >
-                              {contact.name}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-[13px] text-muted-foreground/70 font-medium">
-                          {formatPhone(contact.phone)}
-                        </td>
-                        <td className="px-6 py-4 text-[13px] text-muted-foreground/70 font-medium">{contact.email || '-'}</td>
-                        <td className="px-6 py-4">
-                          <button
-                            onClick={() => handleUnarchive(contact.id)}
-                            title="Desarquivar lead (mover para Inicial)"
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-foreground/[0.05] text-muted-foreground hover:bg-primary/10 hover:text-primary text-[11px] font-semibold border border-transparent hover:border-primary/20 transition-all"
-                          >
-                            <RotateCcw size={12} />
-                            Desarquivar
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                              <RotateCcw size={12} />
+                              Desarquivar
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                     {filteredArchivedLeads.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="py-20 text-center">
+                        <td colSpan={5} className="py-20 text-center">
                           <div className="flex flex-col items-center opacity-30">
                             <FolderOpen className="w-12 h-12 mb-3 stroke-[1.2]" />
                             <p className="text-sm font-medium">
@@ -334,21 +495,20 @@ export default function ContactsPage() {
     );
   }
 
-  // ─── Tela Principal (Contatos Ativos) ────────────────────────────────────
+  // ─── Tela Principal (Contatos Ativos) ─────────────────────
   return (
     <div className="flex h-screen bg-background overflow-hidden text-foreground">
       <main className="flex-1 flex flex-col bg-background overflow-hidden relative">
-        {/* Header Section */}
+        {/* Header */}
         <header className="px-8 py-6 shrink-0 flex items-center justify-between border-b border-border bg-card/30 backdrop-blur-md z-10">
           <div>
             <h1 className="text-2xl font-bold text-foreground tracking-tight">Contatos</h1>
             <p className="text-[13px] text-muted-foreground mt-0.5">
-              {loading ? 'Carregando...' : `${totalContacts} contatos${debouncedSearch ? ' encontrados' : ' ativos'}`}
+              {loading ? 'Carregando...' : `${totalContacts} contato${totalContacts !== 1 ? 's' : ''}${debouncedSearch ? ' encontrados' : ' ativos'}`}
             </p>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Botão Novo Contato */}
             <button
               onClick={() => setShowNewContact(true)}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm shadow-primary/20"
@@ -357,9 +517,8 @@ export default function ContactsPage() {
               Novo Contato
             </button>
 
-            {/* Botão Arquivados */}
             <button
-              onClick={() => { setView('archived'); setSearch(''); }}
+              onClick={() => { setView('archived'); setSearch(''); setSelectedIds(new Set()); }}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold border border-border bg-card hover:bg-accent transition-all text-muted-foreground hover:text-foreground"
             >
               <FolderOpen size={15} className="text-red-400" />
@@ -381,12 +540,16 @@ export default function ContactsPage() {
                 className="w-full pl-10 pr-4 py-2.5 bg-background border border-border rounded-xl text-[13px] focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all placeholder:text-muted-foreground/50"
               />
             </div>
-
           </div>
         </header>
 
-        {/* Table Section */}
-        <div className="flex-1 overflow-y-auto p-8 bg-foreground/[0.01]">
+        {/* Barra de ações em massa */}
+        <div className="pt-4">
+          <BulkActionBar />
+        </div>
+
+        {/* Table */}
+        <div className={`flex-1 overflow-y-auto bg-foreground/[0.01] ${someSelected ? 'px-8 pb-8' : 'p-8'}`}>
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 opacity-50">
               <Loader2 className="w-10 h-10 animate-spin mb-4" />
@@ -406,7 +569,22 @@ export default function ContactsPage() {
               <table className="w-full text-left table-auto">
                 <thead>
                   <tr className="bg-foreground/[0.02] border-b border-border">
-                    <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Nome</th>
+                    {/* Checkbox "Selecionar todos" */}
+                    <th className="pl-5 pr-2 py-4 w-10">
+                      <button
+                        onClick={toggleSelectAll}
+                        className="text-muted-foreground hover:text-primary transition-colors"
+                        title={allCurrentSelected ? 'Desmarcar todos' : 'Selecionar todos desta página'}
+                      >
+                        {allCurrentSelected
+                          ? <CheckSquare size={16} className="text-primary" />
+                          : indeterminate
+                            ? <CheckSquare size={16} className="text-primary opacity-60" />
+                            : <Square size={16} />
+                        }
+                      </button>
+                    </th>
+                    <th className="px-4 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Nome</th>
                     <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Telefone</th>
                     <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Email</th>
                     <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest max-w-[200px]">Ultima Msg</th>
@@ -415,77 +593,92 @@ export default function ContactsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-foreground/[0.04]">
-                  {activeContacts.map((contact) => (
-                    <tr key={contact.id} className="hover:bg-foreground/[0.02] transition-colors group">
-                      <td className="px-6 py-5">
-                        <div className="flex items-center gap-4">
-                          <div
-                            className={`w-9 h-9 rounded-full bg-primary/10 border border-border flex items-center justify-center overflow-hidden shrink-0 shadow-sm ${contact.profile_picture_url ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
-                            onClick={contact.profile_picture_url ? (e) => { e.stopPropagation(); setLightbox(contact.profile_picture_url!); } : undefined}
+                  {activeContacts.map((contact) => {
+                    const isSelected = selectedIds.has(contact.id);
+                    return (
+                      <tr
+                        key={contact.id}
+                        className={`transition-colors group ${isSelected ? 'bg-primary/[0.04]' : 'hover:bg-foreground/[0.02]'}`}
+                      >
+                        {/* Checkbox */}
+                        <td className="pl-5 pr-2 py-5 w-10">
+                          <button
+                            onClick={() => toggleSelect(contact.id)}
+                            className={`transition-colors ${isSelected ? 'text-primary' : 'text-muted-foreground/30 hover:text-muted-foreground opacity-0 group-hover:opacity-100'}`}
                           >
-                            {contact.profile_picture_url ? (
-                              <img src={contact.profile_picture_url} alt={contact.name} className="w-full h-full object-cover" loading="lazy" />
-                            ) : (
-                              <span className="text-primary font-bold text-xs">{contact.name.charAt(0).toUpperCase()}</span>
-                            )}
+                            {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                          </button>
+                        </td>
+                        <td className="px-4 py-5">
+                          <div className="flex items-center gap-4">
+                            <div
+                              className={`w-9 h-9 rounded-full bg-primary/10 border border-border flex items-center justify-center overflow-hidden shrink-0 shadow-sm ${contact.profile_picture_url ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+                              onClick={contact.profile_picture_url ? (e) => { e.stopPropagation(); setLightbox(contact.profile_picture_url!); } : undefined}
+                            >
+                              {contact.profile_picture_url ? (
+                                <img src={contact.profile_picture_url} alt={contact.name} className="w-full h-full object-cover" loading="lazy" />
+                              ) : (
+                                <span className="text-primary font-bold text-xs">{contact.name.charAt(0).toUpperCase()}</span>
+                              )}
+                            </div>
+                            <span
+                              className="text-[14px] font-semibold text-foreground tracking-tight cursor-pointer hover:text-primary transition-colors"
+                              onClick={() => setSelectedLeadId(contact.id)}
+                            >
+                              {contact.name}
+                            </span>
                           </div>
-                          <span
-                            className="text-[14px] font-semibold text-foreground tracking-tight cursor-pointer hover:text-primary transition-colors"
-                            onClick={() => setSelectedLeadId(contact.id)}
-                          >
-                            {contact.name}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 text-[13px] text-muted-foreground font-medium">
-                        {formatPhone(contact.phone)}
-                      </td>
-                      <td className="px-6 py-5 text-[13px] text-muted-foreground font-medium">{contact.email || '-'}</td>
-                      <td className="px-6 py-5 max-w-[200px]">
-                        <p className="text-[12px] text-muted-foreground truncate" title={contact.lastMessage !== '-' ? contact.lastMessage : undefined}>
-                          {contact.lastMessage !== '-' ? contact.lastMessage : <span className="text-muted-foreground/40 italic">Sem mensagens</span>}
-                        </p>
-                        {contact.conversations > 0 && (
-                          <span className="text-[10px] text-muted-foreground/50 mt-0.5">
-                            {contact.conversations} conversa{contact.conversations !== 1 ? 's' : ''}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-5">
-                        <div className="flex flex-col gap-1">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-500/10 text-green-600 text-[10px] font-bold uppercase tracking-wider border border-green-500/20">
-                            <Phone className="w-3 h-3" />
-                            WhatsApp
-                          </span>
-                          {contact.instanceName && (
-                            <span className="text-[10px] text-muted-foreground font-mono ml-2">
-                              via {contact.instanceName}
+                        </td>
+                        <td className="px-6 py-5 text-[13px] text-muted-foreground font-medium">
+                          {formatPhone(contact.phone)}
+                        </td>
+                        <td className="px-6 py-5 text-[13px] text-muted-foreground font-medium">{contact.email || '-'}</td>
+                        <td className="px-6 py-5 max-w-[200px]">
+                          <p className="text-[12px] text-muted-foreground truncate" title={contact.lastMessage !== '-' ? contact.lastMessage : undefined}>
+                            {contact.lastMessage !== '-' ? contact.lastMessage : <span className="text-muted-foreground/40 italic">Sem mensagens</span>}
+                          </p>
+                          {contact.conversations > 0 && (
+                            <span className="text-[10px] text-muted-foreground/50 mt-0.5">
+                              {contact.conversations} conversa{contact.conversations !== 1 ? 's' : ''}
                             </span>
                           )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-5">
-                        <button
-                          onClick={() => {
-                            if (contact.conversationId) {
-                              sessionStorage.setItem('crm_open_conv', contact.conversationId);
-                            } else {
-                              sessionStorage.setItem('crm_open_lead', contact.id);
-                            }
-                            router.push('/atendimento');
-                          }}
-                          title="Abrir no chat"
-                          className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
-                        >
-                          <MessageSquare size={15} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="px-6 py-5">
+                          <div className="flex flex-col gap-1">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-500/10 text-green-600 text-[10px] font-bold uppercase tracking-wider border border-green-500/20">
+                              <Phone className="w-3 h-3" />
+                              WhatsApp
+                            </span>
+                            {contact.instanceName && (
+                              <span className="text-[10px] text-muted-foreground font-mono ml-2">
+                                via {contact.instanceName}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-5">
+                          <button
+                            onClick={() => {
+                              if (contact.conversationId) {
+                                sessionStorage.setItem('crm_open_conv', contact.conversationId);
+                              } else {
+                                sessionStorage.setItem('crm_open_lead', contact.id);
+                              }
+                              router.push('/atendimento');
+                            }}
+                            title="Abrir no chat"
+                            className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
+                          >
+                            <MessageSquare size={15} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
 
                   {activeContacts.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="py-20 text-center">
+                      <td colSpan={7} className="py-20 text-center">
                         <div className="flex flex-col items-center opacity-30">
                           <User className="w-12 h-12 mb-3 stroke-[1.2]" />
                           <p className="text-sm font-medium">Nenhum contato encontrado</p>
@@ -496,11 +689,11 @@ export default function ContactsPage() {
                 </tbody>
               </table>
 
-              {/* Paginacao */}
+              {/* Paginação */}
               {totalPages > 1 && (
                 <div className="flex items-center justify-between px-6 py-3 border-t border-border bg-foreground/[0.01]">
                   <span className="text-[12px] text-muted-foreground">
-                    {totalContacts} contatos | Pagina {page} de {totalPages}
+                    {totalContacts} contatos | Página {page} de {totalPages}
                   </span>
                   <div className="flex items-center gap-2">
                     <button
@@ -515,7 +708,7 @@ export default function ContactsPage() {
                       onClick={() => setPage(p => p + 1)}
                       className="px-3 py-1.5 rounded-lg text-[12px] font-medium border border-border bg-card hover:bg-accent transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
-                      Proximo
+                      Próximo
                     </button>
                   </div>
                 </div>
