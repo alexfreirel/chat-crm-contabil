@@ -36,7 +36,6 @@ export class HmacGuard implements CanActivate {
         throw new UnauthorizedException('Webhook HMAC não configurado no servidor.');
       }
       // Sem apiKey e HMAC não obrigatório — permitir para compatibilidade com Evolution API
-      this.logger.debug('[HMAC] API key não configurada — webhook permitido (defina WEBHOOK_HMAC_REQUIRED=true para bloquear)');
       return true;
     }
 
@@ -52,7 +51,6 @@ export class HmacGuard implements CanActivate {
         throw new UnauthorizedException('Webhook signature required');
       }
       // Evolution API nao envia assinatura por padrao — permitir passagem (compat)
-      this.logger.debug('[HMAC] Webhook sem assinatura — permitido (HMAC não obrigatório)');
       return true;
     }
 
