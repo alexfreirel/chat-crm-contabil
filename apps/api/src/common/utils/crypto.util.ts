@@ -44,6 +44,7 @@ export const SENSITIVE_KEYS = new Set([
   'OPENAI_ADMIN_KEY',
   'EVOLUTION_GLOBAL_APIKEY',
   'SMTP_PASS',
+  'GOOGLE_TTS_API_KEY',
 ]);
 
 export function isSensitiveKey(key: string): boolean {

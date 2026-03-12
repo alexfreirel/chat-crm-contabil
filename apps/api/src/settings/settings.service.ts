@@ -623,6 +623,33 @@ Você prepara o caso. O advogado decide.
     await this.set('CONTRACT_CONFIG', JSON.stringify({ ...current, ...data }));
   }
 
+  // ─── TTS (Text-to-Speech) ─────────────────────────────────────────────────
+
+  async getTtsConfig() {
+    const enabled      = await this.get('TTS_ENABLED');
+    const googleApiKey = await this.get('GOOGLE_TTS_API_KEY');
+    const voice        = await this.get('TTS_VOICE');
+    const language     = await this.get('TTS_LANGUAGE');
+    return {
+      enabled:      enabled === 'true',
+      isConfigured: !!googleApiKey,
+      voice:        voice    || 'pt-BR-Neural2-B',
+      language:     language || 'pt-BR',
+    };
+  }
+
+  async setTtsConfig(data: {
+    enabled?: boolean;
+    googleApiKey?: string;
+    voice?: string;
+    language?: string;
+  }) {
+    if (data.enabled !== undefined)  await this.set('TTS_ENABLED',        String(data.enabled));
+    if (data.googleApiKey?.trim())   await this.set('GOOGLE_TTS_API_KEY', data.googleApiKey.trim());
+    if (data.voice?.trim())          await this.set('TTS_VOICE',          data.voice.trim());
+    if (data.language?.trim())       await this.set('TTS_LANGUAGE',       data.language.trim());
+  }
+
   async getAiCosts() {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());

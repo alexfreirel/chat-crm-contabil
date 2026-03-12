@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { createDecipheriv, scryptSync } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -68,5 +69,42 @@ export class SettingsService {
     const val = await this.get('AI_COOLDOWN_SECONDS');
     const seconds = val ? parseInt(val, 10) : 8;
     return (isNaN(seconds) ? 8 : seconds) * 1000;
+  }
+
+  // ─── TTS ──────────────────────────────────────────────────────────────────
+
+  /** Descriptografa valores salvos pela API (formato enc:<iv>:<tag>:<data>) */
+  private decryptIfNeeded(value: string): string {
+    const ENCRYPTED_PREFIX = 'enc:';
+    if (!value.startsWith(ENCRYPTED_PREFIX)) return value;
+    try {
+      const secret = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET;
+      if (!secret) return value;
+      const key = scryptSync(secret, 'crm-settings-salt', 32);
+      const parts = value.slice(ENCRYPTED_PREFIX.length).split(':');
+      if (parts.length !== 3) return value;
+      const [ivHex, tagHex, encHex] = parts;
+      const iv        = Buffer.from(ivHex,  'hex');
+      const tag       = Buffer.from(tagHex, 'hex');
+      const encrypted = Buffer.from(encHex, 'hex');
+      const decipher  = createDecipheriv('aes-256-gcm', key, iv);
+      decipher.setAuthTag(tag);
+      return decipher.update(encrypted).toString('utf8') + decipher.final('utf8');
+    } catch {
+      return value;
+    }
+  }
+
+  async getTtsConfig() {
+    const keys = ['TTS_ENABLED', 'GOOGLE_TTS_API_KEY', 'TTS_VOICE', 'TTS_LANGUAGE'];
+    const rows = await this.prisma.globalSetting.findMany({ where: { key: { in: keys } } });
+    const cfg: Record<string, string> = {};
+    for (const r of rows) cfg[r.key] = this.decryptIfNeeded(r.value);
+    return {
+      enabled:      cfg.TTS_ENABLED === 'true',
+      googleApiKey: cfg.GOOGLE_TTS_API_KEY || '',
+      voice:        cfg.TTS_VOICE    || 'pt-BR-Neural2-B',
+      language:     cfg.TTS_LANGUAGE || 'pt-BR',
+    };
   }
 }

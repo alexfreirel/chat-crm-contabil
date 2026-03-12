@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Bot, KeyRound, CheckCircle2, RefreshCw, Eye, EyeOff, Plus, Pencil, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Bot, KeyRound, CheckCircle2, RefreshCw, Eye, EyeOff, Plus, Pencil, Trash2, ChevronDown, ChevronUp, Volume2 } from 'lucide-react';
 import api from '@/lib/api';
 
 interface Skill {
@@ -78,6 +78,16 @@ export default function AiSettingsPage() {
   const [savedConfig, setSavedConfig] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // TTS
+  const [ttsEnabled, setTtsEnabled]         = useState(false);
+  const [ttsConfigured, setTtsConfigured]   = useState(false);
+  const [ttsGoogleApiKey, setTtsGoogleApiKey] = useState('');
+  const [ttsVoice, setTtsVoice]             = useState('pt-BR-Neural2-B');
+  const [isEditingTtsKey, setIsEditingTtsKey] = useState(false);
+  const [showTtsKey, setShowTtsKey]         = useState(false);
+  const [savingTts, setSavingTts]           = useState(false);
+  const [savedTts, setSavedTts]             = useState(false);
+
   // Skills
   const [skills, setSkills] = useState<Skill[]>([]);
   const [editingId, setEditingId] = useState<string | 'new' | null>(null);
@@ -89,15 +99,19 @@ export default function AiSettingsPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [configRes, skillsRes] = await Promise.all([
+      const [configRes, skillsRes, ttsRes] = await Promise.all([
         api.get('/settings/ai-config'),
         api.get('/settings/skills'),
+        api.get('/settings/tts'),
       ]);
       setIsConfigured(configRes.data.isConfigured);
       setIsAdminKeyConfigured(configRes.data.isAdminKeyConfigured ?? false);
       setDefaultModel(configRes.data.defaultModel || 'gpt-4o-mini');
       setCooldownSeconds(configRes.data.cooldownSeconds ?? 8);
       setSkills(skillsRes.data);
+      setTtsEnabled(ttsRes.data.enabled ?? false);
+      setTtsConfigured(ttsRes.data.isConfigured ?? false);
+      setTtsVoice(ttsRes.data.voice || 'pt-BR-Neural2-B');
     } catch (e) {
       console.error('Erro ao carregar dados:', e);
     } finally {
@@ -128,6 +142,26 @@ export default function AiSettingsPage() {
       alert('Erro ao salvar. Verifique se você é administrador.');
     } finally {
       setSavingConfig(false);
+    }
+  };
+
+  // ---------- TTS ----------
+  const handleSaveTts = async () => {
+    setSavingTts(true);
+    try {
+      const payload: any = { enabled: ttsEnabled, voice: ttsVoice };
+      if (ttsGoogleApiKey.trim()) payload.googleApiKey = ttsGoogleApiKey.trim();
+      await api.patch('/settings/tts', payload);
+      if (ttsGoogleApiKey.trim()) setTtsConfigured(true);
+      setIsEditingTtsKey(false);
+      setTtsGoogleApiKey('');
+      setSavedTts(true);
+      setTimeout(() => setSavedTts(false), 3000);
+    } catch (e) {
+      console.error('Erro ao salvar TTS:', e);
+      alert('Erro ao salvar configuração TTS.');
+    } finally {
+      setSavingTts(false);
     }
   };
 
@@ -524,6 +558,134 @@ export default function AiSettingsPage() {
               )}
             </div>
           )}
+        </div>
+
+        {/* ── Text-to-Speech ── */}
+        <div className="bg-card/50 rounded-2xl border border-border overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+                <Volume2 size={15} className="text-emerald-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground">Text-to-Speech</h3>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Converte respostas da IA em mensagens de voz no WhatsApp</p>
+              </div>
+            </div>
+            {/* Toggle ativar/desativar */}
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <div
+                onClick={() => setTtsEnabled(!ttsEnabled)}
+                className={`relative w-10 h-5.5 rounded-full transition-all cursor-pointer ${ttsEnabled ? 'bg-emerald-500' : 'bg-muted'}`}
+                style={{ width: 40, height: 22 }}
+              >
+                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all shadow ${ttsEnabled ? 'left-5' : 'left-0.5'}`} />
+              </div>
+              <span className={`text-xs font-bold ${ttsEnabled ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+                {ttsEnabled ? 'Ativo' : 'Inativo'}
+              </span>
+            </label>
+          </div>
+
+          <div className="p-5 space-y-5">
+            {/* Google API Key */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">API Key Google Cloud TTS</label>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Obtenha em <span className="font-mono text-primary">console.cloud.google.com → Text-to-Speech API</span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => { setIsEditingTtsKey(!isEditingTtsKey); setTtsGoogleApiKey(''); setShowTtsKey(false); }}
+                  className="text-xs font-bold text-primary hover:underline shrink-0 ml-4"
+                >
+                  {isEditingTtsKey ? 'Cancelar' : ttsConfigured ? 'Trocar' : 'Configurar'}
+                </button>
+              </div>
+              {isEditingTtsKey ? (
+                <div className="space-y-1.5">
+                  <div className="relative">
+                    <input
+                      type={showTtsKey ? 'text' : 'password'}
+                      value={ttsGoogleApiKey}
+                      onChange={(e) => setTtsGoogleApiKey(e.target.value)}
+                      placeholder="AIza..."
+                      className="w-full bg-muted/50 border border-border rounded-xl px-4 py-2.5 pr-10 text-sm outline-none focus:border-primary/50 transition-all font-mono"
+                      autoFocus
+                    />
+                    <button type="button" onClick={() => setShowTtsKey(!showTtsKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                      {showTtsKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between text-xs bg-muted/30 rounded-xl px-4 py-2.5">
+                  <span className="text-muted-foreground">Chave de API para síntese de voz</span>
+                  {ttsConfigured ? (
+                    <span className="flex items-center gap-1.5 text-emerald-500 font-bold"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> CONFIGURADO</span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-amber-500 font-bold"><div className="w-1.5 h-1.5 rounded-full bg-amber-500" /> NÃO CONFIGURADO</span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Seleção de voz */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Voz</label>
+              <select
+                value={ttsVoice}
+                onChange={(e) => setTtsVoice(e.target.value)}
+                className="w-full bg-muted/50 border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary/50 transition-all"
+              >
+                <optgroup label="Neural2 (Recomendado)">
+                  <option value="pt-BR-Neural2-A">pt-BR-Neural2-A — Feminina</option>
+                  <option value="pt-BR-Neural2-B">pt-BR-Neural2-B — Masculina</option>
+                  <option value="pt-BR-Neural2-C">pt-BR-Neural2-C — Feminina</option>
+                </optgroup>
+                <optgroup label="WaveNet">
+                  <option value="pt-BR-Wavenet-A">pt-BR-Wavenet-A — Feminina</option>
+                  <option value="pt-BR-Wavenet-B">pt-BR-Wavenet-B — Masculina</option>
+                  <option value="pt-BR-Wavenet-C">pt-BR-Wavenet-C — Feminina</option>
+                  <option value="pt-BR-Wavenet-D">pt-BR-Wavenet-D — Masculina</option>
+                  <option value="pt-BR-Wavenet-E">pt-BR-Wavenet-E — Feminina</option>
+                </optgroup>
+                <optgroup label="Studio (Premium)">
+                  <option value="pt-BR-Studio-B">pt-BR-Studio-B — Masculina</option>
+                  <option value="pt-BR-Studio-C">pt-BR-Studio-C — Feminina</option>
+                </optgroup>
+                <optgroup label="Standard">
+                  <option value="pt-BR-Standard-A">pt-BR-Standard-A — Feminina</option>
+                  <option value="pt-BR-Standard-B">pt-BR-Standard-B — Masculina</option>
+                  <option value="pt-BR-Standard-C">pt-BR-Standard-C — Feminina</option>
+                </optgroup>
+              </select>
+              <p className="text-[11px] text-muted-foreground">
+                Teste as vozes em <span className="font-mono text-primary">cloud.google.com/text-to-speech#demo</span>
+              </p>
+            </div>
+
+            {/* Botão salvar */}
+            <div className="flex justify-end pt-1">
+              <button
+                onClick={handleSaveTts}
+                disabled={savingTts}
+                className="bg-primary text-primary-foreground px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-primary/90 transition-all disabled:opacity-50 shadow-lg shadow-primary/20"
+              >
+                {savingTts ? (
+                  <RefreshCw className="animate-spin" size={15} />
+                ) : savedTts ? (
+                  <CheckCircle2 size={15} className="text-emerald-300" />
+                ) : (
+                  <CheckCircle2 size={15} />
+                )}
+                {savedTts ? 'Salvo!' : 'Salvar TTS'}
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* ── Referência de variáveis ── */}

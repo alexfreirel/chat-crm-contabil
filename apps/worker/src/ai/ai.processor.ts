@@ -1577,6 +1577,80 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
         `[AI] Resposta enviada para ${convo.lead.phone} (model=${model}, skill=${skill?.name || 'fallback'})`,
       );
 
+      // 18. TTS — enviar áudio da resposta via Google TTS (se habilitado)
+      const ttsConfig = await this.settings.getTtsConfig();
+      if (ttsConfig.enabled && ttsConfig.googleApiKey) {
+        try {
+          // Remove formatação markdown do texto (negrito, itálico) antes de enviar ao TTS
+          const ttsText = finalText
+            .replace(/\*\*(.*?)\*\*/g, '$1')
+            .replace(/\*(.*?)\*/g, '$1')
+            .trim();
+
+          const ttsRes = await fetch(
+            `https://texttospeech.googleapis.com/v1/text:synthesize?key=${ttsConfig.googleApiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                input:       { text: ttsText },
+                voice:       { languageCode: ttsConfig.language, name: ttsConfig.voice },
+                audioConfig: { audioEncoding: 'OGG_OPUS' },
+              }),
+              signal: AbortSignal.timeout(20000),
+            },
+          );
+
+          if (!ttsRes.ok) {
+            const errText = await ttsRes.text().catch(() => '');
+            this.logger.warn(`[TTS] Google TTS retornou ${ttsRes.status}: ${errText.slice(0, 200)}`);
+          } else {
+            const ttsData = (await ttsRes.json()) as { audioContent: string };
+            const audioBuffer = Buffer.from(ttsData.audioContent, 'base64');
+
+            // Upload do áudio para S3
+            const audioKey = `tts/${convo.id}/${savedMsg.id}.ogg`;
+            await this.s3.uploadBuffer(audioKey, audioBuffer, 'audio/ogg');
+
+            // Cria registro de mensagem de áudio no banco
+            const audioMsg = await this.prisma.message.create({
+              data: {
+                conversation_id:     convo.id,
+                direction:           'out',
+                type:                'audio',
+                text:                null,
+                status:              'enviado',
+                skill_id:            skill?.id || null,
+              },
+            });
+
+            // Cria registro de mídia vinculado à mensagem
+            await (this.prisma as any).media.create({
+              data: {
+                message_id: audioMsg.id,
+                s3_key:     audioKey,
+                mime_type:  'audio/ogg',
+                size:       audioBuffer.length,
+              },
+            });
+
+            // Envia via Evolution API como áudio de WhatsApp
+            const publicApiUrl = process.env.PUBLIC_API_URL || '';
+            const audioUrl     = `${publicApiUrl}/messages/${audioMsg.id}/media`;
+
+            await axios.post(
+              `${apiUrl}/message/sendWhatsAppAudio/${instanceName}`,
+              { number: convo.lead.phone, audio: audioUrl },
+              { headers: { 'Content-Type': 'application/json', apikey: apiKey }, timeout: 30000 },
+            );
+
+            this.logger.log(`[TTS] Áudio enviado para ${convo.lead.phone} (${audioBuffer.length} bytes)`);
+          }
+        } catch (ttsErr: any) {
+          this.logger.warn(`[TTS] Falha ao enviar áudio (não-fatal): ${ttsErr.message}`);
+        }
+      }
+
       // 19. Atualizar Long Memory (TODA mensagem recebida — sem economizar tokens)
       const inboundTotal = convo.messages.filter(
         (m) => m.direction === 'in',

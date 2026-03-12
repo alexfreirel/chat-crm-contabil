@@ -194,4 +194,22 @@ export class SettingsController {
     await this.settingsService.setContractConfig(body);
     return { ok: true };
   }
+
+  // ─── TTS (Text-to-Speech) ─────────────────────────────
+
+  @Get('tts')
+  async getTtsConfig(@Request() req: any) {
+    if (req.user.role !== 'ADMIN') throw new ForbiddenException('Apenas administradores');
+    return this.settingsService.getTtsConfig();
+  }
+
+  @Patch('tts')
+  async setTtsConfig(
+    @Request() req: any,
+    @Body() body: { enabled?: boolean; googleApiKey?: string; voice?: string; language?: string },
+  ) {
+    if (req.user.role !== 'ADMIN') throw new ForbiddenException('Apenas administradores');
+    await this.settingsService.setTtsConfig(body);
+    return { ok: true };
+  }
 }
