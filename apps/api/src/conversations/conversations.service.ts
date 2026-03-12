@@ -27,6 +27,9 @@ export class ConversationsService {
       where.status = { not: 'FECHADO' };
     }
 
+    // Sempre excluir conversas de leads arquivados (PERDIDO) do inbox
+    where.lead = { stage: { not: 'PERDIDO' } };
+
     // Tenant isolation
     if (tenantId) {
       where.OR = [{ tenant_id: tenantId }, { tenant_id: null }];

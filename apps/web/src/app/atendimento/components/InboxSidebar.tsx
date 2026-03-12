@@ -282,9 +282,9 @@ export function InboxSidebar({
         <div className="flex bg-muted rounded-xl p-1 w-full relative">
           {[
             { value: '', label: 'Tudo', count: conversations.filter(c => normalizeStage(c.leadStage) !== 'PERDIDO').length },
-            { value: 'BOT', label: 'SophIA', count: conversations.filter(c => c.aiMode && c.assignedAgentId === currentUserId).length },
-            { value: 'WAITING', label: 'Espera', count: conversations.filter(c => c.status === 'WAITING').length },
-            { value: 'ACTIVE', label: 'Ativas', count: conversations.filter(myActiveConvs).length },
+            { value: 'BOT', label: 'SophIA', count: conversations.filter(c => c.aiMode && c.assignedAgentId === currentUserId && normalizeStage(c.leadStage) !== 'PERDIDO').length },
+            { value: 'WAITING', label: 'Espera', count: conversations.filter(c => c.status === 'WAITING' && normalizeStage(c.leadStage) !== 'PERDIDO').length },
+            { value: 'ACTIVE', label: 'Ativas', count: conversations.filter(c => myActiveConvs(c) && normalizeStage(c.leadStage) !== 'PERDIDO').length },
           ].map((tab) => (
             <button
               key={tab.value}
