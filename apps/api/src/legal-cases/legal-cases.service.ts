@@ -181,7 +181,7 @@ export class LegalCasesService {
 
     const updated = await this.prisma.legalCase.update({
       where: { id },
-      data: { stage: newStage },
+      data: { stage: newStage, stage_changed_at: new Date() },
       include: { lead: { select: { name: true } } },
     });
 
@@ -452,11 +452,13 @@ export class LegalCasesService {
       notes?: string;
       court?: string;
       legal_area?: string;
+      priority?: string;
     },
     tenantId?: string,
   ) {
     await this.verifyTenantOwnership(id, tenantId);
 
+    const VALID_PRIORITIES = ['URGENTE', 'NORMAL', 'BAIXA'];
     const updateData: any = {};
     if (data.action_type !== undefined) updateData.action_type = data.action_type;
     if (data.claim_value !== undefined) updateData.claim_value = data.claim_value;
@@ -465,6 +467,7 @@ export class LegalCasesService {
     if (data.notes !== undefined) updateData.notes = data.notes;
     if (data.court !== undefined) updateData.court = data.court;
     if (data.legal_area !== undefined) updateData.legal_area = data.legal_area;
+    if (data.priority !== undefined && VALID_PRIORITIES.includes(data.priority)) updateData.priority = data.priority;
 
     return this.prisma.legalCase.update({
       where: { id },

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   User, Search, RefreshCw, MessageSquare, MoreVertical, ChevronDown, ChevronRight,
   Plus, X, Calendar, FileText, Gavel, Clock, Archive, ArchiveRestore, Send,
-  AlertTriangle, CheckCircle2, Loader2, ExternalLink, ArrowRight,
+  AlertTriangle, CheckCircle2, Loader2, ExternalLink, ArrowRight, Flame, ArrowDown,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { formatPhone } from '@/lib/utils';
@@ -25,6 +25,8 @@ interface LegalCase {
   archive_reason: string | null;
   notes: string | null;
   court: string | null;
+  priority: string;
+  stage_changed_at: string;
   created_at: string;
   updated_at: string;
   lead: {
@@ -86,6 +88,28 @@ interface Intern {
   name: string;
 }
 
+// ─── Constants ────────────────────────────────────────────────
+
+const EVENT_TYPES = [
+  { id: 'PUBLICACAO', label: 'Publicação',    color: '#3b82f6' },
+  { id: 'DESPACHO',   label: 'Despacho',      color: '#8b5cf6' },
+  { id: 'DECISAO',    label: 'Decisão',        color: '#ef4444' },
+  { id: 'AUDIENCIA',  label: 'Audiência',      color: '#f59e0b' },
+  { id: 'NOTA',       label: 'Nota Interna',   color: '#6b7280' },
+];
+
+const TASK_STATUSES = [
+  { id: 'AGENDADO',   label: 'A fazer',       color: '#6b7280' },
+  { id: 'CONFIRMADO', label: 'Em andamento',  color: '#3b82f6' },
+  { id: 'CONCLUIDO',  label: 'Concluída',     color: '#10b981' },
+];
+
+const PRIORITIES = [
+  { id: 'URGENTE', label: 'Urgente', color: '#ef4444', bg: 'bg-red-500/15',  text: 'text-red-400',  border: 'border-red-500/25'  },
+  { id: 'NORMAL',  label: 'Normal',  color: '#6b7280', bg: 'bg-gray-500/10', text: 'text-gray-400', border: 'border-gray-500/20' },
+  { id: 'BAIXA',   label: 'Baixa',   color: '#3b82f6', bg: 'bg-blue-500/12', text: 'text-blue-400', border: 'border-blue-500/20' },
+];
+
 // ─── Helpers ──────────────────────────────────────────────────
 
 function timeAgo(dateStr: string | null | undefined): string {
@@ -101,19 +125,14 @@ function timeAgo(dateStr: string | null | undefined): string {
   return `há ${d}d`;
 }
 
-const EVENT_TYPES = [
-  { id: 'PUBLICACAO', label: 'Publicação', color: '#3b82f6' },
-  { id: 'DESPACHO', label: 'Despacho', color: '#8b5cf6' },
-  { id: 'DECISAO', label: 'Decisão', color: '#ef4444' },
-  { id: 'AUDIENCIA', label: 'Audiência', color: '#f59e0b' },
-  { id: 'NOTA', label: 'Nota Interna', color: '#6b7280' },
-];
-
-const TASK_STATUSES = [
-  { id: 'AGENDADO', label: 'A fazer', color: '#6b7280' },
-  { id: 'CONFIRMADO', label: 'Em andamento', color: '#3b82f6' },
-  { id: 'CONCLUIDO', label: 'Concluída', color: '#10b981' },
-];
+function stageTime(dateStr: string | null | undefined): { label: string; isStale: boolean } {
+  if (!dateStr) return { label: '', isStale: false };
+  const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+  if (days === 0) return { label: 'hoje',    isStale: false };
+  if (days === 1) return { label: '1 dia',   isStale: false };
+  if (days < 7)  return { label: `${days} dias`, isStale: false };
+  return { label: `${days} dias`, isStale: true };
+}
 
 // ─── CaseCard ─────────────────────────────────────────────────
 
@@ -134,6 +153,8 @@ function CaseCard({
 }) {
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const priority = PRIORITIES.find(p => p.id === (legalCase.priority || 'NORMAL')) ?? PRIORITIES[1];
+  const { label: stageDays, isStale } = stageTime(legalCase.stage_changed_at);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -165,9 +186,15 @@ function CaseCard({
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <h4 className="text-[13px] font-semibold text-foreground leading-tight truncate">
-            {legalCase.lead?.name || 'Sem nome'}
-          </h4>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <h4 className="text-[13px] font-semibold text-foreground leading-tight truncate">
+              {legalCase.lead?.name || 'Sem nome'}
+            </h4>
+            {/* Priority badge — só mostra URGENTE visualmente */}
+            {legalCase.priority === 'URGENTE' && (
+              <Flame size={11} className="text-red-400 shrink-0" />
+            )}
+          </div>
           <p className="text-[11px] text-muted-foreground truncate">
             {formatPhone(legalCase.lead?.phone || '')}
           </p>
@@ -212,6 +239,16 @@ function CaseCard({
             📋 {legalCase.case_number}
           </span>
         )}
+        {legalCase.priority === 'URGENTE' && (
+          <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold border ${priority.bg} ${priority.text} ${priority.border}`}>
+            🔴 Urgente
+          </span>
+        )}
+        {legalCase.priority === 'BAIXA' && (
+          <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold border ${priority.bg} ${priority.text} ${priority.border}`}>
+            🔵 Baixa
+          </span>
+        )}
       </div>
 
       {/* Footer */}
@@ -228,7 +265,19 @@ function CaseCard({
             </span>
           )}
         </div>
-        <span>{timeAgo(legalCase.updated_at)}</span>
+        {/* Tempo na etapa */}
+        {stageDays && (
+          <span
+            className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${
+              isStale
+                ? 'bg-amber-500/15 text-amber-400 border border-amber-500/25'
+                : 'text-muted-foreground/60'
+            }`}
+            title="Tempo nesta etapa"
+          >
+            <Clock size={9} /> {stageDays}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -239,15 +288,19 @@ function CaseCard({
 function CaseDetailPanel({
   legalCase,
   onClose,
+  onCaseUpdated,
   onRefresh,
 }: {
   legalCase: LegalCase;
   onClose: () => void;
+  onCaseUpdated: (updated: LegalCase) => void;
   onRefresh: () => void;
 }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'info' | 'tasks' | 'events'>('info');
   const [saving, setSaving] = useState(false);
+  const [savedOk, setSavedOk] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   // Info fields
   const [stage, setStage] = useState(legalCase.stage);
@@ -255,6 +308,7 @@ function CaseDetailPanel({
   const [court, setCourt] = useState(legalCase.court || '');
   const [notes, setNotes] = useState(legalCase.notes || '');
   const [legalArea, setLegalArea] = useState(legalCase.legal_area || '');
+  const [priority, setPriority] = useState(legalCase.priority || 'NORMAL');
 
   // Archive
   const [showArchive, setShowArchive] = useState(false);
@@ -292,6 +346,16 @@ function CaseDetailPanel({
   const [newEventDate, setNewEventDate] = useState('');
   const [newEventUrl, setNewEventUrl] = useState('');
 
+  // Sync fields when legalCase changes externally
+  useEffect(() => {
+    setStage(legalCase.stage);
+    setCaseNumber(legalCase.case_number || '');
+    setCourt(legalCase.court || '');
+    setNotes(legalCase.notes || '');
+    setLegalArea(legalCase.legal_area || '');
+    setPriority(legalCase.priority || 'NORMAL');
+  }, [legalCase.id]);
+
   // Load tasks, events, interns
   const fetchTasks = useCallback(async () => {
     setLoadingTasks(true);
@@ -322,21 +386,54 @@ function CaseDetailPanel({
     fetchInterns();
   }, [fetchTasks, fetchEvents, fetchInterns]);
 
-  // Save info
+  // ─── Save info (BUG FIX: não fecha o painel + salva todos os campos) ───
+
   const saveInfo = async () => {
     setSaving(true);
+    setSaveError('');
     try {
+      let updatedStageChangedAt = legalCase.stage_changed_at;
+
+      // Stage change (endpoint dedicado com WebSocket emit)
       if (stage !== legalCase.stage) {
         await api.patch(`/legal-cases/${legalCase.id}/stage`, { stage });
+        updatedStageChangedAt = new Date().toISOString();
       }
-      if (caseNumber !== (legalCase.case_number || '')) {
-        await api.patch(`/legal-cases/${legalCase.id}/case-number`, { caseNumber });
+
+      // Todos os outros campos via /details (um único request)
+      const detailsChanged =
+        legalArea !== (legalCase.legal_area || '') ||
+        court     !== (legalCase.court || '')     ||
+        notes     !== (legalCase.notes || '')     ||
+        priority  !== (legalCase.priority || 'NORMAL');
+
+      if (detailsChanged) {
+        await api.patch(`/legal-cases/${legalCase.id}/details`, {
+          legal_area: legalArea || null,
+          court:      court     || null,
+          notes:      notes     || null,
+          priority,
+        });
       }
-      if (notes !== (legalCase.notes || '')) {
-        await api.patch(`/legal-cases/${legalCase.id}/notes`, { notes });
-      }
-      onRefresh();
-    } catch {} finally { setSaving(false); }
+
+      // Atualiza o card no kanban sem fechar o painel
+      onCaseUpdated({
+        ...legalCase,
+        stage,
+        legal_area:       legalArea || null,
+        court:            court     || null,
+        notes:            notes     || null,
+        priority,
+        stage_changed_at: updatedStageChangedAt,
+      });
+
+      setSavedOk(true);
+      setTimeout(() => setSavedOk(false), 2500);
+    } catch {
+      setSaveError('Erro ao salvar. Tente novamente.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Send to tracking
@@ -473,7 +570,7 @@ function CaseDetailPanel({
     }
   };
 
-  const stageInfo = findLegalStage(legalCase.stage);
+  const priorityInfo = PRIORITIES.find(p => p.id === priority) ?? PRIORITIES[1];
 
   return (
     <div className="fixed inset-0 z-[100] flex items-stretch justify-end">
@@ -492,7 +589,14 @@ function CaseDetailPanel({
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-base font-bold text-foreground truncate">{legalCase.lead?.name || 'Sem nome'}</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-foreground truncate">{legalCase.lead?.name || 'Sem nome'}</h2>
+              {priority !== 'NORMAL' && (
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${priorityInfo.bg} ${priorityInfo.text} ${priorityInfo.border}`}>
+                  {priorityInfo.label}
+                </span>
+              )}
+            </div>
             <p className="text-[12px] text-muted-foreground">{formatPhone(legalCase.lead?.phone || '')}</p>
           </div>
           <button
@@ -543,16 +647,31 @@ function CaseDetailPanel({
                 </select>
               </div>
 
-              {/* Legal Area */}
-              <div>
-                <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Área Jurídica</label>
-                <input
-                  type="text"
-                  value={legalArea}
-                  onChange={e => setLegalArea(e.target.value)}
-                  className="mt-1 w-full px-3 py-2 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40"
-                  placeholder="Trabalhista, Cível, etc."
-                />
+              {/* Prioridade + Área Jurídica */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Prioridade</label>
+                  <select
+                    value={priority}
+                    onChange={e => setPriority(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40"
+                    style={{ color: priorityInfo.color }}
+                  >
+                    {PRIORITIES.map(p => (
+                      <option key={p.id} value={p.id}>{p.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Área Jurídica</label>
+                  <input
+                    type="text"
+                    value={legalArea}
+                    onChange={e => setLegalArea(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40"
+                    placeholder="Trabalhista, Cível..."
+                  />
+                </div>
               </div>
 
               {/* Case number + Court */}
@@ -591,15 +710,27 @@ function CaseDetailPanel({
                 />
               </div>
 
-              {/* Save */}
-              <button
-                onClick={saveInfo}
-                disabled={saving}
-                className="w-full py-2.5 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {saving ? <Loader2 size={14} className="animate-spin" /> : null}
-                Salvar Alterações
-              </button>
+              {/* Save — com toast inline */}
+              <div className="space-y-1.5">
+                <button
+                  onClick={saveInfo}
+                  disabled={saving}
+                  className="w-full py-2.5 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : null}
+                  {savedOk ? '✓ Salvo!' : 'Salvar Alterações'}
+                </button>
+                {saveError && (
+                  <p className="text-[11px] text-destructive flex items-center gap-1">
+                    <AlertTriangle size={11} /> {saveError}
+                  </p>
+                )}
+                {savedOk && (
+                  <p className="text-[11px] text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 size={11} /> Alterações salvas com sucesso
+                  </p>
+                )}
+              </div>
 
               {/* Send to Processos — only when case is at PROTOCOLO */}
               {legalCase.stage === 'PROTOCOLO' && (
@@ -888,6 +1019,17 @@ function CaseDetailPanel({
                       <option key={t.id} value={t.id}>{t.label}</option>
                     ))}
                   </select>
+
+                  {/* Aviso Audiência → Agenda automática */}
+                  {newEventType === 'AUDIENCIA' && newEventDate && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/8 border border-amber-500/20 rounded-lg">
+                      <Calendar size={12} className="text-amber-400 shrink-0" />
+                      <p className="text-[11px] text-amber-400">
+                        Será criado automaticamente na <strong>Agenda</strong> com lembrete 24h antes.
+                      </p>
+                    </div>
+                  )}
+
                   <input
                     type="text"
                     value={newEventTitle}
@@ -1011,6 +1153,9 @@ export default function AdvogadoPage() {
   const [creatingCase, setCreatingCase] = useState<string | null>(null);
   const [upcomingEvents, setUpcomingEvents] = useState<{ id: string; type: string; title: string; start_at: string; lead?: { name: string | null } | null }[]>([]);
 
+  // BUG FIX: archivedCount via fetch separado
+  const [archivedTotal, setArchivedTotal] = useState(0);
+
   // Board pan
   const boardRef = useRef<HTMLDivElement>(null);
   const isPanning = useRef(false);
@@ -1059,23 +1204,40 @@ export default function AdvogadoPage() {
     }
   }, [view]);
 
+  // BUG FIX: busca o total de arquivados separadamente
+  const fetchArchivedTotal = useCallback(async () => {
+    try {
+      const res = await api.get('/legal-cases?archived=true&inTracking=false&page=1&limit=1');
+      const total = res.data?.total ?? (Array.isArray(res.data) ? res.data.length : 0);
+      setArchivedTotal(total);
+    } catch {}
+  }, []);
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) { router.push('/atendimento/login'); return; }
     fetchCases();
+    if (view === 'active') fetchArchivedTotal();
+
     // Fetch upcoming calendar events
     const now = new Date().toISOString();
     const in7d = new Date(Date.now() + 7 * 86400000).toISOString();
     api.get('/calendar/events', { params: { start: now, end: in7d } })
       .then(r => setUpcomingEvents((r.data || []).filter((e: any) => e.status !== 'CANCELADO' && e.status !== 'CONCLUIDO').slice(0, 5)))
       .catch(() => {});
+
     const interval = setInterval(() => fetchCases(true), 30_000);
     return () => clearInterval(interval);
-  }, [router, fetchCases]);
+  }, [router, fetchCases, fetchArchivedTotal, view]);
 
   const moveCaseToStage = async (caseId: string, newStage: string) => {
     // Optimistic update
-    setCases(prev => prev.map(c => c.id === caseId ? { ...c, stage: newStage } : c));
+    const now = new Date().toISOString();
+    setCases(prev => prev.map(c => c.id === caseId ? { ...c, stage: newStage, stage_changed_at: now } : c));
+    // Atualiza painel se estiver aberto neste caso
+    if (selectedCase?.id === caseId) {
+      setSelectedCase(prev => prev ? { ...prev, stage: newStage, stage_changed_at: now } : prev);
+    }
     try {
       await api.patch(`/legal-cases/${caseId}/stage`, { stage: newStage });
     } catch {
@@ -1092,7 +1254,14 @@ export default function AdvogadoPage() {
         legal_area: conv.legal_area || undefined,
       });
       fetchCases(true);
+      fetchArchivedTotal();
     } catch {} finally { setCreatingCase(null); }
+  };
+
+  // BUG FIX: atualiza o caso no lugar sem fechar o painel
+  const handleCaseUpdated = (updatedCase: LegalCase) => {
+    setCases(prev => prev.map(c => c.id === updatedCase.id ? updatedCase : c));
+    setSelectedCase(updatedCase);
   };
 
   // Filter
@@ -1115,9 +1284,13 @@ export default function AdvogadoPage() {
   const getStageCase = (stageId: string) =>
     filteredCases
       .filter(c => c.stage === stageId)
-      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
-
-  const archivedCount = cases.filter(c => c.archived).length;
+      .sort((a, b) => {
+        // Urgentes primeiro
+        const pa = a.priority === 'URGENTE' ? 0 : a.priority === 'BAIXA' ? 2 : 1;
+        const pb = b.priority === 'URGENTE' ? 0 : b.priority === 'BAIXA' ? 2 : 1;
+        if (pa !== pb) return pa - pb;
+        return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+      });
 
   return (
     <div className="flex h-screen bg-background font-sans antialiased text-foreground overflow-hidden">
@@ -1141,7 +1314,13 @@ export default function AdvogadoPage() {
                 onClick={() => setView('archived')}
                 className="text-[11px] font-semibold text-muted-foreground hover:text-foreground flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg hover:bg-accent transition-colors"
               >
-                <Archive size={13} /> Arquivados
+                <Archive size={13} />
+                Arquivados
+                {archivedTotal > 0 && (
+                  <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground text-[9px] font-bold">
+                    {archivedTotal}
+                  </span>
+                )}
               </button>
             ) : (
               <button
@@ -1346,6 +1525,7 @@ export default function AdvogadoPage() {
                 {LEGAL_STAGES.map(stage => {
                   const stageCases = getStageCase(stage.id);
                   const isDragTarget = dragOverStage === stage.id;
+                  const urgentCount = stageCases.filter(c => c.priority === 'URGENTE').length;
 
                   return (
                     <div
@@ -1376,12 +1556,19 @@ export default function AdvogadoPage() {
                             {stage.label}
                           </h3>
                         </div>
-                        <span
-                          className="w-[22px] h-[22px] rounded-full flex items-center justify-center text-[10px] font-bold"
-                          style={{ backgroundColor: `${stage.color}20`, color: stage.color }}
-                        >
-                          {stageCases.length}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {urgentCount > 0 && (
+                            <span className="flex items-center gap-0.5 px-1 py-0.5 rounded-full bg-red-500/15 text-red-400 text-[9px] font-bold">
+                              <Flame size={8} /> {urgentCount}
+                            </span>
+                          )}
+                          <span
+                            className="w-[22px] h-[22px] rounded-full flex items-center justify-center text-[10px] font-bold"
+                            style={{ backgroundColor: `${stage.color}20`, color: stage.color }}
+                          >
+                            {stageCases.length}
+                          </span>
+                        </div>
                       </div>
 
                       {/* Cards */}
@@ -1423,7 +1610,8 @@ export default function AdvogadoPage() {
         <CaseDetailPanel
           legalCase={selectedCase}
           onClose={() => setSelectedCase(null)}
-          onRefresh={() => { fetchCases(true); setSelectedCase(null); }}
+          onCaseUpdated={handleCaseUpdated}
+          onRefresh={() => { fetchCases(true); fetchArchivedTotal(); }}
         />
       )}
     </div>

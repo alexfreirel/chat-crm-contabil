@@ -477,9 +477,20 @@ export function HighConversionTemplate({
 
             {/* Subtítulos Impactantes - Centered on Mobile */}
             <div className="space-y-2 max-w-2xl flex flex-col items-center lg:items-start">
-              <p className="text-[clamp(1.125rem,2vw,1.25rem)] lg:text-[clamp(0.875rem,1vw,1rem)] 2xl:text-[clamp(1rem,1.2vw,1.25rem)] font-semibold text-[#FAFAFA]/90 leading-relaxed">
-                {hero.subtitle}
-              </p>
+              {hero.mobileSubtitle ? (
+                <>
+                  <p className="block lg:hidden text-[clamp(1.125rem,2vw,1.25rem)] font-semibold text-[#FAFAFA]/90 leading-relaxed">
+                    {hero.mobileSubtitle}
+                  </p>
+                  <p className="hidden lg:block text-[clamp(0.875rem,1vw,1rem)] 2xl:text-[clamp(1rem,1.2vw,1.25rem)] font-semibold text-[#FAFAFA]/90 leading-relaxed">
+                    {hero.subtitle}
+                  </p>
+                </>
+              ) : (
+                <p className="text-[clamp(1.125rem,2vw,1.25rem)] lg:text-[clamp(0.875rem,1vw,1rem)] 2xl:text-[clamp(1rem,1.2vw,1.25rem)] font-semibold text-[#FAFAFA]/90 leading-relaxed">
+                  {hero.subtitle}
+                </p>
+              )}
               {hero.secondarySubtitle && (
                 <p className="text-[#A89048] text-[clamp(1rem,1.4vw,1.25rem)] font-semibold">
                   {hero.secondarySubtitle}
@@ -1306,7 +1317,8 @@ export function HighConversionTemplate({
       {/* COMO FUNCIONA O ATENDIMENTO — Perfect Wavy Timeline */}
       <section
         id="steps"
-        className="py-[clamp(4rem,8vw,8rem)] bg-[#111111] relative overflow-hidden"
+        className="py-[clamp(4rem,8vw,8rem)] bg-[#111111] relative"
+        style={{ clipPath: 'none' }}
       >
         {/* Subtle grid background like the print */}
         <div className="absolute inset-0 z-0 bg-[linear-gradient(to_right,#80808008_1px,transparent_1px),linear-gradient(to_bottom,#80808008_1px,transparent_1px)] bg-[size:2rem_2rem]" />
@@ -1330,6 +1342,7 @@ export function HighConversionTemplate({
               className="absolute inset-0 w-full h-full pointer-events-none z-0" 
               viewBox="0 0 1000 550" 
               preserveAspectRatio="none"
+              style={{ overflow: 'visible' }}
             >
               {/* Shadow for the line */}
               <path d="M -50 275 L 0 275 A 125 100 0 0 1 250 275 A 125 100 0 0 0 500 275 A 125 100 0 0 1 750 275 A 125 100 0 0 0 1000 275 L 1050 275" 

@@ -1,6 +1,7 @@
 export interface LPHero {
   title: string;
   subtitle?: string;
+  mobileSubtitle?: string;
   secondarySubtitle?: string;
   ctaText?: string;
   ctaLink?: string;

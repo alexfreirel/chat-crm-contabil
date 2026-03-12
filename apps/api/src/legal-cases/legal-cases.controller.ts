@@ -79,6 +79,7 @@ export class LegalCasesController {
       notes?: string;
       court?: string;
       legal_area?: string;
+      priority?: string;
     },
     @Request() req?: any,
   ) {

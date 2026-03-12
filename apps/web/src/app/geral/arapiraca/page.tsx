@@ -12,6 +12,7 @@ const staticContent: LPTemplateContent = {
   hero: {
     title: "Escritório de Advocacia em Arapiraca – AL\nAdvogados Especialistas para Defender Seus Direitos",
     subtitle: "Atendimento jurídico em Arapiraca e online para todo Brasil.\nAnalisamos seu caso e orientamos o melhor caminho para resolver seu problema.",
+    mobileSubtitle: "Atendimento jurídico em Arapiraca e online para todo Brasil. Analisamos seu caso sem compromisso.",
     ctaText: "Falar com advogado",
     ctaLink: "https://wa.me/5582996390799",
   },

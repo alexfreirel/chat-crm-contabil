@@ -375,12 +375,14 @@ model LegalCase {
   archive_reason  String?
   notes           String?
   court           String?
-  action_type     String?        // Tipo de ação (Reclamatória Trabalhista, Indenizatória, etc.)
-  claim_value     Decimal?       // Valor da causa
-  opposing_party  String?        // Parte contrária (nome)
-  judge           String?        // Juiz/Desembargador
-  created_at      DateTime       @default(now())
-  updated_at      DateTime       @updatedAt
+  action_type      String?        // Tipo de ação (Reclamatória Trabalhista, Indenizatória, etc.)
+  claim_value      Decimal?       // Valor da causa
+  opposing_party   String?        // Parte contrária (nome)
+  judge            String?        // Juiz/Desembargador
+  priority         String         @default("NORMAL")   // URGENTE | NORMAL | BAIXA
+  stage_changed_at DateTime       @default(now())       // quando mudou de etapa
+  created_at       DateTime       @default(now())
+  updated_at       DateTime       @updatedAt
 
   lead              Lead              @relation(fields: [lead_id], references: [id], onDelete: Cascade)
   conversation      Conversation?     @relation(fields: [conversation_id], references: [id], onDelete: SetNull)
