@@ -13,6 +13,8 @@ import { showError, showSuccess } from '@/lib/toast';
 import NewContactModal from './components/NewContactModal';
 import { ClientPanel } from '@/components/ClientPanel';
 
+type ChatStatus = 'BOT' | 'ACTIVE' | 'WAITING' | null;
+
 interface Contact {
   id: string;
   name: string;
@@ -25,7 +27,21 @@ interface Contact {
   instanceName?: string;
   profile_picture_url?: string;
   stage: string;
+  chatStatus: ChatStatus;
 }
+
+function getChatStatus(conv: any): ChatStatus {
+  if (!conv || conv.status === 'FECHADO') return null;
+  if (conv.ai_mode) return 'BOT';
+  if (conv.assigned_user_id) return 'ACTIVE';
+  return 'WAITING';
+}
+
+const CHAT_STATUS_BADGE: Record<NonNullable<ChatStatus>, { label: string; classes: string; dot: string }> = {
+  ACTIVE:  { label: 'Em atendimento', classes: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20', dot: 'bg-emerald-500' },
+  BOT:     { label: 'Bot ativo',      classes: 'bg-amber-500/10  text-amber-600  border-amber-500/20',  dot: 'bg-amber-500 animate-pulse' },
+  WAITING: { label: 'Aguardando',     classes: 'bg-blue-500/10   text-blue-600   border-blue-500/20',   dot: 'bg-blue-500' },
+};
 
 function getIsAdminFromToken(): boolean {
   try {
@@ -111,6 +127,7 @@ export default function ContactsPage() {
         instanceName: lead.conversations?.[0]?.instance_name,
         profile_picture_url: lead.profile_picture_url,
         stage: lead.stage || 'INICIAL',
+        chatStatus: getChatStatus(lead.conversations?.[0]),
       }));
 
       mappedContacts.sort((a, b) => a.name.localeCompare(b.name));
@@ -172,6 +189,7 @@ export default function ContactsPage() {
         instanceName: lead.conversations?.[0]?.instance_name,
         profile_picture_url: lead.profile_picture_url,
         stage: 'PERDIDO',
+        chatStatus: getChatStatus(lead.conversations?.[0]),
       }));
       mapped.sort((a, b) => a.name.localeCompare(b.name));
       setArchivedLeads(mapped);
@@ -620,12 +638,23 @@ export default function ContactsPage() {
                                 <span className="text-primary font-bold text-xs">{contact.name.charAt(0).toUpperCase()}</span>
                               )}
                             </div>
-                            <span
-                              className="text-[14px] font-semibold text-foreground tracking-tight cursor-pointer hover:text-primary transition-colors"
-                              onClick={() => setSelectedLeadId(contact.id)}
-                            >
-                              {contact.name}
-                            </span>
+                            <div className="flex flex-col gap-1">
+                              <span
+                                className="text-[14px] font-semibold text-foreground tracking-tight cursor-pointer hover:text-primary transition-colors"
+                                onClick={() => setSelectedLeadId(contact.id)}
+                              >
+                                {contact.name}
+                              </span>
+                              {contact.chatStatus && (() => {
+                                const badge = CHAT_STATUS_BADGE[contact.chatStatus];
+                                return (
+                                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wider w-fit ${badge.classes}`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${badge.dot}`} />
+                                    {badge.label}
+                                  </span>
+                                );
+                              })()}
+                            </div>
                           </div>
                         </td>
                         <td className="px-6 py-5 text-[13px] text-muted-foreground font-medium">
