@@ -230,12 +230,21 @@ export default function ContactsPage() {
     setBulkArchiving(true);
     const ids = Array.from(selectedIds);
     try {
-      await Promise.allSettled(
-        ids.map(id => api.patch(`/leads/${id}/stage`, { stage: 'PERDIDO' }))
+      const results = await Promise.allSettled(
+        ids.map(id => api.patch(`/leads/${id}/stage`, { stage: 'PERDIDO', loss_reason: 'Arquivado em massa' }))
       );
-      setContacts(prev => prev.filter(c => !selectedIds.has(c.id)));
+      const failed = results.filter(r => r.status === 'rejected').length;
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const succeededIds = new Set(
+        ids.filter((_, i) => results[i].status === 'fulfilled')
+      );
+      setContacts(prev => prev.filter(c => !succeededIds.has(c.id)));
       setSelectedIds(new Set());
-      showSuccess(`${ids.length} contato${ids.length !== 1 ? 's' : ''} arquivado${ids.length !== 1 ? 's' : ''} com sucesso.`);
+      if (failed === 0) {
+        showSuccess(`${succeeded} contato${succeeded !== 1 ? 's' : ''} arquivado${succeeded !== 1 ? 's' : ''} com sucesso.`);
+      } else {
+        showError(`${succeeded} arquivado${succeeded !== 1 ? 's' : ''}, ${failed} falhou. Tente novamente.`);
+      }
     } catch {
       showError('Erro ao arquivar contatos. Tente novamente.');
       fetchAllContacts();
@@ -251,12 +260,21 @@ export default function ContactsPage() {
     setBulkUnarchiving(true);
     const ids = Array.from(selectedIds);
     try {
-      await Promise.allSettled(
+      const results = await Promise.allSettled(
         ids.map(id => api.patch(`/leads/${id}/stage`, { stage: 'INICIAL' }))
       );
-      setArchivedLeads(prev => prev.filter(c => !selectedIds.has(c.id)));
+      const failed = results.filter(r => r.status === 'rejected').length;
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const succeededIds = new Set(
+        ids.filter((_, i) => results[i].status === 'fulfilled')
+      );
+      setArchivedLeads(prev => prev.filter(c => !succeededIds.has(c.id)));
       setSelectedIds(new Set());
-      showSuccess(`${ids.length} contato${ids.length !== 1 ? 's' : ''} desarquivado${ids.length !== 1 ? 's' : ''} com sucesso.`);
+      if (failed === 0) {
+        showSuccess(`${succeeded} contato${succeeded !== 1 ? 's' : ''} desarquivado${succeeded !== 1 ? 's' : ''} com sucesso.`);
+      } else {
+        showError(`${succeeded} desarquivado${succeeded !== 1 ? 's' : ''}, ${failed} falhou. Tente novamente.`);
+      }
     } catch {
       showError('Erro ao desarquivar contatos. Tente novamente.');
       fetchArchivedContacts();
