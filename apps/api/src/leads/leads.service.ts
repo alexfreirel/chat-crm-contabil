@@ -37,9 +37,14 @@ export class LeadsService {
       ? { OR: [{ tenant_id }, { tenant_id: null }] }
       : {};
 
-    // Filtro por stage (ex: stage=PERDIDO para buscar arquivados)
+    // Filtro por stage:
+    //  - stage=PERDIDO  → busca arquivados
+    //  - stage=<outro>  → filtra pelo stage específico
+    //  - sem stage      → exclui PERDIDO (visão ativa, paginação correta)
     if (stage) {
       baseWhere.stage = stage;
+    } else {
+      baseWhere.stage = { not: 'PERDIDO' };
     }
 
     // Busca server-side por nome ou telefone

@@ -293,7 +293,8 @@ export default function ContactsPage() {
     }
   };
 
-  const activeContacts = contacts.filter(c => c.stage !== 'PERDIDO');
+  // Servidor já exclui PERDIDO quando stage não é passado — não filtrar no cliente
+  const activeContacts = contacts;
   const archivedCount  = archivedLeads.length;
   const filteredArchivedLeads = search.trim()
     ? archivedLeads.filter(c =>
