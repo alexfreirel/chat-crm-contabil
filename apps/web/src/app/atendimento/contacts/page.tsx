@@ -233,13 +233,22 @@ export default function ContactsPage() {
       const results = await Promise.allSettled(
         ids.map(id => api.patch(`/leads/${id}/stage`, { stage: 'PERDIDO', loss_reason: 'Arquivado em massa' }))
       );
-      const failed = results.filter(r => r.status === 'rejected').length;
+      const failed  = results.filter(r => r.status === 'rejected').length;
       const succeeded = results.filter(r => r.status === 'fulfilled').length;
-      const succeededIds = new Set(
-        ids.filter((_, i) => results[i].status === 'fulfilled')
-      );
-      setContacts(prev => prev.filter(c => !succeededIds.has(c.id)));
       setSelectedIds(new Set());
+
+      if (succeeded > 0) {
+        // Recalcula total e página antes de re-buscar
+        const newTotal    = Math.max(0, totalContacts - succeeded);
+        const newLastPage = Math.max(1, Math.ceil(newTotal / PAGE_SIZE));
+        setTotalContacts(newTotal);
+        if (page > newLastPage) {
+          setPage(newLastPage); // useEffect dispara fetchAllContacts automaticamente
+        } else {
+          fetchAllContacts();   // Recarrega a página atual com dados frescos do servidor
+        }
+      }
+
       if (failed === 0) {
         showSuccess(`${succeeded} contato${succeeded !== 1 ? 's' : ''} arquivado${succeeded !== 1 ? 's' : ''} com sucesso.`);
       } else {
@@ -263,13 +272,14 @@ export default function ContactsPage() {
       const results = await Promise.allSettled(
         ids.map(id => api.patch(`/leads/${id}/stage`, { stage: 'INICIAL' }))
       );
-      const failed = results.filter(r => r.status === 'rejected').length;
+      const failed    = results.filter(r => r.status === 'rejected').length;
       const succeeded = results.filter(r => r.status === 'fulfilled').length;
-      const succeededIds = new Set(
-        ids.filter((_, i) => results[i].status === 'fulfilled')
-      );
-      setArchivedLeads(prev => prev.filter(c => !succeededIds.has(c.id)));
       setSelectedIds(new Set());
+
+      if (succeeded > 0) {
+        fetchArchivedContacts(); // Recarrega lista de arquivados com dados frescos
+      }
+
       if (failed === 0) {
         showSuccess(`${succeeded} contato${succeeded !== 1 ? 's' : ''} desarquivado${succeeded !== 1 ? 's' : ''} com sucesso.`);
       } else {
