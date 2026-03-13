@@ -17,7 +17,9 @@ export class EvolutionController {
     // Basic support for different event types
     const eventType = payload.event as string;
 
-    if (eventType === 'messages.upsert') {
+    if (eventType === 'messages.upsert' || eventType === 'send.message') {
+      // send.message = echo de mensagens enviadas pela API (IA, operador via Evolution)
+      // Mesmo formato de payload que messages.upsert, com fromMe=true
       await this.evolutionService.handleMessagesUpsert(payload);
     } else if (eventType === 'messages.update') {
       await this.evolutionService.handleMessagesUpdate(payload);
