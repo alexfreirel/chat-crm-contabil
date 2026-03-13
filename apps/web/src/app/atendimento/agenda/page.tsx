@@ -188,7 +188,16 @@ export default function AgendaPage() {
   // Usuario logado + controle de acesso
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [currentUserRole, setCurrentUserRole] = useState<string>('');
-  const [showAllUsers, setShowAllUsers] = useState(false);
+  // Inicializa showAllUsers de forma síncrona a partir do JWT para evitar
+  // race condition com o primeiro onRangeUpdate do schedule-x
+  const [showAllUsers, setShowAllUsers] = useState(() => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      if (!token) return false;
+      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      return payload?.role === 'ADMIN' || payload?.role === 'admin';
+    } catch { return false; }
+  });
 
   // Comentarios do evento
   const [eventComments, setEventComments] = useState<EventComment[]>([]);
@@ -295,8 +304,14 @@ export default function AgendaPage() {
         }
       }
     } catch {}
-    // Buscar usuarios e leads para dropdowns
-    api.get('/users').then(r => setUsers(r.data || [])).catch(() => {});
+    // Buscar apenas advogados e admins para o filtro de usuários
+    api.get('/users?limit=100').then(r => {
+      const data: any[] = r.data?.data || r.data?.users || r.data || [];
+      const lawyers = data.filter((u: any) =>
+        u.role === 'Advogados' || u.role === 'ADMIN' || u.role === 'admin'
+      );
+      setUsers(lawyers.map((u: any) => ({ id: u.id, name: u.name })));
+    }).catch(() => {});
     api.get('/leads').then(r => setLeads((r.data || []).map((l: any) => ({ id: l.id, name: l.name, phone: l.phone })))).catch(() => {});
   }, [router]);
 
