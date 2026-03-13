@@ -58,22 +58,36 @@ export class CalendarService {
     }
 
     if (query.start || query.end) {
-      // Schedule-x pode enviar datas com sufixo IANA entre colchetes ex: "2026-03-09T07:00:00+00:00[UTC]"
-      // que new Date() não consegue parsear → remover o sufixo antes de converter
-      const parseDate = (s: string) => new Date(s.replace(/\[.*?\]$/, ''));
+      // Schedule-x pode enviar datas em vários formatos:
+      // - "2026-03-09T07:00:00+00:00[UTC]" → remover sufixo IANA
+      // - "2026-03-09 00:00" → converter espaço para T
+      // - "2026-03-09" → date-only
+      const parseDate = (s: string) => {
+        const cleaned = s.replace(/\[.*?\]$/, '').trim();
+        // Se é formato "YYYY-MM-DD HH:mm", converter para ISO
+        if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(cleaned)) {
+          return new Date(cleaned.replace(' ', 'T'));
+        }
+        return new Date(cleaned);
+      };
       // Overlap query: inclui eventos que começam antes do range mas terminam dentro dele
       // Evento visível se: start_at < rangeEnd AND (end_at > rangeStart OR end_at IS NULL AND start_at >= rangeStart)
       if (query.start && query.end) {
         const rangeStart = parseDate(query.start);
         const rangeEnd = parseDate(query.end);
-        where.start_at = { lt: rangeEnd };
-        if (!where.AND) where.AND = [];
-        where.AND.push({
-          OR: [
-            { end_at: { gt: rangeStart } },
-            { end_at: null, start_at: { gte: rangeStart } },
-          ],
-        });
+        // Defensive: skip filter if dates are invalid
+        if (isNaN(rangeStart.getTime()) || isNaN(rangeEnd.getTime())) {
+          this.logger.warn(`[findAll] Invalid date range: start=${query.start}, end=${query.end}`);
+        } else {
+          where.start_at = { lt: rangeEnd };
+          if (!where.AND) where.AND = [];
+          where.AND.push({
+            OR: [
+              { end_at: { gt: rangeStart } },
+              { end_at: null, start_at: { gte: rangeStart } },
+            ],
+          });
+        }
       } else {
         where.start_at = {};
         if (query.start) where.start_at.gte = parseDate(query.start);

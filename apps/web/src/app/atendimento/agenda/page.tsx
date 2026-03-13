@@ -340,13 +340,17 @@ export default function AgendaPage() {
     defaultView: isMobile ? 'day' : 'week',
     locale: 'pt-BR',
     firstDayOfWeek: 1,
-    dayBoundaries: { start: '06:00', end: '21:00' },
-    weekOptions: { gridHeight: isMobile ? 500 : 600 },
+    dayBoundaries: { start: '06:00', end: '22:00' },
+    weekOptions: { gridHeight: isMobile ? 800 : 1200, gridStep: 30 },
     isDark: true,
     callbacks: {
       onRangeUpdate(range) {
-        rangeRef.current = { start: range.start, end: range.end };
-        fetchEvents(range.start, range.end);
+        try {
+          rangeRef.current = { start: range.start, end: range.end };
+          fetchEvents(range.start, range.end);
+        } catch (e) {
+          console.error('[Agenda] onRangeUpdate error:', e);
+        }
       },
       onEventClick(calEvent) {
         const ev = events.find(e => e.id === calEvent.id);
@@ -395,22 +399,39 @@ export default function AgendaPage() {
   // Sync filtro → calendar
   useEffect(() => {
     if (!eventsServicePlugin) return;
-    const filtered = events.filter(e => filterTypes.includes(e.type));
-    const calEvents = filtered.map(e => {
-      // No modo "Todos", prefixar com o nome do advogado responsável
-      const userPrefix = (showAllUsers && !filterUserId && e.assigned_user)
-        ? `[${e.assigned_user.name.split(' ')[0]}] `
-        : '';
-      return {
-        id: e.id,
-        title: `${EVENT_TYPES.find(t => t.id === e.type)?.emoji || ''} ${userPrefix}${e.title}${e.status === 'ADIADO' ? ' ⏸️' : ''}${e.status === 'CANCELADO' ? ' ✖️' : ''}${(e as any).recurrence_rule || (e as any).parent_event_id ? ' 🔁' : ''}${e._count?.comments ? ` 💬${e._count.comments}` : ''}`,
-        start: toLocalDateTime(e.start_at),
-        end: e.end_at ? toLocalDateTime(e.end_at) : toLocalDateTime(new Date(new Date(e.start_at).getTime() + 30 * 60000).toISOString()),
-        calendarId: e.type,
-        _customContent: {},
-      };
-    });
-    eventsServicePlugin.set(calEvents);
+    try {
+      const filtered = events.filter(e => filterTypes.includes(e.type));
+      const calEvents = filtered
+        .filter(e => {
+          // Validate dates to prevent schedule-x crashes
+          const startMs = new Date(e.start_at).getTime();
+          return !isNaN(startMs);
+        })
+        .map(e => {
+          // No modo "Todos", prefixar com o nome do advogado responsável
+          const userPrefix = (showAllUsers && !filterUserId && e.assigned_user)
+            ? `[${e.assigned_user.name.split(' ')[0]}] `
+            : '';
+          const startLocal = toLocalDateTime(e.start_at);
+          let endLocal: string;
+          if (e.end_at && !isNaN(new Date(e.end_at).getTime())) {
+            endLocal = toLocalDateTime(e.end_at);
+          } else {
+            endLocal = toLocalDateTime(new Date(new Date(e.start_at).getTime() + 30 * 60000).toISOString());
+          }
+          return {
+            id: e.id,
+            title: `${EVENT_TYPES.find(t => t.id === e.type)?.emoji || ''} ${userPrefix}${e.title}${e.status === 'ADIADO' ? ' ⏸️' : ''}${e.status === 'CANCELADO' ? ' ✖️' : ''}${(e as any).recurrence_rule || (e as any).parent_event_id ? ' 🔁' : ''}${e._count?.comments ? ` 💬${e._count.comments}` : ''}`,
+            start: startLocal,
+            end: endLocal,
+            calendarId: e.type,
+            _customContent: {},
+          };
+        });
+      eventsServicePlugin.set(calEvents);
+    } catch (err) {
+      console.error('[Agenda] Error syncing events to calendar:', err);
+    }
   }, [events, filterTypes, eventsServicePlugin, showAllUsers, filterUserId]);
 
   // Refetch quando filtro de usuario muda
@@ -466,17 +487,41 @@ export default function AgendaPage() {
 
   const openCreateModal = (dateTime?: string) => {
     const now = new Date();
-    const date = dateTime ? dateTime.split(' ')[0] || dateTime : formatDateInput(now.toISOString());
-    const time = dateTime?.includes(' ') ? dateTime.split(' ')[1]?.substring(0, 5) : formatTimeInput(now.toISOString());
-    const [h, m] = (time || '09:00').split(':').map(Number);
-    const endH = String(Math.min(h + 1, 23)).padStart(2, '0');
+    let date: string;
+    let time: string;
+
+    if (dateTime) {
+      // schedule-x pode enviar "YYYY-MM-DD HH:mm" ao clicar na célula da grid
+      const parts = dateTime.split(' ');
+      date = parts[0] || formatDateInput(now.toISOString());
+      if (parts[1]) {
+        // Arredondar minutos para múltiplo de 30 (grid de 30min)
+        const [hh, mm] = parts[1].substring(0, 5).split(':').map(Number);
+        const roundedMin = Math.round(mm / 30) * 30;
+        const finalH = roundedMin >= 60 ? Math.min(hh + 1, 23) : hh;
+        const finalM = roundedMin >= 60 ? 0 : roundedMin;
+        time = `${String(finalH).padStart(2, '0')}:${String(finalM).padStart(2, '0')}`;
+      } else {
+        time = formatTimeInput(now.toISOString());
+      }
+    } else {
+      date = formatDateInput(now.toISOString());
+      time = formatTimeInput(now.toISOString());
+    }
+
+    const [h, m] = time.split(':').map(Number);
+    // Duração padrão: 30 min (compatível com grid de 30min)
+    const endMinTotal = h * 60 + m + 30;
+    const endH = String(Math.min(Math.floor(endMinTotal / 60), 23)).padStart(2, '0');
+    const endM = String(endMinTotal % 60).padStart(2, '0');
+
     setFormData({
       type: 'CONSULTA',
       title: '',
       description: '',
       date,
-      startTime: time || '09:00',
-      endTime: `${endH}:${String(m).padStart(2, '0')}`,
+      startTime: time,
+      endTime: `${endH}:${endM}`,
       all_day: false,
       priority: 'NORMAL',
       location: '',
@@ -984,6 +1029,15 @@ export default function AgendaPage() {
 
         {/* Calendário schedule-x */}
         <div className="flex-1 overflow-auto">
+          {/* Override schedule-x time label position: center in cells, not on border lines */}
+          <style>{`
+            .sx__week-grid__hour-text {
+              top: calc(50% - 0.5em) !important;
+            }
+            .sx__week-grid__hour:first-child {
+              visibility: visible !important;
+            }
+          `}</style>
           <div className="sx-react-calendar-wrapper h-full min-h-[500px]" style={{
             ['--sx-color-primary' as any]: 'hsl(var(--primary))',
             ['--sx-color-surface' as any]: 'hsl(var(--card))',
