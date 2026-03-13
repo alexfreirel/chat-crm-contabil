@@ -135,8 +135,9 @@ export class CalendarController {
     @Param('userId') userId: string,
     @Query('date') date: string,
     @Query('duration') duration: string,
+    @Request() req: any,
   ) {
-    return this.calendarService.getAvailability(userId, date, parseInt(duration) || 30);
+    return this.calendarService.getAvailability(userId, date, parseInt(duration) || 30, req.user?.tenant_id);
   }
 
   @Get('schedule/:userId')

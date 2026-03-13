@@ -55,7 +55,7 @@ export class ReminderProcessor extends WorkerHost {
 
       const event = reminder.event;
 
-      if (['CANCELADO', 'CONCLUIDO'].includes(event.status)) {
+      if (['CANCELADO', 'CONCLUIDO', 'ADIADO'].includes(event.status)) {
         this.logger.log(`Evento ${event.id} esta ${event.status} — ignorando lembrete`);
         await this.prisma.eventReminder.update({
           where: { id: reminder.id },

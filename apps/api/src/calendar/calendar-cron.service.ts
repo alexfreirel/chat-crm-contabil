@@ -36,7 +36,7 @@ export class CalendarCronService {
         WHERE er.channel = 'PUSH'
           AND er.sent_at IS NULL
           AND ce.start_at - (er.minutes_before * interval '1 minute') BETWEEN ${now} AND ${in2min}
-          AND ce.status NOT IN ('CANCELADO', 'CONCLUIDO')
+          AND ce.status NOT IN ('CANCELADO', 'CONCLUIDO', 'ADIADO')
       `;
 
       if (reminders.length > 0) {

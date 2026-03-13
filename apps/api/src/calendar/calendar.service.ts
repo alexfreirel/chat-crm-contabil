@@ -61,9 +61,24 @@ export class CalendarService {
       // Schedule-x pode enviar datas com sufixo IANA entre colchetes ex: "2026-03-09T07:00:00+00:00[UTC]"
       // que new Date() não consegue parsear → remover o sufixo antes de converter
       const parseDate = (s: string) => new Date(s.replace(/\[.*?\]$/, ''));
-      where.start_at = {};
-      if (query.start) where.start_at.gte = parseDate(query.start);
-      if (query.end) where.start_at.lte = parseDate(query.end);
+      // Overlap query: inclui eventos que começam antes do range mas terminam dentro dele
+      // Evento visível se: start_at < rangeEnd AND (end_at > rangeStart OR end_at IS NULL AND start_at >= rangeStart)
+      if (query.start && query.end) {
+        const rangeStart = parseDate(query.start);
+        const rangeEnd = parseDate(query.end);
+        where.start_at = { lt: rangeEnd };
+        if (!where.AND) where.AND = [];
+        where.AND.push({
+          OR: [
+            { end_at: { gt: rangeStart } },
+            { end_at: null, start_at: { gte: rangeStart } },
+          ],
+        });
+      } else {
+        where.start_at = {};
+        if (query.start) where.start_at.gte = parseDate(query.start);
+        if (query.end) where.start_at.lte = parseDate(query.end);
+      }
     }
 
     return this.prisma.calendarEvent.findMany({
@@ -299,10 +314,32 @@ export class CalendarService {
     if (!EVENT_STATUSES.includes(status as any)) {
       throw new BadRequestException(`Status invalido: ${status}`);
     }
-    return this.prisma.calendarEvent.update({
+
+    const event = await this.prisma.calendarEvent.update({
       where: { id },
       data: { status },
+      include: { assigned_user: { select: { id: true, name: true } } },
     });
+
+    // Cancelar jobs de lembrete quando evento é cancelado/concluído
+    if (['CANCELADO', 'CONCLUIDO'].includes(status)) {
+      await this.cancelReminderJobs(id);
+      this.logger.log(`Lembretes cancelados para evento ${id} (status → ${status})`);
+    }
+
+    // Notificar advogado
+    if (event.assigned_user_id) {
+      try {
+        this.chatGateway.emitCalendarUpdate(event.assigned_user_id, {
+          eventId: id,
+          action: 'status_changed',
+          title: event.title,
+          type: event.type,
+        });
+      } catch {}
+    }
+
+    return event;
   }
 
   async remove(id: string) {
@@ -386,12 +423,12 @@ export class CalendarService {
     return results;
   }
 
-  async getAvailability(userId: string, dateStr: string, durationMinutes: number) {
+  async getAvailability(userId: string, dateStr: string, durationMinutes: number, tenantId?: string) {
     const date = new Date(dateStr);
     const dayOfWeek = date.getDay(); // 0=dom..6=sab
 
-    // 0. Verificar se e feriado
-    const isHoliday = await this.isHoliday(date);
+    // 0. Verificar se e feriado (com filtro de tenant)
+    const isHoliday = await this.isHoliday(date, tenantId);
     if (isHoliday) return [];
 
     // 1. Horario de trabalho do dia
@@ -415,7 +452,7 @@ export class CalendarService {
           { end_at: { gte: dayStart } },
           { end_at: null, start_at: { gte: dayStart } },
         ],
-        status: { notIn: ['CANCELADO'] },
+        status: { notIn: ['CANCELADO', 'CONCLUIDO'] },
       },
       select: { start_at: true, end_at: true },
       orderBy: { start_at: 'asc' },
@@ -534,17 +571,23 @@ export class CalendarService {
     return { deleted: true };
   }
 
-  private async isHoliday(date: Date): Promise<boolean> {
+  private async isHoliday(date: Date, tenantId?: string): Promise<boolean> {
     const dayStart = new Date(date);
     dayStart.setHours(0, 0, 0, 0);
     const dayEnd = new Date(date);
     dayEnd.setHours(23, 59, 59, 999);
+
+    // Filtro de tenant: feriados globais (tenant_id NULL) + feriados do tenant
+    const tenantFilter = tenantId
+      ? { OR: [{ tenant_id: tenantId }, { tenant_id: null }] }
+      : {};
 
     // Check exact date holidays
     const exactMatch = await this.prisma.holiday.findFirst({
       where: {
         date: { gte: dayStart, lte: dayEnd },
         recurring_yearly: false,
+        ...tenantFilter,
       },
     });
     if (exactMatch) return true;
@@ -552,6 +595,17 @@ export class CalendarService {
     // Check recurring yearly holidays (same month + day, any year)
     const month = date.getMonth() + 1;
     const day = date.getDate();
+    if (tenantId) {
+      const recurringMatch = await this.prisma.$queryRaw`
+        SELECT id FROM "Holiday"
+        WHERE recurring_yearly = true
+          AND EXTRACT(MONTH FROM date) = ${month}
+          AND EXTRACT(DAY FROM date) = ${day}
+          AND (tenant_id = ${tenantId} OR tenant_id IS NULL)
+        LIMIT 1
+      ` as any[];
+      return recurringMatch.length > 0;
+    }
     const recurringMatch = await this.prisma.$queryRaw`
       SELECT id FROM "Holiday"
       WHERE recurring_yearly = true
@@ -749,8 +803,16 @@ export class CalendarService {
       },
     });
 
-    const formatIcsDate = (d: Date) =>
-      d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    // Formatar data no fuso America/Sao_Paulo para ICS (TZID)
+    const formatIcsLocalDate = (d: Date) => {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+      }).formatToParts(d);
+      const get = (t: string) => parts.find(p => p.type === t)?.value || '00';
+      return `${get('year')}${get('month')}${get('day')}T${get('hour')}${get('minute')}${get('second')}`;
+    };
 
     const lines = [
       'BEGIN:VCALENDAR',
@@ -758,19 +820,29 @@ export class CalendarService {
       'PRODID:-//LexCRM//Calendar//PT',
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
+      // VTIMEZONE para America/Sao_Paulo
+      'BEGIN:VTIMEZONE',
+      'TZID:America/Sao_Paulo',
+      'BEGIN:STANDARD',
+      'DTSTART:19700101T000000',
+      'TZOFFSETFROM:-0300',
+      'TZOFFSETTO:-0300',
+      'TZNAME:BRT',
+      'END:STANDARD',
+      'END:VTIMEZONE',
     ];
 
     for (const evt of events) {
       lines.push('BEGIN:VEVENT');
       lines.push(`UID:${evt.id}@lexcrm`);
-      lines.push(`DTSTART:${formatIcsDate(evt.start_at)}`);
-      if (evt.end_at) lines.push(`DTEND:${formatIcsDate(evt.end_at)}`);
+      lines.push(`DTSTART;TZID=America/Sao_Paulo:${formatIcsLocalDate(evt.start_at)}`);
+      if (evt.end_at) lines.push(`DTEND;TZID=America/Sao_Paulo:${formatIcsLocalDate(evt.end_at)}`);
       lines.push(`SUMMARY:${(evt.title || '').replace(/[,;\\]/g, ' ')}`);
       if (evt.description) lines.push(`DESCRIPTION:${evt.description.replace(/\n/g, '\\n').replace(/[,;\\]/g, ' ')}`);
       if (evt.location) lines.push(`LOCATION:${evt.location.replace(/[,;\\]/g, ' ')}`);
       lines.push(`STATUS:${evt.status === 'CONFIRMADO' ? 'CONFIRMED' : evt.status === 'CANCELADO' ? 'CANCELLED' : 'TENTATIVE'}`);
-      lines.push(`CREATED:${formatIcsDate(evt.created_at)}`);
-      lines.push(`LAST-MODIFIED:${formatIcsDate(evt.updated_at)}`);
+      lines.push(`CREATED:${formatIcsLocalDate(evt.created_at)}`);
+      lines.push(`LAST-MODIFIED:${formatIcsLocalDate(evt.updated_at)}`);
       lines.push('END:VEVENT');
     }
 

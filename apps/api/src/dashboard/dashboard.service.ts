@@ -47,11 +47,11 @@ export class DashboardService {
       ? { archived: false, ...tw }
       : { archived: false, lawyer_id: userId, ...tw };
 
-    // ─── Task filters ──
-    const taskWhere = (statuses: string[]) =>
+    // ─── Task filters (CalendarEvent type=TAREFA) ──
+    const calTaskWhere = (statuses: string[]) =>
       isAdmin
-        ? { status: { in: statuses }, ...tw }
-        : { status: { in: statuses }, assigned_user_id: userId, ...tw };
+        ? { type: 'TAREFA', status: { in: statuses }, ...tw }
+        : { type: 'TAREFA', status: { in: statuses }, assigned_user_id: userId, ...tw };
 
     // ─── Event filters ──
     const eventWhere = {
@@ -130,15 +130,15 @@ export class DashboardService {
         orderBy: { start_at: 'asc' },
         take: 20,
       }),
-      // 8. Tasks pending
-      this.prisma.task.count({ where: taskWhere(['A_FAZER']) }),
-      // 9. Tasks in progress
-      this.prisma.task.count({ where: taskWhere(['FAZENDO']) }),
-      // 10. Tasks overdue
-      this.prisma.task.count({
+      // 8. Tasks pending (CalendarEvent TAREFA com status AGENDADO)
+      this.prisma.calendarEvent.count({ where: calTaskWhere(['AGENDADO']) }),
+      // 9. Tasks in progress (CalendarEvent TAREFA com status CONFIRMADO)
+      this.prisma.calendarEvent.count({ where: calTaskWhere(['CONFIRMADO']) }),
+      // 10. Tasks overdue (TAREFA pendente com start_at no passado)
+      this.prisma.calendarEvent.count({
         where: {
-          ...taskWhere(['A_FAZER', 'FAZENDO']),
-          due_at: { lt: now },
+          ...calTaskWhere(['AGENDADO', 'CONFIRMADO']),
+          start_at: { lt: now },
         },
       }),
       // 11. Total contracted (sum of honorario total_value)
@@ -230,17 +230,19 @@ export class DashboardService {
             this.prisma.legalCase.count({
               where: { lawyer_id: member.id, archived: false, ...tw },
             }),
-            this.prisma.task.count({
+            this.prisma.calendarEvent.count({
               where: {
+                type: 'TAREFA',
                 assigned_user_id: member.id,
-                status: { in: ['A_FAZER', 'FAZENDO'] },
+                status: { in: ['AGENDADO', 'CONFIRMADO'] },
               },
             }),
-            this.prisma.task.count({
+            this.prisma.calendarEvent.count({
               where: {
+                type: 'TAREFA',
                 assigned_user_id: member.id,
-                status: { in: ['A_FAZER', 'FAZENDO'] },
-                due_at: { lt: now },
+                status: { in: ['AGENDADO', 'CONFIRMADO'] },
+                start_at: { lt: now },
               },
             }),
             this.prisma.honorarioPayment.aggregate({
