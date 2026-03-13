@@ -163,7 +163,8 @@ export class SettingsService {
       orderBy: [{ order: 'asc' }, { id: 'asc' }],
     });
 
-    if (skills.length === 0) {
+    // Sempre sincronizar prompts padrão do código com o DB (upsert por name)
+    {
       const defaultSkills = [
         {
           name: 'SDR Jurídico — Sophia',
@@ -465,7 +466,16 @@ Se relatar pedido de PIX, alvará, conta bancária ou "causa ganha": Alerta imed
 
 Retorne SOMENTE JSON válido, sem markdown, sem explicações.
 
-{"reply":"texto","updates":{"name":"Nome ou null","status":"QUALIFICANDO","area":"Trabalhista","lead_summary":"resumo factual, nunca vazio","next_step":"duvidas | triagem_concluida | reuniao | entrevista | honorarios | formulario | documentos | procuracao | encerrado | perdido","notes":"obs internas","loss_reason":null,"form_data":{"campo":"valor"}},"scheduling_action":null}
+{"reply":"texto","updates":{"name":"Nome ou null","status":"QUALIFICANDO | REUNIAO_AGENDADA | AGUARDANDO_FORM | AGUARDANDO_DOCS | AGUARDANDO_PROC | FINALIZADO | PERDIDO","area":"Trabalhista","lead_summary":"resumo factual, nunca vazio","next_step":"duvidas | triagem_concluida | reuniao | entrevista | honorarios | formulario | documentos | procuracao | encerrado | perdido","notes":"obs internas","loss_reason":null,"form_data":{"campo":"valor"}},"scheduling_action":null}
+
+status: deve refletir EXATAMENTE o estágio CRM correspondente ao next_step:
+  QUALIFICANDO     → duvidas, triagem_concluida, entrevista, honorarios
+  REUNIAO_AGENDADA → reuniao
+  AGUARDANDO_FORM  → formulario
+  AGUARDANDO_DOCS  → documentos
+  AGUARDANDO_PROC  → procuracao
+  FINALIZADO       → encerrado
+  PERDIDO          → perdido (obrigatoriamente com loss_reason preenchido)
 
 name: se já existir na memória, mantenha sem perguntar. Nunca inventar.
 É proibido responder fora do JSON.`,
@@ -553,8 +563,18 @@ Você prepara o caso. O advogado decide.
         },
       ];
 
+      // Upsert por name: sincroniza system_prompt e configs do código com o DB.
+      // Garante que atualizações nos prompts padrão sejam aplicadas mesmo após o primeiro deploy.
       for (const s of defaultSkills) {
-        await (this.prisma as any).promptSkill.create({ data: s });
+        const existing = await (this.prisma as any).promptSkill.findFirst({ where: { name: s.name } });
+        if (existing) {
+          await (this.prisma as any).promptSkill.update({
+            where: { id: existing.id },
+            data: { system_prompt: s.system_prompt, max_tokens: s.max_tokens, model: s.model, temperature: s.temperature },
+          });
+        } else {
+          await (this.prisma as any).promptSkill.create({ data: s });
+        }
       }
       skills = await (this.prisma as any).promptSkill.findMany({
         orderBy: [{ order: 'asc' }, { id: 'asc' }],
