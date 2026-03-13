@@ -33,15 +33,28 @@ export class CalendarService {
 
     if (query.tenantId) where.tenant_id = query.tenantId;
     if (query.type) where.type = query.type;
-    if (query.userId) where.assigned_user_id = query.userId;
     if (query.leadId) where.lead_id = query.leadId;
     if (query.legalCaseId) where.legal_case_id = query.legalCaseId;
 
+    // Filtrar por userId: inclui eventos onde o usuário é responsável OU criador
+    if (query.userId) {
+      if (!where.AND) where.AND = [];
+      where.AND.push({
+        OR: [
+          { assigned_user_id: query.userId },
+          { created_by_id: query.userId },
+        ],
+      });
+    }
+
     if (query.search) {
-      where.OR = [
-        { title: { contains: query.search, mode: 'insensitive' } },
-        { description: { contains: query.search, mode: 'insensitive' } },
-      ];
+      if (!where.AND) where.AND = [];
+      where.AND.push({
+        OR: [
+          { title: { contains: query.search, mode: 'insensitive' } },
+          { description: { contains: query.search, mode: 'insensitive' } },
+        ],
+      });
     }
 
     if (query.start || query.end) {

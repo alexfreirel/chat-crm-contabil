@@ -9,6 +9,7 @@ import { createDragAndDropPlugin } from '@schedule-x/drag-and-drop';
 import '@schedule-x/theme-default/dist/index.css';
 import {
   Plus, X, Calendar as CalendarIcon, Filter, ChevronDown,
+  ChevronLeft, ChevronRight,
   Clock, MapPin, User, FileText, Gavel, AlertTriangle, CheckCircle2, Bell,
   Search, Download, Copy, Repeat, MessageSquare, Users, Send
 } from 'lucide-react';
@@ -149,6 +150,89 @@ function formatTimeInput(isoStr: string): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+// ─── Mini Calendário (sidebar) ────────────────────────
+
+const MONTH_NAMES_PT = [
+  'Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+  'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro',
+];
+const WD_HEADERS = ['D','S','T','Q','Q','S','S'];
+
+function MiniCalendar({ onDateSelect }: { onDateSelect: (dateStr: string) => void }) {
+  const today = new Date();
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [selected, setSelected] = useState<string | null>(null);
+
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  const firstDow = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  const prevMonth = () => {
+    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
+    else setViewMonth(m => m - 1);
+  };
+  const nextMonth = () => {
+    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
+    else setViewMonth(m => m + 1);
+  };
+
+  const handleDayClick = (day: number) => {
+    const ds = `${viewYear}-${String(viewMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    setSelected(ds);
+    onDateSelect(ds);
+  };
+
+  return (
+    <div className="select-none px-1 py-1">
+      {/* Cabeçalho mês */}
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-semibold text-foreground">
+          {MONTH_NAMES_PT[viewMonth]} {viewYear}
+        </span>
+        <div className="flex gap-0.5">
+          <button onClick={prevMonth} className="p-1 rounded hover:bg-accent/60 text-muted-foreground transition-colors">
+            <ChevronLeft size={13} />
+          </button>
+          <button onClick={nextMonth} className="p-1 rounded hover:bg-accent/60 text-muted-foreground transition-colors">
+            <ChevronRight size={13} />
+          </button>
+        </div>
+      </div>
+      {/* Cabeçalho dias da semana */}
+      <div className="grid grid-cols-7">
+        {WD_HEADERS.map((d, i) => (
+          <span key={i} className="text-center text-[10px] text-muted-foreground font-medium h-5 flex items-center justify-center">{d}</span>
+        ))}
+      </div>
+      {/* Grade de dias */}
+      <div className="grid grid-cols-7">
+        {cells.map((day, i) => {
+          if (!day) return <span key={`e-${i}`} className="h-6" />;
+          const ds = `${viewYear}-${String(viewMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+          const isToday = ds === todayStr;
+          const isSel = ds === selected;
+          return (
+            <button
+              key={`d-${day}`}
+              onClick={() => handleDayClick(day)}
+              className={`h-6 w-6 mx-auto flex items-center justify-center rounded-full text-[11px] font-medium transition-colors
+                ${isSel ? 'bg-primary text-primary-foreground' : isToday ? 'bg-primary/15 text-primary font-bold' : 'text-foreground hover:bg-accent/60'}
+              `}
+            >
+              {day}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Componente Principal ─────────────────────────────
 
 export default function AgendaPage() {
@@ -185,9 +269,23 @@ export default function AgendaPage() {
     recurrence_days: [] as number[],
   });
 
-  // Usuario logado + controle de acesso
-  const [currentUserId, setCurrentUserId] = useState<string>('');
-  const [currentUserRole, setCurrentUserRole] = useState<string>('');
+  // Usuario logado + controle de acesso — inicialização síncrona do JWT
+  const [currentUserId, setCurrentUserId] = useState<string>(() => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      if (!token) return '';
+      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      return payload?.sub || '';
+    } catch { return ''; }
+  });
+  const [currentUserRole, setCurrentUserRole] = useState<string>(() => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      if (!token) return '';
+      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      return payload?.role || '';
+    } catch { return ''; }
+  });
   // Inicializa showAllUsers de forma síncrona a partir do JWT para evitar
   // race condition com o primeiro onRangeUpdate do schedule-x
   const [showAllUsers, setShowAllUsers] = useState(() => {
@@ -655,140 +753,241 @@ export default function AgendaPage() {
   // ─── Render ─────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-full bg-background overflow-hidden">
-      {/* Header */}
-      <div className="shrink-0 px-4 md:px-6 py-4 border-b border-border bg-card/50">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-              <CalendarIcon size={20} className="text-primary" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-foreground">Agenda</h1>
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wider">
-                {events.length} evento{events.length !== 1 ? 's' : ''}
-              </p>
-            </div>
-          </div>
+    <div className="flex h-full bg-background overflow-hidden">
+
+      {/* ═══ Sidebar estilo Google Calendar ═══ */}
+      <aside className="hidden md:flex flex-col w-60 shrink-0 border-r border-border bg-card/30 overflow-y-auto custom-scrollbar">
+
+        {/* ── Topo: barra com título + botão Criar ── */}
+        <div className="px-3 pt-4 pb-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            {/* Filtro mobile toggle */}
-            <button
-              onClick={() => setShowFilters(v => !v)}
-              className="md:hidden inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm font-medium text-muted-foreground hover:bg-accent transition-colors"
-            >
-              <Filter size={14} />
-              Filtros
-            </button>
-            {/* Toggle Meus eventos / Todos */}
-            <button
-              onClick={() => setShowAllUsers(v => !v)}
-              className={`hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                showAllUsers
-                  ? 'border-primary/40 bg-primary/10 text-primary'
-                  : 'border-border text-muted-foreground hover:bg-accent'
-              }`}
-              title={showAllUsers ? 'Mostrando todos' : 'Mostrando meus eventos'}
-            >
-              {showAllUsers ? <Users size={14} /> : <User size={14} />}
-              {showAllUsers ? 'Todos' : 'Meus eventos'}
-            </button>
-            {/* Filtro por advogado (so aparece quando "Todos" ativo) */}
-            {showAllUsers && (
-              <select
-                value={filterUserId}
-                onChange={e => setFilterUserId(e.target.value)}
-                className="hidden md:block px-3 py-2 rounded-lg border border-border bg-card text-sm text-foreground"
-              >
-                <option value="">Todos os advogados</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
-            )}
-            {/* Search */}
-            <div className="relative hidden md:block">
-              <div className="flex items-center gap-1 px-3 py-2 rounded-lg border border-border bg-card text-sm">
-                <Search size={14} className="text-muted-foreground" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={e => handleSearch(e.target.value)}
-                  onFocus={() => setShowSearch(true)}
-                  placeholder="Buscar eventos..."
-                  className="w-36 bg-transparent text-foreground placeholder:text-muted-foreground outline-none text-sm"
-                />
-                {searchQuery && (
-                  <button onClick={() => { setSearchQuery(''); setSearchResults([]); }} className="text-muted-foreground hover:text-foreground">
-                    <X size={12} />
-                  </button>
-                )}
-              </div>
-              {/* Search results dropdown */}
-              {showSearch && searchResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-2xl z-50 max-h-64 overflow-y-auto">
-                  {searchResults.map(ev => (
-                    <button
-                      key={ev.id}
-                      onClick={() => { openEditModal(ev); setShowSearch(false); setSearchQuery(''); setSearchResults([]); }}
-                      className="w-full text-left px-3 py-2 hover:bg-accent/50 transition-colors border-b border-border/30 last:border-0"
-                    >
-                      <p className="text-xs font-semibold text-foreground truncate">
-                        {EVENT_TYPES.find(t => t.id === ev.type)?.emoji} {ev.title}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {new Date(ev.start_at).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        {ev.assigned_user ? ` · ${ev.assigned_user.name}` : ''}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              )}
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <CalendarIcon size={16} className="text-primary" />
             </div>
-            {/* Export button */}
-            <button
-              onClick={handleExportRange}
-              className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm font-medium text-muted-foreground hover:bg-accent transition-colors"
-              title="Exportar .ics"
-            >
-              <Download size={14} />
-            </button>
-            {/* Botao novo evento */}
-            <button
-              onClick={() => openCreateModal()}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors shadow-md"
-            >
-              <Plus size={16} />
-              <span className="hidden sm:inline">Novo Evento</span>
-            </button>
+            <span className="font-semibold text-sm text-foreground">Agenda</span>
+          </div>
+          <span className="text-[11px] text-muted-foreground">
+            {events.length} evento{events.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        {/* Botão + Criar */}
+        <div className="px-3 mb-3">
+          <button
+            onClick={() => openCreateModal()}
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-card border border-border shadow-sm hover:shadow-md text-sm font-semibold text-foreground hover:bg-accent transition-all"
+          >
+            <span className="w-7 h-7 rounded-full bg-primary flex items-center justify-center shrink-0 shadow-sm">
+              <Plus size={16} className="text-primary-foreground" />
+            </span>
+            Criar evento
+          </button>
+        </div>
+
+        {/* Mini Calendário */}
+        <div className="px-2 mb-2">
+          <MiniCalendar
+            onDateSelect={(dateStr) => {
+              try { (calendar as any)?.navigate?.(dateStr); } catch {}
+            }}
+          />
+        </div>
+
+        <div className="mx-3 border-t border-border/50 my-1" />
+
+        {/* Filtros por tipo */}
+        <div className="px-3 py-2">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Meus calendários</p>
+          <div className="space-y-0.5">
+            {EVENT_TYPES.map(t => (
+              <label key={t.id} className="flex items-center gap-2.5 cursor-pointer py-1 group rounded-lg px-1 hover:bg-accent/40 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={filterTypes.includes(t.id)}
+                  onChange={() => toggleFilterType(t.id)}
+                  className="sr-only"
+                />
+                <span
+                  className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-all shrink-0 ${
+                    filterTypes.includes(t.id) ? '' : 'opacity-30'
+                  }`}
+                  style={{ borderColor: t.color, background: filterTypes.includes(t.id) ? t.color : 'transparent' }}
+                >
+                  {filterTypes.includes(t.id) && <CheckCircle2 size={9} className="text-white" />}
+                </span>
+                <span className={`text-xs font-medium transition-opacity ${filterTypes.includes(t.id) ? 'text-foreground' : 'text-muted-foreground opacity-50'}`}>
+                  {t.emoji} {t.label}
+                </span>
+              </label>
+            ))}
           </div>
         </div>
 
-        {/* Filtros mobile (expansivel) */}
+        {/* Filtro por advogado (admin) */}
+        <div className="px-3 py-2">
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Advogado</p>
+            <button
+              onClick={() => setShowAllUsers(v => !v)}
+              className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-colors ${
+                showAllUsers
+                  ? 'bg-primary/10 text-primary border-primary/30'
+                  : 'text-muted-foreground border-border hover:bg-accent'
+              }`}
+              title={showAllUsers ? 'Mostrando todos' : 'Somente meus eventos'}
+            >
+              {showAllUsers ? 'Todos' : 'Meus'}
+            </button>
+          </div>
+          {showAllUsers && (
+            <select
+              value={filterUserId}
+              onChange={e => setFilterUserId(e.target.value)}
+              className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-background text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="">Todos os advogados</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          )}
+        </div>
+
+        <div className="mx-3 border-t border-border/50 my-1" />
+
+        {/* Próximos eventos */}
+        <div className="px-3 py-2 flex-1">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Próximos</p>
+          {upcomingEvents.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-1">Nenhum evento futuro</p>
+          ) : (
+            <div className="space-y-1.5">
+              {upcomingEvents.map(ev => {
+                const d = new Date(ev.start_at);
+                const typeColor = getEventColor(ev.type);
+                return (
+                  <button
+                    key={ev.id}
+                    onClick={() => openEditModal(ev)}
+                    className="w-full text-left p-2 rounded-xl border border-border/40 hover:bg-accent/50 hover:border-border transition-all group"
+                  >
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: typeColor }} />
+                      <span className="text-[10px] text-muted-foreground">
+                        {d.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' })}
+                        {' · '}
+                        {d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <p className="text-xs font-semibold text-foreground truncate">{ev.title}</p>
+                    {ev.lead && (
+                      <p className="text-[10px] text-muted-foreground truncate mt-0.5">{ev.lead.name || ev.lead.phone}</p>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </aside>
+
+      {/* ═══ Área principal ═══ */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+
+        {/* ── Top bar compacta ── */}
+        <div className="shrink-0 px-3 md:px-4 py-2.5 border-b border-border bg-card/40 flex items-center gap-2">
+
+          {/* Mobile: filtros toggle + titulo */}
+          <button
+            onClick={() => setShowFilters(v => !v)}
+            className="md:hidden p-2 rounded-lg border border-border text-muted-foreground hover:bg-accent transition-colors"
+          >
+            <Filter size={15} />
+          </button>
+
+          {/* Search */}
+          <div className="relative flex-1 max-w-sm">
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card/80 text-sm focus-within:ring-2 focus-within:ring-primary/25 focus-within:border-primary/40 transition-all">
+              <Search size={14} className="text-muted-foreground shrink-0" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => handleSearch(e.target.value)}
+                onFocus={() => setShowSearch(true)}
+                placeholder="Buscar eventos..."
+                className="w-full bg-transparent text-foreground placeholder:text-muted-foreground/60 outline-none text-sm"
+              />
+              {searchQuery && (
+                <button onClick={() => { setSearchQuery(''); setSearchResults([]); }} className="text-muted-foreground hover:text-foreground">
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+            {showSearch && searchResults.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-2xl z-50 max-h-64 overflow-y-auto">
+                {searchResults.map(ev => (
+                  <button
+                    key={ev.id}
+                    onClick={() => { openEditModal(ev); setShowSearch(false); setSearchQuery(''); setSearchResults([]); }}
+                    className="w-full text-left px-3 py-2 hover:bg-accent/50 transition-colors border-b border-border/30 last:border-0"
+                  >
+                    <p className="text-xs font-semibold text-foreground truncate">
+                      {EVENT_TYPES.find(t => t.id === ev.type)?.emoji} {ev.title}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {new Date(ev.start_at).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {ev.assigned_user ? ` · ${ev.assigned_user.name}` : ''}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex-1" />
+
+          {/* Mobile: toggle todos/meus */}
+          <button
+            onClick={() => setShowAllUsers(v => !v)}
+            className={`md:hidden inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+              showAllUsers ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground'
+            }`}
+          >
+            {showAllUsers ? <Users size={12} /> : <User size={12} />}
+          </button>
+
+          {/* Export */}
+          <button
+            onClick={handleExportRange}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-accent transition-colors"
+            title="Exportar .ics"
+          >
+            <Download size={14} />
+          </button>
+
+          {/* + Novo Evento */}
+          <button
+            onClick={() => openCreateModal()}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors shadow-sm"
+          >
+            <Plus size={15} />
+            <span className="hidden sm:inline">Novo Evento</span>
+          </button>
+        </div>
+
+        {/* Filtros mobile (expansível) */}
         {showFilters && (
-          <div className="mt-3 flex flex-wrap gap-2 md:hidden">
+          <div className="px-3 py-2 flex flex-wrap gap-1.5 border-b border-border bg-card/30 md:hidden">
             {EVENT_TYPES.map(t => (
               <button
                 key={t.id}
                 onClick={() => toggleFilterType(t.id)}
                 className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                  filterTypes.includes(t.id)
-                    ? 'opacity-100 ring-1 ring-offset-1 ring-offset-background'
-                    : 'opacity-40'
+                  filterTypes.includes(t.id) ? 'opacity-100 ring-1 ring-offset-1 ring-offset-background' : 'opacity-40'
                 }`}
                 style={{ borderColor: t.color + '40', color: t.color, background: t.color + '15' }}
               >
                 {t.emoji} {t.label}
               </button>
             ))}
-            <button
-              onClick={() => setShowAllUsers(v => !v)}
-              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                showAllUsers
-                  ? 'border-primary/40 bg-primary/10 text-primary'
-                  : 'border-border text-muted-foreground'
-              }`}
-            >
-              {showAllUsers ? <Users size={12} /> : <User size={12} />}
-              {showAllUsers ? 'Todos' : 'Meus'}
-            </button>
             {showAllUsers && (
               <select
                 value={filterUserId}
@@ -801,78 +1000,10 @@ export default function AgendaPage() {
             )}
           </div>
         )}
-      </div>
 
-      {/* Content: sidebar + calendar */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar desktop */}
-        <div className="hidden md:flex flex-col w-56 border-r border-border bg-card/30 p-4 overflow-y-auto custom-scrollbar shrink-0">
-          {/* Filtros por tipo */}
-          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Tipo</p>
-          <div className="space-y-1 mb-5">
-            {EVENT_TYPES.map(t => (
-              <label key={t.id} className="flex items-center gap-2 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={filterTypes.includes(t.id)}
-                  onChange={() => toggleFilterType(t.id)}
-                  className="sr-only"
-                />
-                <span
-                  className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-all ${
-                    filterTypes.includes(t.id) ? '' : 'opacity-30'
-                  }`}
-                  style={{ borderColor: t.color, background: filterTypes.includes(t.id) ? t.color : 'transparent' }}
-                >
-                  {filterTypes.includes(t.id) && (
-                    <CheckCircle2 size={10} className="text-white" />
-                  )}
-                </span>
-                <span className={`text-xs font-medium transition-opacity ${filterTypes.includes(t.id) ? 'opacity-100' : 'opacity-40'}`}>
-                  {t.emoji} {t.label}
-                </span>
-              </label>
-            ))}
-          </div>
-
-          {/* Proximos eventos */}
-          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Proximos</p>
-          {upcomingEvents.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Nenhum evento futuro</p>
-          ) : (
-            <div className="space-y-2">
-              {upcomingEvents.map(ev => {
-                const d = new Date(ev.start_at);
-                const typeColor = getEventColor(ev.type);
-                return (
-                  <button
-                    key={ev.id}
-                    onClick={() => openEditModal(ev)}
-                    className="w-full text-left p-2 rounded-lg border border-border/50 hover:bg-accent/50 transition-colors group"
-                  >
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: typeColor }} />
-                      <span className="text-[10px] text-muted-foreground font-medium">
-                        {d.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' })}
-                        {' '}
-                        {d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                    <p className="text-xs font-semibold text-foreground truncate">{ev.title}</p>
-                    {ev.lead && (
-                      <p className="text-[10px] text-muted-foreground truncate">{ev.lead.name || ev.lead.phone}</p>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Calendar */}
-        <div className="flex-1 overflow-auto p-2 md:p-4">
+        {/* Calendário schedule-x */}
+        <div className="flex-1 overflow-auto">
           <div className="sx-react-calendar-wrapper h-full min-h-[500px]" style={{
-            // Override schedule-x dark theme vars
             ['--sx-color-primary' as any]: 'hsl(var(--primary))',
             ['--sx-color-surface' as any]: 'hsl(var(--card))',
             ['--sx-color-on-surface' as any]: 'hsl(var(--foreground))',
@@ -881,7 +1012,8 @@ export default function AgendaPage() {
             {calendar && <ScheduleXCalendar calendarApp={calendar} />}
           </div>
         </div>
-      </div>
+
+      </div>{/* fim área principal */}
 
       {/* ═══ Toast de Lembrete ═══ */}
       {reminderToast && (
