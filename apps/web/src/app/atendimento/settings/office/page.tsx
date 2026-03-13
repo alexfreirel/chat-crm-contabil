@@ -94,7 +94,11 @@ export default function OfficeSettingsPage() {
     try {
       const res = await api.get('/users?limit=100');
       const data = (res.data?.data || res.data?.users || res.data || []) as UserOption[];
-      setUsers(data.map((u: any) => ({ id: u.id, name: u.name, role: u.role })));
+      // Mostrar apenas advogados e admins (não atendentes comerciais)
+      const lawyers = data
+        .map((u: any) => ({ id: u.id, name: u.name, role: u.role }))
+        .filter((u) => u.role === 'Advogados' || u.role === 'ADMIN' || u.role === 'admin');
+      setUsers(lawyers);
     } catch {}
   };
 
