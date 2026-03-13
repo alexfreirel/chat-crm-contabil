@@ -287,7 +287,13 @@ export default function AgendaPage() {
     try {
       const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
       if (payload?.sub) setCurrentUserId(payload.sub);
-      if (payload?.role) setCurrentUserRole(payload.role);
+      if (payload?.role) {
+        setCurrentUserRole(payload.role);
+        // Admin visualiza todos os advogados por padrão
+        if (payload.role === 'ADMIN' || payload.role === 'admin') {
+          setShowAllUsers(true);
+        }
+      }
     } catch {}
     // Buscar usuarios e leads para dropdowns
     api.get('/users').then(r => setUsers(r.data || [])).catch(() => {});
@@ -298,16 +304,22 @@ export default function AgendaPage() {
   useEffect(() => {
     if (!eventsServicePlugin) return;
     const filtered = events.filter(e => filterTypes.includes(e.type));
-    const calEvents = filtered.map(e => ({
-      id: e.id,
-      title: `${EVENT_TYPES.find(t => t.id === e.type)?.emoji || ''} ${e.title}${(e as any).recurrence_rule || (e as any).parent_event_id ? ' 🔁' : ''}${e._count?.comments ? ` 💬${e._count.comments}` : ''}`,
-      start: toLocalDateTime(e.start_at),
-      end: e.end_at ? toLocalDateTime(e.end_at) : toLocalDateTime(new Date(new Date(e.start_at).getTime() + 30 * 60000).toISOString()),
-      calendarId: e.type,
-      _customContent: {},
-    }));
+    const calEvents = filtered.map(e => {
+      // No modo "Todos", prefixar com o nome do advogado responsável
+      const userPrefix = (showAllUsers && !filterUserId && e.assigned_user)
+        ? `[${e.assigned_user.name.split(' ')[0]}] `
+        : '';
+      return {
+        id: e.id,
+        title: `${EVENT_TYPES.find(t => t.id === e.type)?.emoji || ''} ${userPrefix}${e.title}${(e as any).recurrence_rule || (e as any).parent_event_id ? ' 🔁' : ''}${e._count?.comments ? ` 💬${e._count.comments}` : ''}`,
+        start: toLocalDateTime(e.start_at),
+        end: e.end_at ? toLocalDateTime(e.end_at) : toLocalDateTime(new Date(new Date(e.start_at).getTime() + 30 * 60000).toISOString()),
+        calendarId: e.type,
+        _customContent: {},
+      };
+    });
     eventsServicePlugin.set(calEvents);
-  }, [events, filterTypes, eventsServicePlugin]);
+  }, [events, filterTypes, eventsServicePlugin, showAllUsers, filterUserId]);
 
   // Refetch quando filtro de usuario muda
   useEffect(() => {
