@@ -112,6 +112,17 @@ export class EvolutionService {
       }
 
       const phone = extractPhone(remoteJid, remoteJidAlt);
+
+      // LIDs (Linked Device Identifiers) são números internos do WhatsApp Multi-Device
+      // com 14+ dígitos — NÃO são telefones reais. Quando a Evolution API envia o webhook
+      // @lid sem remoteJidAlt, extractPhone retorna o LID como "telefone", criando leads
+      // fantasma. A versão com telefone real (@s.whatsapp.net) sempre chega separadamente.
+      const looksLikeRealPhone = phone.length > 0 && phone.length <= 13;
+      if (!looksLikeRealPhone) {
+        this.logger.debug(`[WEBHOOK] Ignorando LID ${phone} (${phone.length} dígitos) — não é telefone real`);
+        continue;
+      }
+
       // pushName from outgoing messages (fromMe=true) is the business account name, not the client.
       // Only use it as the contact name for incoming messages.
       const isFromMe = key.fromMe === true;
@@ -384,6 +395,8 @@ export class EvolutionService {
       if (!remoteJid || remoteJid.includes('@g.us')) continue;
 
       const phone = extractPhone(data.remoteJid as string, data.remoteJidAlt as string);
+      if (phone.length > 13) continue; // LID, não é telefone real
+
       const pushName = (data.pushName as string) || (data.name as string) || null;
 
       // 1. Upsert Lead — two guards:
@@ -543,6 +556,8 @@ export class EvolutionService {
       if (!remoteJid || remoteJid.includes('@g.us')) continue;
 
       const phone = extractPhone(remoteJid, (data.remoteJidAlt as string) || (data.remoteJid as string));
+      if (phone.length > 13) continue; // LID, não é telefone real
+
       const name =
         (data.pushName as string) ||
         (data.name as string) ||
@@ -610,6 +625,7 @@ export class EvolutionService {
 
       const phone = jid.replace(/@.*$/, '');
       if (!phone || phone.includes('-')) continue; // Ignorar grupos
+      if (phone.length > 13) continue; // LID, não é telefone real
 
       const lead = await this.prisma.lead.findFirst({ where: { phone } });
       if (!lead) continue;
