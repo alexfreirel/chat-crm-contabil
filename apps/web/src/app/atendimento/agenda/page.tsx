@@ -348,9 +348,10 @@ export default function AgendaPage() {
   // schedule-x
   const eventsServicePlugin = useState(() => createEventsServicePlugin())[0];
   const rangeRef = useRef<{ start: string; end: string } | null>(null);
-  // Ref para fetchEvents — evita stale closure nos callbacks do schedule-x
-  // (useNextCalendarApp captura apenas a versão inicial de fetchEvents)
+  // Refs para evitar stale closure nos callbacks do schedule-x
+  // (useNextCalendarApp captura apenas a versão inicial das funções/estados)
   const fetchEventsRef = useRef<typeof fetchEvents | null>(null);
+  const eventsRef = useRef<CalendarEvent[]>([]); // para onEventClick sempre ter a lista atualizada
 
   // ─── Data Fetching ──────────────────────────────────
 
@@ -373,8 +374,9 @@ export default function AgendaPage() {
     }
   }, [filterUserId, showAllUsers]);
 
-  // Manter ref atualizado com a versão mais recente de fetchEvents
+  // Manter refs atualizados com os valores mais recentes
   useEffect(() => { fetchEventsRef.current = fetchEvents; }, [fetchEvents]);
+  useEffect(() => { eventsRef.current = events; }, [events]);
 
   // Drag-and-drop persistence
   const handleDragUpdate = useCallback(async (updatedEvent: any) => {
@@ -414,7 +416,8 @@ export default function AgendaPage() {
         }
       },
       onEventClick(calEvent) {
-        const ev = events.find(e => e.id === calEvent.id);
+        // Usar eventsRef para ter a lista atualizada (evita stale closure)
+        const ev = eventsRef.current.find(e => e.id === calEvent.id);
         if (ev) openEditModal(ev);
       },
       onClickDateTime(dateTime) {
