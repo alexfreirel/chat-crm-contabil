@@ -538,12 +538,14 @@ model EventReminder {
 }
 
 model UserSchedule {
-  id          String @id @default(uuid())
+  id          String  @id @default(uuid())
   user_id     String
-  user        User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  day_of_week Int    // 0=dom, 1=seg, ..., 6=sab
-  start_time  String // "09:00"
-  end_time    String // "18:00"
+  user        User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  day_of_week Int     // 0=dom, 1=seg, ..., 6=sab
+  start_time  String  // "09:00"
+  end_time    String  // "18:00"
+  lunch_start String? // "12:00" — null = sem pausa
+  lunch_end   String? // "13:00"
 
   @@unique([user_id, day_of_week])
 }

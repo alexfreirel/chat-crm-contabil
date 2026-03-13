@@ -695,6 +695,14 @@ export class AiProcessor extends WorkerHost {
       return { start: s, end: eEnd };
     });
 
+    // Adicionar pausa de almoço como período ocupado
+    if (schedule.lunch_start && schedule.lunch_end) {
+      const [lsH, lsM] = (schedule.lunch_start as string).split(':').map(Number);
+      const [leH, leM] = (schedule.lunch_end as string).split(':').map(Number);
+      busy.push({ start: lsH * 60 + lsM, end: leH * 60 + leM });
+      busy.sort((a: any, b: any) => a.start - b.start);
+    }
+
     const slots: { start: string; end: string }[] = [];
     let cursor = workStart;
     for (const b of busy) {

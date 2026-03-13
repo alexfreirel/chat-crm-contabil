@@ -299,13 +299,28 @@ export class CalendarService {
     });
   }
 
-  async setSchedule(userId: string, slots: { day_of_week: number; start_time: string; end_time: string }[]) {
+  async setSchedule(
+    userId: string,
+    slots: { day_of_week: number; start_time: string; end_time: string; lunch_start?: string | null; lunch_end?: string | null }[],
+  ) {
     const results = await Promise.all(
       slots.map((s) =>
         this.prisma.userSchedule.upsert({
           where: { user_id_day_of_week: { user_id: userId, day_of_week: s.day_of_week } },
-          create: { user_id: userId, day_of_week: s.day_of_week, start_time: s.start_time, end_time: s.end_time },
-          update: { start_time: s.start_time, end_time: s.end_time },
+          create: {
+            user_id: userId,
+            day_of_week: s.day_of_week,
+            start_time: s.start_time,
+            end_time: s.end_time,
+            lunch_start: s.lunch_start ?? null,
+            lunch_end: s.lunch_end ?? null,
+          },
+          update: {
+            start_time: s.start_time,
+            end_time: s.end_time,
+            lunch_start: s.lunch_start ?? null,
+            lunch_end: s.lunch_end ?? null,
+          },
         }),
       ),
     );
@@ -355,6 +370,14 @@ export class CalendarService {
         : s + 30;
       return { start: s, end: eEnd };
     });
+
+    // Adicionar pausa de almoço como período ocupado
+    if (schedule.lunch_start && schedule.lunch_end) {
+      const [lsH, lsM] = schedule.lunch_start.split(':').map(Number);
+      const [leH, leM] = schedule.lunch_end.split(':').map(Number);
+      busy.push({ start: lsH * 60 + lsM, end: leH * 60 + leM });
+      busy.sort((a, b) => a.start - b.start);
+    }
 
     const slots: { start: string; end: string }[] = [];
     let cursor = workStart;
