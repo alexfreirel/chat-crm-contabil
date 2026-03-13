@@ -27,11 +27,18 @@ export function AvailabilityPicker({ userId, duration = 30, onSelectSlot }: Prop
       .finally(() => setLoading(false));
   }, [userId, selectedDate, duration]);
 
+  const todayStr = new Date().toISOString().split('T')[0];
+
   const changeDate = (days: number) => {
     const d = new Date(selectedDate);
     d.setDate(d.getDate() + days);
-    setSelectedDate(d.toISOString().split('T')[0]);
+    const newDate = d.toISOString().split('T')[0];
+    // Impedir navegação para datas anteriores a hoje
+    if (newDate < todayStr) return;
+    setSelectedDate(newDate);
   };
+
+  const isPastDisabled = selectedDate <= todayStr;
 
   const dateLabel = new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR', {
     weekday: 'short', day: 'numeric', month: 'short'
@@ -44,7 +51,7 @@ export function AvailabilityPicker({ userId, duration = 30, onSelectSlot }: Prop
           <Clock size={10} /> Horarios disponiveis
         </p>
         <div className="flex items-center gap-1">
-          <button onClick={() => changeDate(-1)} className="p-0.5 rounded hover:bg-accent text-muted-foreground">
+          <button onClick={() => changeDate(-1)} disabled={isPastDisabled} className={`p-0.5 rounded text-muted-foreground ${isPastDisabled ? 'opacity-30 cursor-not-allowed' : 'hover:bg-accent'}`}>
             <ChevronLeft size={14} />
           </button>
           <span className="text-[11px] font-medium text-foreground min-w-[100px] text-center">{dateLabel}</span>

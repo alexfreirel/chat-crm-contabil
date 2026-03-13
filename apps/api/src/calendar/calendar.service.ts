@@ -330,11 +330,17 @@ export class CalendarService {
   // ─── Conflict Detection ─────────────────────────────────
 
   async checkConflicts(userId: string, startAt: string, endAt: string, excludeEventId?: string) {
+    const start = new Date(startAt);
+    const end = new Date(endAt);
     const where: any = {
       assigned_user_id: userId,
-      status: { notIn: ['CANCELADO'] },
-      start_at: { lt: new Date(endAt) },
-      end_at: { gt: new Date(startAt) },
+      status: { notIn: ['CANCELADO', 'CONCLUIDO'] },
+      // Overlap: evento começa antes do fim do range E (termina após início do range OU sem end_at mas começa dentro do range)
+      start_at: { lt: end },
+      OR: [
+        { end_at: { gt: start } },
+        { end_at: null, start_at: { gte: start } },
+      ],
     };
     if (excludeEventId) where.id = { not: excludeEventId };
     return this.prisma.calendarEvent.findMany({
@@ -564,7 +570,21 @@ export class CalendarService {
 
     const startAt = new Date(parentEvent.start_at);
     const endAt = parentEvent.end_at ? new Date(parentEvent.end_at) : null;
-    const duration = endAt ? endAt.getTime() - startAt.getTime() : 30 * 60 * 1000;
+
+    // Calcular duração: prioridade → end_at, appointment_type.duration, fallback 30min
+    let duration: number;
+    if (endAt) {
+      duration = endAt.getTime() - startAt.getTime();
+    } else if (parentEvent.appointment_type_id) {
+      const apptType = parentEvent.appointment_type?.duration
+        ?? (await this.prisma.appointmentType.findUnique({
+            where: { id: parentEvent.appointment_type_id },
+            select: { duration: true },
+          }))?.duration;
+      duration = (apptType || 30) * 60 * 1000;
+    } else {
+      duration = 30 * 60 * 1000;
+    }
     const recurrenceEnd = parentEvent.recurrence_end
       ? new Date(parentEvent.recurrence_end)
       : new Date(startAt.getTime() + 90 * 24 * 60 * 60 * 1000); // 90 dias

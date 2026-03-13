@@ -403,7 +403,7 @@ export default function AgendaPage() {
         : '';
       return {
         id: e.id,
-        title: `${EVENT_TYPES.find(t => t.id === e.type)?.emoji || ''} ${userPrefix}${e.title}${(e as any).recurrence_rule || (e as any).parent_event_id ? ' 🔁' : ''}${e._count?.comments ? ` 💬${e._count.comments}` : ''}`,
+        title: `${EVENT_TYPES.find(t => t.id === e.type)?.emoji || ''} ${userPrefix}${e.title}${e.status === 'ADIADO' ? ' ⏸️' : ''}${e.status === 'CANCELADO' ? ' ✖️' : ''}${(e as any).recurrence_rule || (e as any).parent_event_id ? ' 🔁' : ''}${e._count?.comments ? ` 💬${e._count.comments}` : ''}`,
         start: toLocalDateTime(e.start_at),
         end: e.end_at ? toLocalDateTime(e.end_at) : toLocalDateTime(new Date(new Date(e.start_at).getTime() + 30 * 60000).toISOString()),
         calendarId: e.type,
@@ -856,7 +856,9 @@ export default function AgendaPage() {
                         {d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
-                    <p className="text-xs font-semibold text-foreground truncate">{ev.title}</p>
+                    <p className={`text-xs font-semibold truncate ${ev.status === 'ADIADO' ? 'text-amber-400/70 line-through' : 'text-foreground'}`}>
+                      {ev.status === 'ADIADO' ? '⏸️ ' : ''}{ev.title}
+                    </p>
                     {ev.lead && (
                       <p className="text-[10px] text-muted-foreground truncate mt-0.5">{ev.lead.name || ev.lead.phone}</p>
                     )}

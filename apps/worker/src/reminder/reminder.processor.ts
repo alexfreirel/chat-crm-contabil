@@ -64,29 +64,33 @@ export class ReminderProcessor extends WorkerHost {
         return;
       }
 
+      let sent = false;
       if (reminder.channel === 'WHATSAPP') {
-        await this.sendWhatsAppReminder(event, reminder);
+        sent = await this.sendWhatsAppReminder(event, reminder);
       } else if (reminder.channel === 'EMAIL') {
-        await this.sendEmailReminder(event, reminder);
+        sent = await this.sendEmailReminder(event, reminder);
       }
 
-      await this.prisma.eventReminder.update({
-        where: { id: reminder.id },
-        data: { sent_at: new Date() },
-      });
-
-      this.logger.log(`Lembrete ${reminder.id} enviado com sucesso (${reminder.channel})`);
+      if (sent) {
+        await this.prisma.eventReminder.update({
+          where: { id: reminder.id },
+          data: { sent_at: new Date() },
+        });
+        this.logger.log(`Lembrete ${reminder.id} enviado com sucesso (${reminder.channel})`);
+      } else {
+        this.logger.warn(`Lembrete ${reminder.id} nao enviado (sem destinatario ou config ausente) — nao marcado como sent`);
+      }
     } catch (error: any) {
       this.logger.error(`Erro ao processar lembrete ${job.data.reminderId}: ${error.message}`);
       throw error;
     }
   }
 
-  private async sendWhatsAppReminder(event: any, reminder: any) {
+  private async sendWhatsAppReminder(event: any, _reminder: any): Promise<boolean> {
     const { apiUrl, apiKey } = await this.settings.getEvolutionConfig();
     if (!apiUrl) {
       this.logger.warn('EVOLUTION_API_URL nao configurada — lembrete WhatsApp ignorado');
-      return;
+      return false;
     }
 
     const instance = process.env.EVOLUTION_INSTANCE_NAME || '';
@@ -104,9 +108,10 @@ export class ReminderProcessor extends WorkerHost {
 
     if (recipients.length === 0) {
       this.logger.warn(`Evento ${event.id} nao tem telefone (lead ou advogado) — lembrete WhatsApp ignorado`);
-      return;
+      return false;
     }
 
+    let anySent = false;
     for (const recipient of recipients) {
       const msg = [
         `${typeEmoji} *Lembrete de Evento*`,
@@ -126,23 +131,33 @@ export class ReminderProcessor extends WorkerHost {
           { headers: { apikey: apiKey } },
         );
         this.logger.log(`WhatsApp lembrete enviado para ${recipient.phone} (${recipient.name})`);
+        anySent = true;
       } catch (err: any) {
         this.logger.error(`Falha ao enviar WhatsApp para ${recipient.phone}: ${err.message}`);
       }
     }
+    return anySent;
   }
 
-  private async sendEmailReminder(event: any, _reminder: any) {
-    const recipientEmail = event.lead?.email || event.assigned_user?.email;
-    if (!recipientEmail) {
+  private async sendEmailReminder(event: any, _reminder: any): Promise<boolean> {
+    // Coletar todos os destinatarios com email (lead + advogado), igual ao WhatsApp
+    const recipients: { email: string; name: string }[] = [];
+    if (event.lead?.email) {
+      recipients.push({ email: event.lead.email, name: event.lead.name || event.lead.email });
+    }
+    if (event.assigned_user?.email) {
+      recipients.push({ email: event.assigned_user.email, name: event.assigned_user.name });
+    }
+
+    if (recipients.length === 0) {
       this.logger.warn(`Evento ${event.id} nao tem email de destino — lembrete email ignorado`);
-      return;
+      return false;
     }
 
     const smtp = await this.settings.getSmtpConfig();
     if (!smtp.host) {
       this.logger.warn('SMTP nao configurado — lembrete email ignorado');
-      return;
+      return false;
     }
 
     const transporter = nodemailer.createTransport({
@@ -153,39 +168,46 @@ export class ReminderProcessor extends WorkerHost {
     });
 
     const typeEmoji = event.type === 'CONSULTA' ? '🟣' : event.type === 'AUDIENCIA' ? '🔴' : event.type === 'PRAZO' ? '🟠' : '📅';
-    const recipientName = event.lead?.name || event.assigned_user?.name || '';
     const dateStr = formatDate(event.start_at);
     const timeStr = formatTime(event.start_at);
 
-    const html = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
-        <div style="background: #1a1a2e; border-radius: 16px; padding: 24px; color: #e0e0e0;">
-          <h2 style="margin: 0 0 16px; color: #fff; font-size: 18px;">
-            ${typeEmoji} Lembrete de Evento
-          </h2>
-          <div style="background: rgba(255,255,255,0.05); border-radius: 12px; padding: 16px; margin-bottom: 16px;">
-            <p style="margin: 0 0 8px; font-weight: bold; font-size: 16px; color: #fff;">${event.title}</p>
-            <p style="margin: 0 0 4px; color: #a0a0b0;">📆 ${dateStr}</p>
-            <p style="margin: 0 0 4px; color: #a0a0b0;">⏰ ${timeStr}</p>
-            ${event.location ? `<p style="margin: 0; color: #a0a0b0;">📍 ${event.location}</p>` : ''}
+    let anySent = false;
+    for (const recipient of recipients) {
+      const html = `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+          <div style="background: #1a1a2e; border-radius: 16px; padding: 24px; color: #e0e0e0;">
+            <h2 style="margin: 0 0 16px; color: #fff; font-size: 18px;">
+              ${typeEmoji} Lembrete de Evento
+            </h2>
+            <div style="background: rgba(255,255,255,0.05); border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+              <p style="margin: 0 0 8px; font-weight: bold; font-size: 16px; color: #fff;">${event.title}</p>
+              <p style="margin: 0 0 4px; color: #a0a0b0;">📆 ${dateStr}</p>
+              <p style="margin: 0 0 4px; color: #a0a0b0;">⏰ ${timeStr}</p>
+              ${event.location ? `<p style="margin: 0; color: #a0a0b0;">📍 ${event.location}</p>` : ''}
+            </div>
+            <p style="margin: 0; color: #a0a0b0; font-size: 13px;">
+              Olá ${recipient.name}, este é um lembrete do seu compromisso agendado.
+            </p>
           </div>
-          <p style="margin: 0; color: #a0a0b0; font-size: 13px;">
-            Olá ${recipientName}, este é um lembrete do seu compromisso agendado.
+          <p style="text-align: center; color: #888; font-size: 11px; margin-top: 16px;">
+            Enviado automaticamente pelo LexCRM
           </p>
         </div>
-        <p style="text-align: center; color: #888; font-size: 11px; margin-top: 16px;">
-          Enviado automaticamente pelo LexCRM
-        </p>
-      </div>
-    `;
+      `;
 
-    await transporter.sendMail({
-      from: smtp.from || smtp.user,
-      to: recipientEmail,
-      subject: `${typeEmoji} Lembrete: ${event.title} — ${dateStr} ${timeStr}`,
-      html,
-    });
-
-    this.logger.log(`Email lembrete enviado para ${recipientEmail}`);
+      try {
+        await transporter.sendMail({
+          from: smtp.from || smtp.user,
+          to: recipient.email,
+          subject: `${typeEmoji} Lembrete: ${event.title} — ${dateStr} ${timeStr}`,
+          html,
+        });
+        this.logger.log(`Email lembrete enviado para ${recipient.email} (${recipient.name})`);
+        anySent = true;
+      } catch (err: any) {
+        this.logger.error(`Falha ao enviar email para ${recipient.email}: ${err.message}`);
+      }
+    }
+    return anySent;
   }
 }
