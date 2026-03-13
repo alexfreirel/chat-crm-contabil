@@ -194,15 +194,42 @@ export class CalendarService {
       const delay = Math.max(triggerAt - Date.now(), 1000); // min 1s
       const jobId = `reminder-${r.id}`;
       try {
+        // Remove job anterior (se existir) antes de enfileirar — garante idempotência em re-agendamentos
+        try { const old = await this.reminderQueue.getJob(jobId); if (old) await old.remove(); } catch {}
         await this.reminderQueue.add('send-reminder', {
           reminderId: r.id,
           eventId,
           channel: r.channel,
-        }, { delay, jobId });
+        }, {
+          delay,
+          jobId,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 5000 },
+          removeOnComplete: true,
+          removeOnFail: 50,
+        });
         this.logger.log(`Lembrete ${r.id} enfileirado: canal=${r.channel}, delay=${Math.round(delay / 60000)}min`);
       } catch (e: any) {
         this.logger.error(`Erro ao enfileirar lembrete ${r.id}: ${e.message}`);
       }
+    }
+  }
+
+  /** Remove todos os jobs de lembrete de um evento da fila BullMQ */
+  private async cancelReminderJobs(eventId: string) {
+    try {
+      const reminders = await this.prisma.eventReminder.findMany({
+        where: { event_id: eventId },
+        select: { id: true },
+      });
+      for (const r of reminders) {
+        try {
+          const job = await this.reminderQueue.getJob(`reminder-${r.id}`);
+          if (job) await job.remove();
+        } catch {}
+      }
+    } catch (e: any) {
+      this.logger.warn(`Erro ao cancelar jobs de lembrete do evento ${eventId}: ${e.message}`);
     }
   }
 
@@ -244,8 +271,15 @@ export class CalendarService {
       include: {
         assigned_user: { select: { id: true, name: true } },
         lead: { select: { id: true, name: true, phone: true } },
+        reminders: true,
       },
     });
+
+    // Se start_at mudou, re-enfileirar todos os lembretes com o novo delay
+    if (data.start_at && event.reminders?.length) {
+      await this.enqueueReminders(event.id, event.start_at, event.reminders);
+      this.logger.log(`Lembretes re-enfileirados para evento ${event.id} (start_at alterado)`);
+    }
 
     if (event.assigned_user_id) {
       try {
@@ -274,6 +308,9 @@ export class CalendarService {
   async remove(id: string) {
     const event = await this.prisma.calendarEvent.findUnique({ where: { id } });
     if (!event) throw new NotFoundException('Evento nao encontrado');
+
+    // Cancelar jobs de lembrete pendentes na fila BullMQ antes de deletar
+    await this.cancelReminderJobs(id);
 
     await this.prisma.calendarEvent.delete({ where: { id } });
 
@@ -561,13 +598,21 @@ export class CalendarService {
     // Criar instancias filhas em batch
     if (dates.length === 0) return [];
 
+    // Buscar lembretes do evento pai para replicar nos filhos
+    const parentReminders = parentEvent.reminders?.length
+      ? parentEvent.reminders
+      : await this.prisma.eventReminder.findMany({
+          where: { event_id: parentEvent.id },
+          select: { minutes_before: true, channel: true },
+        });
+
     const children = await Promise.all(
-      dates.map((d) => {
+      dates.map(async (d) => {
         const childStart = new Date(d);
         childStart.setHours(startAt.getHours(), startAt.getMinutes(), startAt.getSeconds());
         const childEnd = new Date(childStart.getTime() + duration);
 
-        return this.prisma.calendarEvent.create({
+        const child = await this.prisma.calendarEvent.create({
           data: {
             type: parentEvent.type,
             title: parentEvent.title,
@@ -586,12 +631,31 @@ export class CalendarService {
             appointment_type_id: parentEvent.appointment_type_id,
             tenant_id: parentEvent.tenant_id,
             parent_event_id: parentEvent.id,
+            // Replicar lembretes do pai nos filhos
+            ...(parentReminders.length > 0
+              ? {
+                  reminders: {
+                    create: parentReminders.map((r: any) => ({
+                      minutes_before: r.minutes_before,
+                      channel: r.channel ?? 'PUSH',
+                    })),
+                  },
+                }
+              : {}),
           },
+          include: { reminders: true },
         });
+
+        // Enfileirar lembretes WhatsApp/Email para o filho
+        if (child.reminders?.length) {
+          await this.enqueueReminders(child.id, child.start_at, child.reminders);
+        }
+
+        return child;
       }),
     );
 
-    this.logger.log(`Criadas ${children.length} instancias recorrentes para evento ${parentEvent.id}`);
+    this.logger.log(`Criadas ${children.length} instancias recorrentes (com lembretes) para evento ${parentEvent.id}`);
     return children;
   }
 
@@ -713,7 +777,13 @@ export class CalendarService {
       if (event.assigned_user_id && event.assigned_user_id !== userId) notifyIds.add(event.assigned_user_id);
       if (event.created_by_id !== userId) notifyIds.add(event.created_by_id);
       for (const uid of notifyIds) {
-        try { this.chatGateway.server?.to(`user_${uid}`).emit('calendar_update'); } catch {}
+        try {
+          this.chatGateway.emitCalendarUpdate(uid, {
+            eventId,
+            action: 'comment_added',
+            title: event.title ?? '',
+          });
+        } catch {}
       }
     }
 
