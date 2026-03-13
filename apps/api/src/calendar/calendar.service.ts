@@ -394,7 +394,7 @@ export class CalendarService {
     });
     if (!schedule) return [];
 
-    // 2. Eventos existentes nesse dia
+    // 2. Eventos existentes nesse dia (inclui eventos que começaram antes mas terminam durante o dia)
     const dayStart = new Date(date);
     dayStart.setHours(0, 0, 0, 0);
     const dayEnd = new Date(date);
@@ -403,7 +403,12 @@ export class CalendarService {
     const events = await this.prisma.calendarEvent.findMany({
       where: {
         assigned_user_id: userId,
-        start_at: { gte: dayStart, lte: dayEnd },
+        // Overlap: evento começa antes do fim do dia E (termina após início do dia OU sem end_at mas começa no dia)
+        start_at: { lte: dayEnd },
+        OR: [
+          { end_at: { gte: dayStart } },
+          { end_at: null, start_at: { gte: dayStart } },
+        ],
         status: { notIn: ['CANCELADO'] },
       },
       select: { start_at: true, end_at: true },
@@ -416,11 +421,17 @@ export class CalendarService {
     const workStart = startH * 60 + startM;
     const workEnd = endH * 60 + endM;
 
+    // Helper: extrair hora/minuto no fuso correto (America/Sao_Paulo)
+    const toLocalMinutes = (d: Date): number => {
+      const parts = d.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false }).split(':');
+      return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+    };
+
     const busy = events.map((e) => {
-      const s = e.start_at.getHours() * 60 + e.start_at.getMinutes();
+      const s = Math.max(toLocalMinutes(e.start_at), workStart);
       const eEnd = e.end_at
-        ? e.end_at.getHours() * 60 + e.end_at.getMinutes()
-        : s + 30;
+        ? Math.min(toLocalMinutes(e.end_at), workEnd)
+        : Math.min(s + durationMinutes, workEnd);
       return { start: s, end: eEnd };
     });
 

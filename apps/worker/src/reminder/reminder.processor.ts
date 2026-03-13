@@ -6,12 +6,14 @@ import { SettingsService } from '../settings/settings.service';
 import axios from 'axios';
 import * as nodemailer from 'nodemailer';
 
+const TZ = 'America/Sao_Paulo';
+
 function formatDate(d: Date): string {
-  return d.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  return d.toLocaleDateString('pt-BR', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function formatTime(d: Date): string {
-  return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString('pt-BR', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
 }
 
 @Processor('calendar-reminders')

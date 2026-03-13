@@ -56,7 +56,7 @@ export class DashboardService {
     // ─── Event filters ──
     const eventWhere = {
       start_at: { gte: now, lte: sevenDaysFromNow },
-      status: { not: 'CANCELADO' },
+      status: { notIn: ['CANCELADO', 'CONCLUIDO'] },
       ...(isAdmin ? {} : { assigned_user_id: userId }),
       ...tw,
     };

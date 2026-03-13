@@ -31,8 +31,9 @@ export class CalendarController {
     @Request() req: any,
   ) {
     // Default: mostra apenas eventos do usuario logado
-    // showAll=true: mostra todos (opcionalmente filtrado por userId)
-    const effectiveUserId = showAll === 'true' ? userId : (userId || req.user.id);
+    // showAll=true: mostra todos (apenas ADMIN pode ver todos os eventos)
+    const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'admin';
+    const effectiveUserId = (showAll === 'true' && isAdmin) ? userId : (userId || req.user.id);
     return this.calendarService.findAll({
       start,
       end,

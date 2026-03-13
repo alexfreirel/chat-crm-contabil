@@ -469,7 +469,7 @@ export default function AgendaPage() {
     const date = dateTime ? dateTime.split(' ')[0] || dateTime : formatDateInput(now.toISOString());
     const time = dateTime?.includes(' ') ? dateTime.split(' ')[1]?.substring(0, 5) : formatTimeInput(now.toISOString());
     const [h, m] = (time || '09:00').split(':').map(Number);
-    const endH = String(h + 1).padStart(2, '0');
+    const endH = String(Math.min(h + 1, 23)).padStart(2, '0');
     setFormData({
       type: 'CONSULTA',
       title: '',
