@@ -51,12 +51,13 @@ function getWsUrl(): string {
 }
 
 /** Em dev o socket.io está diretamente em /socket.io/ (sem proxy).
- *  Em produção o Nginx proxia /api/ → API, então o path é /api/socket.io/ */
+ *  Em produção o Traefik tem um router dedicado (crm-ws) que escuta /socket.io/
+ *  e rota diretamente para a API sem nenhum middleware — isso garante que o
+ *  upgrade de WebSocket funcione (passar por strip-api/outros middlewares quebra o upgrade). */
 function getSocketPath(): string {
   if (process.env.NEXT_PUBLIC_SOCKET_PATH) return process.env.NEXT_PUBLIC_SOCKET_PATH;
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
-  const isDev = apiUrl.includes('localhost') || /https?:\/\/[^/]+:\d{4,}/.test(apiUrl);
-  return isDev ? '/socket.io/' : '/api/socket.io/';
+  // Sempre usar /socket.io/ direto — o router crm-ws no Traefik cuida disso sem middleware
+  return '/socket.io/';
 }
 
 function getDateKey(dateStr: string): string {
