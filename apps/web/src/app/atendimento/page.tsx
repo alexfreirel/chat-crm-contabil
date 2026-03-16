@@ -172,6 +172,8 @@ export default function Dashboard() {
   // Modal de motivo de perda (PERDIDO) — exigido pelo backend
   const [lossModal, setLossModal] = useState<{ leadId: string; leadName: string } | null>(null);
   const [lossReason, setLossReason] = useState('');
+  // Chave para forçar re-fetch de mensagens (incrementada no reconnect do socket)
+  const [msgRefreshKey, setMsgRefreshKey] = useState(0);
   // Modal de criação rápida de tarefa a partir do chat
   const [taskModal, setTaskModal] = useState<{ leadId: string; conversationId: string; leadName: string } | null>(null);
   const [taskTitle, setTaskTitle] = useState('');
@@ -500,7 +502,11 @@ export default function Dashboard() {
       const currentConvoId = selectedIdRef.current;
       if (currentConvoId && !currentConvoId.startsWith('demo-')) {
         socket.emit('join_conversation', currentConvoId);
+        // Re-fetch messages to recover any missed during disconnection
+        setMsgRefreshKey(k => k + 1);
       }
+      // Refresh sidebar to catch up on missed inboxUpdate events
+      fetchConversations(selectedInboxIdRef.current, true);
       // Join personal user room for transfer notifications
       const token = localStorage.getItem('token');
       if (token) {
@@ -733,21 +739,8 @@ export default function Dashboard() {
     const fetchDetail = async () => {
       setLoadingMessages(true);
       try {
-        // Buscar mensagens via endpoint paginado (pagina mais recente primeiro)
-        const msgRes = await api.get(`/messages/conversation/${selectedId}`, {
-          params: { page: 1, limit: 100 },
-        });
-        const msgData = Array.isArray(msgRes.data) ? msgRes.data : (msgRes.data?.data || []);
-        setMessages(msgData);
-        setMsgTotalPages(msgRes.data?.totalPages || 1);
-        setMsgCurrentPage(1);
-
-        // Clear typing users on conversation switch
-        setTypingUsers(prev => {
-          Object.values(prev).forEach(u => clearTimeout(u.timeout));
-          return {};
-        });
-
+        // ── 1. Configurar socket ANTES da chamada à API ─────────────────────
+        // Garante que nenhuma mensagem enviada durante o carregamento seja perdida.
         if (socketRef.current) {
           // Leave previous room before joining new one
           if (prevId && prevId !== selectedId) {
@@ -756,12 +749,12 @@ export default function Dashboard() {
           socketRef.current.emit('join_conversation', selectedId);
           socketRef.current.off('newMessage');
           socketRef.current.on('newMessage', (msg: MessageItem) => {
-            // Guard: ignore messages that belong to a different conversation
-            if (msg.conversation_id && msg.conversation_id !== selectedIdRef.current) return;
+            // Guard estrito: ignora mensagens de outra conversa
+            if (msg.conversation_id !== selectedIdRef.current) return;
             setMessages(prev => {
               // Dedup: já existe pelo ID real
               if (prev.some(m => m.id === msg.id)) return prev;
-              // Dedup: já existe pelo external_message_id (webhook pode ter ID interno diferente)
+              // Dedup: já existe pelo external_message_id
               if (msg.external_message_id && prev.some(m => m.external_message_id === msg.external_message_id)) return prev;
               // Se é outgoing, substituir msg otimista correspondente (optimistic UI)
               if (msg.direction === 'out') {
@@ -788,6 +781,35 @@ export default function Dashboard() {
             setContactPresence(data.presence);
           });
         }
+
+        // Clear typing users on conversation switch
+        setTypingUsers(prev => {
+          Object.values(prev).forEach(u => clearTimeout(u.timeout));
+          return {};
+        });
+
+        // ── 2. Buscar mensagens via API ─────────────────────────────────────
+        // O listener já está ativo, então mensagens que chegarem durante o fetch
+        // são capturadas e mescladas ao final.
+        const msgRes = await api.get(`/messages/conversation/${selectedId}`, {
+          params: { page: 1, limit: 100 },
+        });
+        const apiMessages = Array.isArray(msgRes.data) ? msgRes.data : (msgRes.data?.data || []);
+
+        // Mescla mensagens da API com as que chegaram via socket durante o carregamento
+        setMessages(prev => {
+          const merged = [...apiMessages];
+          for (const m of prev) {
+            // Só inclui mensagens desta conversa que ainda não estão no resultado da API
+            if (m.conversation_id === selectedId && !merged.some(e => e.id === m.id)) {
+              merged.push(m);
+            }
+          }
+          return merged;
+        });
+
+        setMsgTotalPages(msgRes.data?.totalPages || 1);
+        setMsgCurrentPage(1);
       } catch (e) {
         console.error('Failed to fetch conversation', e);
       } finally {
@@ -808,7 +830,7 @@ export default function Dashboard() {
         socketRef.current.off('contact_presence');
       }
     };
-  }, [selectedId]);
+  }, [selectedId, msgRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-scroll (only when NOT loading older messages)
   useEffect(() => {
