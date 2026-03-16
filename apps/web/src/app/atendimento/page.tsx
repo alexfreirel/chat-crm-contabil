@@ -2530,9 +2530,9 @@ export default function Dashboard() {
         onClose={() => setShowContratoModal(false)}
       />
 
-      {/* Modal Motivo de Perda */}
-      {lossModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      {/* Modal Motivo de Perda — portal para garantir z-index acima de tudo */}
+      {lossModal && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm dark">
           <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 animate-in zoom-in-95 duration-200">
             <h3 className="text-lg font-bold text-foreground mb-1">Marcar como Perdido</h3>
             <p className="text-sm text-muted-foreground mb-4">
@@ -2576,7 +2576,8 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Ficha Trabalhista Slide-over */}
