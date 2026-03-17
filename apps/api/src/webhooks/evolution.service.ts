@@ -9,9 +9,39 @@ import { WhatsappService } from '../whatsapp/whatsapp.service';
 
 interface EvolutionWebhookPayload {
   event: string;
-  instanceId: string;
+  instanceId?: string;
   instance?: string;
   data: any;
+}
+
+/**
+ * Gera um resumo compacto do payload para logging.
+ * Remove campos binários (jpegThumbnail, mediaKey, fileSha256, etc.)
+ * que chegam como objetos de centenas de inteiros e tornam o log ilegível.
+ */
+function summarizePayload(payload: EvolutionWebhookPayload): string {
+  try {
+    const data = payload?.data ?? {};
+    const msg = data?.message ?? {};
+    const msgType =
+      data?.messageType ||
+      Object.keys(msg).find((k) => k.endsWith('Message') || k.endsWith('Audio')) ||
+      'unknown';
+
+    return JSON.stringify({
+      event: payload?.event,
+      instance: payload?.instance || payload?.instanceId,
+      sender: data?.key?.remoteJid,
+      fromMe: data?.key?.fromMe,
+      messageId: data?.key?.id,
+      messageType: msgType,
+      pushName: data?.pushName,
+      timestamp: data?.messageTimestamp,
+      status: data?.status,
+    });
+  } catch {
+    return '[erro ao resumir payload]';
+  }
 }
 
 /**
@@ -53,10 +83,10 @@ export class EvolutionService {
   ) {}
 
   async handleMessagesUpsert(payload: EvolutionWebhookPayload) {
-    this.logger.log(`[WEBHOOK] messages.upsert received from ${payload?.instanceId}`);
-    this.logger.debug(`Payload: ${JSON.stringify(payload)}`);
-    const dataPayload = payload?.data as any;
     const instanceName = payload?.instance || payload?.instanceId;
+    this.logger.log(`[WEBHOOK] messages.upsert received from ${instanceName ?? 'unknown'}`);
+    this.logger.debug(`Payload: ${summarizePayload(payload)}`);
+    const dataPayload = payload?.data as any;
     const inbox = instanceName ? await this.inboxesService.findByInstanceName(instanceName) : null;
     
     if (!inbox) {
@@ -394,7 +424,7 @@ export class EvolutionService {
   }
 
   async handleChatsUpsert(payload: EvolutionWebhookPayload) {
-    this.logger.log(`Recebendo webhook de chats: ${JSON.stringify(payload)}`);
+    this.logger.debug(`Recebendo webhook de chats: ${summarizePayload(payload)}`);
     const dataPayload = payload?.data as any;
     const instanceName = payload?.instance || payload?.instanceId;
     const inbox = instanceName ? await this.inboxesService.findByInstanceName(instanceName) : null;
@@ -576,7 +606,7 @@ export class EvolutionService {
   }
 
   async handleContactsUpsert(payload: EvolutionWebhookPayload) {
-    this.logger.log(`Recebendo webhook de contatos: ${JSON.stringify(payload)}`);
+    this.logger.debug(`Recebendo webhook de contatos: ${summarizePayload(payload)}`);
     const contacts = Array.isArray(payload?.data)
       ? (payload.data as any[])
       : [payload?.data as any];
