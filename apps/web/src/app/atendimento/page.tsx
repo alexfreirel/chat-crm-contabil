@@ -1184,17 +1184,25 @@ export default function Dashboard() {
     const convId = selectedIdRef.current || selectedId;
     if (!convId) return;
     setShowLawyerDropdown(false);
+    // Optimistic update — nome do especialista
+    const lawyerName = lawyerId ? allSpecialists.find(s => s.id === lawyerId)?.name || null : null;
+    setConversations(prev => prev.map(c => c.id === convId ? { ...c, assignedLawyerId: lawyerId, assignedLawyerName: lawyerName } : c));
+    setAdiadoConversations(prev => prev.map(c => c.id === convId ? { ...c, assignedLawyerId: lawyerId, assignedLawyerName: lawyerName } : c));
     try {
       await api.patch(`/conversations/${convId}/assign-lawyer`, { lawyerId });
       fetchConversations(selectedInboxIdRef.current, true);
+      fetchAdiadoConversations(selectedInboxIdRef.current);
     } catch (e: any) {
       console.error('Failed to assign lawyer', e);
+      // Rollback
+      fetchConversations(selectedInboxIdRef.current, true);
+      fetchAdiadoConversations(selectedInboxIdRef.current);
       alert('Erro ao atribuir especialista: ' + (e?.response?.data?.message || e?.message || 'Tente novamente'));
     }
   };
 
   const handleChangeLeadStage = async (newStage: string) => {
-    const conv = conversations.find(c => c.id === selectedId);
+    const conv = conversations.find(c => c.id === selectedId) ?? adiadoConversations.find(c => c.id === selectedId);
     if (!conv?.leadId) return;
     // Bloquear FINALIZADO sem área de atendimento definida
     if (newStage === 'FINALIZADO' && !conv?.legalArea) {
@@ -1209,14 +1217,16 @@ export default function Dashboard() {
       return;
     }
     setLeadStage(newStage); // otimista
-    // Atualiza leadStage no objeto local para o filtro reagir imediatamente
+    // Atualiza leadStage nos dois arrays (ABERTO + ADIADO) para o filtro reagir imediatamente
     setConversations(prev => prev.map(c => c.id === selectedId ? { ...c, leadStage: newStage } : c));
+    setAdiadoConversations(prev => prev.map(c => c.id === selectedId ? { ...c, leadStage: newStage } : c));
     try {
       await api.patch(`/leads/${conv.leadId}/stage`, { stage: newStage });
     } catch (e: any) {
       console.error('Failed to change lead stage', e);
-      // Rollback otimismo
+      // Rollback otimismo — ambos os arrays
       setConversations(prev => prev.map(c => c.id === selectedId ? { ...c, leadStage: conv.leadStage } : c));
+      setAdiadoConversations(prev => prev.map(c => c.id === selectedId ? { ...c, leadStage: conv.leadStage } : c));
       setLeadStage(conv.leadStage ?? null);
     }
   };
@@ -1225,20 +1235,22 @@ export default function Dashboard() {
   const confirmLoss = async () => {
     if (!lossModal || !lossReason.trim()) return;
     const { leadId } = lossModal;
-    const conv = conversations.find(c => c.leadId === leadId);
+    const conv = conversations.find(c => c.leadId === leadId) ?? adiadoConversations.find(c => c.leadId === leadId);
     const prevStage = conv?.leadStage ?? 'INICIAL';
     setLossModal(null);
-    // Otimismo: remove da lista e fecha painel
+    // Otimismo: remove da lista e fecha painel — ambos os arrays
     setLeadStage('PERDIDO');
     setConversations(prev => prev.map(c => c.leadId === leadId ? { ...c, leadStage: 'PERDIDO' } : c));
+    setAdiadoConversations(prev => prev.map(c => c.leadId === leadId ? { ...c, leadStage: 'PERDIDO' } : c));
     setSelectedId(null);
     setShowDetailsPanel(false);
     try {
       await api.patch(`/leads/${leadId}/stage`, { stage: 'PERDIDO', loss_reason: lossReason.trim() });
     } catch (e: any) {
       console.error('Failed to mark lead as PERDIDO', e);
-      // Rollback
+      // Rollback — ambos os arrays
       setConversations(prev => prev.map(c => c.leadId === leadId ? { ...c, leadStage: prevStage } : c));
+      setAdiadoConversations(prev => prev.map(c => c.leadId === leadId ? { ...c, leadStage: prevStage } : c));
     }
   };
 
@@ -1320,13 +1332,15 @@ export default function Dashboard() {
     if (!selectedId) return;
     const prevArea = selected?.legalArea ?? null;
     setShowLegalAreaDropdown(false);
-    // Optimistic update
+    // Optimistic update — atualizar ambos os arrays (ABERTO + ADIADO)
     setConversations(prev => prev.map(c => c.id === selectedId ? { ...c, legalArea: area } : c));
+    setAdiadoConversations(prev => prev.map(c => c.id === selectedId ? { ...c, legalArea: area } : c));
     try {
       await api.patch(`/conversations/${selectedId}/legal-area`, { legalArea: area });
     } catch (e: any) {
-      // Rollback
+      // Rollback — ambos os arrays
       setConversations(prev => prev.map(c => c.id === selectedId ? { ...c, legalArea: prevArea } : c));
+      setAdiadoConversations(prev => prev.map(c => c.id === selectedId ? { ...c, legalArea: prevArea } : c));
       alert('Erro ao atualizar área: ' + (e?.response?.data?.message || e?.message || 'Tente novamente'));
     }
   };
@@ -1428,6 +1442,7 @@ export default function Dashboard() {
       await api.patch(`/conversations/${selectedId}/ai-mode`, { ai_mode: newMode });
       setAiMode(newMode);
       fetchConversations(selectedInboxIdRef.current, true);
+      fetchAdiadoConversations(selectedInboxIdRef.current);
       showSuccess(newMode ? 'IA ativada' : 'IA desativada');
     } catch (e) {
       console.error('Erro ao alterar modo IA', e);
@@ -2120,10 +2135,52 @@ export default function Dashboard() {
                           <span className="font-medium">{selected.assignedAgentName}</span>
                         </div>
                       )}
-                      {selected.assignedLawyerName && (
+                      {selected.legalArea && (
                         <div className="flex justify-between items-center text-sm">
                           <span className="text-muted-foreground">Especialista</span>
-                          <span className="font-medium text-amber-400">{selected.assignedLawyerName}</span>
+                          <div className="relative" ref={lawyerDropdownRef}>
+                            <button
+                              onClick={() => setShowLawyerDropdown(v => !v)}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border transition-colors hover:opacity-80 active:scale-95 ${selected.assignedLawyerName ? 'bg-primary/10 text-primary border-primary/20' : 'bg-muted/40 text-muted-foreground border-border'}`}
+                            >
+                              <UserCheck size={10} />
+                              {selected.assignedLawyerName || 'Atribuir especialista'}
+                              <ChevronDown size={10} className="opacity-70" />
+                            </button>
+                            {showLawyerDropdown && (
+                              <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-xl shadow-xl w-56 py-1 text-[12px] z-[100]">
+                                <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                                  {selected.assignedLawyerName ? 'Trocar especialista' : 'Escolher especialista'}
+                                </p>
+                                {allSpecialists.length === 0 && (
+                                  <p className="px-3 py-2 text-[11px] text-muted-foreground">Nenhum especialista cadastrado</p>
+                                )}
+                                {allSpecialists.map(u => (
+                                  <button
+                                    key={u.id}
+                                    onClick={() => handleAssignLawyerInbox(u.id)}
+                                    className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2 ${u.id === selected.assignedLawyerId ? 'text-primary font-semibold' : 'text-foreground'}`}
+                                  >
+                                    <span className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-bold text-primary shrink-0">
+                                      {u.name.charAt(0)}
+                                    </span>
+                                    <div>
+                                      <p className="leading-tight">{u.name}</p>
+                                      <p className="text-[9px] text-muted-foreground">{u.specialties.join(', ')}</p>
+                                    </div>
+                                  </button>
+                                ))}
+                                {selected.assignedLawyerId && (
+                                  <button
+                                    onClick={() => handleAssignLawyerInbox(null)}
+                                    className="w-full text-left px-3 py-2 text-muted-foreground hover:bg-accent hover:text-destructive transition-colors text-[11px] border-t border-border mt-1"
+                                  >
+                                    Remover especialista
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -2350,6 +2407,7 @@ export default function Dashboard() {
                             try {
                               await api.patch(`/conversations/${selectedId}/ai-mode`, { ai_mode: false });
                               setConversations(prev => prev.map(c => c.id === selectedId ? { ...c, aiMode: false } : c));
+                              setAdiadoConversations(prev => prev.map(c => c.id === selectedId ? { ...c, aiMode: false } : c));
                               showSuccess('👤 IA pausada automaticamente pela digitação.');
                             } catch (error) {
                               setAiMode(true); // Rollback
