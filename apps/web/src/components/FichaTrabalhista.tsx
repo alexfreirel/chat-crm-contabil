@@ -6,6 +6,7 @@ import {
   ChevronUp,
   Loader2,
   CheckCircle2,
+  AlertCircle,
   User,
   MapPin,
   Briefcase,
@@ -103,6 +104,7 @@ export default function FichaTrabalhista({
   const [aiFilledFields, setAiFilledFields] = useState<Set<string>>(new Set());
   const [loadingCep, setLoadingCep] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // ─── Fetch initial data ───────────────────────────────────────
 
@@ -186,6 +188,7 @@ export default function FichaTrabalhista({
       if (field === 'cep') return;
 
       setSaving(true);
+      setSaveError(null);
       try {
         const endpoint = isPublic
           ? `/ficha-trabalhista/${leadId}/public`
@@ -202,15 +205,19 @@ export default function FichaTrabalhista({
               body: JSON.stringify(body),
             },
           );
+          if (!res.ok) {
+            throw new Error(`Erro ao salvar (${res.status})`);
+          }
           const data = await res.json();
-          setCompletionPct(data?.completion_pct || completionPct);
+          setCompletionPct(data?.completion_pct ?? completionPct);
         } else {
           const res = await api.patch(endpoint, body);
-          setCompletionPct(res.data?.completion_pct || completionPct);
+          setCompletionPct(res.data?.completion_pct ?? completionPct);
         }
         setLastSaved(new Date());
-      } catch (err) {
+      } catch (err: any) {
         console.error('Erro ao salvar:', err);
+        setSaveError(err?.message || 'Erro ao salvar. Verifique a conexão e tente novamente.');
       } finally {
         setSaving(false);
       }
@@ -245,7 +252,7 @@ export default function FichaTrabalhista({
           const body = { ...updates, cep: raw };
 
           if (isPublic) {
-            await fetch(
+            const saveRes = await fetch(
               `${API_BASE_URL}${endpoint}`,
               {
                 method: 'PATCH',
@@ -253,8 +260,13 @@ export default function FichaTrabalhista({
                 body: JSON.stringify(body),
               },
             );
+            if (saveRes.ok) {
+              const data = await saveRes.json();
+              if (data?.completion_pct !== undefined) setCompletionPct(data.completion_pct);
+            }
           } else {
-            await api.patch(endpoint, body);
+            const res = await api.patch(endpoint, body);
+            if (res.data?.completion_pct !== undefined) setCompletionPct(res.data.completion_pct);
           }
           setLastSaved(new Date());
         }
@@ -272,23 +284,37 @@ export default function FichaTrabalhista({
   const handleFinalize = useCallback(async () => {
     if (finalizado || finalizing) return;
     setFinalizing(true);
+    setSaveError(null);
     try {
       const endpoint = isPublic
         ? `/ficha-trabalhista/${leadId}/public/finalize`
         : `/ficha-trabalhista/${leadId}/finalize`;
 
       if (isPublic) {
-        await fetch(
+        const res = await fetch(
           `${API_BASE_URL}${endpoint}`,
           { method: 'POST' },
         );
+        if (!res.ok) {
+          let msg = `Erro ao finalizar (${res.status})`;
+          try {
+            const errData = await res.json();
+            if (errData?.message) {
+              msg = Array.isArray(errData.message)
+                ? errData.message.join(', ')
+                : String(errData.message);
+            }
+          } catch { /* ignore parse error */ }
+          throw new Error(msg);
+        }
       } else {
         await api.post(endpoint);
       }
       setFinalizado(true);
       onFinalize?.();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao finalizar:', err);
+      setSaveError(err?.message || 'Erro ao finalizar a ficha. Tente novamente.');
     } finally {
       setFinalizing(false);
     }
@@ -575,6 +601,14 @@ export default function FichaTrabalhista({
         </div>
         );
       })}
+
+      {/* Save error banner */}
+      {saveError && !finalizado && (
+        <div className="flex items-center gap-2 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+          <AlertCircle size={16} className="text-red-400 shrink-0" />
+          <span className="text-[13px] text-red-400">{saveError}</span>
+        </div>
+      )}
 
       {/* Finalize button */}
       {!readOnly && !finalizado && (
