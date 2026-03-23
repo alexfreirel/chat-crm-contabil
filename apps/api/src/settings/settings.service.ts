@@ -610,6 +610,14 @@ Você prepara o caso. O advogado decide.
       handoffSignal: s.handoff_signal || null,
       isActive: s.active,
       order: s.order || 0,
+      // Skills V2
+      description: s.description || null,
+      triggerKeywords: s.trigger_keywords || [],
+      skillType: s.skill_type || 'specialist',
+      maxContextTokens: s.max_context_tokens || 4000,
+      provider: s.provider || 'openai',
+      tools: s.tools || [],
+      assets: s.assets || [],
     }));
   }
 
