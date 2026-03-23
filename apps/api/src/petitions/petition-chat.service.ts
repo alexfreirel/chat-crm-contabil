@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import type { Response } from 'express';
 import { SettingsService } from '../settings/settings.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -410,6 +411,154 @@ export class PetitionChatService {
     } finally {
       res.end();
     }
+  }
+
+  // ─── Chat CRUD (PostgreSQL persistence) ───────────────
+
+  /** List all chats for a user, ordered by last update */
+  async listChats(userId: string, tenantId: string) {
+    return this.prisma.aiChat.findMany({
+      where: { user_id: userId, tenant_id: tenantId },
+      orderBy: { updated_at: 'desc' },
+      take: 50,
+      select: {
+        id: true,
+        title: true,
+        model: true,
+        container_id: true,
+        updated_at: true,
+        created_at: true,
+        messages: {
+          orderBy: { created_at: 'desc' },
+          take: 1,
+          select: { content: true, role: true },
+        },
+      },
+    });
+  }
+
+  /** Get a single chat with all messages */
+  async getChat(chatId: string, userId: string) {
+    return this.prisma.aiChat.findFirst({
+      where: { id: chatId, user_id: userId },
+      include: {
+        messages: { orderBy: { created_at: 'asc' } },
+      },
+    });
+  }
+
+  /** Create a new chat */
+  async createChat(userId: string, tenantId: string, model: string) {
+    return this.prisma.aiChat.create({
+      data: {
+        user_id: userId,
+        tenant_id: tenantId,
+        model,
+        title: 'Nova Conversa',
+      },
+    });
+  }
+
+  /** Update chat metadata (title, model, container_id) */
+  async updateChat(
+    chatId: string,
+    userId: string,
+    data: { title?: string; model?: string; container_id?: string | null },
+  ) {
+    return this.prisma.aiChat.updateMany({
+      where: { id: chatId, user_id: userId },
+      data,
+    });
+  }
+
+  /** Add a message to a chat */
+  async addMessage(
+    chatId: string,
+    role: 'user' | 'assistant',
+    content: string,
+    filesJson?: any,
+  ) {
+    // Update the chat's updated_at timestamp
+    await this.prisma.aiChat.update({
+      where: { id: chatId },
+      data: { updated_at: new Date() },
+    });
+
+    const msg = await this.prisma.aiChatMessage.create({
+      data: {
+        chat_id: chatId,
+        role,
+        content,
+        files_json: filesJson || undefined,
+      },
+    });
+
+    // Auto-title on first user message
+    if (role === 'user') {
+      const chat = await this.prisma.aiChat.findUnique({ where: { id: chatId } });
+      if (chat && chat.title === 'Nova Conversa') {
+        const title = content.slice(0, 60) + (content.length > 60 ? '...' : '');
+        await this.prisma.aiChat.update({
+          where: { id: chatId },
+          data: { title },
+        });
+      }
+    }
+
+    return msg;
+  }
+
+  /** Auto-generate title from first user message */
+  async autoTitle(chatId: string, userId: string) {
+    const chat = await this.prisma.aiChat.findFirst({
+      where: { id: chatId, user_id: userId },
+      include: {
+        messages: {
+          where: { role: 'user' },
+          orderBy: { created_at: 'asc' },
+          take: 1,
+        },
+      },
+    });
+    if (!chat || chat.title !== 'Nova Conversa') return;
+
+    const firstMsg = chat.messages[0];
+    if (!firstMsg) return;
+
+    const title =
+      firstMsg.content.slice(0, 60) +
+      (firstMsg.content.length > 60 ? '...' : '');
+
+    await this.prisma.aiChat.update({
+      where: { id: chatId },
+      data: { title },
+    });
+  }
+
+  /** Delete a chat */
+  async deleteChat(chatId: string, userId: string) {
+    return this.prisma.aiChat.deleteMany({
+      where: { id: chatId, user_id: userId },
+    });
+  }
+
+  /** Cleanup: delete chats not updated in 6 months — runs daily at 3:17 AM */
+  @Cron('17 3 * * *')
+  async cleanupOldChats(): Promise<number> {
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+    const result = await this.prisma.aiChat.deleteMany({
+      where: { updated_at: { lt: sixMonthsAgo } },
+    });
+
+    if (result.count > 0) {
+      this.logger.log(
+        `Cleanup: ${result.count} AI chats deleted (> 6 months inactive)`,
+      );
+    }
+
+    return result.count;
   }
 
   // ─── Private ──────────────────────────────────────────

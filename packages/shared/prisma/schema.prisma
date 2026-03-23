@@ -25,6 +25,7 @@ model Tenant {
   petitions         CasePetition[]
   legal_templates   LegalTemplate[]
   case_honorarios   CaseHonorario[]
+  ai_chats          AiChat[]
 }
 
 model User {
@@ -61,6 +62,7 @@ model User {
   authored_petitions       CasePetition[]  @relation("PetitionAuthor")
   saved_versions           PetitionVersion[] @relation("VersionSaver")
   created_templates        LegalTemplate[] @relation("TemplateCreator")
+  ai_chats                 AiChat[]        @relation("AiChatOwner")
 }
 
 model Lead {
@@ -877,4 +879,40 @@ model ContractSignature {
   @@index([conversation_id])
   @@index([cs_document_key])
   @@index([status])
+}
+
+// ===============================================
+// AI Chat (Peticoes IA — conversas persistentes)
+// ===============================================
+
+model AiChat {
+  id            String          @id @default(uuid())
+  tenant_id     String?
+  user_id       String
+  title         String          @default("Nova Conversa")
+  model         String          @default("claude-sonnet-4-6")
+  container_id  String?         // Claude Console container (reuse across turns)
+  updated_at    DateTime        @updatedAt
+  created_at    DateTime        @default(now())
+
+  user          User            @relation("AiChatOwner", fields: [user_id], references: [id], onDelete: Cascade)
+  tenant        Tenant?         @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  messages      AiChatMessage[]
+
+  @@index([user_id, updated_at])
+  @@index([tenant_id])
+  @@index([updated_at])
+}
+
+model AiChatMessage {
+  id          String   @id @default(uuid())
+  chat_id     String
+  role        String   // 'user' | 'assistant'
+  content     String   @db.Text
+  files_json  Json?    // [{ fileId, filename }] — generated files
+  created_at  DateTime @default(now())
+
+  chat        AiChat   @relation(fields: [chat_id], references: [id], onDelete: Cascade)
+
+  @@index([chat_id, created_at])
 }

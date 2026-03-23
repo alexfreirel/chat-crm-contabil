@@ -18,31 +18,24 @@ interface ConsoleSkill {
   displayTitle: string;
   description: string | null;
   source: 'anthropic' | 'custom';
-  createdAt: string;
 }
 
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  createdAt: string;
-  files?: { fileId: string; filename: string }[];
+  created_at: string;
+  files_json?: { fileId: string; filename: string }[] | null;
 }
 
-interface SkillRef {
-  type: 'anthropic' | 'custom';
-  skill_id: string;
-  version?: string;
-}
-
-interface Conversation {
+interface ChatSummary {
   id: string;
   title: string;
   model: string;
-  containerId: string | null;
-  messages: ChatMessage[];
-  createdAt: string;
-  updatedAt: string;
+  container_id: string | null;
+  updated_at: string;
+  created_at: string;
+  messages: { content: string; role: string }[];
 }
 
 // ─── Constants ──────────────────────────────────────────────
@@ -52,9 +45,6 @@ const MODELS = [
   { id: 'claude-sonnet-4-6', label: 'Claude Sonnet', desc: 'Equilibrio custo/qualidade', badge: 'Recomendado', badgeClass: 'bg-green-500/10 text-green-600' },
   { id: 'claude-opus-4-6',   label: 'Claude Opus',   desc: 'Maxima qualidade',           badge: 'Premium',     badgeClass: 'bg-purple-500/10 text-purple-600' },
 ];
-
-const STORAGE_KEY = 'peticoes_conversations_v3';
-const MAX_CONVERSATIONS = 50;
 
 const ANTHROPIC_SKILL_ICONS: Record<string, React.ReactNode> = {
   xlsx: <FileSpreadsheet size={14} className="text-green-500" />,
@@ -79,28 +69,29 @@ const DEFAULT_SYSTEM_PROMPT = `Voce e um assistente juridico especializado em di
 - Use marcadores [ ] para informacoes que precisam ser completadas
 - Responda sempre em portugues brasileiro`;
 
+// ─── API helpers ────────────────────────────────────────────
+
+function authHeaders(): Record<string, string> {
+  const token = localStorage.getItem('token');
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  };
+}
+
+async function api<T = any>(path: string, opts?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    ...opts,
+    headers: { ...authHeaders(), ...opts?.headers },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: 'Erro' }));
+    throw new Error(err.message || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 // ─── Helpers ────────────────────────────────────────────────
-
-function genId(): string {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
-
-function loadConversations(): Conversation[] {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-  } catch { return []; }
-}
-
-function saveConversations(convs: Conversation[]) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(convs.slice(-MAX_CONVERSATIONS))); } catch {}
-}
-
-function getConvTitle(messages: ChatMessage[]): string {
-  const first = messages.find((m) => m.role === 'user');
-  if (!first) return 'Nova Conversa';
-  const text = typeof first.content === 'string' ? first.content : '';
-  return text.slice(0, 60) + (text.length > 60 ? '...' : '');
-}
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -189,6 +180,8 @@ function MessageBubble({ msg, isStreaming }: { msg: ChatMessage; isStreaming: bo
     );
   }
 
+  const files = msg.files_json || [];
+
   return (
     <div className="flex justify-start mb-4 group">
       <div className="max-w-[85%] flex items-start gap-2">
@@ -200,10 +193,9 @@ function MessageBubble({ msg, isStreaming }: { msg: ChatMessage; isStreaming: bo
             className="bg-card border border-border rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed shadow-sm"
             dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
           />
-          {/* Generated files */}
-          {msg.files && msg.files.length > 0 && (
+          {files.length > 0 && (
             <div className="mt-2 space-y-1">
-              {msg.files.map((f) => (
+              {files.map((f: any) => (
                 <button
                   key={f.fileId}
                   onClick={() => handleDownloadFile(f.fileId, f.filename)}
@@ -252,13 +244,14 @@ export default function PeticoesPage() {
   const [selectedModel, setSelectedModel] = useState<string>('claude-sonnet-4-6');
   const [showModelMenu, setShowModelMenu] = useState(false);
 
-  // System prompt (always sent alongside skills)
+  // System prompt
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [showPromptEditor, setShowPromptEditor] = useState(false);
 
-  // Conversations
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  // Conversations (from DB)
+  const [chatList, setChatList] = useState<ChatSummary[]>([]);
+  const [loadingChats, setLoadingChats] = useState(true);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
 
   // Chat
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -281,19 +274,20 @@ export default function PeticoesPage() {
   const abortRef = useRef<AbortController | null>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
 
-  // ─── Init ──────────────────────────────────────────────
+  // ─── Init: load skills + chats from DB ──────────────────
 
   useEffect(() => {
-    setConversations(loadConversations());
-
-    const token = localStorage.getItem('token');
-    fetch(`${API_BASE_URL}/petitions/chat/skills?source=all`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
+    // Load skills
+    api<ConsoleSkill[]>('/petitions/chat/skills?source=all')
       .then((data) => { if (Array.isArray(data)) setConsoleSkills(data); })
       .catch(() => {})
       .finally(() => setLoadingSkills(false));
+
+    // Load chats from DB
+    api<ChatSummary[]>('/petitions/chat/conversations')
+      .then((data) => setChatList(data))
+      .catch(() => {})
+      .finally(() => setLoadingChats(false));
   }, []);
 
   useEffect(() => {
@@ -315,51 +309,61 @@ export default function PeticoesPage() {
     }
   }, [input]);
 
-  // ─── Conversation Management ───────────────────────────
+  // ─── Conversation Management (DB-backed) ───────────────
 
-  const createNewConversation = useCallback(() => {
-    const id = genId();
-    const conv: Conversation = {
-      id, title: 'Nova Conversa', model: selectedModel,
-      containerId: null, messages: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    };
-    setConversations((prev) => { const next = [...prev, conv]; saveConversations(next); return next; });
-    setActiveConvId(id);
-    setMessages([]);
-    setContainerId(null);
-    setStreamError(null);
-    setAttachedFiles([]);
-    setInput('');
+  const refreshChatList = useCallback(async () => {
+    try {
+      const data = await api<ChatSummary[]>('/petitions/chat/conversations');
+      setChatList(data);
+    } catch {}
+  }, []);
+
+  const createNewConversation = useCallback(async () => {
+    try {
+      const chat = await api<ChatSummary>('/petitions/chat/conversations', {
+        method: 'POST',
+        body: JSON.stringify({ model: selectedModel }),
+      });
+      setChatList((prev) => [chat, ...prev]);
+      setActiveChatId(chat.id);
+      setMessages([]);
+      setContainerId(chat.container_id);
+      setStreamError(null);
+      setAttachedFiles([]);
+      setInput('');
+    } catch (err: any) {
+      setStreamError(err.message);
+    }
   }, [selectedModel]);
 
-  const selectConversation = useCallback((conv: Conversation) => {
+  const selectConversation = useCallback(async (chatId: string) => {
     if (isStreaming) return;
-    setActiveConvId(conv.id);
-    setMessages(conv.messages);
-    setSelectedModel(conv.model);
-    setContainerId(conv.containerId);
+    setActiveChatId(chatId);
     setStreamError(null);
     setAttachedFiles([]);
+
+    try {
+      const chat = await api<any>(`/petitions/chat/conversations/${chatId}`);
+      setMessages(chat.messages || []);
+      setSelectedModel(chat.model);
+      setContainerId(chat.container_id);
+    } catch {
+      setMessages([]);
+    }
   }, [isStreaming]);
 
-  const deleteConversation = useCallback((convId: string, e: React.MouseEvent) => {
+  const deleteConversation = useCallback(async (chatId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setConversations((prev) => { const next = prev.filter((c) => c.id !== convId); saveConversations(next); return next; });
-    if (activeConvId === convId) { setActiveConvId(null); setMessages([]); setContainerId(null); }
-  }, [activeConvId]);
-
-  const persistMessages = useCallback(
-    (convId: string, msgs: ChatMessage[], cId: string | null) => {
-      setConversations((prev) => {
-        const next = prev.map((c) =>
-          c.id !== convId ? c : { ...c, messages: msgs, title: getConvTitle(msgs), containerId: cId, model: selectedModel, updatedAt: new Date().toISOString() },
-        );
-        saveConversations(next);
-        return next;
-      });
-    },
-    [selectedModel],
-  );
+    try {
+      await api(`/petitions/chat/conversations/${chatId}`, { method: 'DELETE' });
+      setChatList((prev) => prev.filter((c) => c.id !== chatId));
+      if (activeChatId === chatId) {
+        setActiveChatId(null);
+        setMessages([]);
+        setContainerId(null);
+      }
+    } catch {}
+  }, [activeChatId]);
 
   // ─── File Upload ───────────────────────────────────────
 
@@ -404,24 +408,31 @@ export default function PeticoesPage() {
 
     setStreamError(null);
 
-    // Ensure conversation exists
-    let convId = activeConvId;
-    if (!convId) {
-      const id = genId();
-      const conv: Conversation = {
-        id, title: 'Nova Conversa', model: selectedModel,
-        containerId: null, messages: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-      };
-      setConversations((prev) => { const next = [...prev, conv]; saveConversations(next); return next; });
-      convId = id;
-      setActiveConvId(id);
+    // Ensure conversation exists in DB
+    let chatId = activeChatId;
+    if (!chatId) {
+      try {
+        const chat = await api<any>('/petitions/chat/conversations', {
+          method: 'POST',
+          body: JSON.stringify({ model: selectedModel }),
+        });
+        chatId = chat.id;
+        setActiveChatId(chatId);
+        setChatList((prev) => [chat, ...prev]);
+      } catch (err: any) {
+        setStreamError(err.message);
+        return;
+      }
     }
 
-    const userMsg: ChatMessage = { id: genId(), role: 'user', content: text, createdAt: new Date().toISOString() };
-    const assistantMsg: ChatMessage = { id: genId(), role: 'assistant', content: '', createdAt: new Date().toISOString() };
+    // Optimistic UI: add user + empty assistant message
+    const tempUserId = `temp-${Date.now()}`;
+    const tempAsstId = `temp-asst-${Date.now()}`;
+    const userMsg: ChatMessage = { id: tempUserId, role: 'user', content: text, created_at: new Date().toISOString() };
+    const assistantMsg: ChatMessage = { id: tempAsstId, role: 'assistant', content: '', created_at: new Date().toISOString() };
 
-    const newMessages = [...messages, userMsg, assistantMsg];
-    setMessages(newMessages);
+    const prevMessages = [...messages];
+    setMessages([...prevMessages, userMsg, assistantMsg]);
     setInput('');
     setIsStreaming(true);
 
@@ -429,9 +440,8 @@ export default function PeticoesPage() {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    // Build API payload — always send all skills + system prompt
-    // Claude decides automatically which skill to use (just like Claude Desktop)
-    const apiMessages = [...messages, userMsg].map((m) => ({ role: m.role, content: m.content }));
+    // Build API payload
+    const apiMessages = [...prevMessages, userMsg].map((m) => ({ role: m.role, content: m.content }));
 
     const body: any = {
       messages: apiMessages,
@@ -439,7 +449,6 @@ export default function PeticoesPage() {
       systemPrompt: systemPrompt,
     };
 
-    // Always send all available skills (Claude picks which to use)
     if (consoleSkills.length > 0) {
       body.skills = consoleSkills.map((s) => ({
         type: s.source,
@@ -448,10 +457,8 @@ export default function PeticoesPage() {
       }));
     }
 
-    // Reuse container across turns
     if (containerId) body.containerId = containerId;
 
-    // Attached files
     if (attachedFiles.length > 0) {
       body.fileIds = attachedFiles.map((f) => f.id);
     }
@@ -511,24 +518,53 @@ export default function PeticoesPage() {
 
       if (newContainerId) setContainerId(newContainerId);
 
-      const finalAssistant: ChatMessage = {
-        ...assistantMsg,
-        content: fullText,
-        files: generatedFiles.length > 0 ? generatedFiles : undefined,
-      };
-      const finalMsgs = [...messages, userMsg, finalAssistant];
-      setMessages(finalMsgs);
-      persistMessages(convId, finalMsgs, newContainerId);
+      // Persist both messages to DB
+      const finalChatId = chatId!;
+      await Promise.all([
+        api(`/petitions/chat/conversations/${finalChatId}/messages`, {
+          method: 'POST',
+          body: JSON.stringify({ role: 'user', content: text }),
+        }),
+        api(`/petitions/chat/conversations/${finalChatId}/messages`, {
+          method: 'POST',
+          body: JSON.stringify({
+            role: 'assistant',
+            content: fullText,
+            files: generatedFiles.length > 0 ? generatedFiles : undefined,
+          }),
+        }),
+      ]);
+
+      // Update container + model in DB
+      if (newContainerId || selectedModel) {
+        api(`/petitions/chat/conversations/${finalChatId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            container_id: newContainerId,
+            model: selectedModel,
+          }),
+        }).catch(() => {});
+      }
+
+      // Refresh the final messages from DB
+      try {
+        const chat = await api<any>(`/petitions/chat/conversations/${finalChatId}`);
+        setMessages(chat.messages || []);
+      } catch {}
+
+      // Refresh chat list (title may have auto-updated)
+      refreshChatList();
+
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
       setStreamError(err?.message || 'Erro ao conectar com a IA');
-      setMessages((prev) => prev.filter((m) => m.id !== assistantMsg.id));
+      setMessages(prevMessages);
       setAttachedFiles(currentAttachedFiles);
     } finally {
       setIsStreaming(false);
       abortRef.current = null;
     }
-  }, [input, isStreaming, activeConvId, messages, consoleSkills, selectedModel, systemPrompt, containerId, attachedFiles, persistMessages]);
+  }, [input, isStreaming, activeChatId, messages, consoleSkills, selectedModel, systemPrompt, containerId, attachedFiles, refreshChatList]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
@@ -537,8 +573,6 @@ export default function PeticoesPage() {
   // ─── Derived state ─────────────────────────────────────
 
   const selectedModelInfo = MODELS.find((m) => m.id === selectedModel) || MODELS[1];
-  const sortedConversations = [...conversations].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-
   const customSkills = consoleSkills.filter((s) => s.source === 'custom');
   const anthropicSkills = consoleSkills.filter((s) => s.source === 'anthropic');
 
@@ -568,7 +602,7 @@ export default function PeticoesPage() {
           </button>
         </div>
 
-        {/* Skills (always visible, informational — Claude auto-selects) */}
+        {/* Skills panel */}
         <div className="px-3 pt-3">
           <button onClick={() => setShowSkillsPanel(!showSkillsPanel)}
             className="w-full flex items-center justify-between px-3 py-2 rounded-xl border border-border bg-background hover:bg-muted/50 transition-colors text-sm">
@@ -623,7 +657,7 @@ export default function PeticoesPage() {
               )}
 
               <p className="px-3 py-2 text-[10px] text-muted-foreground bg-muted/30 border-t border-border">
-                O Claude seleciona automaticamente a skill adequada com base na sua mensagem.
+                O Claude seleciona automaticamente a skill adequada.
               </p>
             </div>
           )}
@@ -682,19 +716,23 @@ export default function PeticoesPage() {
         {/* Conversations List */}
         <div className="flex-1 overflow-y-auto px-3 pt-4 pb-2">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 px-1">Conversas Recentes</p>
-          {sortedConversations.length === 0 ? (
+          {loadingChats ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 size={16} className="animate-spin text-muted-foreground" />
+            </div>
+          ) : chatList.length === 0 ? (
             <p className="text-[12px] text-muted-foreground text-center py-4">Nenhuma conversa ainda</p>
           ) : (
             <div className="space-y-0.5">
-              {sortedConversations.map((conv) => (
-                <div key={conv.id} onClick={() => selectConversation(conv)}
-                  className={`group flex items-center gap-2 px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${activeConvId === conv.id ? 'bg-accent text-accent-foreground' : 'hover:bg-muted/50 text-foreground'}`}>
+              {chatList.map((chat) => (
+                <div key={chat.id} onClick={() => selectConversation(chat.id)}
+                  className={`group flex items-center gap-2 px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${activeChatId === chat.id ? 'bg-accent text-accent-foreground' : 'hover:bg-muted/50 text-foreground'}`}>
                   <MessageSquare size={13} className="text-muted-foreground shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-[12px] font-medium truncate leading-snug">{conv.title}</p>
-                    <p className="text-[10px] text-muted-foreground">{formatDate(conv.updatedAt)}</p>
+                    <p className="text-[12px] font-medium truncate leading-snug">{chat.title}</p>
+                    <p className="text-[10px] text-muted-foreground">{formatDate(chat.updated_at)}</p>
                   </div>
-                  <button onClick={(e) => deleteConversation(conv.id, e)}
+                  <button onClick={(e) => deleteConversation(chat.id, e)}
                     className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-destructive/10 hover:text-destructive transition-all">
                     <Trash2 size={12} />
                   </button>
@@ -716,7 +754,7 @@ export default function PeticoesPage() {
             </div>
             <div>
               <h2 className="text-sm font-semibold text-foreground">
-                {activeConvId ? (conversations.find((c) => c.id === activeConvId)?.title || 'Nova Conversa') : 'Assistente Juridico IA'}
+                {activeChatId ? (chatList.find((c) => c.id === activeChatId)?.title || 'Nova Conversa') : 'Assistente Juridico IA'}
               </h2>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[11px] text-muted-foreground">{selectedModelInfo.label}</span>
@@ -779,7 +817,7 @@ export default function PeticoesPage() {
                 {[
                   { text: 'Redija uma peticao inicial trabalhista por rescisao indireta', icon: <FileText size={16} className="text-blue-500" /> },
                   { text: 'Gere um contrato de honorarios em DOCX', icon: <FileType size={16} className="text-blue-500" /> },
-                  { text: 'Analise este processo criminal e prepare estrategia para audiencia', icon: <Bot size={16} className="text-purple-500" /> },
+                  { text: 'Analise este processo criminal e prepare estrategia', icon: <Bot size={16} className="text-purple-500" /> },
                   { text: 'Crie uma planilha Excel com calculos trabalhistas', icon: <FileSpreadsheet size={16} className="text-green-500" /> },
                 ].map((s) => (
                   <button key={s.text} onClick={() => { setInput(s.text); textareaRef.current?.focus(); }}
@@ -829,12 +867,11 @@ export default function PeticoesPage() {
             )}
 
             <div className="flex items-end gap-2">
-              {/* File upload */}
               <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileUpload}
                 accept=".txt,.md,.json,.csv,.html,.pdf,.docx,.xlsx,.pptx,.doc,.xls,.ppt" />
               <button onClick={() => fileInputRef.current?.click()} disabled={isStreaming || uploadingFile}
                 className="p-2.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
-                title="Upload para o Claude Console (PDF, DOCX, XLSX, etc.)">
+                title="Upload para o Claude Console">
                 {uploadingFile ? <Loader2 size={18} className="animate-spin" /> : <Paperclip size={18} />}
               </button>
 
@@ -858,7 +895,7 @@ export default function PeticoesPage() {
             </div>
 
             <p className="text-[10px] text-muted-foreground text-center mt-2">
-              {selectedModelInfo.label} . Claude Console . IA pode cometer erros - revise antes de usar
+              {selectedModelInfo.label} . Claude Console . Conversas salvas por 6 meses
             </p>
           </div>
         </div>

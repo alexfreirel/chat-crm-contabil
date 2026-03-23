@@ -76,6 +76,63 @@ export class PetitionsController {
     res.send(buffer);
   }
 
+  // ─── Chat Conversations (persisted in DB) ───────────────
+
+  /** GET /petitions/chat/conversations — list user's chats */
+  @Get('chat/conversations')
+  listChats(@Request() req: any) {
+    return this.chatService.listChats(req.user.id, req.user.tenant_id);
+  }
+
+  /** POST /petitions/chat/conversations — create new chat */
+  @Post('chat/conversations')
+  createChat(@Body() body: { model?: string }, @Request() req: any) {
+    return this.chatService.createChat(
+      req.user.id,
+      req.user.tenant_id,
+      body.model || 'claude-sonnet-4-6',
+    );
+  }
+
+  /** GET /petitions/chat/conversations/:id — get chat with messages */
+  @Get('chat/conversations/:id')
+  async getChat(@Param('id') id: string, @Request() req: any) {
+    const chat = await this.chatService.getChat(id, req.user.id);
+    if (!chat) throw new NotFoundException('Conversa nao encontrada');
+    return chat;
+  }
+
+  /** PATCH /petitions/chat/conversations/:id — update chat metadata */
+  @Patch('chat/conversations/:id')
+  updateChat(
+    @Param('id') id: string,
+    @Body() body: { title?: string; model?: string; container_id?: string },
+    @Request() req: any,
+  ) {
+    return this.chatService.updateChat(id, req.user.id, body);
+  }
+
+  /** DELETE /petitions/chat/conversations/:id — delete chat */
+  @Delete('chat/conversations/:id')
+  deleteChat(@Param('id') id: string, @Request() req: any) {
+    return this.chatService.deleteChat(id, req.user.id);
+  }
+
+  /** POST /petitions/chat/conversations/:id/messages — add message */
+  @Post('chat/conversations/:id/messages')
+  async addMessage(
+    @Param('id') id: string,
+    @Body() body: { role: 'user' | 'assistant'; content: string; files?: any },
+  ) {
+    return this.chatService.addMessage(id, body.role, body.content, body.files);
+  }
+
+  /** POST /petitions/chat/cleanup — cleanup old chats (admin only) */
+  @Post('chat/cleanup')
+  cleanup() {
+    return this.chatService.cleanupOldChats();
+  }
+
   // ─── Chat (Claude Streaming with Skills) ───────────────
 
   /** POST /petitions/chat — stream a Claude response (SSE) with Console skills */
