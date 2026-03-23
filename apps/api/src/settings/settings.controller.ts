@@ -1,8 +1,11 @@
-import { Controller, Get, Post, Patch, Delete, Body, UseGuards, Request, ForbiddenException, Param, Put, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, UseGuards, Request, ForbiddenException, Param, Put, Logger, UseInterceptors, UploadedFile, Res, NotFoundException } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { SettingsService } from './settings.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
-import { CreateSkillDto, UpdateSkillDto } from './dto/settings.dto';
+import { S3Service } from '../s3/s3.service';
+import { CreateSkillDto, UpdateSkillDto, CreateSkillToolDto, UpdateSkillToolDto } from './dto/settings.dto';
 
 /** Mascara uma chave de API, mostrando apenas os primeiros 4 e últimos 4 caracteres */
 function maskApiKey(key: string | null | undefined): string | null {
@@ -19,6 +22,7 @@ export class SettingsController {
   constructor(
     private readonly settingsService: SettingsService,
     private readonly whatsappService: WhatsappService,
+    private readonly s3Service: S3Service,
   ) {}
 
   // ─── Generic Settings ─────────────────────────────────
@@ -159,6 +163,120 @@ export class SettingsController {
       throw new ForbiddenException('Apenas administradores');
     }
     return this.settingsService.resetSkillsToDefaults();
+  }
+
+  // ─── Skill Tools CRUD ─────────────────────────────────
+
+  @Get('skills/:skillId/tools')
+  async getSkillTools(@Param('skillId') skillId: string) {
+    return this.settingsService.getSkillTools(skillId);
+  }
+
+  @Post('skills/:skillId/tools')
+  async createSkillTool(
+    @Request() req: any,
+    @Param('skillId') skillId: string,
+    @Body() data: CreateSkillToolDto,
+  ) {
+    if (req.user.role !== 'ADMIN') throw new ForbiddenException('Apenas administradores');
+    return this.settingsService.createSkillTool(skillId, data);
+  }
+
+  @Patch('skills/tools/:toolId')
+  async updateSkillTool(
+    @Request() req: any,
+    @Param('toolId') toolId: string,
+    @Body() data: UpdateSkillToolDto,
+  ) {
+    if (req.user.role !== 'ADMIN') throw new ForbiddenException('Apenas administradores');
+    return this.settingsService.updateSkillTool(toolId, data);
+  }
+
+  @Delete('skills/tools/:toolId')
+  async deleteSkillTool(@Request() req: any, @Param('toolId') toolId: string) {
+    if (req.user.role !== 'ADMIN') throw new ForbiddenException('Apenas administradores');
+    return this.settingsService.deleteSkillTool(toolId);
+  }
+
+  // ─── Skill Assets / References ──────────────────────────
+
+  @Get('skills/:skillId/assets')
+  async getSkillAssets(@Param('skillId') skillId: string) {
+    return this.settingsService.getSkillAssets(skillId);
+  }
+
+  @Post('skills/:skillId/assets')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadSkillAsset(
+    @Request() req: any,
+    @Param('skillId') skillId: string,
+    @UploadedFile() file: any,
+    @Body() body: { asset_type?: string; inject_mode?: string },
+  ) {
+    if (req.user.role !== 'ADMIN') throw new ForbiddenException('Apenas administradores');
+    if (!file) throw new NotFoundException('Nenhum arquivo enviado');
+
+    const ext = file.originalname.split('.').pop() || 'bin';
+    const uuid = crypto.randomUUID();
+    const s3Key = `skill-assets/${skillId}/${uuid}.${ext}`;
+
+    await this.s3Service.uploadBuffer(s3Key, file.buffer, file.mimetype);
+
+    // Extract text content for references (.md, .txt)
+    let contentText: string | null = null;
+    const assetType = body.asset_type || 'asset';
+    const injectMode = body.inject_mode || (assetType === 'reference' ? 'full_text' : 'none');
+
+    if (assetType === 'reference' && injectMode !== 'none') {
+      if (file.mimetype === 'text/markdown' || file.mimetype === 'text/plain' || ext === 'md' || ext === 'txt') {
+        contentText = file.buffer.toString('utf-8');
+      }
+      // TODO: Add PDF/DOCX text extraction with mammoth/pdf-parse
+    }
+
+    return this.settingsService.createSkillAsset(skillId, {
+      name: file.originalname,
+      s3_key: s3Key,
+      mime_type: file.mimetype,
+      size: file.size,
+      asset_type: assetType,
+      inject_mode: injectMode,
+      content_text: contentText,
+    });
+  }
+
+  @Patch('skills/assets/:assetId')
+  async updateSkillAsset(
+    @Request() req: any,
+    @Param('assetId') assetId: string,
+    @Body() body: { inject_mode?: string; asset_type?: string },
+  ) {
+    if (req.user.role !== 'ADMIN') throw new ForbiddenException('Apenas administradores');
+    return this.settingsService.updateSkillAsset(assetId, body);
+  }
+
+  @Delete('skills/assets/:assetId')
+  async deleteSkillAsset(@Request() req: any, @Param('assetId') assetId: string) {
+    if (req.user.role !== 'ADMIN') throw new ForbiddenException('Apenas administradores');
+    const asset = await this.settingsService.deleteSkillAsset(assetId);
+    if (asset?.s3_key) {
+      try { await this.s3Service.deleteObject(asset.s3_key); } catch {}
+    }
+    return { ok: true };
+  }
+
+  @Get('skills/assets/:assetId/download')
+  async downloadSkillAsset(@Param('assetId') assetId: string, @Res() res: any) {
+    const asset = await this.settingsService.findSkillAssetById(assetId);
+    if (!asset) throw new NotFoundException('Asset não encontrado');
+
+    const { buffer, contentType } = await this.s3Service.getObjectBuffer(asset.s3_key);
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': `attachment; filename="${encodeURIComponent(asset.name)}"`,
+      'Content-Length': buffer.length,
+    });
+    res.send(buffer);
   }
 
   @Get('ai-costs')

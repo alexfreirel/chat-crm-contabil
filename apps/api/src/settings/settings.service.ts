@@ -161,6 +161,7 @@ export class SettingsService {
   async getSkills() {
     let skills = await (this.prisma as any).promptSkill.findMany({
       orderBy: [{ order: 'asc' }, { id: 'asc' }],
+      include: { tools: { where: { active: true } }, assets: true },
     });
 
     // Sempre sincronizar prompts padrão do código com o DB (upsert por name)
@@ -602,39 +603,83 @@ Você prepara o caso. O advogado decide.
     });
   }
 
-  async createSkill(data: {
-    name: string;
-    area: string;
-    system_prompt: string;
-    model?: string;
-    max_tokens?: number;
-    temperature?: number;
-    handoff_signal?: string | null;
-    active?: boolean;
-    order?: number;
-  }) {
+  async createSkill(data: Record<string, any>) {
     return (this.prisma as any).promptSkill.create({ data });
   }
 
-  async updateSkill(
-    id: string,
-    data: Partial<{
-      name: string;
-      area: string;
-      system_prompt: string;
-      model: string;
-      max_tokens: number;
-      temperature: number;
-      handoff_signal: string | null;
-      active: boolean;
-      order: number;
-    }>,
-  ) {
+  async updateSkill(id: string, data: Record<string, any>) {
     return (this.prisma as any).promptSkill.update({ where: { id }, data });
   }
 
   async deleteSkill(id: string) {
     return (this.prisma as any).promptSkill.delete({ where: { id } });
+  }
+
+  // ─── Skill Tools CRUD ────────────────────────────────────────
+
+  async getSkillTools(skillId: string) {
+    return (this.prisma as any).skillTool.findMany({
+      where: { skill_id: skillId },
+      orderBy: { created_at: 'asc' },
+    });
+  }
+
+  async createSkillTool(skillId: string, data: Record<string, any>) {
+    return (this.prisma as any).skillTool.create({
+      data: { ...data, skill_id: skillId },
+    });
+  }
+
+  async updateSkillTool(toolId: string, data: Record<string, any>) {
+    return (this.prisma as any).skillTool.update({
+      where: { id: toolId },
+      data,
+    });
+  }
+
+  async deleteSkillTool(toolId: string) {
+    return (this.prisma as any).skillTool.delete({ where: { id: toolId } });
+  }
+
+  // ─── Skill Assets CRUD ───────────────────────────────────────
+
+  async getSkillAssets(skillId: string) {
+    return (this.prisma as any).skillAsset.findMany({
+      where: { skill_id: skillId },
+      orderBy: { created_at: 'asc' },
+    });
+  }
+
+  async createSkillAsset(skillId: string, data: {
+    name: string;
+    s3_key: string;
+    mime_type: string;
+    size: number;
+    asset_type: string;
+    inject_mode?: string;
+    content_text?: string | null;
+  }) {
+    return (this.prisma as any).skillAsset.create({
+      data: { ...data, skill_id: skillId },
+    });
+  }
+
+  async deleteSkillAsset(assetId: string) {
+    const asset = await (this.prisma as any).skillAsset.findUnique({ where: { id: assetId } });
+    if (!asset) return null;
+    await (this.prisma as any).skillAsset.delete({ where: { id: assetId } });
+    return asset; // Return asset so controller can delete from S3
+  }
+
+  async findSkillAssetById(assetId: string) {
+    return (this.prisma as any).skillAsset.findUnique({ where: { id: assetId } });
+  }
+
+  async updateSkillAsset(assetId: string, data: Record<string, any>) {
+    return (this.prisma as any).skillAsset.update({
+      where: { id: assetId },
+      data,
+    });
   }
 
   /** Apaga todas as skills e recria a partir dos defaults do código */
