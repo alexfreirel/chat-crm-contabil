@@ -63,41 +63,156 @@ export class PetitionChatService {
     return new Anthropic({ apiKey });
   }
 
+  // ─── Raw fetch helper for Anthropic API ────────────────
+
+  private async anthropicFetch(
+    path: string,
+    opts?: { method?: string; body?: any; headers?: Record<string, string> },
+  ): Promise<any> {
+    const apiKey = await this.getApiKey();
+    const method = opts?.method || 'GET';
+
+    const headers: Record<string, string> = {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': BETA_HEADERS.join(','),
+      ...opts?.headers,
+    };
+
+    const fetchOpts: any = { method, headers };
+    if (opts?.body) {
+      if (typeof opts.body === 'string' || opts.body instanceof FormData) {
+        fetchOpts.body = opts.body;
+      } else {
+        headers['Content-Type'] = 'application/json';
+        fetchOpts.body = JSON.stringify(opts.body);
+      }
+    }
+
+    const res = await fetch(`https://api.anthropic.com${path}`, fetchOpts);
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      throw new Error(`Anthropic API ${res.status}: ${errText.slice(0, 300)}`);
+    }
+
+    return res.json();
+  }
+
+  private async getApiKey(): Promise<string> {
+    const storedKey = await this.settings.get('ANTHROPIC_API_KEY');
+    const apiKey = storedKey || process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error(
+        'Chave API da Anthropic nao configurada. Configure em Ajustes > IA.',
+      );
+    }
+    return apiKey;
+  }
+
   // ─── List skills from Claude Console ───────────────────
 
   async listConsoleSkills(source?: 'all' | 'anthropic' | 'custom') {
-    const client = await this.getClient();
-
     try {
-      const params: any = { betas: BETA_HEADERS };
-      if (source) params.source = source;
-
-      const result = await (client.beta as any).skills.list(params);
+      const query = source && source !== 'all' ? `?source=${source}` : '';
+      const result = await this.anthropicFetch(`/v1/skills${query}`);
 
       return (result.data || []).map((s: any) => ({
         id: s.id,
-        name: s.name || s.display_title || s.id,
-        displayTitle: s.display_title || s.name || s.id,
+        name: s.id,
+        displayTitle: s.display_title || s.id,
         description: s.description || null,
-        source: s.source,         // 'anthropic' | 'custom'
+        source: s.source,
         createdAt: s.created_at,
       }));
     } catch (err: any) {
       this.logger.error('Erro ao listar skills do Console:', err?.message);
-      // Fallback: return empty array instead of crashing
       return [];
+    }
+  }
+
+  // ─── Get a specific skill ────────────────────────────────
+
+  async getConsoleSkill(skillId: string) {
+    try {
+      return await this.anthropicFetch(`/v1/skills/${skillId}`);
+    } catch (err: any) {
+      this.logger.error(`Erro ao buscar skill ${skillId}:`, err?.message);
+      throw new Error(`Skill nao encontrada: ${err?.message}`);
+    }
+  }
+
+  // ─── Create custom skill (via SKILL.md upload) ──────────
+
+  async createCustomSkill(
+    displayTitle: string,
+    skillMdContent: string,
+  ) {
+    try {
+      // The API expects multipart form data with SKILL.md file
+      const formData = new FormData();
+      formData.append('display_title', displayTitle);
+
+      // Create a Blob for the SKILL.md file
+      const skillBlob = new Blob([skillMdContent], { type: 'text/markdown' });
+      formData.append('files', skillBlob, 'SKILL.md');
+
+      const apiKey = await this.getApiKey();
+
+      const res = await fetch('https://api.anthropic.com/v1/skills', {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': BETA_HEADERS.join(','),
+        },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`${res.status}: ${errText.slice(0, 300)}`);
+      }
+
+      return res.json();
+    } catch (err: any) {
+      this.logger.error('Erro ao criar skill:', err?.message);
+      throw new Error(`Falha ao criar skill: ${err?.message}`);
+    }
+  }
+
+  // ─── Delete custom skill ─────────────────────────────────
+
+  async deleteCustomSkill(skillId: string) {
+    try {
+      const apiKey = await this.getApiKey();
+
+      const res = await fetch(`https://api.anthropic.com/v1/skills/${skillId}`, {
+        method: 'DELETE',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': BETA_HEADERS.join(','),
+        },
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`${res.status}: ${errText.slice(0, 300)}`);
+      }
+
+      return { deleted: true };
+    } catch (err: any) {
+      this.logger.error(`Erro ao deletar skill ${skillId}:`, err?.message);
+      throw new Error(`Falha ao deletar skill: ${err?.message}`);
     }
   }
 
   // ─── List files from Claude Console ────────────────────
 
   async listConsoleFiles() {
-    const client = await this.getClient();
-
     try {
-      const result = await (client.beta as any).files.list({
-        betas: BETA_HEADERS,
-      });
+      const result = await this.anthropicFetch('/v1/files');
 
       return (result.data || []).map((f: any) => ({
         id: f.id,
@@ -119,17 +234,28 @@ export class PetitionChatService {
     filename: string,
     mimeType: string,
   ) {
-    const client = await this.getClient();
-
     try {
-      const file = await (client.beta as any).files.upload(
-        {
-          file: new Blob([new Uint8Array(fileBuffer)], { type: mimeType }),
-          purpose: 'user_upload',
-        },
-        { betas: BETA_HEADERS },
-      );
+      const apiKey = await this.getApiKey();
+      const formData = new FormData();
+      const blob = new Blob([new Uint8Array(fileBuffer)], { type: mimeType });
+      formData.append('file', blob, filename);
 
+      const res = await fetch('https://api.anthropic.com/v1/files', {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': BETA_HEADERS.join(','),
+        },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`${res.status}: ${errText.slice(0, 300)}`);
+      }
+
+      const file = await res.json();
       return {
         id: file.id,
         filename: file.filename || filename,
@@ -149,36 +275,41 @@ export class PetitionChatService {
     filename: string;
     contentType: string;
   }> {
-    const client = await this.getClient();
-
     try {
+      const apiKey = await this.getApiKey();
+
       // Get metadata
-      const metadata = await (client.beta as any).files.retrieve_metadata(
-        fileId,
-        { betas: BETA_HEADERS },
+      const metaRes = await fetch(
+        `https://api.anthropic.com/v1/files/${fileId}`,
+        {
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-beta': BETA_HEADERS.join(','),
+          },
+        },
       );
+      const metadata = metaRes.ok
+        ? await metaRes.json()
+        : { filename: `file-${fileId}`, mime_type: 'application/octet-stream' };
 
       // Download content
-      const content = await (client.beta as any).files.download(
-        fileId,
-        { betas: BETA_HEADERS },
+      const contentRes = await fetch(
+        `https://api.anthropic.com/v1/files/${fileId}/content`,
+        {
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-beta': BETA_HEADERS.join(','),
+          },
+        },
       );
 
-      // Convert to buffer
-      let buffer: Buffer;
-      if (content instanceof Buffer) {
-        buffer = content;
-      } else if (content.body) {
-        const chunks: Uint8Array[] = [];
-        for await (const chunk of content.body) {
-          chunks.push(chunk);
-        }
-        buffer = Buffer.concat(chunks);
-      } else if (typeof content.arrayBuffer === 'function') {
-        buffer = Buffer.from(await content.arrayBuffer());
-      } else {
-        buffer = Buffer.from(content);
+      if (!contentRes.ok) {
+        throw new Error(`Download failed: ${contentRes.status}`);
       }
+
+      const buffer = Buffer.from(await contentRes.arrayBuffer());
 
       return {
         buffer,

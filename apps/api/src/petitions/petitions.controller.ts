@@ -39,6 +39,24 @@ export class PetitionsController {
     return this.chatService.listConsoleSkills(source || 'all');
   }
 
+  /** GET /petitions/chat/skills/:id — get a specific skill */
+  @Get('chat/skills/:id')
+  getChatSkill(@Param('id') id: string) {
+    return this.chatService.getConsoleSkill(id);
+  }
+
+  /** POST /petitions/chat/skills — create a custom skill via SKILL.md */
+  @Post('chat/skills')
+  createChatSkill(@Body() body: { displayTitle: string; skillMd: string }) {
+    return this.chatService.createCustomSkill(body.displayTitle, body.skillMd);
+  }
+
+  /** DELETE /petitions/chat/skills/:id — delete a custom skill */
+  @Delete('chat/skills/:id')
+  deleteChatSkill(@Param('id') id: string) {
+    return this.chatService.deleteCustomSkill(id);
+  }
+
   // ─── Console Files ─────────────────────────────────────
 
   /** GET /petitions/chat/files — list files from Claude Console */
