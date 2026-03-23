@@ -8,9 +8,12 @@ import {
   Body,
   UseGuards,
   Request,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { PetitionsService } from './petitions.service';
 import { PetitionAiService } from './petition-ai.service';
+import { PetitionChatService, ChatMessage } from './petition-chat.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)
@@ -19,7 +22,27 @@ export class PetitionsController {
   constructor(
     private readonly service: PetitionsService,
     private readonly aiService: PetitionAiService,
+    private readonly chatService: PetitionChatService,
   ) {}
+
+  // ─── Chat (Claude Streaming) ───────────────────────────
+
+  /** GET /petitions/chat/skills — list skills available for petition chat */
+  @Get('chat/skills')
+  getChatSkills() {
+    return this.chatService.getAvailableSkills();
+  }
+
+  /** POST /petitions/chat — stream a Claude response (SSE) */
+  @Post('chat')
+  async chat(
+    @Body() body: { messages: ChatMessage[]; skillId?: string; model?: string },
+    @Res() res: Response,
+  ) {
+    return this.chatService.streamChat(body, res);
+  }
+
+  // ─── Case-scoped CRUD ─────────────────────────────────
 
   @Get('case/:caseId')
   findByCaseId(
