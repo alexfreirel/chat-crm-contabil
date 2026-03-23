@@ -12,5 +12,8 @@
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "start": "npm run start --workspaces --if-present"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0"
   }
 }

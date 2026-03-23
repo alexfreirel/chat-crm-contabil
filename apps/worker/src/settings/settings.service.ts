@@ -37,7 +37,27 @@ export class SettingsService {
     return (this.prisma as any).promptSkill.findMany({
       where: { active: true },
       orderBy: [{ order: 'asc' }, { id: 'asc' }],
+      include: { tools: { where: { active: true } }, assets: true },
     });
+  }
+
+  async getAnthropicKey(): Promise<string | null> {
+    const row = await this.prisma.globalSetting.findUnique({ where: { key: 'ANTHROPIC_API_KEY' } });
+    const raw = row?.value || process.env.ANTHROPIC_API_KEY || null;
+    return raw ? this.decryptIfNeeded(raw) : null;
+  }
+
+  async getRouterConfig(): Promise<{ enabled: boolean; model: string; provider: string }> {
+    const [enabledRow, modelRow, providerRow] = await Promise.all([
+      this.get('AI_ROUTER_ENABLED'),
+      this.get('AI_ROUTER_MODEL'),
+      this.get('AI_ROUTER_PROVIDER'),
+    ]);
+    return {
+      enabled: enabledRow !== 'false', // default true
+      model: modelRow || 'gpt-4.1-mini',
+      provider: providerRow || 'openai',
+    };
   }
 
   async getSmtpConfig() {
