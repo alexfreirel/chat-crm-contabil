@@ -278,56 +278,121 @@ export class PetitionChatService {
         }
       }
 
-      // Stream the response
-      const stream = await (client.beta as any).messages.stream(requestParams);
+      // ─── Decide streaming strategy ─────────────────────
+      // The beta SDK may not support .stream(), so we split:
+      //  - No skills → use client.messages.stream() (standard SDK)
+      //  - With skills → use client.messages.create() with stream:true via raw fetch
 
       let containerId: string | null = null;
       const fileResults: any[] = [];
+      const usesBetaSkills = !!(requestParams.container);
 
-      for await (const event of stream) {
-        // Text content
-        if (
-          event.type === 'content_block_delta' &&
-          event.delta?.type === 'text_delta'
-        ) {
-          res.write(`data: ${JSON.stringify({ type: 'text', text: event.delta.text })}\n\n`);
-        }
+      if (!usesBetaSkills) {
+        // ── Standard streaming (no beta features needed) ──
+        const streamParams: any = {
+          model: requestParams.model,
+          max_tokens: requestParams.max_tokens,
+          messages: requestParams.messages,
+        };
+        if (requestParams.system) streamParams.system = requestParams.system;
 
-        // Message start — capture container ID and tokens
-        if (event.type === 'message_start' && event.message) {
-          if (event.message.container?.id) {
-            containerId = event.message.container.id;
+        const stream = client.messages.stream(streamParams);
+
+        for await (const event of stream) {
+          if (event.type === 'content_block_delta' && (event as any).delta?.type === 'text_delta') {
+            res.write(`data: ${JSON.stringify({ type: 'text', text: (event as any).delta.text })}\n\n`);
           }
-          if (event.message.usage) {
-            inputTokens = event.message.usage.input_tokens || 0;
+          if (event.type === 'message_start' && (event as any).message?.usage) {
+            inputTokens = (event as any).message.usage.input_tokens || 0;
+          }
+          if (event.type === 'message_delta' && (event as any).usage) {
+            outputTokens = (event as any).usage.output_tokens || 0;
           }
         }
+      } else {
+        // ── Beta streaming (skills + container) via raw fetch ──
+        const apiKey = (client as any).apiKey || (client as any)._options?.apiKey;
 
-        // Message delta — capture output tokens
-        if (event.type === 'message_delta' && (event as any).usage) {
-          outputTokens = (event as any).usage.output_tokens || 0;
+        const betaBody: any = {
+          model: requestParams.model,
+          max_tokens: requestParams.max_tokens,
+          messages: requestParams.messages,
+          stream: true,
+        };
+        if (requestParams.system) betaBody.system = requestParams.system;
+        if (requestParams.container) betaBody.container = requestParams.container;
+        if (requestParams.tools) betaBody.tools = requestParams.tools;
+
+        const fetchRes = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-beta': BETA_HEADERS.join(','),
+          },
+          body: JSON.stringify(betaBody),
+        });
+
+        if (!fetchRes.ok) {
+          const errBody = await fetchRes.text();
+          this.logger.error(`Anthropic API error ${fetchRes.status}: ${errBody}`);
+          throw new Error(`Anthropic API ${fetchRes.status}: ${errBody.slice(0, 200)}`);
         }
 
-        // Code execution results — may contain file outputs
-        if (
-          event.type === 'content_block_stop' &&
-          (event as any).content_block?.type === 'bash_code_execution_tool_result'
-        ) {
-          const block = (event as any).content_block;
-          if (block.content?.content) {
-            for (const item of block.content.content) {
-              if (item.file_id) {
-                fileResults.push({
-                  fileId: item.file_id,
-                  filename: item.filename || `file-${item.file_id}`,
-                });
+        // Parse SSE from Anthropic
+        const reader = fetchRes.body!.getReader();
+        const decoder = new TextDecoder();
+        let sseBuffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          sseBuffer += decoder.decode(value, { stream: true });
+          const lines = sseBuffer.split('\n');
+          sseBuffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const payload = line.slice(6).trim();
+            if (payload === '[DONE]') continue;
+
+            try {
+              const event = JSON.parse(payload);
+
+              if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+                res.write(`data: ${JSON.stringify({ type: 'text', text: event.delta.text })}\n\n`);
               }
+
+              if (event.type === 'message_start' && event.message) {
+                if (event.message.container?.id) containerId = event.message.container.id;
+                if (event.message.usage) inputTokens = event.message.usage.input_tokens || 0;
+              }
+
+              if (event.type === 'message_delta' && event.usage) {
+                outputTokens = event.usage.output_tokens || 0;
+              }
+
+              // Capture generated files from code execution
+              if (event.type === 'content_block_stop' && event.content_block?.type === 'bash_code_execution_tool_result') {
+                const block = event.content_block;
+                if (block.content?.content) {
+                  for (const item of block.content.content) {
+                    if (item.file_id) {
+                      fileResults.push({ fileId: item.file_id, filename: item.filename || `file-${item.file_id}` });
+                    }
+                  }
+                }
+              }
+            } catch {
+              // Skip malformed chunks
             }
           }
         }
       }
 
-      // Send metadata at the end (container ID for reuse, generated files)
+      // Send metadata at the end
       const metadata: any = { type: 'done' };
       if (containerId) metadata.containerId = containerId;
       if (fileResults.length > 0) metadata.files = fileResults;
