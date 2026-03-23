@@ -683,6 +683,10 @@ export default function AiSettingsPage() {
                     onSave={saveSkill}
                     onCancel={cancelEdit}
                     insertVar={insertVar}
+                    skillId={null}
+                    tools={[]}
+                    assets={[]}
+                    onRefresh={fetchData}
                   />
                 </div>
               )}
