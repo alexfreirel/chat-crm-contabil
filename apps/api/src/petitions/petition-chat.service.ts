@@ -504,113 +504,92 @@ export class PetitionChatService {
       let resultContainerId: string | null = null;
       const fileResults: any[] = [];
 
-      const doStream = async (reqBody: any, useBeta: boolean) => {
-        if (!useBeta) {
-          // ── Standard SDK streaming ──
-          const streamParams: any = {
-            model: reqBody.model,
-            max_tokens: reqBody.max_tokens,
-            messages: reqBody.messages,
-          };
-          if (reqBody.thinking) streamParams.thinking = reqBody.thinking;
-          if (reqBody.system) streamParams.system = reqBody.system;
+      // Always use raw fetch for streaming (SDK .stream() doesn't support
+      // thinking or beta headers properly). This unifies both paths.
 
-          const stream = client.messages.stream(streamParams);
+      const doStream = async (reqBody: any, _useBeta: boolean) => {
+        const apiKey = await this.getApiKey();
+        reqBody.stream = true;
 
-          for await (const event of stream) {
-            const ev = event as any;
-            if (event.type === 'content_block_delta' && ev.delta?.type === 'thinking_delta') {
-              res.write(`data: ${JSON.stringify({ type: 'thinking', text: ev.delta.thinking })}\n\n`);
-            }
-            if (event.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
-              res.write(`data: ${JSON.stringify({ type: 'text', text: ev.delta.text })}\n\n`);
-            }
-            if (event.type === 'message_start' && ev.message?.usage) {
-              inputTokens = ev.message.usage.input_tokens || 0;
-            }
-            if (event.type === 'message_delta' && ev.usage) {
-              outputTokens = ev.usage.output_tokens || 0;
-            }
+        // Build beta headers: always include thinking; add skills/files if needed
+        const betaList = ['interleaved-thinking-2025-05-14'];
+        if (_useBeta) {
+          betaList.push('code-execution-2025-08-25', 'skills-2025-10-02', 'files-api-2025-04-14');
+        }
+
+        const fetchRes = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-beta': betaList.join(','),
+          },
+          body: JSON.stringify(reqBody),
+        });
+
+        if (!fetchRes.ok) {
+          const errBody = await fetchRes.text();
+          this.logger.error(`Anthropic API error ${fetchRes.status}: ${errBody.slice(0, 500)}`);
+
+          if (fetchRes.status === 429) {
+            const err = new Error('RATE_LIMIT') as any;
+            err.statusCode = 429;
+            throw err;
           }
-        } else {
-          // ── Beta streaming via raw fetch ──
-          const apiKey = await this.getApiKey();
-          reqBody.stream = true;
+          throw new Error(`Erro da API Anthropic (${fetchRes.status}): ${errBody.slice(0, 300)}`);
+        }
 
-          const fetchRes = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': apiKey,
-              'anthropic-version': '2023-06-01',
-              'anthropic-beta': BETA_HEADERS.join(','),
-            },
-            body: JSON.stringify(reqBody),
-          });
+        const reader = fetchRes.body!.getReader();
+        const decoder = new TextDecoder();
+        let sseBuffer = '';
 
-          if (!fetchRes.ok) {
-            const errBody = await fetchRes.text();
-            this.logger.error(`Anthropic API error ${fetchRes.status}: ${errBody}`);
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-            if (fetchRes.status === 429) {
-              const err = new Error('RATE_LIMIT') as any;
-              err.statusCode = 429;
-              throw err;
-            }
-            throw new Error(`Erro da API Anthropic (${fetchRes.status}): ${errBody.slice(0, 300)}`);
-          }
+          sseBuffer += decoder.decode(value, { stream: true });
+          const lines = sseBuffer.split('\n');
+          sseBuffer = lines.pop() || '';
 
-          const reader = fetchRes.body!.getReader();
-          const decoder = new TextDecoder();
-          let sseBuffer = '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const payload = line.slice(6).trim();
+            if (payload === '[DONE]') continue;
 
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+            try {
+              const event = JSON.parse(payload);
 
-            sseBuffer += decoder.decode(value, { stream: true });
-            const lines = sseBuffer.split('\n');
-            sseBuffer = lines.pop() || '';
+              if (event.type === 'content_block_delta' && event.delta?.type === 'thinking_delta') {
+                res.write(`data: ${JSON.stringify({ type: 'thinking', text: event.delta.thinking })}\n\n`);
+              }
+              if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+                res.write(`data: ${JSON.stringify({ type: 'text', text: event.delta.text })}\n\n`);
+              }
+              if (event.type === 'message_start' && event.message) {
+                if (event.message.container?.id) resultContainerId = event.message.container.id;
+                if (event.message.usage) inputTokens = event.message.usage.input_tokens || 0;
+              }
+              if (event.type === 'message_delta' && event.usage) {
+                outputTokens = event.usage.output_tokens || 0;
+              }
 
-            for (const line of lines) {
-              if (!line.startsWith('data: ')) continue;
-              const payload = line.slice(6).trim();
-              if (payload === '[DONE]') continue;
-
-              try {
-                const event = JSON.parse(payload);
-
-                if (event.type === 'content_block_delta' && event.delta?.type === 'thinking_delta') {
-                  res.write(`data: ${JSON.stringify({ type: 'thinking', text: event.delta.thinking })}\n\n`);
-                }
-                if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-                  res.write(`data: ${JSON.stringify({ type: 'text', text: event.delta.text })}\n\n`);
-                }
-                if (event.type === 'message_start' && event.message) {
-                  if (event.message.container?.id) resultContainerId = event.message.container.id;
-                  if (event.message.usage) inputTokens = event.message.usage.input_tokens || 0;
-                }
-                if (event.type === 'message_delta' && event.usage) {
-                  outputTokens = event.usage.output_tokens || 0;
-                }
-
-                if (
-                  event.type === 'content_block_stop' &&
-                  event.content_block?.type === 'bash_code_execution_tool_result'
-                ) {
-                  const items = event.content_block.content?.content || [];
-                  for (const item of items) {
-                    if (item.file_id) {
-                      fileResults.push({
-                        fileId: item.file_id,
-                        filename: item.filename || `file-${item.file_id}`,
-                      });
-                    }
+              if (
+                event.type === 'content_block_stop' &&
+                event.content_block?.type === 'bash_code_execution_tool_result'
+              ) {
+                const items = event.content_block.content?.content || [];
+                for (const item of items) {
+                  if (item.file_id) {
+                    fileResults.push({
+                      fileId: item.file_id,
+                      filename: item.filename || `file-${item.file_id}`,
+                    });
                   }
                 }
-              } catch {
-                // Skip malformed SSE chunks
               }
+            } catch {
+              // Skip malformed SSE chunks
             }
           }
         }
