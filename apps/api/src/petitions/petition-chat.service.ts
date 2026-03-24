@@ -347,10 +347,25 @@ export class PetitionChatService {
 
     try {
       // Build request params
+      // Sanitize messages: ensure all content is plain text string
+      // Previous messages may contain complex content blocks (pdf, file refs, thinking)
+      // that cause errors when replayed. Strip everything to plain text.
+      const sanitizedMessages = params.messages.map((m: any) => {
+        if (typeof m.content === 'string') return { role: m.role, content: m.content };
+        if (Array.isArray(m.content)) {
+          const textParts = m.content
+            .filter((b: any) => b.type === 'text')
+            .map((b: any) => b.text || '')
+            .join('\n');
+          return { role: m.role, content: textParts || '(arquivo anexado)' };
+        }
+        return { role: m.role, content: String(m.content || '') };
+      });
+
       const requestParams: any = {
         model,
         max_tokens: 16384,
-        messages: params.messages,
+        messages: sanitizedMessages,
         betas: BETA_HEADERS,
         thinking: {
           type: 'enabled',
