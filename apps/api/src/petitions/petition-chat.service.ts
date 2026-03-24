@@ -346,71 +346,87 @@ export class PetitionChatService {
     let outputTokens = 0;
 
     try {
-      // Build request params
-      // Sanitize messages: ensure all content is plain text string
-      // Previous messages may contain complex content blocks (pdf, file refs, thinking)
-      // that cause errors when replayed. Strip everything to plain text.
-      const allSanitized = params.messages.map((m: any) => {
+      // ── Step 1: Sanitize messages ──────────────────────
+      // Previous messages may contain complex content blocks (pdf, thinking, etc.)
+      // Strip everything to plain text for safe replay.
+      const sanitized = params.messages.map((m: any) => {
         if (typeof m.content === 'string') return { role: m.role, content: m.content };
         if (Array.isArray(m.content)) {
-          const textParts = m.content
+          const text = m.content
             .filter((b: any) => b.type === 'text')
             .map((b: any) => b.text || '')
             .join('\n');
-          return { role: m.role, content: textParts || '(arquivo anexado)' };
+          return { role: m.role, content: text || '(arquivo anexado)' };
         }
         return { role: m.role, content: String(m.content || '') };
       });
 
-      // Truncate conversation history to control token usage
-      // Keep first message (context) + last N messages (recent context)
-      const MAX_HISTORY_MESSAGES = 20; // ~10 user + 10 assistant turns
-      const MAX_CHARS_PER_MESSAGE = 8000; // ~2000 tokens per message max
-      let sanitizedMessages = allSanitized;
+      // ── Step 2: Truncate history to control tokens ─────
+      const MAX_HISTORY = 20;
+      const MAX_CHARS = 8000;
+      let msgs = sanitized;
 
-      if (allSanitized.length > MAX_HISTORY_MESSAGES) {
-        // Keep first 2 messages (initial context) + last N messages
-        sanitizedMessages = [
-          ...allSanitized.slice(0, 2),
-          { role: 'user' as const, content: '[... mensagens anteriores omitidas para economizar tokens ...]' },
-          ...allSanitized.slice(-MAX_HISTORY_MESSAGES + 3),
+      if (sanitized.length > MAX_HISTORY) {
+        msgs = [
+          ...sanitized.slice(0, 2),
+          { role: 'user' as const, content: '[... mensagens anteriores omitidas ...]' },
+          ...sanitized.slice(-MAX_HISTORY + 3),
         ];
-        this.logger.log(`Truncated conversation from ${allSanitized.length} to ${sanitizedMessages.length} messages`);
+        this.logger.log(`Truncated ${sanitized.length} → ${msgs.length} messages`);
       }
 
-      // Truncate individual long messages
-      sanitizedMessages = sanitizedMessages.map((m) => ({
+      msgs = msgs.map((m) => ({
         ...m,
-        content: typeof m.content === 'string' && m.content.length > MAX_CHARS_PER_MESSAGE
-          ? m.content.slice(0, MAX_CHARS_PER_MESSAGE) + '\n[... conteudo truncado ...]'
-          : m.content,
+        content:
+          typeof m.content === 'string' && m.content.length > MAX_CHARS
+            ? m.content.slice(0, MAX_CHARS) + '\n[... truncado ...]'
+            : m.content,
       }));
 
-      const requestParams: any = {
-        model,
-        max_tokens: 16384,
-        messages: sanitizedMessages,
-        betas: BETA_HEADERS,
-        thinking: {
-          type: 'enabled',
-          budget_tokens: 8000,
-        },
-      };
+      // ── Step 3: Inject file references (container_upload) ──
+      // Per Anthropic docs: files uploaded via Files API must use
+      // { type: "container_upload", file_id: "..." } content blocks.
+      const hasFiles = params.fileIds && params.fileIds.length > 0;
+      if (hasFiles) {
+        const lastUserIdx = msgs.length - 1 - [...msgs].reverse().findIndex((m) => m.role === 'user');
+        if (lastUserIdx >= 0 && lastUserIdx < msgs.length) {
+          const textContent = typeof msgs[lastUserIdx].content === 'string'
+            ? msgs[lastUserIdx].content
+            : '';
 
-      // System prompt (optional override for free-form mode)
-      if (params.systemPrompt) {
-        requestParams.system = params.systemPrompt;
+          const contentBlocks: any[] = params.fileIds!.map((fid) => ({
+            type: 'container_upload',
+            file_id: fid,
+          }));
+          contentBlocks.push({
+            type: 'text',
+            text: textContent || 'Analise o(s) arquivo(s) enviado(s) e responda de forma detalhada.',
+          });
+
+          msgs = [...msgs];
+          msgs[lastUserIdx] = { role: 'user', content: contentBlocks };
+        }
       }
 
-      // Container with skills (Console integration)
+      // ── Step 4: Determine if we need beta features ─────
+      // Beta (raw fetch) is needed when: skills OR container OR file uploads
       const hasSkills = params.skills && params.skills.length > 0;
-      if (hasSkills || params.containerId) {
+      const needsBeta = hasSkills || !!params.containerId || hasFiles;
+
+      // ── Step 5: Build the request body ─────────────────
+      const body: any = {
+        model,
+        max_tokens: 16384,
+        messages: msgs,
+        thinking: { type: 'enabled', budget_tokens: 8000 },
+      };
+
+      if (params.systemPrompt) body.system = params.systemPrompt;
+
+      // Container (for skills + file persistence across turns)
+      if (needsBeta) {
         const container: any = {};
-
-        if (params.containerId) {
-          container.id = params.containerId;
-        }
-
+        if (params.containerId) container.id = params.containerId;
         if (hasSkills) {
           container.skills = params.skills!.map((s) => ({
             type: s.type,
@@ -418,73 +434,35 @@ export class PetitionChatService {
             version: s.version || 'latest',
           }));
         }
+        body.container = container;
 
-        requestParams.container = container;
-
-        // Code execution tool is REQUIRED for skills
-        requestParams.tools = [
+        // code_execution is REQUIRED for skills and container_upload
+        body.tools = [
           { type: 'code_execution_20250825', name: 'code_execution' },
         ];
       }
 
-      // Attach file references in user messages if provided
-      if (params.fileIds && params.fileIds.length > 0) {
-        // Inject file references into the last user message
-        const lastUserIdx = [...params.messages]
-          .reverse()
-          .findIndex((m) => m.role === 'user');
-        if (lastUserIdx >= 0) {
-          const idx = params.messages.length - 1 - lastUserIdx;
-          const msg = params.messages[idx];
-          const textContent = typeof msg.content === 'string' ? msg.content : '';
-
-          // Build content blocks with file references (document type for the API)
-          const contentBlocks: any[] = params.fileIds.map((fid) => ({
-            type: 'document',
-            source: { type: 'file', file_id: fid },
-          }));
-          // Always add a text block (required by the API, even if empty use a prompt)
-          contentBlocks.push({
-            type: 'text',
-            text: textContent || 'Analise o(s) arquivo(s) enviado(s) e responda de forma detalhada.',
-          });
-
-          requestParams.messages = [...params.messages];
-          requestParams.messages[idx] = {
-            role: 'user',
-            content: contentBlocks,
-          };
-        }
-      }
-
-      // ─── Decide streaming strategy ─────────────────────
-      // The beta SDK may not support .stream(), so we split:
-      //  - No skills → use client.messages.stream() (standard SDK)
-      //  - With skills → use client.messages.create() with stream:true via raw fetch
-
-      let containerId: string | null = null;
+      // ── Step 6: Stream the response ────────────────────
+      let resultContainerId: string | null = null;
       const fileResults: any[] = [];
-      const usesBetaSkills = !!(requestParams.container);
 
-      if (!usesBetaSkills) {
-        // ── Standard streaming (no beta features needed) ──
+      if (!needsBeta) {
+        // ── Standard SDK streaming (no beta features) ──
         const streamParams: any = {
-          model: requestParams.model,
-          max_tokens: requestParams.max_tokens,
-          messages: requestParams.messages,
-          thinking: requestParams.thinking,
+          model: body.model,
+          max_tokens: body.max_tokens,
+          messages: body.messages,
+          thinking: body.thinking,
         };
-        if (requestParams.system) streamParams.system = requestParams.system;
+        if (body.system) streamParams.system = body.system;
 
         const stream = client.messages.stream(streamParams);
 
         for await (const event of stream) {
           const ev = event as any;
-          // Thinking deltas
           if (event.type === 'content_block_delta' && ev.delta?.type === 'thinking_delta') {
             res.write(`data: ${JSON.stringify({ type: 'thinking', text: ev.delta.thinking })}\n\n`);
           }
-          // Text deltas
           if (event.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
             res.write(`data: ${JSON.stringify({ type: 'text', text: ev.delta.text })}\n\n`);
           }
@@ -496,19 +474,9 @@ export class PetitionChatService {
           }
         }
       } else {
-        // ── Beta streaming (skills + container) via raw fetch ──
-        const apiKey = (client as any).apiKey || (client as any)._options?.apiKey;
-
-        const betaBody: any = {
-          model: requestParams.model,
-          max_tokens: requestParams.max_tokens,
-          messages: requestParams.messages,
-          stream: true,
-          thinking: requestParams.thinking,
-        };
-        if (requestParams.system) betaBody.system = requestParams.system;
-        if (requestParams.container) betaBody.container = requestParams.container;
-        if (requestParams.tools) betaBody.tools = requestParams.tools;
+        // ── Beta streaming via raw fetch ──
+        const apiKey = await this.getApiKey();
+        body.stream = true;
 
         const fetchRes = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
@@ -518,16 +486,20 @@ export class PetitionChatService {
             'anthropic-version': '2023-06-01',
             'anthropic-beta': BETA_HEADERS.join(','),
           },
-          body: JSON.stringify(betaBody),
+          body: JSON.stringify(body),
         });
 
         if (!fetchRes.ok) {
           const errBody = await fetchRes.text();
           this.logger.error(`Anthropic API error ${fetchRes.status}: ${errBody}`);
-          throw new Error(`Anthropic API ${fetchRes.status}: ${errBody.slice(0, 200)}`);
+
+          // Better error messages
+          if (fetchRes.status === 429) {
+            throw new Error('Limite de tokens por minuto excedido. Aguarde 1 minuto e tente novamente.');
+          }
+          throw new Error(`Erro da API Anthropic (${fetchRes.status}): ${errBody.slice(0, 200)}`);
         }
 
-        // Parse SSE from Anthropic
         const reader = fetchRes.body!.getReader();
         const decoder = new TextDecoder();
         let sseBuffer = '';
@@ -548,46 +520,46 @@ export class PetitionChatService {
             try {
               const event = JSON.parse(payload);
 
-              // Thinking deltas
               if (event.type === 'content_block_delta' && event.delta?.type === 'thinking_delta') {
                 res.write(`data: ${JSON.stringify({ type: 'thinking', text: event.delta.thinking })}\n\n`);
               }
-
-              // Text deltas
               if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
                 res.write(`data: ${JSON.stringify({ type: 'text', text: event.delta.text })}\n\n`);
               }
-
               if (event.type === 'message_start' && event.message) {
-                if (event.message.container?.id) containerId = event.message.container.id;
+                if (event.message.container?.id) resultContainerId = event.message.container.id;
                 if (event.message.usage) inputTokens = event.message.usage.input_tokens || 0;
               }
-
               if (event.type === 'message_delta' && event.usage) {
                 outputTokens = event.usage.output_tokens || 0;
               }
 
               // Capture generated files from code execution
-              if (event.type === 'content_block_stop' && event.content_block?.type === 'bash_code_execution_tool_result') {
+              if (
+                event.type === 'content_block_stop' &&
+                event.content_block?.type === 'bash_code_execution_tool_result'
+              ) {
                 const block = event.content_block;
-                if (block.content?.content) {
-                  for (const item of block.content.content) {
-                    if (item.file_id) {
-                      fileResults.push({ fileId: item.file_id, filename: item.filename || `file-${item.file_id}` });
-                    }
+                const items = block.content?.content || [];
+                for (const item of items) {
+                  if (item.file_id) {
+                    fileResults.push({
+                      fileId: item.file_id,
+                      filename: item.filename || `file-${item.file_id}`,
+                    });
                   }
                 }
               }
             } catch {
-              // Skip malformed chunks
+              // Skip malformed SSE chunks
             }
           }
         }
       }
 
-      // Send metadata at the end
+      // ── Step 7: Send done metadata ─────────────────────
       const metadata: any = { type: 'done' };
-      if (containerId) metadata.containerId = containerId;
+      if (resultContainerId) metadata.containerId = resultContainerId;
       if (fileResults.length > 0) metadata.files = fileResults;
       res.write(`data: ${JSON.stringify(metadata)}\n\n`);
 
