@@ -395,9 +395,9 @@ export class PetitionChatService {
           const msg = params.messages[idx];
           const textContent = typeof msg.content === 'string' ? msg.content : '';
 
-          // Build content blocks with file references
+          // Build content blocks with file references (document type for the API)
           const contentBlocks: any[] = params.fileIds.map((fid) => ({
-            type: 'file',
+            type: 'document',
             source: { type: 'file', file_id: fid },
           }));
           contentBlocks.push({ type: 'text', text: textContent });
