@@ -261,6 +261,8 @@ function MessageBubble({ msg, isStreaming }: { msg: ChatMessage; isStreaming: bo
 export default function PeticoesPage() {
   // Skills from Claude Console (loaded silently; all sent automatically)
   const [consoleSkills, setConsoleSkills] = useState<ConsoleSkill[]>([]);
+  // Console files cache — used to deduplicate uploads (same filename → reuse file_id)
+  const [consoleFiles, setConsoleFiles] = useState<{ id: string; filename: string; size: number }[]>([]);
 
   // Model
   // Haiku por padrão: limite 60K tokens/min (vs 30K do Sonnet no Tier 1)
@@ -303,6 +305,11 @@ export default function PeticoesPage() {
     // Load skills silently — all are sent automatically; Claude Console selects the right one
     api<ConsoleSkill[]>('/petitions/chat/skills?source=all')
       .then((data) => { if (Array.isArray(data)) setConsoleSkills(data); })
+      .catch(() => {});
+
+    // Load Console files list for deduplication (avoid re-uploading same file)
+    api<{ id: string; filename: string; size: number }[]>('/petitions/chat/files')
+      .then((data) => { if (Array.isArray(data)) setConsoleFiles(data); })
       .catch(() => {});
 
     // Load chats from DB
@@ -394,11 +401,26 @@ export default function PeticoesPage() {
     if (!file) return;
     e.target.value = '';
 
+    // Prevent attaching the same file twice in the current session
+    if (attachedFiles.some((f) => f.name === file.name)) {
+      setStreamError(`O arquivo "${file.name}" já está anexado.`);
+      return;
+    }
+
     setUploadingFile(true);
     setStreamError(null);
     const token = localStorage.getItem('token');
 
     try {
+      // ── Deduplication: reuse existing file_id from Console if same filename+size ──
+      const existing = consoleFiles.find(
+        (cf) => cf.filename === file.name && cf.size === file.size,
+      );
+      if (existing) {
+        setAttachedFiles((prev) => [...prev, { id: existing.id, name: existing.filename }]);
+        return;
+      }
+
       const formData = new FormData();
       formData.append('file', file);
 
@@ -414,7 +436,10 @@ export default function PeticoesPage() {
       }
 
       const data = await res.json();
-      setAttachedFiles((prev) => [...prev, { id: data.id, name: data.filename || file.name }]);
+      const uploaded = { id: data.id, name: data.filename || file.name };
+      setAttachedFiles((prev) => [...prev, uploaded]);
+      // Cache in consoleFiles so subsequent uploads of same file are deduplicated
+      setConsoleFiles((prev) => [{ id: data.id, filename: data.filename || file.name, size: file.size }, ...prev]);
     } catch (err: any) {
       setStreamError(`Erro no upload: ${err.message}`);
     } finally {

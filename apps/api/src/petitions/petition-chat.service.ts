@@ -446,14 +446,18 @@ export class PetitionChatService {
 
       // ── Step 5: Build request body ─────────────────────
       // max_tokens é contado no rate limit de tokens/min (reservado).
-      // Reduzir de 16384 → 4096 poupa ~12K tokens do budget de rate limit.
       // thinking budget também é reservado: desativado por padrão.
       const wantsThinking = params.enableThinking === true;
 
       const buildBody = (opts?: { noSkills?: boolean; noThinking?: boolean }): { body: any; useBeta: boolean } => {
-        // max_tokens adaptive: menor para conversas simples, maior quando precisar gerar documentos
+        // max_tokens adaptive:
+        //   • skills + files (geração de DOCX/PDF via code execution): 16384
+        //   • só skills ou só files: 8192
+        //   • conversa simples: 2048
         const actualHasSkillsForBody = (hasSkills && !opts?.noSkills) || hasFiles;
-        const adaptiveMaxTokens = actualHasSkillsForBody ? 8192 : 2048;
+        const adaptiveMaxTokens = (actualHasSkillsForBody && hasSkills && hasFiles)
+          ? 16384
+          : actualHasSkillsForBody ? 8192 : 2048;
 
         const b: any = {
           model,
@@ -565,6 +569,9 @@ export class PetitionChatService {
         const decoder = new TextDecoder();
         let sseBuffer = '';
 
+        // Track content blocks by index to capture tool_result files
+        const contentBlocks: Record<number, { type: string; content: any[] }> = {};
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -595,18 +602,66 @@ export class PetitionChatService {
                 outputTokens = event.usage.output_tokens || 0;
               }
 
-              if (
-                event.type === 'content_block_stop' &&
-                event.content_block?.type === 'bash_code_execution_tool_result'
-              ) {
-                const items = event.content_block.content?.content || [];
-                for (const item of items) {
+              // ── Track content blocks for file capture ──────────────
+              // When a skill runs code execution and creates a file, the result
+              // comes as a content_block_start with type "tool_result" whose
+              // content array contains items with file_id fields.
+              if (event.type === 'content_block_start' && event.content_block) {
+                const idx = event.index ?? -1;
+                const blockType = event.content_block.type || '';
+                contentBlocks[idx] = { type: blockType, content: [] };
+
+                // Capture inline file references from content_block_start itself
+                // (some API versions include content directly in the start event)
+                const startContent = event.content_block.content || [];
+                for (const item of Array.isArray(startContent) ? startContent : []) {
                   if (item.file_id) {
                     fileResults.push({
                       fileId: item.file_id,
-                      filename: item.filename || `file-${item.file_id}`,
+                      filename: item.filename || `arquivo-${item.file_id}`,
                     });
+                    this.logger.log(`File captured (block_start): ${item.file_id}`);
                   }
+                }
+              }
+
+              // Delta may contain file references in tool_result blocks
+              if (event.type === 'content_block_delta' && event.delta) {
+                const idx = event.index ?? -1;
+                const block = contentBlocks[idx];
+                // text_delta already handled above; capture any file items in other deltas
+                if (block && event.delta.type !== 'text_delta' && event.delta.type !== 'thinking_delta') {
+                  const items = Array.isArray(event.delta.content) ? event.delta.content : [];
+                  for (const item of items) {
+                    if (item.file_id) {
+                      fileResults.push({
+                        fileId: item.file_id,
+                        filename: item.filename || `arquivo-${item.file_id}`,
+                      });
+                      this.logger.log(`File captured (block_delta): ${item.file_id}`);
+                    }
+                  }
+                }
+              }
+
+              // content_block_stop — finalize block and extract any accumulated files
+              if (event.type === 'content_block_stop') {
+                const idx = event.index ?? -1;
+                const block = contentBlocks[idx];
+                if (block) {
+                  for (const item of block.content) {
+                    if (item.file_id) {
+                      // deduplicate
+                      if (!fileResults.find((f) => f.fileId === item.file_id)) {
+                        fileResults.push({
+                          fileId: item.file_id,
+                          filename: item.filename || `arquivo-${item.file_id}`,
+                        });
+                        this.logger.log(`File captured (block_stop): ${item.file_id}`);
+                      }
+                    }
+                  }
+                  delete contentBlocks[idx];
                 }
               }
             } catch {
