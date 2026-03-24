@@ -486,18 +486,25 @@ export class PetitionChatService {
 
         if (params.systemPrompt) b.system = params.systemPrompt;
 
-        const useBeta = needsBeta && !opts?.noSkills;
+        // Only use beta path when there are ACTUAL skills, a containerId, or files.
+        // Never send an empty container — it forces beta mode for no reason.
+        const actualHasSkills = hasSkills && !opts?.noSkills;
+        const useBeta = (actualHasSkills || !!params.containerId || hasFiles);
+
         if (useBeta) {
           const container: any = {};
           if (params.containerId) container.id = params.containerId;
-          if (hasSkills && !opts?.noSkills) {
+          if (actualHasSkills) {
             container.skills = filteredSkills.map((s) => ({
               type: s.type,
               skill_id: s.skill_id,
               version: s.version || 'latest',
             }));
           }
-          b.container = container;
+          // Only attach container if it has content
+          if (Object.keys(container).length > 0) {
+            b.container = container;
+          }
           b.tools = [
             { type: 'code_execution_20250825', name: 'code_execution' },
           ];
@@ -511,27 +518,40 @@ export class PetitionChatService {
       let resultContainerId: string | null = null;
       const fileResults: any[] = [];
 
-      // Always use raw fetch for streaming (SDK .stream() doesn't support
-      // thinking or beta headers properly). This unifies both paths.
-
       const doStream = async (reqBody: any, _useBeta: boolean) => {
         const apiKey = await this.getApiKey();
         reqBody.stream = true;
 
-        // Build beta headers: always include thinking; add skills/files if needed
-        const betaList = ['interleaved-thinking-2025-05-14'];
+        // CRITICAL: Only include beta headers when actually needed.
+        // interleaved-thinking causes Anthropic to auto-reserve tokens
+        // even without the thinking param — DON'T include it unless thinking is on.
+        const betaList: string[] = [];
+        if (reqBody.thinking) {
+          betaList.push('interleaved-thinking-2025-05-14');
+        }
         if (_useBeta) {
           betaList.push('code-execution-2025-08-25', 'skills-2025-10-02', 'files-api-2025-04-14');
         }
 
+        const reqHeaders: Record<string, string> = {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        };
+        // Only add beta header when there are actual betas to include
+        if (betaList.length > 0) {
+          reqHeaders['anthropic-beta'] = betaList.join(',');
+        }
+
+        this.logger.log(
+          `Sending request: model=${reqBody.model} max_tokens=${reqBody.max_tokens} ` +
+          `thinking=${!!reqBody.thinking} beta=[${betaList.join(',')}] ` +
+          `skills=${reqBody.container?.skills?.length ?? 0} container=${!!reqBody.container?.id}`,
+        );
+
         const fetchRes = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-            'anthropic-beta': betaList.join(','),
-          },
+          headers: reqHeaders,
           body: JSON.stringify(reqBody),
         });
 
