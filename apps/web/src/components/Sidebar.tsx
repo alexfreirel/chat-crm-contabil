@@ -109,7 +109,7 @@ export function Sidebar() {
     { label: 'Agenda', href: '/atendimento/agenda', icon: <Calendar size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/agenda') },
     { label: 'Triagem e Peticionamento', href: '/atendimento/advogado', icon: <FileEdit size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/advogado') },
     { label: 'Processos', href: '/atendimento/processos', icon: <BookOpen size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/processos') },
-    { label: 'Petições IA', href: '/atendimento/peticoes', icon: <FileText size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/peticoes') },
+
     { label: 'Analytics', href: '/atendimento/marketing/analytics', icon: <Megaphone size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/marketing') },
     { label: 'Configurações', href: '/atendimento/settings', icon: <Settings size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/settings') },
   ];

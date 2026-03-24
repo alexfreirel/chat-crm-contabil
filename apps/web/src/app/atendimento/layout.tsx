@@ -120,7 +120,7 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
     { label: 'Agenda', href: '/atendimento/agenda', icon: Calendar, match: (p: string) => p.startsWith('/atendimento/agenda') },
     { label: 'Triagem e Peticionamento', href: '/atendimento/advogado', icon: FileEdit, match: (p: string) => p.startsWith('/atendimento/advogado') },
     { label: 'Processos', href: '/atendimento/processos', icon: BookOpen, match: (p: string) => p.startsWith('/atendimento/processos') },
-    { label: 'Petições IA', href: '/atendimento/peticoes', icon: FileText, match: (p: string) => p.startsWith('/atendimento/peticoes') },
+
     { label: 'Marketing', href: '/atendimento/marketing/analytics', icon: Megaphone, match: (p: string) => p.startsWith('/atendimento/marketing') },
     { label: 'Ajustes', href: '/atendimento/settings', icon: Settings, match: (p: string) => p.startsWith('/atendimento/settings') },
   ];
