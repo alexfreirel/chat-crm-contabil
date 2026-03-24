@@ -14,7 +14,7 @@
       "command": "node",
       "args": ["CAMINHO_ABSOLUTO/apps/mcp-server/dist/index.js"],
       "env": {
-        "CRM_BASE_URL": "http://localhost:3005",
+        "CRM_BASE_URL": "https://andrelustosaadvogados.com.br/api",
         "CRM_EMAIL": "seu-email@escritorio.com",
         "CRM_PASSWORD": "sua-senha"
       }
