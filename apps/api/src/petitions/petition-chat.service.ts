@@ -350,7 +350,7 @@ export class PetitionChatService {
       // Sanitize messages: ensure all content is plain text string
       // Previous messages may contain complex content blocks (pdf, file refs, thinking)
       // that cause errors when replayed. Strip everything to plain text.
-      const sanitizedMessages = params.messages.map((m: any) => {
+      const allSanitized = params.messages.map((m: any) => {
         if (typeof m.content === 'string') return { role: m.role, content: m.content };
         if (Array.isArray(m.content)) {
           const textParts = m.content
@@ -361,6 +361,30 @@ export class PetitionChatService {
         }
         return { role: m.role, content: String(m.content || '') };
       });
+
+      // Truncate conversation history to control token usage
+      // Keep first message (context) + last N messages (recent context)
+      const MAX_HISTORY_MESSAGES = 20; // ~10 user + 10 assistant turns
+      const MAX_CHARS_PER_MESSAGE = 8000; // ~2000 tokens per message max
+      let sanitizedMessages = allSanitized;
+
+      if (allSanitized.length > MAX_HISTORY_MESSAGES) {
+        // Keep first 2 messages (initial context) + last N messages
+        sanitizedMessages = [
+          ...allSanitized.slice(0, 2),
+          { role: 'user' as const, content: '[... mensagens anteriores omitidas para economizar tokens ...]' },
+          ...allSanitized.slice(-MAX_HISTORY_MESSAGES + 3),
+        ];
+        this.logger.log(`Truncated conversation from ${allSanitized.length} to ${sanitizedMessages.length} messages`);
+      }
+
+      // Truncate individual long messages
+      sanitizedMessages = sanitizedMessages.map((m) => ({
+        ...m,
+        content: typeof m.content === 'string' && m.content.length > MAX_CHARS_PER_MESSAGE
+          ? m.content.slice(0, MAX_CHARS_PER_MESSAGE) + '\n[... conteudo truncado ...]'
+          : m.content,
+      }));
 
       const requestParams: any = {
         model,

@@ -269,6 +269,7 @@ function MessageBubble({ msg, isStreaming }: { msg: ChatMessage; isStreaming: bo
 export default function PeticoesPage() {
   // Skills from Claude Console
   const [consoleSkills, setConsoleSkills] = useState<ConsoleSkill[]>([]);
+  const [activeSkillIds, setActiveSkillIds] = useState<Set<string>>(new Set());
   const [loadingSkills, setLoadingSkills] = useState(true);
 
   // Model
@@ -481,8 +482,9 @@ export default function PeticoesPage() {
       systemPrompt: systemPrompt,
     };
 
-    if (consoleSkills.length > 0) {
-      body.skills = consoleSkills.map((s) => ({
+    const selectedSkills = consoleSkills.filter((s) => activeSkillIds.has(s.id));
+    if (selectedSkills.length > 0) {
+      body.skills = selectedSkills.map((s) => ({
         type: s.source,
         skill_id: s.id,
         version: 'latest',
@@ -605,7 +607,7 @@ export default function PeticoesPage() {
       setIsStreaming(false);
       abortRef.current = null;
     }
-  }, [input, isStreaming, activeChatId, messages, consoleSkills, selectedModel, systemPrompt, containerId, attachedFiles, refreshChatList]);
+  }, [input, isStreaming, activeChatId, messages, consoleSkills, activeSkillIds, selectedModel, systemPrompt, containerId, attachedFiles, refreshChatList]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
@@ -650,7 +652,7 @@ export default function PeticoesPage() {
             <div className="flex items-center gap-2">
               <Code2 size={14} className="text-amber-500 shrink-0" />
               <span className="font-medium text-foreground text-[12px]">
-                {loadingSkills ? 'Carregando...' : `${consoleSkills.length} skills ativas`}
+                {loadingSkills ? 'Carregando...' : `${activeSkillIds.size}/${consoleSkills.length} skills`}
               </span>
             </div>
             <ChevronDown size={14} className={`text-muted-foreground shrink-0 transition-transform ${showSkillsPanel ? 'rotate-180' : ''}`} />
@@ -664,17 +666,34 @@ export default function PeticoesPage() {
                 </div>
               )}
 
+              {consoleSkills.length > 0 && (
+                <div className="px-3 py-2 border-b border-border flex gap-2">
+                  <button onClick={() => setActiveSkillIds(new Set(consoleSkills.map(s => s.id)))}
+                    className="text-[10px] text-primary hover:underline">Ativar todas</button>
+                  <span className="text-[10px] text-muted-foreground">|</span>
+                  <button onClick={() => setActiveSkillIds(new Set())}
+                    className="text-[10px] text-muted-foreground hover:underline">Desativar todas</button>
+                </div>
+              )}
+
               {customSkills.length > 0 && (
                 <div>
                   <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-3 pt-2 pb-1">Suas Skills</p>
                   {customSkills.map((skill) => (
-                    <div key={skill.id} className="flex items-start gap-2.5 px-3 py-2 border-b border-border/30 last:border-0">
-                      <Bot size={14} className="text-amber-500 shrink-0 mt-0.5" />
+                    <label key={skill.id} className="flex items-center gap-2.5 px-3 py-2 border-b border-border/30 last:border-0 cursor-pointer hover:bg-muted/30 transition-colors">
+                      <input type="checkbox" checked={activeSkillIds.has(skill.id)}
+                        onChange={(e) => {
+                          const next = new Set(activeSkillIds);
+                          e.target.checked ? next.add(skill.id) : next.delete(skill.id);
+                          setActiveSkillIds(next);
+                        }}
+                        className="w-3.5 h-3.5 rounded border-border accent-amber-500 shrink-0" />
+                      <Bot size={14} className="text-amber-500 shrink-0" />
                       <div className="min-w-0">
                         <p className="text-[12px] font-medium text-foreground truncate">{skill.displayTitle || skill.name}</p>
                         {skill.description && <p className="text-[10px] text-muted-foreground line-clamp-1">{skill.description}</p>}
                       </div>
-                    </div>
+                    </label>
                   ))}
                 </div>
               )}
@@ -683,10 +702,17 @@ export default function PeticoesPage() {
                 <div className={customSkills.length > 0 ? 'border-t border-border' : ''}>
                   <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-3 pt-2 pb-1">Skills Anthropic</p>
                   {anthropicSkills.map((skill) => (
-                    <div key={skill.id} className="flex items-center gap-2.5 px-3 py-2 border-b border-border/30 last:border-0">
+                    <label key={skill.id} className="flex items-center gap-2.5 px-3 py-2 border-b border-border/30 last:border-0 cursor-pointer hover:bg-muted/30 transition-colors">
+                      <input type="checkbox" checked={activeSkillIds.has(skill.id)}
+                        onChange={(e) => {
+                          const next = new Set(activeSkillIds);
+                          e.target.checked ? next.add(skill.id) : next.delete(skill.id);
+                          setActiveSkillIds(next);
+                        }}
+                        className="w-3.5 h-3.5 rounded border-border accent-amber-500 shrink-0" />
                       {ANTHROPIC_SKILL_ICONS[skill.name] || <Bot size={14} className="text-muted-foreground" />}
                       <span className="text-[12px] font-medium text-foreground">{skill.displayTitle || skill.name}</span>
-                    </div>
+                    </label>
                   ))}
                 </div>
               )}
@@ -698,7 +724,7 @@ export default function PeticoesPage() {
               )}
 
               <p className="px-3 py-2 text-[10px] text-muted-foreground bg-muted/30 border-t border-border">
-                O Claude seleciona automaticamente a skill adequada.
+                Ative apenas as skills necessarias para reduzir custo de tokens.
               </p>
             </div>
           )}
@@ -799,10 +825,10 @@ export default function PeticoesPage() {
               </h2>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[11px] text-muted-foreground">{selectedModelInfo.label}</span>
-                {consoleSkills.length > 0 && (
+                {activeSkillIds.size > 0 && (
                   <>
                     <span className="text-muted-foreground/50">.</span>
-                    <span className="text-[11px] text-amber-600 font-medium">{consoleSkills.length} skills</span>
+                    <span className="text-[11px] text-amber-600 font-medium">{activeSkillIds.size} skills</span>
                   </>
                 )}
                 {containerId && (
@@ -837,22 +863,22 @@ export default function PeticoesPage() {
               </div>
               <h3 className="text-lg font-bold text-foreground mb-2">Assistente Juridico com Claude</h3>
               <p className="text-sm text-muted-foreground max-w-md mb-2">
-                Conectado ao <strong>Claude Console</strong>. As skills sao acionadas automaticamente conforme o contexto.
+                Conectado ao <strong>Claude Console</strong>. Ative as skills necessarias no painel esquerdo.
               </p>
-              {consoleSkills.length > 0 && (
+              {activeSkillIds.size > 0 && (
                 <div className="flex flex-wrap gap-1.5 justify-center mb-4 max-w-lg">
-                  {consoleSkills.slice(0, 12).map((s) => (
+                  {consoleSkills.filter(s => activeSkillIds.has(s.id)).slice(0, 12).map((s) => (
                     <span key={s.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-700 font-medium">
                       {ANTHROPIC_SKILL_ICONS[s.name] || <Bot size={10} />}
                       {s.displayTitle || s.name}
                     </span>
                   ))}
-                  {consoleSkills.length > 12 && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-muted text-[10px] text-muted-foreground">
-                      +{consoleSkills.length - 12} mais
-                    </span>
-                  )}
                 </div>
+              )}
+              {activeSkillIds.size === 0 && consoleSkills.length > 0 && (
+                <p className="text-[11px] text-muted-foreground mb-4">
+                  Nenhuma skill ativa — o chat funcionara sem skills (mais barato)
+                </p>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg">
                 {[
