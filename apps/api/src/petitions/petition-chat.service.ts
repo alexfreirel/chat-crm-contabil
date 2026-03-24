@@ -472,16 +472,20 @@ export class PetitionChatService {
       const wantsThinking = params.enableThinking === true;
 
       const buildBody = (opts?: { noSkills?: boolean; noThinking?: boolean }): { body: any; useBeta: boolean } => {
+        // max_tokens adaptive: menor para conversas simples, maior quando precisar gerar documentos
+        const actualHasSkillsForBody = (hasSkills && !opts?.noSkills) || hasFiles;
+        const adaptiveMaxTokens = actualHasSkillsForBody ? 8192 : 2048;
+
         const b: any = {
           model,
-          max_tokens: 4096,
+          max_tokens: adaptiveMaxTokens,
           messages: msgs,
         };
 
         // Thinking: apenas se explicitamente solicitado e sem arquivos
         if (wantsThinking && !opts?.noThinking && !hasFiles) {
           b.thinking = { type: 'enabled', budget_tokens: 2000 };
-          b.max_tokens = 6096; // thinking budget + resposta
+          b.max_tokens = adaptiveMaxTokens + 2000;
         }
 
         if (params.systemPrompt) b.system = params.systemPrompt;

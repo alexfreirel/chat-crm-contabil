@@ -42,9 +42,9 @@ interface ChatSummary {
 // ─── Constants ──────────────────────────────────────────────
 
 const MODELS = [
-  { id: 'claude-haiku-4-5',  label: 'Claude Haiku',  desc: 'Rapido e economico',         badge: 'Rapido',      badgeClass: 'bg-blue-500/10 text-blue-600' },
-  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet', desc: 'Equilibrio custo/qualidade', badge: 'Recomendado', badgeClass: 'bg-green-500/10 text-green-600' },
-  { id: 'claude-opus-4-6',   label: 'Claude Opus',   desc: 'Maxima qualidade',           badge: 'Premium',     badgeClass: 'bg-purple-500/10 text-purple-600' },
+  { id: 'claude-haiku-4-5',  label: 'Claude Haiku',  desc: 'Rapido — limite 60K tokens/min',   badge: 'Padrao',      badgeClass: 'bg-blue-500/10 text-blue-600' },
+  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet', desc: 'Qualidade — limite 30K tokens/min', badge: 'Avancado',   badgeClass: 'bg-green-500/10 text-green-600' },
+  { id: 'claude-opus-4-6',   label: 'Claude Opus',   desc: 'Premium — limite 10K tokens/min',   badge: 'Premium',    badgeClass: 'bg-purple-500/10 text-purple-600' },
 ];
 
 const ANTHROPIC_SKILL_ICONS: Record<string, React.ReactNode> = {
@@ -273,7 +273,9 @@ export default function PeticoesPage() {
   const [loadingSkills, setLoadingSkills] = useState(true);
 
   // Model
-  const [selectedModel, setSelectedModel] = useState<string>('claude-sonnet-4-6');
+  // Haiku por padrão: limite 60K tokens/min (vs 30K do Sonnet no Tier 1)
+  // O worker de atendimentos usa Sonnet — usar modelo diferente evita conflito de rate limit
+  const [selectedModel, setSelectedModel] = useState<string>('claude-haiku-4-5');
   const [showModelMenu, setShowModelMenu] = useState(false);
   // Thinking desativado por padrão para evitar rate limit (conta como tokens reservados)
   const [enableThinking, setEnableThinking] = useState(false);
