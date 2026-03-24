@@ -39,6 +39,7 @@ export interface StreamChatParams {
   containerId?: string;      // Reuse container across turns
   systemPrompt?: string;     // Optional system prompt override
   fileIds?: string[];         // Files to attach via Files API
+  enableThinking?: boolean;  // Extended thinking (disabled by default to save rate limit)
 }
 
 // ─── Service ────────────────────────────────────────────────
@@ -465,16 +466,22 @@ export class PetitionChatService {
       const needsBeta = hasSkills || !!params.containerId || hasFiles;
 
       // ── Step 5: Build request body ─────────────────────
+      // max_tokens é contado no rate limit de tokens/min (reservado).
+      // Reduzir de 16384 → 4096 poupa ~12K tokens do budget de rate limit.
+      // thinking budget também é reservado: desativado por padrão.
+      const wantsThinking = params.enableThinking === true;
+
       const buildBody = (opts?: { noSkills?: boolean; noThinking?: boolean }): { body: any; useBeta: boolean } => {
         const b: any = {
           model,
-          max_tokens: 16384,
+          max_tokens: 4096,
           messages: msgs,
         };
 
-        // Thinking: disable if files present (saves tokens) or on retry
-        if (!opts?.noThinking && !hasFiles) {
-          b.thinking = { type: 'enabled', budget_tokens: 8000 };
+        // Thinking: apenas se explicitamente solicitado e sem arquivos
+        if (wantsThinking && !opts?.noThinking && !hasFiles) {
+          b.thinking = { type: 'enabled', budget_tokens: 2000 };
+          b.max_tokens = 6096; // thinking budget + resposta
         }
 
         if (params.systemPrompt) b.system = params.systemPrompt;

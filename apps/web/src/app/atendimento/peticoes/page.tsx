@@ -275,6 +275,8 @@ export default function PeticoesPage() {
   // Model
   const [selectedModel, setSelectedModel] = useState<string>('claude-sonnet-4-6');
   const [showModelMenu, setShowModelMenu] = useState(false);
+  // Thinking desativado por padrão para evitar rate limit (conta como tokens reservados)
+  const [enableThinking, setEnableThinking] = useState(false);
 
   // System prompt
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
@@ -499,6 +501,7 @@ export default function PeticoesPage() {
     }
 
     if (containerId) body.containerId = containerId;
+    if (enableThinking) body.enableThinking = true;
 
     if (attachedFiles.length > 0) {
       body.fileIds = attachedFiles.map((f) => f.id);
@@ -793,6 +796,25 @@ export default function PeticoesPage() {
                 </button>
               ))}
             </div>
+          )}
+        </div>
+
+        {/* Thinking toggle */}
+        <div className="px-3 pt-1 pb-2">
+          <button
+            onClick={() => setEnableThinking((v) => !v)}
+            className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl border transition-colors text-sm ${enableThinking ? 'border-violet-500/50 bg-violet-500/10 text-violet-400' : 'border-border bg-background hover:bg-muted/50 text-muted-foreground'}`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-[13px]">🧠</span>
+              <span className="text-xs font-medium">Pensamento estendido</span>
+            </div>
+            <div className={`w-8 h-4 rounded-full transition-colors flex items-center px-0.5 ${enableThinking ? 'bg-violet-500' : 'bg-muted'}`}>
+              <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${enableThinking ? 'translate-x-4' : 'translate-x-0'}`} />
+            </div>
+          </button>
+          {enableThinking && (
+            <p className="text-[10px] text-muted-foreground mt-1 px-1">Ativo: usa ~2K tokens extras por mensagem</p>
           )}
         </div>
 
