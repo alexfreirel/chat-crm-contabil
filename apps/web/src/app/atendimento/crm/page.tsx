@@ -1054,6 +1054,19 @@ export default function CrmPage() {
     };
   }, [router, fetchLeads]);
 
+  // Fallback global: garante que o estado de drag é limpo sempre que o drag terminar,
+  // independentemente de onde o usuário soltou o card (fixed overlay, fora da janela, etc.)
+  useEffect(() => {
+    const resetDrag = () => {
+      setDraggingId(null);
+      setDragOverStage(null);
+      setDragOverFinalizado(false);
+      setDragOverPerdido(false);
+    };
+    window.addEventListener('dragend', resetDrag);
+    return () => window.removeEventListener('dragend', resetDrag);
+  }, []);
+
   const moveLeadToStage = async (leadId: string, newStage: string) => {
     const lead = leads.find(l => l.id === leadId);
     if (!lead) return;
@@ -1486,7 +1499,6 @@ export default function CrmPage() {
             onMouseMove={handleBoardMouseMove}
             onMouseUp={handleBoardMouseUp}
             onMouseLeave={handleBoardMouseUp}
-            onDragEnd={() => { setDraggingId(null); setDragOverStage(null); setDragOverFinalizado(false); setDragOverPerdido(false); }}
           >
             <div className="flex h-full gap-4" style={{ minWidth: `${(CRM_STAGES.length - 2) * 272}px` }}>
               {CRM_STAGES.filter(s => s.id !== 'PERDIDO' && s.id !== 'FINALIZADO').map(stage => {
@@ -1510,9 +1522,12 @@ export default function CrmPage() {
                     onDragLeave={e => {
                       if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverStage(null);
                     }}
-                    onDrop={() => {
-                      if (draggingId) moveLeadToStage(draggingId, stage.id);
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const id = draggingId;
                       setDragOverStage(null);
+                      setDraggingId(null);
+                      if (id) moveLeadToStage(id, stage.id);
                     }}
                   >
                     {/* Header da coluna */}
