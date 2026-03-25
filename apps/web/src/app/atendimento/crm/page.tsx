@@ -2,7 +2,11 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { User, Search, RefreshCw, MessageSquare, MoreVertical, ChevronDown, Calendar, Scale, UserCheck, Download, CheckSquare, Square, X as XIcon, LayoutList, Columns, Phone, Mail, Tag, Clock, ChevronRight, Copy, Send } from 'lucide-react';
+import { User, Search, RefreshCw, MessageSquare, MoreVertical, ChevronDown, Calendar, Scale, UserCheck, Download, CheckSquare, Square, X as XIcon, LayoutList, Columns, Phone, Mail, Tag, Clock, ChevronRight, Copy, Send, BarChart2, TrendingUp, AlertCircle, Briefcase } from 'lucide-react';
+import { io } from 'socket.io-client';
+
+function getWsUrl() { return typeof window !== 'undefined' ? window.location.origin : ''; }
+function getSocketPath() { return process.env.NEXT_PUBLIC_SOCKET_PATH ?? '/socket.io/'; }
 import api, { API_BASE_URL } from '@/lib/api';
 import { formatPhone } from '@/lib/utils';
 import { CRM_STAGES, normalizeStage, findStage } from '@/lib/crmStages';
@@ -374,11 +378,15 @@ function LeadDetailPanel({
   onClose,
   onOpenChat,
   onStageChange,
+  onConvertToCase,
+  convertingCase,
 }: {
   lead: CrmLead;
   onClose: () => void;
   onOpenChat: () => void;
   onStageChange: (stage: string) => void;
+  onConvertToCase: () => void;
+  convertingCase: boolean;
 }) {
   const conv = lead.conversations?.[0];
   const normalizedStage = normalizeStage(lead.stage);
@@ -556,7 +564,17 @@ function LeadDetailPanel({
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-border shrink-0">
+        <div className="px-4 py-3 border-t border-border shrink-0 space-y-2">
+          {normalizedStage === 'FINALIZADO' && (
+            <button
+              onClick={onConvertToCase}
+              disabled={convertingCase}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Briefcase size={15} />
+              {convertingCase ? 'Criando caso…' : 'Converter em Caso Jurídico'}
+            </button>
+          )}
           <button
             onClick={onOpenChat}
             className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground text-[13px] font-semibold hover:bg-primary/90 transition-colors"
@@ -684,6 +702,169 @@ function LeadListView({
   );
 }
 
+// ─── CrmAnalyticsPanel ──────────────────────────────────────────────────────
+
+function CrmAnalyticsPanel({ leads, onClose }: { leads: CrmLead[]; onClose: () => void }) {
+  const total = leads.length;
+  const active = leads.filter(l => !['PERDIDO', 'FINALIZADO'].includes(normalizeStage(l.stage)));
+  const lost = leads.filter(l => normalizeStage(l.stage) === 'PERDIDO');
+  const finalized = leads.filter(l => normalizeStage(l.stage) === 'FINALIZADO');
+
+  const conversionRate = total > 0 ? Math.round((finalized.length / total) * 100) : 0;
+  const lossRate = total > 0 ? Math.round((lost.length / total) * 100) : 0;
+
+  // Distribuição por etapa
+  const byStage = CRM_STAGES.map(s => ({
+    ...s,
+    count: leads.filter(l => normalizeStage(l.stage) === s.id).length,
+  }));
+  const maxCount = Math.max(...byStage.map(s => s.count), 1);
+
+  // Motivos de perda
+  const lossReasons = lost.reduce<Record<string, number>>((acc, l) => {
+    const r = l.loss_reason || 'Não informado';
+    acc[r] = (acc[r] || 0) + 1;
+    return acc;
+  }, {});
+  const sortedReasons = Object.entries(lossReasons).sort((a, b) => b[1] - a[1]);
+
+  // Funil simplificado
+  const funnelStages = [
+    { label: 'Entrada', count: leads.filter(l => ['INICIAL', 'NOVO'].includes(normalizeStage(l.stage))).length, color: '#6b7280' },
+    { label: 'Qualificando', count: leads.filter(l => normalizeStage(l.stage) === 'QUALIFICANDO').length, color: '#3b82f6' },
+    { label: 'Formulário', count: leads.filter(l => normalizeStage(l.stage) === 'AGUARDANDO_FORM').length, color: '#f59e0b' },
+    { label: 'Reunião', count: leads.filter(l => normalizeStage(l.stage) === 'REUNIAO_AGENDADA').length, color: '#8b5cf6' },
+    { label: 'Finalizado', count: finalized.length, color: '#10b981' },
+  ];
+  const funnelMax = Math.max(...funnelStages.map(s => s.count), 1);
+
+  // Score médio por etapa (excluindo PERDIDO/FINALIZADO)
+  const avgScore = active.length > 0
+    ? Math.round(active.reduce((sum, l) => sum + computeLeadScore(l), 0) / active.length)
+    : 0;
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px]" onClick={onClose} />
+      <aside className="fixed right-0 top-0 h-full w-[380px] z-50 bg-card border-l border-border shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+          <div className="flex items-center gap-2">
+            <BarChart2 size={16} className="text-primary" />
+            <h2 className="text-[14px] font-bold text-foreground">Analytics do Funil</h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground">
+            <XIcon size={16} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5 custom-scrollbar">
+
+          {/* KPIs principais */}
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: 'Total de leads', value: total, color: 'text-foreground', icon: User },
+              { label: 'Em andamento', value: active.length, color: 'text-blue-400', icon: TrendingUp },
+              { label: 'Convertidos', value: finalized.length, color: 'text-emerald-400', icon: CheckSquare },
+              { label: 'Perdidos', value: lost.length, color: 'text-red-400', icon: AlertCircle },
+            ].map(({ label, value, color, icon: Icon }) => (
+              <div key={label} className="bg-accent/40 border border-border rounded-xl p-3">
+                <Icon size={14} className={`${color} mb-1.5`} />
+                <p className={`text-xl font-bold ${color}`}>{value}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Taxa de conversão */}
+          <div className="bg-accent/40 border border-border rounded-xl p-3 space-y-2">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Taxa de conversão</p>
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <div className="flex justify-between text-[11px] mb-1">
+                  <span className="text-emerald-400 font-bold">Convertidos {conversionRate}%</span>
+                  <span className="text-red-400 font-bold">Perdidos {lossRate}%</span>
+                </div>
+                <div className="h-2 bg-muted rounded-full overflow-hidden flex">
+                  <div className="h-full bg-emerald-500 transition-all" style={{ width: `${conversionRate}%` }} />
+                  <div className="h-full bg-red-500 transition-all" style={{ width: `${lossRate}%` }} />
+                </div>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground">Score médio dos leads ativos: <span className="font-bold text-foreground">{avgScore}/100</span></p>
+          </div>
+
+          {/* Funil de conversão */}
+          <div>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Funil de conversão</p>
+            <div className="space-y-1.5">
+              {funnelStages.map((s, i) => {
+                const prev = i > 0 ? funnelStages[i - 1].count : null;
+                const dropPct = prev && prev > 0 ? Math.round(((prev - s.count) / prev) * 100) : null;
+                return (
+                  <div key={s.label}>
+                    <div className="flex justify-between text-[11px] mb-0.5">
+                      <span className="font-semibold text-foreground">{s.label}</span>
+                      <div className="flex items-center gap-2">
+                        {dropPct !== null && dropPct > 0 && (
+                          <span className="text-red-400 text-[10px]">-{dropPct}%</span>
+                        )}
+                        <span className="font-bold tabular-nums" style={{ color: s.color }}>{s.count}</span>
+                      </div>
+                    </div>
+                    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.max(2, (s.count / funnelMax) * 100)}%`, backgroundColor: s.color }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Distribuição por etapa */}
+          <div>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Distribuição por etapa</p>
+            <div className="space-y-1.5">
+              {byStage.filter(s => s.count > 0).map(s => (
+                <div key={s.id}>
+                  <div className="flex justify-between text-[11px] mb-0.5">
+                    <span className="text-foreground">{s.emoji} {s.label}</span>
+                    <span className="font-bold tabular-nums" style={{ color: s.color }}>{s.count}</span>
+                  </div>
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${Math.max(2, (s.count / maxCount) * 100)}%`, backgroundColor: s.color }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Motivos de perda */}
+          {sortedReasons.length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Motivos de perda</p>
+              <div className="space-y-1.5">
+                {sortedReasons.map(([reason, count]) => (
+                  <div key={reason} className="flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground truncate flex-1 mr-2">{reason}</span>
+                    <span className="font-bold text-red-400 tabular-nums shrink-0">{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <p className="text-[10px] text-muted-foreground/40 text-center pb-2">
+            Baseado em {total} lead{total !== 1 ? 's' : ''} carregados
+          </p>
+        </div>
+      </aside>
+    </>
+  );
+}
+
 // ─── CrmPage ────────────────────────────────────────────────────────────────
 
 export default function CrmPage() {
@@ -725,6 +906,12 @@ export default function CrmPage() {
 
   // Template de mensagem sugerido após mudança de estágio
   const [templateModal, setTemplateModal] = useState<{ stage: string; text: string; label: string } | null>(null);
+
+  // Analytics panel
+  const [showAnalytics, setShowAnalytics] = useState(false);
+
+  // Conversão de lead para caso
+  const [convertingCase, setConvertingCase] = useState(false);
 
   // Leads cujo PATCH ainda está em voo — fetchLeads silencioso não os sobrescreve
   const movingLeads = useRef<Set<string>>(new Set());
@@ -811,13 +998,33 @@ export default function CrmPage() {
     const token = localStorage.getItem('token');
     if (!token) { router.push('/atendimento/login'); return; }
     fetchLeads();
+
+    // Auto-refresh a cada 30s
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') fetchLeads(true);
     }, 30_000);
+
+    // Socket: atualiza o CRM em tempo real quando há novos leads/mensagens
+    const socket = io(getWsUrl(), {
+      path: getSocketPath(),
+      transports: ['polling', 'websocket'],
+      auth: { token },
+    });
+    socket.on('inboxUpdate', () => {
+      if (document.visibilityState === 'visible') fetchLeads(true);
+    });
+    socket.on('incoming_message_notification', (data: { contactName?: string }) => {
+      if (document.visibilityState === 'visible') {
+        fetchLeads(true);
+        if (data?.contactName) showSuccess(`Nova mensagem de ${data.contactName}`);
+      }
+    });
+
     const onLogout = () => router.push('/atendimento/login');
     window.addEventListener('auth:logout', onLogout);
     return () => {
       clearInterval(interval);
+      socket.disconnect();
       window.removeEventListener('auth:logout', onLogout);
     };
   }, [router, fetchLeads]);
@@ -963,6 +1170,27 @@ export default function CrmPage() {
   const openDetail = useCallback((lead: CrmLead) => {
     setDetailLead(leads.find(l => l.id === lead.id) ?? lead);
   }, [leads]);
+
+  // Converte lead finalizado em caso jurídico
+  const convertLeadToCase = async (lead: CrmLead) => {
+    if (convertingCase) return;
+    setConvertingCase(true);
+    try {
+      const conv = lead.conversations?.[0];
+      await api.post('/legal-cases', {
+        lead_id: lead.id,
+        conversation_id: conv?.id ?? undefined,
+        legal_area: conv?.legal_area ?? undefined,
+      });
+      showSuccess(`Caso criado para ${lead.name || 'o lead'}! Redirecionando...`);
+      setDetailLead(null);
+      setTimeout(() => router.push('/atendimento/advogado'), 1200);
+    } catch {
+      showError('Erro ao criar caso. Tente novamente.');
+    } finally {
+      setConvertingCase(false);
+    }
+  };
 
   const openInChat = (lead: CrmLead) => {
     const conv = lead.conversations?.[0];
@@ -1130,6 +1358,15 @@ export default function CrmPage() {
               title="Ordenar por score do lead"
             >
               {sortBy === 'score' ? '⭐ Score' : '⭐ Score'}
+            </button>
+
+            {/* Analytics */}
+            <button
+              onClick={() => setShowAnalytics(v => !v)}
+              className={`p-1.5 rounded-lg transition-all ${showAnalytics ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}
+              title="Analytics do funil"
+            >
+              <BarChart2 size={14} />
             </button>
 
             {/* Toggle visualização kanban/lista */}
@@ -1492,7 +1729,14 @@ export default function CrmPage() {
           onClose={() => setDetailLead(null)}
           onOpenChat={() => { openInChat(detailLead); setDetailLead(null); }}
           onStageChange={(stage) => moveLeadToStage(detailLead.id, stage)}
+          onConvertToCase={() => convertLeadToCase(detailLead)}
+          convertingCase={convertingCase}
         />
+      )}
+
+      {/* Analytics panel */}
+      {showAnalytics && (
+        <CrmAnalyticsPanel leads={leads} onClose={() => setShowAnalytics(false)} />
       )}
 
       {/* Modal de template de mensagem */}
