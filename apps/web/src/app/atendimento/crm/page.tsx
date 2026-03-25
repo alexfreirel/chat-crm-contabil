@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { User, Search, RefreshCw, MessageSquare, MoreVertical, ChevronDown, Calendar, Scale, UserCheck, Download, CheckSquare, Square, X as XIcon } from 'lucide-react';
+import { User, Search, RefreshCw, MessageSquare, MoreVertical, ChevronDown, Calendar, Scale, UserCheck, Download, CheckSquare, Square, X as XIcon, LayoutList, Columns, Phone, Mail, Tag, Clock, ChevronRight, Copy, Send } from 'lucide-react';
 import api, { API_BASE_URL } from '@/lib/api';
 import { formatPhone } from '@/lib/utils';
 import { CRM_STAGES, normalizeStage, findStage } from '@/lib/crmStages';
@@ -126,6 +126,17 @@ function validateStageTransition(lead: CrmLead, newStage: string): string | null
   return null;
 }
 
+// ─── Templates de mensagem por estágio ──────────────────────────────────────
+
+const STAGE_TEMPLATES: Partial<Record<string, { label: string; text: string }>> = {
+  QUALIFICANDO:     { label: 'Iniciar triagem', text: 'Olá! Sou do Escritório André Lustosa Advogados. Estamos analisando seu caso. Poderia me contar um pouco mais sobre sua situação para que possamos ajudá-lo melhor?' },
+  AGUARDANDO_FORM:  { label: 'Enviar formulário', text: 'Olá! Para darmos continuidade ao seu atendimento, precisamos que você preencha nosso formulário de triagem. Vou te enviar o link agora.' },
+  AGUARDANDO_DOCS:  { label: 'Solicitar documentos', text: 'Olá! Para avançarmos com o seu caso, precisamos de alguns documentos: RG ou CPF, comprovante de residência e documentos relacionados ao seu caso. Pode nos enviar por aqui mesmo!' },
+  AGUARDANDO_PROC:  { label: 'Atualizar andamento', text: 'Olá! Seu caso está em análise pela nossa equipe. Em breve entraremos em contato com as próximas informações. Qualquer dúvida, estou à disposição!' },
+  REUNIAO_AGENDADA: { label: 'Confirmar reunião', text: 'Olá! Sua consulta foi agendada com sucesso. Lembre-se de separar todos os documentos relacionados ao seu caso. Qualquer dúvida antes da reunião, pode me chamar!' },
+  FINALIZADO:       { label: 'Agradecer conversão', text: 'Olá! É um prazer tê-lo como cliente do Escritório André Lustosa Advogados. Nossa equipe estará dedicada ao seu caso. Em breve entraremos em contato com os próximos passos!' },
+};
+
 // ─── Motivos de perda ───────────────────────────────────────────────────────
 
 const LOSS_REASONS = [
@@ -144,6 +155,7 @@ function LeadCard({
   onDragStart,
   onDragEnd,
   onOpen,
+  onOpenDetail,
   onStageChange,
   isSelected,
   onToggleSelect,
@@ -154,6 +166,7 @@ function LeadCard({
   onDragStart: () => void;
   onDragEnd: () => void;
   onOpen: () => void;
+  onOpenDetail: () => void;
   onStageChange: (stageId: string) => void;
   isSelected: boolean;
   onToggleSelect: () => void;
@@ -186,7 +199,7 @@ function LeadCard({
       draggable={!selectionMode}
       onDragStart={(e) => { if (selectionMode) { e.preventDefault(); return; } e.dataTransfer.effectAllowed = 'move'; onDragStart(); }}
       onDragEnd={onDragEnd}
-      onClick={() => { if (selectionMode) onToggleSelect(); }}
+      onClick={() => { if (selectionMode) onToggleSelect(); else onOpenDetail(); }}
       className={`group p-3.5 bg-card border rounded-xl select-none transition-all ${
         selectionMode ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'
       } ${
@@ -354,6 +367,323 @@ function LeadCard({
   );
 }
 
+// ─── LeadDetailPanel ────────────────────────────────────────────────────────
+
+function LeadDetailPanel({
+  lead,
+  onClose,
+  onOpenChat,
+  onStageChange,
+}: {
+  lead: CrmLead;
+  onClose: () => void;
+  onOpenChat: () => void;
+  onStageChange: (stage: string) => void;
+}) {
+  const conv = lead.conversations?.[0];
+  const normalizedStage = normalizeStage(lead.stage);
+  const stageInfo = findStage(normalizedStage);
+  const days = daysInStage(lead.stage_entered_at);
+  const score = computeLeadScore(lead);
+  const isNew = (Date.now() - new Date(lead.created_at).getTime()) < 3_600_000;
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => showSuccess('Copiado!'));
+  };
+
+  return (
+    <>
+      {/* Overlay */}
+      <div
+        className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px]"
+        onClick={onClose}
+      />
+      {/* Drawer */}
+      <aside className="fixed right-0 top-0 h-full w-[360px] z-50 bg-card border-l border-border shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-4 py-4 border-b border-border shrink-0">
+          <div className="w-10 h-10 rounded-full bg-accent border border-border flex items-center justify-center overflow-hidden shrink-0">
+            {lead.profile_picture_url
+              ? <img src={lead.profile_picture_url} alt="" className="w-full h-full object-cover" />
+              : <User size={16} className="text-muted-foreground/60" />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-[14px] font-bold text-foreground truncate">{lead.name || 'Sem nome'}</h2>
+            <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              <Phone size={10} />
+              <span>{formatPhone(lead.phone)}</span>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors">
+            <XIcon size={16} />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 custom-scrollbar">
+
+          {/* Stage + Score */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border"
+              style={{ backgroundColor: `${stageInfo.color}18`, color: stageInfo.color, borderColor: `${stageInfo.color}40` }}
+            >
+              {stageInfo.emoji} {stageInfo.label}
+            </span>
+            {days > 0 && (
+              <span className={`text-[11px] font-bold flex items-center gap-1 ${agingColor(days)}`}>
+                <Clock size={10} /> {days}d nesta etapa
+              </span>
+            )}
+            {isNew && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 animate-pulse">NOVO</span>
+            )}
+            {normalizedStage !== 'PERDIDO' && normalizedStage !== 'FINALIZADO' && (
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border cursor-help ${scoreStyle(score)}`}
+                title={`Score: ${score}/100\n${getScoreFactors(lead).join('\n')}`}>
+                Score {score}
+              </span>
+            )}
+          </div>
+
+          {/* Info geral */}
+          <div className="space-y-2">
+            {lead.email && (
+              <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                <Mail size={12} className="shrink-0" />
+                <span className="truncate">{lead.email}</span>
+              </div>
+            )}
+            {conv?.legal_area && (
+              <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                <Scale size={12} className="shrink-0" />
+                <span>{conv.legal_area}</span>
+              </div>
+            )}
+            {conv?.assigned_lawyer && (
+              <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                <UserCheck size={12} className="shrink-0" />
+                <span>{conv.assigned_lawyer.name}</span>
+              </div>
+            )}
+            {conv?.next_step && NEXT_STEP_MAP[conv.next_step] && (
+              <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                <ChevronRight size={12} className="shrink-0" />
+                <span>{NEXT_STEP_MAP[conv.next_step].label}</span>
+              </div>
+            )}
+            {lead.tags?.length > 0 && (
+              <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                <Tag size={12} className="shrink-0" />
+                <div className="flex flex-wrap gap-1">
+                  {lead.tags.map(t => (
+                    <span key={t} className="px-1.5 py-0.5 rounded-full bg-accent border border-border text-[10px]">{t}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {lead.loss_reason && (
+              <div className="flex items-start gap-2 text-[12px] text-red-400">
+                <XIcon size={12} className="shrink-0 mt-0.5" />
+                <span>{lead.loss_reason}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Mensagens recentes */}
+          {conv?.messages && conv.messages.length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Últimas mensagens</p>
+              <div className="space-y-1.5">
+                {conv.messages.slice(0, 5).map((msg, i) => (
+                  <div key={i} className={`text-[11px] px-2.5 py-1.5 rounded-lg leading-snug ${
+                    msg.direction === 'out'
+                      ? 'bg-primary/10 text-primary ml-4'
+                      : 'bg-accent text-muted-foreground mr-4'
+                  }`}>
+                    {msg.direction === 'out' && <span className="opacity-60 mr-1">↩</span>}
+                    {(msg.text || '').slice(0, 120)}{(msg.text?.length ?? 0) > 120 ? '…' : ''}
+                  </div>
+                ))}
+              </div>
+              {conv.last_message_at && (
+                <p className="text-[10px] text-muted-foreground/50 mt-1.5 text-right">{timeAgo(conv.last_message_at)}</p>
+              )}
+            </div>
+          )}
+
+          {/* Template de mensagem */}
+          {STAGE_TEMPLATES[normalizedStage] && (
+            <div className="bg-accent/50 border border-border rounded-xl p-3">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">
+                Mensagem sugerida — {STAGE_TEMPLATES[normalizedStage]!.label}
+              </p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed mb-2">{STAGE_TEMPLATES[normalizedStage]!.text}</p>
+              <button
+                onClick={() => copyToClipboard(STAGE_TEMPLATES[normalizedStage]!.text)}
+                className="flex items-center gap-1.5 text-[11px] text-primary hover:underline"
+              >
+                <Copy size={11} /> Copiar mensagem
+              </button>
+            </div>
+          )}
+
+          {/* Mover de etapa */}
+          <div>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Mover para etapa</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {CRM_STAGES.filter(s => s.id !== normalizedStage).map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => { onStageChange(s.id); onClose(); }}
+                  className="text-left text-[11px] px-2.5 py-1.5 rounded-lg border border-border hover:bg-accent transition-colors flex items-center gap-1.5 truncate"
+                  style={{ color: s.color }}
+                >
+                  <span>{s.emoji}</span>
+                  <span className="truncate">{s.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Datas */}
+          <div className="text-[10px] text-muted-foreground/50 space-y-0.5 pt-2 border-t border-border">
+            <p>Cadastrado: {new Date(lead.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+            {lead.stage_entered_at && (
+              <p>Etapa atual desde: {new Date(lead.stage_entered_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-4 py-3 border-t border-border shrink-0">
+          <button
+            onClick={onOpenChat}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground text-[13px] font-semibold hover:bg-primary/90 transition-colors"
+          >
+            <MessageSquare size={15} />
+            Abrir no chat
+          </button>
+        </div>
+      </aside>
+    </>
+  );
+}
+
+// ─── LeadListView ────────────────────────────────────────────────────────────
+
+function LeadListView({
+  leads,
+  onOpenDetail,
+  onOpenChat,
+  onStageChange,
+  selectedLeads,
+  onToggleSelect,
+  selectionMode,
+}: {
+  leads: CrmLead[];
+  onOpenDetail: (lead: CrmLead) => void;
+  onOpenChat: (lead: CrmLead) => void;
+  onStageChange: (leadId: string, stage: string) => void;
+  selectedLeads: Set<string>;
+  onToggleSelect: (id: string) => void;
+  selectionMode: boolean;
+}) {
+  if (leads.length === 0) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-muted-foreground/50 text-sm">
+        Nenhum lead encontrado com os filtros aplicados.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-auto px-6 py-4">
+      <table className="w-full text-[12px] border-collapse">
+        <thead>
+          <tr className="text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-b border-border">
+            <th className="pb-2 pr-3 w-6" />
+            <th className="pb-2 pr-4">Lead</th>
+            <th className="pb-2 pr-4">Etapa</th>
+            <th className="pb-2 pr-4">Score</th>
+            <th className="pb-2 pr-4">Tempo</th>
+            <th className="pb-2 pr-4">Área</th>
+            <th className="pb-2 pr-4">Advogado</th>
+            <th className="pb-2 pr-4">Última msg</th>
+            <th className="pb-2" />
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {leads.map(lead => {
+            const normalizedStage = normalizeStage(lead.stage);
+            const stageInfo = findStage(normalizedStage);
+            const days = daysInStage(lead.stage_entered_at);
+            const score = computeLeadScore(lead);
+            const conv = lead.conversations?.[0];
+            const isSelected = selectedLeads.has(lead.id);
+
+            return (
+              <tr
+                key={lead.id}
+                onClick={() => selectionMode ? onToggleSelect(lead.id) : onOpenDetail(lead)}
+                className={`group cursor-pointer transition-colors hover:bg-accent/40 ${isSelected ? 'bg-primary/5' : ''}`}
+              >
+                <td className="py-2.5 pr-3">
+                  <button onClick={e => { e.stopPropagation(); onToggleSelect(lead.id); }}
+                    className={`transition-opacity ${selectionMode || isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                    {isSelected ? <CheckSquare size={14} className="text-primary" /> : <Square size={14} className="text-muted-foreground/50" />}
+                  </button>
+                </td>
+                <td className="py-2.5 pr-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-accent border border-border flex items-center justify-center overflow-hidden shrink-0">
+                      {lead.profile_picture_url
+                        ? <img src={lead.profile_picture_url} alt="" className="w-full h-full object-cover" />
+                        : <User size={11} className="text-muted-foreground/60" />}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-foreground truncate max-w-[140px]">{lead.name || 'Sem nome'}</p>
+                      <p className="text-[10px] text-muted-foreground">{formatPhone(lead.phone)}</p>
+                    </div>
+                  </div>
+                </td>
+                <td className="py-2.5 pr-4">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                    style={{ backgroundColor: `${stageInfo.color}18`, color: stageInfo.color }}>
+                    {stageInfo.emoji} {stageInfo.label}
+                  </span>
+                </td>
+                <td className="py-2.5 pr-4">
+                  {normalizedStage !== 'PERDIDO' && normalizedStage !== 'FINALIZADO' && (
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${scoreStyle(score)}`}>{score}</span>
+                  )}
+                </td>
+                <td className={`py-2.5 pr-4 font-bold text-[11px] ${agingColor(days)}`}>
+                  {days > 0 ? `${days}d` : '—'}
+                </td>
+                <td className="py-2.5 pr-4 text-muted-foreground">{conv?.legal_area || '—'}</td>
+                <td className="py-2.5 pr-4 text-muted-foreground truncate max-w-[120px]">
+                  {conv?.assigned_lawyer?.name?.replace(/^(Dra?\.?)\s+/i, '').split(' ')[0] || '—'}
+                </td>
+                <td className="py-2.5 pr-4 text-muted-foreground/60">{timeAgo(conv?.last_message_at)}</td>
+                <td className="py-2.5">
+                  <button
+                    onClick={e => { e.stopPropagation(); onOpenChat(lead); }}
+                    className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-all"
+                    title="Abrir no chat"
+                  >
+                    <MessageSquare size={13} />
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ─── CrmPage ────────────────────────────────────────────────────────────────
 
 export default function CrmPage() {
@@ -386,6 +716,15 @@ export default function CrmPage() {
 
   // Modal de confirmação — Finalizado
   const [finalizedModal, setFinalizedModal] = useState<{ leadId: string; leadName: string } | null>(null);
+
+  // Painel lateral de detalhes
+  const [detailLead, setDetailLead] = useState<CrmLead | null>(null);
+
+  // Modo de visualização: kanban ou lista
+  const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
+
+  // Template de mensagem sugerido após mudança de estágio
+  const [templateModal, setTemplateModal] = useState<{ stage: string; text: string; label: string } | null>(null);
 
   // Leads cujo PATCH ainda está em voo — fetchLeads silencioso não os sobrescreve
   const movingLeads = useRef<Set<string>>(new Set());
@@ -519,6 +858,9 @@ export default function CrmPage() {
       if (res.data) {
         setLeads(cur => cur.map(l => l.id === leadId ? { ...l, ...res.data } : l));
       }
+      // Sugere template de mensagem se disponível para o novo estágio
+      const tpl = STAGE_TEMPLATES[newStage];
+      if (tpl) setTemplateModal({ stage: newStage, text: tpl.text, label: tpl.label });
     } catch {
       // Rollback
       setLeads(cur => cur.map(l =>
@@ -616,6 +958,11 @@ export default function CrmPage() {
       setBulkMoving(false);
     }
   };
+
+  // Sincroniza painel lateral com o lead atualizado
+  const openDetail = useCallback((lead: CrmLead) => {
+    setDetailLead(leads.find(l => l.id === lead.id) ?? lead);
+  }, [leads]);
 
   const openInChat = (lead: CrmLead) => {
     const conv = lead.conversations?.[0];
@@ -785,6 +1132,24 @@ export default function CrmPage() {
               {sortBy === 'score' ? '⭐ Score' : '⭐ Score'}
             </button>
 
+            {/* Toggle visualização kanban/lista */}
+            <div className="flex items-center border border-border rounded-lg overflow-hidden">
+              <button
+                onClick={() => setViewMode('kanban')}
+                className={`p-1.5 transition-all ${viewMode === 'kanban' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent'}`}
+                title="Visualização kanban"
+              >
+                <Columns size={14} />
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`p-1.5 transition-all ${viewMode === 'list' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent'}`}
+                title="Visualização lista"
+              >
+                <LayoutList size={14} />
+              </button>
+            </div>
+
             {/* Exportar CSV */}
             <button
               onClick={downloadCsv}
@@ -807,7 +1172,7 @@ export default function CrmPage() {
           </div>
         </header>
 
-        {/* Kanban Board */}
+        {/* Board / Lista */}
         {loading ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-muted-foreground text-sm animate-pulse">Carregando leads…</div>
@@ -819,6 +1184,16 @@ export default function CrmPage() {
               Tentar novamente
             </button>
           </div>
+        ) : viewMode === 'list' ? (
+          <LeadListView
+            leads={filteredLeads}
+            onOpenDetail={openDetail}
+            onOpenChat={openInChat}
+            onStageChange={(id, stage) => moveLeadToStage(id, stage)}
+            selectedLeads={selectedLeads}
+            onToggleSelect={toggleSelect}
+            selectionMode={selectedLeads.size > 0}
+          />
         ) : (
           <div
             ref={boardRef}
@@ -896,6 +1271,7 @@ export default function CrmPage() {
                           onDragStart={() => setDraggingId(lead.id)}
                           onDragEnd={() => { setDraggingId(null); setDragOverStage(null); }}
                           onOpen={() => openInChat(lead)}
+                          onOpenDetail={() => openDetail(lead)}
                           onStageChange={(newStage) => moveLeadToStage(lead.id, newStage)}
                           isSelected={selectedLeads.has(lead.id)}
                           onToggleSelect={() => toggleSelect(lead.id)}
@@ -1108,6 +1484,52 @@ export default function CrmPage() {
           </div>
         )}
       </main>
+
+      {/* Painel lateral de detalhes */}
+      {detailLead && (
+        <LeadDetailPanel
+          lead={leads.find(l => l.id === detailLead.id) ?? detailLead}
+          onClose={() => setDetailLead(null)}
+          onOpenChat={() => { openInChat(detailLead); setDetailLead(null); }}
+          onStageChange={(stage) => moveLeadToStage(detailLead.id, stage)}
+        />
+      )}
+
+      {/* Modal de template de mensagem */}
+      {templateModal && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md mx-4 mb-4 sm:mb-0 p-5">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-[14px] font-bold text-foreground">Mensagem sugerida</h3>
+              <button onClick={() => setTemplateModal(null)} className="p-1 rounded-lg hover:bg-accent text-muted-foreground">
+                <XIcon size={14} />
+              </button>
+            </div>
+            <p className="text-[11px] text-muted-foreground mb-3">{templateModal.label} — copie e envie pelo chat</p>
+            <div className="bg-accent/50 border border-border rounded-xl p-3 mb-4">
+              <p className="text-[12px] text-foreground leading-relaxed">{templateModal.text}</p>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setTemplateModal(null)}
+                className="px-3 py-2 text-[12px] rounded-lg border border-border text-muted-foreground hover:bg-accent transition-colors"
+              >
+                Ignorar
+              </button>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(templateModal.text);
+                  showSuccess('Mensagem copiada!');
+                  setTemplateModal(null);
+                }}
+                className="px-3 py-2 text-[12px] rounded-lg bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-colors flex items-center gap-1.5"
+              >
+                <Copy size={12} /> Copiar mensagem
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
