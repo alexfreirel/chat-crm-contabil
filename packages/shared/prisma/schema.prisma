@@ -8,77 +8,78 @@ datasource db {
 }
 
 model Tenant {
-  id                String            @id @default(uuid())
-  name              String
-  conversations     Conversation[]
-  leads             Lead[]
-  tasks             Task[]
-  users             User[]
-  inboxes           Inbox[]
-  instances         Instance[]
-  legal_cases       LegalCase[]
-  calendar_events   CalendarEvent[]
-  appointment_types AppointmentType[]
-  holidays          Holiday[]
-  case_documents    CaseDocument[]
-  case_deadlines    CaseDeadline[]
-  petitions         CasePetition[]
-  legal_templates   LegalTemplate[]
-  case_honorarios   CaseHonorario[]
-  ai_chats          AiChat[]
+  id                 String             @id @default(uuid())
+  name               String
+  conversations      Conversation[]
+  leads              Lead[]
+  tasks              Task[]
+  users              User[]
+  inboxes            Inbox[]
+  instances          Instance[]
+  legal_cases        LegalCase[]
+  calendar_events    CalendarEvent[]
+  appointment_types  AppointmentType[]
+  holidays           Holiday[]
+  case_documents     CaseDocument[]
+  case_deadlines     CaseDeadline[]
+  petitions          CasePetition[]
+  legal_templates    LegalTemplate[]
+  case_honorarios    CaseHonorario[]
+  ai_chats           AiChat[]
+  followup_sequences FollowupSequence[]
 }
 
 model User {
-  id              String         @id @default(uuid())
-  tenant_id       String?
-  name            String
-  email           String         @unique
-  phone           String?
-  password_hash   String
-  role            String
-  specialties     String[]       @default([])
-  created_at      DateTime       @default(now())
-  updated_at      DateTime       @updatedAt
-  audit_logs      AuditLog[]
-  assigned_convos Conversation[] @relation("AssignedUser")
-  lawyer_convos   Conversation[] @relation("AssignedLawyer")
-  lead_notes      LeadNote[]
-  stage_history_actor LeadStageHistory[] @relation("StageHistoryActor")
-  inboxes         Inbox[]
-  sectors         Sector[]       @relation("SectorUsers")
-  tasks           Task[]
-  tenant          Tenant?        @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-  lawyer_cases    LegalCase[]    @relation("LawyerCases")
-  task_comments   TaskComment[]
-  supervisors     User[]         @relation("InternSupervisors")
-  interns         User[]         @relation("InternSupervisors")
-  calendar_events_assigned CalendarEvent[] @relation("EventAssigned")
-  calendar_events_created  CalendarEvent[] @relation("EventCreator")
+  id                       String                 @id @default(uuid())
+  tenant_id                String?
+  name                     String
+  email                    String                 @unique
+  phone                    String?
+  password_hash            String
+  role                     String
+  specialties              String[]               @default([])
+  created_at               DateTime               @default(now())
+  updated_at               DateTime               @updatedAt
+  audit_logs               AuditLog[]
+  assigned_convos          Conversation[]         @relation("AssignedUser")
+  lawyer_convos            Conversation[]         @relation("AssignedLawyer")
+  lead_notes               LeadNote[]
+  stage_history_actor      LeadStageHistory[]     @relation("StageHistoryActor")
+  inboxes                  Inbox[]
+  sectors                  Sector[]               @relation("SectorUsers")
+  tasks                    Task[]
+  tenant                   Tenant?                @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  lawyer_cases             LegalCase[]            @relation("LawyerCases")
+  task_comments            TaskComment[]
+  supervisors              User[]                 @relation("InternSupervisors")
+  interns                  User[]                 @relation("InternSupervisors")
+  calendar_events_assigned CalendarEvent[]        @relation("EventAssigned")
+  calendar_events_created  CalendarEvent[]        @relation("EventCreator")
   schedules                UserSchedule[]
   calendar_event_comments  CalendarEventComment[]
-  transfer_audios          TransferAudio[] @relation("AudioUploader")
-  uploaded_documents       CaseDocument[]  @relation("DocumentUploader")
-  created_deadlines        CaseDeadline[]  @relation("DeadlineCreator")
-  authored_petitions       CasePetition[]  @relation("PetitionAuthor")
-  saved_versions           PetitionVersion[] @relation("VersionSaver")
-  created_templates        LegalTemplate[] @relation("TemplateCreator")
-  ai_chats                 AiChat[]        @relation("AiChatOwner")
+  transfer_audios          TransferAudio[]        @relation("AudioUploader")
+  uploaded_documents       CaseDocument[]         @relation("DocumentUploader")
+  created_deadlines        CaseDeadline[]         @relation("DeadlineCreator")
+  authored_petitions       CasePetition[]         @relation("PetitionAuthor")
+  saved_versions           PetitionVersion[]      @relation("VersionSaver")
+  created_templates        LegalTemplate[]        @relation("TemplateCreator")
+  ai_chats                 AiChat[]               @relation("AiChatOwner")
 }
 
 model Lead {
-  id            String         @id @default(uuid())
-  tenant_id     String?
-  name          String?
-  phone         String         @unique
-  email         String?
-  origin        String?
-  stage              String         @default("NOVO")
-  stage_entered_at   DateTime       @default(now())
-  loss_reason        String?
-  profile_picture_url String?
-  tags               String[]
-  created_at    DateTime       @default(now())
-  updated_at    DateTime       @updatedAt
+  id                   String               @id @default(uuid())
+  tenant_id            String?
+  name                 String?
+  phone                String               @unique
+  email                String?
+  origin               String?
+  stage                String               @default("NOVO")
+  stage_entered_at     DateTime             @default(now())
+  loss_reason          String?
+  profile_picture_url  String?
+  tags                 String[]
+  created_at           DateTime             @default(now())
+  updated_at           DateTime             @updatedAt
   memory               AiMemory?
   conversations        Conversation[]
   tenant               Tenant?              @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
@@ -90,44 +91,45 @@ model Lead {
   notes                LeadNote[]
   stage_history        LeadStageHistory[]
   contract_signatures  ContractSignature[]
+  followup_enrollments FollowupEnrollment[]
 
   @@index([tenant_id, phone])
   @@index([stage])
 }
 
 model Conversation {
-  id               String    @id @default(uuid())
-  tenant_id        String?
-  lead_id          String
-  channel          String    @default("whatsapp")
-  external_id      String?
-  status           String    @default("ABERTO")
-  ai_mode          Boolean   @default(true)
-  assigned_user_id             String?
-  inbox_id                     String?
-  instance_name                String?   // Nome da instancia de origem (ex: wa1)
-  pending_transfer_to_id       String?
-  pending_transfer_from_id     String?
-  pending_transfer_reason      String?
-  pending_transfer_audio_ids   String[]  @default([])
-  legal_area                   String?   // Area do direito detectada pela IA
-  assigned_lawyer_id           String?   // Advogado pre-designado pela IA
-  origin_assigned_user_id      String?   // Quem transferiu (para devolucao)
-  linked_agent_ids             String[]  @default([])  // Todos os agentes que atenderam
-  next_step                    String?   // Proximo passo: "duvidas" | "triagem_concluida" | "formulario" | "reuniao" | "encerrado"
-  ai_notes                     String?   // Observacoes internas da IA (campo notes do JSON)
-  last_message_at              DateTime  @default(now())
-  assigned_user    User?     @relation("AssignedUser", fields: [assigned_user_id], references: [id], onDelete: SetNull)
-  assigned_lawyer  User?     @relation("AssignedLawyer", fields: [assigned_lawyer_id], references: [id], onDelete: SetNull)
-  lead             Lead      @relation(fields: [lead_id], references: [id], onDelete: Cascade)
-  tenant           Tenant?   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-  inbox            Inbox?    @relation(fields: [inbox_id], references: [id], onDelete: SetNull)
-  messages             Message[]
-  tasks                Task[]
-  legal_cases          LegalCase[]
-  calendar_events      CalendarEvent[]
-  transfer_audios      TransferAudio[]
-  contract_signatures  ContractSignature[]
+  id                         String              @id @default(uuid())
+  tenant_id                  String?
+  lead_id                    String
+  channel                    String              @default("whatsapp")
+  external_id                String?
+  status                     String              @default("ABERTO")
+  ai_mode                    Boolean             @default(true)
+  assigned_user_id           String?
+  inbox_id                   String?
+  instance_name              String? // Nome da instancia de origem (ex: wa1)
+  pending_transfer_to_id     String?
+  pending_transfer_from_id   String?
+  pending_transfer_reason    String?
+  pending_transfer_audio_ids String[]            @default([])
+  legal_area                 String? // Area do direito detectada pela IA
+  assigned_lawyer_id         String? // Advogado pre-designado pela IA
+  origin_assigned_user_id    String? // Quem transferiu (para devolucao)
+  linked_agent_ids           String[]            @default([]) // Todos os agentes que atenderam
+  next_step                  String? // Proximo passo: "duvidas" | "triagem_concluida" | "formulario" | "reuniao" | "encerrado"
+  ai_notes                   String? // Observacoes internas da IA (campo notes do JSON)
+  last_message_at            DateTime            @default(now())
+  assigned_user              User?               @relation("AssignedUser", fields: [assigned_user_id], references: [id], onDelete: SetNull)
+  assigned_lawyer            User?               @relation("AssignedLawyer", fields: [assigned_lawyer_id], references: [id], onDelete: SetNull)
+  lead                       Lead                @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+  tenant                     Tenant?             @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  inbox                      Inbox?              @relation(fields: [inbox_id], references: [id], onDelete: SetNull)
+  messages                   Message[]
+  tasks                      Task[]
+  legal_cases                LegalCase[]
+  calendar_events            CalendarEvent[]
+  transfer_audios            TransferAudio[]
+  contract_signatures        ContractSignature[]
 
   @@index([lead_id])
   @@index([last_message_at(sort: Desc)])
@@ -140,23 +142,23 @@ model Conversation {
 }
 
 model Message {
-  id                  String       @id @default(uuid())
+  id                  String            @id @default(uuid())
   conversation_id     String
   direction           String
   type                String
   text                String?
-  external_message_id String?      @unique
+  external_message_id String?           @unique
   status              String
-  created_at          DateTime     @default(now())
+  created_at          DateTime          @default(now())
   reply_to_id         String?
   reply_to_text       String?
-  skill_id            String?      // Qual PromptSkill gerou esta resposta IA
+  skill_id            String? // Qual PromptSkill gerou esta resposta IA
   media               Media?
   reactions           MessageReaction[]
-  conversation        Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
-  reply_to            Message?     @relation("MessageReplies", fields: [reply_to_id], references: [id], onDelete: SetNull)
-  replies             Message[]    @relation("MessageReplies")
-  skill               PromptSkill? @relation(fields: [skill_id], references: [id], onDelete: SetNull)
+  conversation        Conversation      @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  reply_to            Message?          @relation("MessageReplies", fields: [reply_to_id], references: [id], onDelete: SetNull)
+  replies             Message[]         @relation("MessageReplies")
+  skill               PromptSkill?      @relation(fields: [skill_id], references: [id], onDelete: SetNull)
   tasks               Task[]
 
   @@index([conversation_id, created_at])
@@ -192,28 +194,28 @@ model Media {
 }
 
 model Task {
-  id                 String         @id @default(uuid())
-  tenant_id          String?
-  lead_id            String?
-  conversation_id    String?
-  message_id         String?
-  legal_case_id      String?
-  calendar_event_id  String?        @unique
-  title              String
-  description        String?
-  due_at             DateTime?
-  status             String         @default("A_FAZER")
-  assigned_user_id   String?
-  created_at         DateTime       @default(now())
-  assigned_user      User?          @relation(fields: [assigned_user_id], references: [id], onDelete: SetNull)
-  conversation       Conversation?  @relation(fields: [conversation_id], references: [id], onDelete: SetNull)
-  lead               Lead?          @relation(fields: [lead_id], references: [id], onDelete: SetNull)
-  message            Message?       @relation(fields: [message_id], references: [id], onDelete: SetNull)
-  tenant             Tenant?        @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-  legal_case         LegalCase?     @relation(fields: [legal_case_id], references: [id], onDelete: SetNull)
-  calendar_event     CalendarEvent? @relation(fields: [calendar_event_id], references: [id], onDelete: SetNull)
-  comments           TaskComment[]
-  checklist_items    TaskChecklistItem[]
+  id                String              @id @default(uuid())
+  tenant_id         String?
+  lead_id           String?
+  conversation_id   String?
+  message_id        String?
+  legal_case_id     String?
+  calendar_event_id String?             @unique
+  title             String
+  description       String?
+  due_at            DateTime?
+  status            String              @default("A_FAZER")
+  assigned_user_id  String?
+  created_at        DateTime            @default(now())
+  assigned_user     User?               @relation(fields: [assigned_user_id], references: [id], onDelete: SetNull)
+  conversation      Conversation?       @relation(fields: [conversation_id], references: [id], onDelete: SetNull)
+  lead              Lead?               @relation(fields: [lead_id], references: [id], onDelete: SetNull)
+  message           Message?            @relation(fields: [message_id], references: [id], onDelete: SetNull)
+  tenant            Tenant?             @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  legal_case        LegalCase?          @relation(fields: [legal_case_id], references: [id], onDelete: SetNull)
+  calendar_event    CalendarEvent?      @relation(fields: [calendar_event_id], references: [id], onDelete: SetNull)
+  comments          TaskComment[]
+  checklist_items   TaskChecklistItem[]
 
   @@index([assigned_user_id, due_at])
   @@index([status])
@@ -233,27 +235,27 @@ model AiMemory {
 }
 
 model PromptSkill {
-  id                 String  @id @default(uuid())
+  id                 String       @id @default(uuid())
   name               String
   area               String
   system_prompt      String
-  tools_policy_json  Json    @default("[]")
-  version            Int     @default(1)
-  active             Boolean @default(true)
-  model              String  @default("gpt-4o-mini")
-  max_tokens         Int     @default(300)
-  temperature        Float   @default(0.7)
+  tools_policy_json  Json         @default("[]")
+  version            Int          @default(1)
+  active             Boolean      @default(true)
+  model              String       @default("gpt-4o-mini")
+  max_tokens         Int          @default(300)
+  temperature        Float        @default(0.7)
   handoff_signal     String? // Palavra que a IA usa para sinalizar escalada ao humano (ex: "ESCALAR_HUMANO")
-  order              Int     @default(0)
+  order              Int          @default(0)
   // ─── Skills V2 ───────────────────────────────────────────────
-  description        String?              // Descrição curta para o router (1 linha)
-  trigger_keywords   String[] @default([]) // Hints para o router: ["agendamento", "reuniao"]
-  skill_type         String   @default("specialist") // "specialist" | "utility"
-  max_context_tokens Int      @default(4000) // Budget de tokens para injeção de references
-  provider           String   @default("openai") // "openai" | "anthropic"
+  description        String? // Descrição curta para o router (1 linha)
+  trigger_keywords   String[]     @default([]) // Hints para o router: ["agendamento", "reuniao"]
+  skill_type         String       @default("specialist") // "specialist" | "utility"
+  max_context_tokens Int          @default(4000) // Budget de tokens para injeção de references
+  provider           String       @default("openai") // "openai" | "anthropic"
   // ─────────────────────────────────────────────────────────────
-  created_at         DateTime @default(now())
-  updated_at         DateTime @updatedAt
+  created_at         DateTime     @default(now())
+  updated_at         DateTime     @updatedAt
   messages           Message[]
   tools              SkillTool[]
   assets             SkillAsset[]
@@ -262,10 +264,10 @@ model PromptSkill {
 model SkillTool {
   id              String      @id @default(uuid())
   skill_id        String
-  name            String      // Nome da função: "book_appointment", "save_form_field"
-  description     String      // Descrição para function calling
-  parameters_json Json        // JSON Schema dos parâmetros da função
-  handler_type    String      // "builtin" | "webhook"
+  name            String // Nome da função: "book_appointment", "save_form_field"
+  description     String // Descrição para function calling
+  parameters_json Json // JSON Schema dos parâmetros da função
+  handler_type    String // "builtin" | "webhook"
   handler_config  Json        @default("{}") // { "builtin": "book_appointment" } ou { "url": "...", "method": "POST" }
   active          Boolean     @default(true)
   created_at      DateTime    @default(now())
@@ -277,30 +279,30 @@ model SkillTool {
 }
 
 model SkillAsset {
-  id            String      @id @default(uuid())
-  skill_id      String
-  name          String      // "PAPEL_TIMBRADO.docx", "expressoes-juridicas.md"
-  s3_key        String      // Chave no S3/MinIO
-  mime_type     String
-  size          Int         // bytes
-  asset_type    String      // "asset" | "reference"
-  inject_mode   String      @default("none") // "none" | "full_text" | "summary"
-  content_text  String?     // Texto extraído (para references com inject_mode != "none")
-  created_at    DateTime    @default(now())
-  skill         PromptSkill @relation(fields: [skill_id], references: [id], onDelete: Cascade)
+  id           String      @id @default(uuid())
+  skill_id     String
+  name         String // "PAPEL_TIMBRADO.docx", "expressoes-juridicas.md"
+  s3_key       String // Chave no S3/MinIO
+  mime_type    String
+  size         Int // bytes
+  asset_type   String // "asset" | "reference"
+  inject_mode  String      @default("none") // "none" | "full_text" | "summary"
+  content_text String? // Texto extraído (para references com inject_mode != "none")
+  created_at   DateTime    @default(now())
+  skill        PromptSkill @relation(fields: [skill_id], references: [id], onDelete: Cascade)
 
   @@index([skill_id, asset_type])
 }
 
 model SkillExecutionLog {
-  id                String   @id @default(uuid())
-  conversation_id   String
-  skill_id          String?
-  tool_calls_json   Json?    // Array de tool calls executados
-  selection_reason  String?  // Motivo da seleção pelo router
-  router_tokens     Int?     // Tokens usados pelo router
-  duration_ms       Int?
-  created_at        DateTime @default(now())
+  id               String   @id @default(uuid())
+  conversation_id  String
+  skill_id         String?
+  tool_calls_json  Json? // Array de tool calls executados
+  selection_reason String? // Motivo da seleção pelo router
+  router_tokens    Int? // Tokens usados pelo router
+  duration_ms      Int?
+  created_at       DateTime @default(now())
 
   @@index([conversation_id, created_at])
   @@index([skill_id])
@@ -331,7 +333,7 @@ model AiUsage {
   conversation_id   String?
   skill_id          String?
   model             String
-  call_type         String   // 'chat' | 'memory' | 'whisper'
+  call_type         String // 'chat' | 'memory' | 'whisper'
   prompt_tokens     Int      @default(0)
   completion_tokens Int      @default(0)
   total_tokens      Int      @default(0)
@@ -347,7 +349,7 @@ model Inbox {
   id            String         @id @default(uuid())
   tenant_id     String?
   name          String
-  rr_pointer    String?        // ID do ultimo usuario atribuido (round-robin)
+  rr_pointer    String? // ID do ultimo usuario atribuido (round-robin)
   is_active     Boolean        @default(true)
   created_at    DateTime       @default(now())
   updated_at    DateTime       @updatedAt
@@ -360,33 +362,33 @@ model Inbox {
 }
 
 model Instance {
-  id            String   @id @default(uuid())
-  tenant_id     String?
-  inbox_id      String?
-  name          String   @unique
-  type          String   @default("whatsapp")
-  connection    String   @default("evolution")
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
-  tenant        Tenant?  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-  inbox         Inbox?   @relation(fields: [inbox_id], references: [id], onDelete: SetNull)
+  id         String   @id @default(uuid())
+  tenant_id  String?
+  inbox_id   String?
+  name       String   @unique
+  type       String   @default("whatsapp")
+  connection String   @default("evolution")
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  tenant     Tenant?  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  inbox      Inbox?   @relation(fields: [inbox_id], references: [id], onDelete: SetNull)
 
   @@index([tenant_id])
   @@index([inbox_id])
 }
 
 model TransferAudio {
-  id             String   @id @default(uuid())
+  id              String   @id @default(uuid())
   conversation_id String
-  s3_key         String
-  mime_type      String   @default("audio/webm")
-  size           Int?
-  uploaded_by_id String?
-  expires_at     DateTime // 7 dias apos upload — apagado pelo cron
-  created_at     DateTime @default(now())
+  s3_key          String
+  mime_type       String   @default("audio/webm")
+  size            Int?
+  uploaded_by_id  String?
+  expires_at      DateTime // 7 dias apos upload — apagado pelo cron
+  created_at      DateTime @default(now())
 
-  conversation   Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
-  uploaded_by    User?        @relation("AudioUploader", fields: [uploaded_by_id], references: [id], onDelete: SetNull)
+  conversation Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  uploaded_by  User?        @relation("AudioUploader", fields: [uploaded_by_id], references: [id], onDelete: SetNull)
 
   @@index([conversation_id])
   @@index([expires_at])
@@ -394,8 +396,8 @@ model TransferAudio {
 
 model LpEvent {
   id           String   @id @default(uuid())
-  page_path    String   // "/", "/geral/arapiraca", "/lp/teste"
-  event_type   String   // "view" | "whatsapp_click"
+  page_path    String // "/", "/geral/arapiraca", "/lp/teste"
+  event_type   String // "view" | "whatsapp_click"
   visitor_id   String?
   utm_source   String?
   utm_medium   String?
@@ -419,29 +421,29 @@ model Sector {
 }
 
 model LegalCase {
-  id              String         @id @default(uuid())
-  tenant_id       String?
-  lead_id         String
-  conversation_id String?
-  lawyer_id       String
-  case_number     String?
-  legal_area      String?
-  stage           String         @default("VIABILIDADE")
-  in_tracking     Boolean        @default(false)   // true = passou para menu Processos
-  tracking_stage  String?                          // stage dentro do menu Processos
-  filed_at        DateTime?                        // quando foi protocolado/ajuizado
-  archived        Boolean        @default(false)
-  archive_reason  String?
-  notes           String?
-  court           String?
-  action_type      String?        // Tipo de ação (Reclamatória Trabalhista, Indenizatória, etc.)
-  claim_value      Decimal?       // Valor da causa
-  opposing_party   String?        // Parte contrária (nome)
-  judge            String?        // Juiz/Desembargador
-  priority         String         @default("NORMAL")   // URGENTE | NORMAL | BAIXA
-  stage_changed_at DateTime       @default(now())       // quando mudou de etapa
-  created_at       DateTime       @default(now())
-  updated_at       DateTime       @updatedAt
+  id               String    @id @default(uuid())
+  tenant_id        String?
+  lead_id          String
+  conversation_id  String?
+  lawyer_id        String
+  case_number      String?
+  legal_area       String?
+  stage            String    @default("VIABILIDADE")
+  in_tracking      Boolean   @default(false) // true = passou para menu Processos
+  tracking_stage   String? // stage dentro do menu Processos
+  filed_at         DateTime? // quando foi protocolado/ajuizado
+  archived         Boolean   @default(false)
+  archive_reason   String?
+  notes            String?
+  court            String?
+  action_type      String? // Tipo de ação (Reclamatória Trabalhista, Indenizatória, etc.)
+  claim_value      Decimal? // Valor da causa
+  opposing_party   String? // Parte contrária (nome)
+  judge            String? // Juiz/Desembargador
+  priority         String    @default("NORMAL") // URGENTE | NORMAL | BAIXA
+  stage_changed_at DateTime  @default(now()) // quando mudou de etapa
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
 
   lead              Lead              @relation(fields: [lead_id], references: [id], onDelete: Cascade)
   conversation      Conversation?     @relation(fields: [conversation_id], references: [id], onDelete: SetNull)
@@ -464,7 +466,7 @@ model LegalCase {
 }
 
 model CaseEvent {
-  id            String     @id @default(uuid())
+  id            String    @id @default(uuid())
   case_id       String
   type          String
   title         String
@@ -472,9 +474,9 @@ model CaseEvent {
   source        String?
   reference_url String?
   event_date    DateTime?
-  created_at    DateTime   @default(now())
+  created_at    DateTime  @default(now())
 
-  legal_case    LegalCase  @relation(fields: [case_id], references: [id], onDelete: Cascade)
+  legal_case LegalCase @relation(fields: [case_id], references: [id], onDelete: Cascade)
 
   @@index([case_id, created_at])
 }
@@ -486,8 +488,8 @@ model TaskComment {
   text       String
   created_at DateTime @default(now())
 
-  task       Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
-  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  task Task @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([task_id, created_at])
 }
@@ -500,7 +502,7 @@ model TaskChecklistItem {
   position   Int      @default(0)
   created_at DateTime @default(now())
 
-  task       Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  task Task @relation(fields: [task_id], references: [id], onDelete: Cascade)
 
   @@index([task_id])
 }
@@ -509,12 +511,12 @@ model FichaTrabalhista {
   id              String   @id @default(uuid())
   lead_id         String   @unique
   lead            Lead     @relation(fields: [lead_id], references: [id], onDelete: Cascade)
-  data            Json     @default("{}")    // todos os ~80 campos do formulario
-  nome_completo   String?                   // espelho para busca rapida
-  nome_empregador String?                   // espelho para busca rapida
+  data            Json     @default("{}") // todos os ~80 campos do formulario
+  nome_completo   String? // espelho para busca rapida
+  nome_empregador String? // espelho para busca rapida
   finalizado      Boolean  @default(false)
   filled_by       String   @default("manual") // "manual" | "ai" | "lead"
-  completion_pct  Int      @default(0)       // 0-100
+  completion_pct  Int      @default(0) // 0-100
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
 
@@ -543,22 +545,103 @@ model DjenPublication {
 }
 
 // ===============================================
+// Follow-up IA — Sequências e Envios
+// ===============================================
+
+model FollowupSequence {
+  id                 String               @id @default(cuid())
+  tenant_id          String?
+  name               String
+  description        String?
+  category           String               @default("LEADS") // LEADS | CLIENTS | COBRANCA | REENGAJAMENTO
+  active             Boolean              @default(true)
+  auto_enroll_stages String[]             @default([]) // ex: ["NOVO","QUALIFICANDO"]
+  max_attempts       Int                  @default(6)
+  created_at         DateTime             @default(now())
+  updated_at         DateTime             @updatedAt
+  tenant             Tenant?              @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  steps              FollowupStep[]
+  enrollments        FollowupEnrollment[]
+}
+
+model FollowupStep {
+  id            String            @id @default(cuid())
+  sequence_id   String
+  position      Int
+  delay_hours   Int               @default(24)
+  channel       String            @default("whatsapp") // whatsapp | email | ligacao
+  tone          String            @default("amigavel") // amigavel | profissional | empatico | firme
+  objective     String
+  custom_prompt String?           @db.Text
+  auto_send     Boolean           @default(true)
+  created_at    DateTime          @default(now())
+  sequence      FollowupSequence  @relation(fields: [sequence_id], references: [id], onDelete: Cascade)
+  messages      FollowupMessage[]
+
+  @@index([sequence_id, position])
+}
+
+model FollowupEnrollment {
+  id            String            @id @default(cuid())
+  lead_id       String
+  sequence_id   String
+  current_step  Int               @default(1)
+  status        String            @default("ATIVO") // ATIVO | PAUSADO | CONCLUIDO | CANCELADO | CONVERTIDO
+  enrolled_at   DateTime          @default(now())
+  last_sent_at  DateTime?
+  next_send_at  DateTime?
+  paused_reason String?
+  created_at    DateTime          @default(now())
+  updated_at    DateTime          @updatedAt
+  lead          Lead              @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+  sequence      FollowupSequence  @relation(fields: [sequence_id], references: [id], onDelete: Cascade)
+  messages      FollowupMessage[]
+
+  @@unique([lead_id, sequence_id])
+  @@index([status, next_send_at])
+}
+
+model FollowupMessage {
+  id             String             @id @default(cuid())
+  enrollment_id  String
+  step_id        String
+  lead_id        String
+  channel        String
+  generated_text String             @db.Text
+  sent_text      String?            @db.Text
+  status         String             @default("PENDENTE_APROVACAO") // PENDENTE_APROVACAO | APROVADO | ENVIADO | REJEITADO | FALHOU
+  approved_by    String?
+  approved_at    DateTime?
+  sent_at        DateTime?
+  context_json   Json?
+  risk_level     String             @default("baixo")
+  created_at     DateTime           @default(now())
+  updated_at     DateTime           @updatedAt
+  enrollment     FollowupEnrollment @relation(fields: [enrollment_id], references: [id], onDelete: Cascade)
+  step           FollowupStep       @relation(fields: [step_id], references: [id], onDelete: Cascade)
+
+  @@index([enrollment_id])
+  @@index([status])
+  @@index([lead_id])
+}
+
+// ===============================================
 // Calendar / Agenda
 // ===============================================
 
 model CalendarEvent {
-  id                  String    @id @default(uuid())
-  tenant_id           String?
-  type                String    // CONSULTA, TAREFA, AUDIENCIA, PRAZO, OUTRO
-  title               String
-  description         String?
-  start_at            DateTime
-  end_at              DateTime?
-  all_day             Boolean   @default(false)
-  status              String    @default("AGENDADO") // AGENDADO, CONFIRMADO, CONCLUIDO, CANCELADO, ADIADO
-  priority            String    @default("NORMAL")   // BAIXA, NORMAL, ALTA, URGENTE
-  color               String?
-  location            String?
+  id          String    @id @default(uuid())
+  tenant_id   String?
+  type        String // CONSULTA, TAREFA, AUDIENCIA, PRAZO, OUTRO
+  title       String
+  description String?
+  start_at    DateTime
+  end_at      DateTime?
+  all_day     Boolean   @default(false)
+  status      String    @default("AGENDADO") // AGENDADO, CONFIRMADO, CONCLUIDO, CANCELADO, ADIADO
+  priority    String    @default("NORMAL") // BAIXA, NORMAL, ALTA, URGENTE
+  color       String?
+  location    String?
 
   lead_id             String?
   conversation_id     String?
@@ -568,28 +651,28 @@ model CalendarEvent {
   appointment_type_id String?
 
   // Recurrence
-  recurrence_rule     String?   // DAILY, WEEKLY, BIWEEKLY, MONTHLY, CUSTOM
-  recurrence_end      DateTime?
-  recurrence_days     Int[]     @default([]) // dias da semana para CUSTOM (0-6)
-  parent_event_id     String?
-  parent_event        CalendarEvent?  @relation("RecurrenceChildren", fields: [parent_event_id], references: [id], onDelete: Cascade)
-  child_events        CalendarEvent[] @relation("RecurrenceChildren")
+  recurrence_rule String? // DAILY, WEEKLY, BIWEEKLY, MONTHLY, CUSTOM
+  recurrence_end  DateTime?
+  recurrence_days Int[]           @default([]) // dias da semana para CUSTOM (0-6)
+  parent_event_id String?
+  parent_event    CalendarEvent?  @relation("RecurrenceChildren", fields: [parent_event_id], references: [id], onDelete: Cascade)
+  child_events    CalendarEvent[] @relation("RecurrenceChildren")
 
-  lead                Lead?            @relation(fields: [lead_id], references: [id], onDelete: SetNull)
-  conversation        Conversation?    @relation(fields: [conversation_id], references: [id], onDelete: SetNull)
-  legal_case          LegalCase?       @relation(fields: [legal_case_id], references: [id], onDelete: SetNull)
-  assigned_user       User?            @relation("EventAssigned", fields: [assigned_user_id], references: [id], onDelete: SetNull)
-  created_by          User             @relation("EventCreator", fields: [created_by_id], references: [id])
-  appointment_type    AppointmentType? @relation(fields: [appointment_type_id], references: [id], onDelete: SetNull)
+  lead             Lead?            @relation(fields: [lead_id], references: [id], onDelete: SetNull)
+  conversation     Conversation?    @relation(fields: [conversation_id], references: [id], onDelete: SetNull)
+  legal_case       LegalCase?       @relation(fields: [legal_case_id], references: [id], onDelete: SetNull)
+  assigned_user    User?            @relation("EventAssigned", fields: [assigned_user_id], references: [id], onDelete: SetNull)
+  created_by       User             @relation("EventCreator", fields: [created_by_id], references: [id])
+  appointment_type AppointmentType? @relation(fields: [appointment_type_id], references: [id], onDelete: SetNull)
 
-  reminders           EventReminder[]
-  comments            CalendarEventComment[]
-  task                Task?
-  deadline            CaseDeadline?
-  tenant              Tenant?          @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  reminders EventReminder[]
+  comments  CalendarEventComment[]
+  task      Task?
+  deadline  CaseDeadline?
+  tenant    Tenant?                @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
 
-  created_at          DateTime  @default(now())
-  updated_at          DateTime  @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   @@index([tenant_id, start_at])
   @@index([assigned_user_id, start_at])
@@ -602,7 +685,7 @@ model EventReminder {
   id             String        @id @default(uuid())
   event_id       String
   event          CalendarEvent @relation(fields: [event_id], references: [id], onDelete: Cascade)
-  minutes_before Int           // 15, 30, 60, 1440 (1 dia)
+  minutes_before Int // 15, 30, 60, 1440 (1 dia)
   channel        String        @default("PUSH") // PUSH, WHATSAPP, EMAIL
   sent_at        DateTime?
 
@@ -613,9 +696,9 @@ model UserSchedule {
   id          String  @id @default(uuid())
   user_id     String
   user        User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  day_of_week Int     // 0=dom, 1=seg, ..., 6=sab
-  start_time  String  // "09:00"
-  end_time    String  // "18:00"
+  day_of_week Int // 0=dom, 1=seg, ..., 6=sab
+  start_time  String // "09:00"
+  end_time    String // "18:00"
   lunch_start String? // "12:00" — null = sem pausa
   lunch_end   String? // "13:00"
 
@@ -625,13 +708,13 @@ model UserSchedule {
 model AppointmentType {
   id        String  @id @default(uuid())
   tenant_id String?
-  name      String  // "Consulta Trabalhista 30min"
-  duration  Int     // minutos
+  name      String // "Consulta Trabalhista 30min"
+  duration  Int // minutos
   color     String?
   active    Boolean @default(true)
 
-  events    CalendarEvent[]
-  tenant    Tenant?         @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  events CalendarEvent[]
+  tenant Tenant?         @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
 }
 
 model Holiday {
@@ -642,7 +725,7 @@ model Holiday {
   recurring_yearly Boolean  @default(false)
   created_at       DateTime @default(now())
 
-  tenant           Tenant?  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  tenant Tenant? @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
 
   @@index([tenant_id, date])
 }
@@ -660,8 +743,8 @@ model LeadStageHistory {
   loss_reason String?
   created_at  DateTime @default(now())
 
-  lead        Lead     @relation(fields: [lead_id], references: [id], onDelete: Cascade)
-  actor       User?    @relation("StageHistoryActor", fields: [actor_id], references: [id], onDelete: SetNull)
+  lead  Lead  @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+  actor User? @relation("StageHistoryActor", fields: [actor_id], references: [id], onDelete: SetNull)
 
   @@index([lead_id, created_at])
 }
@@ -678,22 +761,22 @@ model LeadNote {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  lead       Lead     @relation(fields: [lead_id], references: [id], onDelete: Cascade)
-  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  lead Lead @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([lead_id, created_at])
   @@index([user_id])
 }
 
 model CalendarEventComment {
-  id         String        @id @default(uuid())
+  id         String   @id @default(uuid())
   event_id   String
   user_id    String
   text       String
-  created_at DateTime      @default(now())
+  created_at DateTime @default(now())
 
-  event      CalendarEvent @relation(fields: [event_id], references: [id], onDelete: Cascade)
-  user       User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  event CalendarEvent @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  user  User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([event_id, created_at])
 }
@@ -703,26 +786,26 @@ model CalendarEventComment {
 // ===============================================
 
 model CaseDocument {
-  id             String    @id @default(uuid())
+  id             String   @id @default(uuid())
   tenant_id      String?
   legal_case_id  String
   uploaded_by_id String
-  folder         String    @default("OUTROS") // CLIENTE, PROVAS, CONTRATOS, PETICOES, DECISOES, PROCURACOES, OUTROS
-  name           String                       // Nome exibido
-  original_name  String                       // Nome original do arquivo
-  s3_key         String                       // Chave no MinIO/S3
+  folder         String   @default("OUTROS") // CLIENTE, PROVAS, CONTRATOS, PETICOES, DECISOES, PROCURACOES, OUTROS
+  name           String // Nome exibido
+  original_name  String // Nome original do arquivo
+  s3_key         String // Chave no MinIO/S3
   mime_type      String
-  size           Int                          // bytes
-  version        Int       @default(1)
-  parent_id      String?                      // Para versionamento: aponta pro doc original
+  size           Int // bytes
+  version        Int      @default(1)
+  parent_id      String? // Para versionamento: aponta pro doc original
   description    String?
-  created_at     DateTime  @default(now())
+  created_at     DateTime @default(now())
 
-  legal_case     LegalCase     @relation(fields: [legal_case_id], references: [id], onDelete: Cascade)
-  uploaded_by    User          @relation("DocumentUploader", fields: [uploaded_by_id], references: [id])
-  tenant         Tenant?       @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-  parent         CaseDocument? @relation("DocumentVersions", fields: [parent_id], references: [id], onDelete: SetNull)
-  versions       CaseDocument[] @relation("DocumentVersions")
+  legal_case  LegalCase      @relation(fields: [legal_case_id], references: [id], onDelete: Cascade)
+  uploaded_by User           @relation("DocumentUploader", fields: [uploaded_by_id], references: [id])
+  tenant      Tenant?        @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  parent      CaseDocument?  @relation("DocumentVersions", fields: [parent_id], references: [id], onDelete: SetNull)
+  versions    CaseDocument[] @relation("DocumentVersions")
 
   @@index([legal_case_id, folder])
   @@index([parent_id])
@@ -737,20 +820,20 @@ model CaseDeadline {
   tenant_id         String?
   legal_case_id     String
   created_by_id     String
-  type              String    // CONTESTACAO, RECURSO, IMPUGNACAO, MANIFESTACAO, AUDIENCIA, PERICIA, OUTRO
+  type              String // CONTESTACAO, RECURSO, IMPUGNACAO, MANIFESTACAO, AUDIENCIA, PERICIA, OUTRO
   title             String
   description       String?
   due_at            DateTime
-  alert_days        Int       @default(2)  // Dias antes para alertar
+  alert_days        Int       @default(2) // Dias antes para alertar
   completed         Boolean   @default(false)
   completed_at      DateTime?
-  calendar_event_id String?   @unique      // Link para CalendarEvent gerado automaticamente
+  calendar_event_id String?   @unique // Link para CalendarEvent gerado automaticamente
   created_at        DateTime  @default(now())
 
-  legal_case        LegalCase      @relation(fields: [legal_case_id], references: [id], onDelete: Cascade)
-  created_by        User           @relation("DeadlineCreator", fields: [created_by_id], references: [id])
-  tenant            Tenant?        @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-  calendar_event    CalendarEvent? @relation(fields: [calendar_event_id], references: [id], onDelete: SetNull)
+  legal_case     LegalCase      @relation(fields: [legal_case_id], references: [id], onDelete: Cascade)
+  created_by     User           @relation("DeadlineCreator", fields: [created_by_id], references: [id])
+  tenant         Tenant?        @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  calendar_event CalendarEvent? @relation(fields: [calendar_event_id], references: [id], onDelete: SetNull)
 
   @@index([legal_case_id, due_at])
   @@index([due_at, completed])
@@ -761,24 +844,24 @@ model CaseDeadline {
 // ===============================================
 
 model CasePetition {
-  id              String    @id @default(uuid())
-  tenant_id       String?
-  legal_case_id   String
-  created_by_id   String
-  title           String
-  type            String    // INICIAL, CONTESTACAO, REPLICA, EMBARGOS, RECURSO, MANIFESTACAO, OUTRO
-  status          String    @default("RASCUNHO") // RASCUNHO, EM_REVISAO, APROVADA, PROTOCOLADA
-  content_json    Json?     // Tiptap JSON (editor state)
-  content_html    String?   // HTML renderizado (para export)
-  template_id     String?   // Se gerada a partir de template
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
+  id            String   @id @default(uuid())
+  tenant_id     String?
+  legal_case_id String
+  created_by_id String
+  title         String
+  type          String // INICIAL, CONTESTACAO, REPLICA, EMBARGOS, RECURSO, MANIFESTACAO, OUTRO
+  status        String   @default("RASCUNHO") // RASCUNHO, EM_REVISAO, APROVADA, PROTOCOLADA
+  content_json  Json? // Tiptap JSON (editor state)
+  content_html  String? // HTML renderizado (para export)
+  template_id   String? // Se gerada a partir de template
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
 
-  legal_case      LegalCase         @relation(fields: [legal_case_id], references: [id], onDelete: Cascade)
-  created_by      User              @relation("PetitionAuthor", fields: [created_by_id], references: [id])
-  template        LegalTemplate?    @relation(fields: [template_id], references: [id], onDelete: SetNull)
-  tenant          Tenant?           @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-  versions        PetitionVersion[]
+  legal_case LegalCase         @relation(fields: [legal_case_id], references: [id], onDelete: Cascade)
+  created_by User              @relation("PetitionAuthor", fields: [created_by_id], references: [id])
+  template   LegalTemplate?    @relation(fields: [template_id], references: [id], onDelete: SetNull)
+  tenant     Tenant?           @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  versions   PetitionVersion[]
 
   @@index([legal_case_id, status])
 }
@@ -792,8 +875,8 @@ model PetitionVersion {
   saved_by_id  String
   created_at   DateTime @default(now())
 
-  petition     CasePetition @relation(fields: [petition_id], references: [id], onDelete: Cascade)
-  saved_by     User         @relation("VersionSaver", fields: [saved_by_id], references: [id])
+  petition CasePetition @relation(fields: [petition_id], references: [id], onDelete: Cascade)
+  saved_by User         @relation("VersionSaver", fields: [saved_by_id], references: [id])
 
   @@index([petition_id, version])
 }
@@ -803,59 +886,59 @@ model PetitionVersion {
 // ===============================================
 
 model LegalTemplate {
-  id            String    @id @default(uuid())
+  id            String   @id @default(uuid())
   tenant_id     String?
   name          String
-  type          String    // INICIAL, CONTESTACAO, RECURSO, MANIFESTACAO, OUTRO
-  legal_area    String?   // TRABALHISTA, CIVIL, PREVIDENCIARIO, etc.
-  content_json  Json      // Tiptap JSON com placeholders {{nome_cliente}}, etc.
-  variables     String[]  @default([])
+  type          String // INICIAL, CONTESTACAO, RECURSO, MANIFESTACAO, OUTRO
+  legal_area    String? // TRABALHISTA, CIVIL, PREVIDENCIARIO, etc.
+  content_json  Json // Tiptap JSON com placeholders {{nome_cliente}}, etc.
+  variables     String[] @default([])
   description   String?
-  is_global     Boolean   @default(false)
-  usage_count   Int       @default(0)
+  is_global     Boolean  @default(false)
+  usage_count   Int      @default(0)
   created_by_id String?
-  created_at    DateTime  @default(now())
-  updated_at    DateTime  @updatedAt
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
 
-  petitions     CasePetition[]
-  created_by    User?    @relation("TemplateCreator", fields: [created_by_id], references: [id])
-  tenant        Tenant?  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  petitions  CasePetition[]
+  created_by User?          @relation("TemplateCreator", fields: [created_by_id], references: [id])
+  tenant     Tenant?        @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
 
   @@index([legal_area, type])
 }
 
 model CaseHonorario {
-  id                String             @id @default(uuid())
+  id                String    @id @default(uuid())
   tenant_id         String?
   legal_case_id     String
-  type              String             // FIXO, EXITO, MISTO
+  type              String // FIXO, EXITO, MISTO
   total_value       Decimal
-  installment_count Int                @default(1)
+  installment_count Int       @default(1)
   contract_date     DateTime?
   notes             String?
-  created_at        DateTime           @default(now())
-  updated_at        DateTime           @updatedAt
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
 
-  legal_case        LegalCase          @relation(fields: [legal_case_id], references: [id], onDelete: Cascade)
-  tenant            Tenant?            @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-  payments          HonorarioPayment[]
+  legal_case LegalCase          @relation(fields: [legal_case_id], references: [id], onDelete: Cascade)
+  tenant     Tenant?            @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  payments   HonorarioPayment[]
 
   @@index([legal_case_id])
   @@index([tenant_id])
 }
 
 model HonorarioPayment {
-  id              String        @id @default(uuid())
-  honorario_id    String
-  amount          Decimal
-  due_date        DateTime
-  paid_at         DateTime?
-  payment_method  String?       // PIX, BOLETO, CARTAO, DINHEIRO, TRANSFERENCIA
-  status          String        @default("PENDENTE") // PENDENTE, PAGO, ATRASADO
-  notes           String?
-  created_at      DateTime      @default(now())
+  id             String    @id @default(uuid())
+  honorario_id   String
+  amount         Decimal
+  due_date       DateTime
+  paid_at        DateTime?
+  payment_method String? // PIX, BOLETO, CARTAO, DINHEIRO, TRANSFERENCIA
+  status         String    @default("PENDENTE") // PENDENTE, PAGO, ATRASADO
+  notes          String?
+  created_at     DateTime  @default(now())
 
-  honorario       CaseHonorario @relation(fields: [honorario_id], references: [id], onDelete: Cascade)
+  honorario CaseHonorario @relation(fields: [honorario_id], references: [id], onDelete: Cascade)
 
   @@index([honorario_id, due_date])
   @@index([status])
@@ -866,25 +949,25 @@ model HonorarioPayment {
 // ===============================================
 
 model ContractSignature {
-  id                        String    @id @default(uuid())
-  lead_id                   String
-  conversation_id           String
+  id              String @id @default(uuid())
+  lead_id         String
+  conversation_id String
 
   // Referências Clicksign
-  cs_document_key           String    @unique   // key do documento no Clicksign
-  cs_signer_key             String?             // key do signatário
-  cs_request_signature_key  String?             // key para construir URL de assinatura
-  signing_url               String?             // link enviado ao cliente via WhatsApp
+  cs_document_key          String  @unique // key do documento no Clicksign
+  cs_signer_key            String? // key do signatário
+  cs_request_signature_key String? // key para construir URL de assinatura
+  signing_url              String? // link enviado ao cliente via WhatsApp
 
   // PDF assinado (preenchido após webhook de conclusão)
-  signed_s3_key             String?             // ex: contracts-signed/{id}.pdf
+  signed_s3_key String? // ex: contracts-signed/{id}.pdf
 
   // Status: PENDENTE | ASSINADO | CANCELADO | EXPIRADO
-  status                    String    @default("PENDENTE")
-  signed_at                 DateTime?
+  status    String    @default("PENDENTE")
+  signed_at DateTime?
 
-  created_at                DateTime  @default(now())
-  updated_at                DateTime  @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   lead         Lead         @relation(fields: [lead_id], references: [id], onDelete: Cascade)
   conversation Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
@@ -900,18 +983,18 @@ model ContractSignature {
 // ===============================================
 
 model AiChat {
-  id            String          @id @default(uuid())
-  tenant_id     String?
-  user_id       String
-  title         String          @default("Nova Conversa")
-  model         String          @default("claude-sonnet-4-6")
-  container_id  String?         // Claude Console container (reuse across turns)
-  updated_at    DateTime        @updatedAt
-  created_at    DateTime        @default(now())
+  id           String   @id @default(uuid())
+  tenant_id    String?
+  user_id      String
+  title        String   @default("Nova Conversa")
+  model        String   @default("claude-sonnet-4-6")
+  container_id String? // Claude Console container (reuse across turns)
+  updated_at   DateTime @updatedAt
+  created_at   DateTime @default(now())
 
-  user          User            @relation("AiChatOwner", fields: [user_id], references: [id], onDelete: Cascade)
-  tenant        Tenant?         @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-  messages      AiChatMessage[]
+  user     User            @relation("AiChatOwner", fields: [user_id], references: [id], onDelete: Cascade)
+  tenant   Tenant?         @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  messages AiChatMessage[]
 
   @@index([user_id, updated_at])
   @@index([tenant_id])
@@ -919,14 +1002,14 @@ model AiChat {
 }
 
 model AiChatMessage {
-  id          String   @id @default(uuid())
-  chat_id     String
-  role        String   // 'user' | 'assistant'
-  content     String   @db.Text
-  files_json  Json?    // [{ fileId, filename }] — generated files
-  created_at  DateTime @default(now())
+  id         String   @id @default(uuid())
+  chat_id    String
+  role       String // 'user' | 'assistant'
+  content    String   @db.Text
+  files_json Json? // [{ fileId, filename }] — generated files
+  created_at DateTime @default(now())
 
-  chat        AiChat   @relation(fields: [chat_id], references: [id], onDelete: Cascade)
+  chat AiChat @relation(fields: [chat_id], references: [id], onDelete: Cascade)
 
   @@index([chat_id, created_at])
 }
@@ -935,8 +1018,8 @@ model AutomationRule {
   id           String   @id @default(cuid())
   tenant_id    String?
   name         String
-  trigger      String   // NEW_LEAD | STAGE_CHANGE | NO_RESPONSE_24H | NO_RESPONSE_48H | PAYMENT_OVERDUE
-  action       String   // ADD_TAG | SEND_INTERNAL_NOTE | CHANGE_STAGE
+  trigger      String // NEW_LEAD | STAGE_CHANGE | NO_RESPONSE_24H | NO_RESPONSE_48H | PAYMENT_OVERDUE
+  action       String // ADD_TAG | SEND_INTERNAL_NOTE | CHANGE_STAGE
   action_value String
   enabled      Boolean  @default(true)
   created_at   DateTime @default(now())

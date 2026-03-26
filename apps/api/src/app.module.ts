@@ -34,6 +34,7 @@ import { ClicksignModule } from './clicksign/clicksign.module';
 import { S3Module } from './s3/s3.module';
 import { McpModule } from './mcp/mcp.module';
 import { AutomationsModule } from './automations/automations.module';
+import { FollowupModule } from './followup/followup.module';
 
 import { HealthController } from './common/controllers/health.controller';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
@@ -91,6 +92,7 @@ import { RolesGuard } from './auth/guards/roles.guard';
     ClicksignModule,
     McpModule,
     AutomationsModule,
+    FollowupModule,
   ],
   controllers: [AppController, HealthController],
   providers: [
