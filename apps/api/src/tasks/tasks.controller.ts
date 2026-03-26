@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Request, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Request, HttpCode, HttpStatus } from '@nestjs/common';
 import { TasksService } from './tasks.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateTaskDto, UpdateTaskDto } from './dto/tasks.dto';
@@ -90,5 +90,32 @@ export class TasksController {
   @Get(':id/comments')
   findComments(@Param('id') id: string, @Request() req: any) {
     return this.tasksService.findComments(id, req.user?.tenant_id);
+  }
+
+  // Sprint 5: Task detail
+  @Get(':id')
+  findOne(@Param('id') id: string, @Request() req: any) {
+    return this.tasksService.findOne(id, req.user?.tenant_id);
+  }
+
+  // Sprint 5: Checklist CRUD
+  @Post(':id/checklist')
+  addChecklistItem(@Param('id') id: string, @Body('text') text: string, @Request() req: any) {
+    return this.tasksService.addChecklistItem(id, text, req.user?.tenant_id);
+  }
+
+  @Patch(':id/checklist/:itemId')
+  toggleChecklistItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body('done') done: boolean,
+    @Request() req: any,
+  ) {
+    return this.tasksService.toggleChecklistItem(id, itemId, done, req.user?.tenant_id);
+  }
+
+  @Delete(':id/checklist/:itemId')
+  deleteChecklistItem(@Param('id') id: string, @Param('itemId') itemId: string, @Request() req: any) {
+    return this.tasksService.deleteChecklistItem(id, itemId, req.user?.tenant_id);
   }
 }

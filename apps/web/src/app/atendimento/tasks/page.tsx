@@ -10,6 +10,7 @@ import {
 import { io } from 'socket.io-client';
 import api from '@/lib/api';
 import { showError, showSuccess, showInfo } from '@/lib/toast';
+import { TaskDrawer } from './TaskDrawer';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -109,6 +110,9 @@ export default function TasksPage() {
 
   // ── Produtividade (contadores gerais, sem filtro)
   const [stats, setStats] = useState({ total: 0, a_fazer: 0, em_progresso: 0, concluida: 0, vencidas: 0 });
+
+  // ── Sprint 5: Task Drawer
+  const [drawerTaskId, setDrawerTaskId] = useState<string | null>(null);
 
   // ── Sprint 4: Workload + NBA
   const [workload, setWorkload] = useState<WorkloadUser[]>([]);
@@ -565,11 +569,12 @@ export default function TasksPage() {
               return (
                 <div
                   key={task.id}
-                  className={`flex items-start gap-3 px-6 py-3.5 hover:bg-accent/20 transition-colors group ${isDone ? 'opacity-60' : ''}`}
+                  className={`flex items-start gap-3 px-6 py-3.5 hover:bg-accent/20 transition-colors group cursor-pointer ${isDone ? 'opacity-60' : ''}`}
+                  onClick={() => setDrawerTaskId(task.id)}
                 >
                   {/* Toggle status */}
                   <button
-                    onClick={() => handleCycleStatus(task)}
+                    onClick={(e) => { e.stopPropagation(); handleCycleStatus(task); }}
                     className="mt-0.5 shrink-0 transition-transform hover:scale-110"
                     title={`Status atual: ${cfg.label} — clicar para avançar`}
                   >
@@ -661,6 +666,18 @@ export default function TasksPage() {
           </div>
         )}
       </div>
+
+      {/* Sprint 5: Task Detail Drawer */}
+      {drawerTaskId && (
+        <TaskDrawer
+          taskId={drawerTaskId}
+          onClose={() => setDrawerTaskId(null)}
+          onStatusChange={(id, status) => {
+            setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+            fetchStats();
+          }}
+        />
+      )}
     </div>
   );
 }

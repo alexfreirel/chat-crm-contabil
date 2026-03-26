@@ -213,6 +213,7 @@ model Task {
   legal_case         LegalCase?     @relation(fields: [legal_case_id], references: [id], onDelete: SetNull)
   calendar_event     CalendarEvent? @relation(fields: [calendar_event_id], references: [id], onDelete: SetNull)
   comments           TaskComment[]
+  checklist_items    TaskChecklistItem[]
 
   @@index([assigned_user_id, due_at])
   @@index([status])
@@ -489,6 +490,19 @@ model TaskComment {
   user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([task_id, created_at])
+}
+
+model TaskChecklistItem {
+  id         String   @id @default(cuid())
+  task_id    String
+  text       String
+  done       Boolean  @default(false)
+  position   Int      @default(0)
+  created_at DateTime @default(now())
+
+  task       Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
+
+  @@index([task_id])
 }
 
 model FichaTrabalhista {

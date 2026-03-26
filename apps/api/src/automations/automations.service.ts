@@ -71,6 +71,29 @@ export class AutomationsService {
           data: { stage: rule.action_value },
         });
       }
+
+      // Sprint 5: CREATE_TASK — cria tarefa vinculada ao lead/conversa
+      if (rule.action === 'CREATE_TASK') {
+        let cfg: { title?: string; description?: string; due_hours?: number } = {};
+        try { cfg = JSON.parse(rule.action_value); } catch {
+          cfg = { title: rule.action_value };
+        }
+        if (cfg.title) {
+          const dueAt = cfg.due_hours
+            ? new Date(Date.now() + cfg.due_hours * 3_600_000)
+            : null;
+          await this.prisma.task.create({
+            data: {
+              title: cfg.title,
+              description: cfg.description,
+              lead_id: context.leadId ?? null,
+              conversation_id: context.conversationId ?? null,
+              due_at: dueAt,
+              status: 'A_FAZER',
+            },
+          });
+        }
+      }
     } catch (err) {
       this.logger.error(`Erro ao executar automação (action=${rule.action}): ${err}`);
     }

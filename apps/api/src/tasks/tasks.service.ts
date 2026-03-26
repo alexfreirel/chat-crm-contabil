@@ -91,6 +91,48 @@ export class TasksService {
     return { data, total: data.length, page: 1, limit: data.length };
   }
 
+  async findOne(id: string, tenantId?: string) {
+    await this.verifyTenantOwnership(id, tenantId);
+    return this.prisma.task.findUnique({
+      where: { id },
+      include: {
+        assigned_user: { select: { id: true, name: true } },
+        lead: { select: { id: true, name: true, phone: true } },
+        legal_case: { select: { id: true, case_number: true } },
+        comments: {
+          include: { user: { select: { id: true, name: true } } },
+          orderBy: { created_at: 'asc' },
+        },
+        checklist_items: { orderBy: { position: 'asc' } },
+        _count: { select: { comments: true, checklist_items: true } },
+      },
+    });
+  }
+
+  // ─── Checklist CRUD ───────────────────────────────────────────────────────
+
+  async addChecklistItem(taskId: string, text: string, tenantId?: string) {
+    await this.verifyTenantOwnership(taskId, tenantId);
+    const count = await this.prisma.taskChecklistItem.count({ where: { task_id: taskId } });
+    return this.prisma.taskChecklistItem.create({
+      data: { task_id: taskId, text, position: count },
+    });
+  }
+
+  async toggleChecklistItem(taskId: string, itemId: string, done: boolean, tenantId?: string) {
+    await this.verifyTenantOwnership(taskId, tenantId);
+    return this.prisma.taskChecklistItem.update({
+      where: { id: itemId },
+      data: { done },
+    });
+  }
+
+  async deleteChecklistItem(taskId: string, itemId: string, tenantId?: string) {
+    await this.verifyTenantOwnership(taskId, tenantId);
+    await this.prisma.taskChecklistItem.delete({ where: { id: itemId } });
+    return { ok: true };
+  }
+
   async create(data: {
     title: string;
     description?: string;

@@ -16,6 +16,7 @@ const ACTIONS = [
   { value: 'ADD_TAG', label: 'Adicionar etiqueta', emoji: '🏷️' },
   { value: 'SEND_INTERNAL_NOTE', label: 'Criar nota interna', emoji: '📝' },
   { value: 'CHANGE_STAGE', label: 'Mover etapa do lead', emoji: '➡️' },
+  { value: 'CREATE_TASK', label: 'Criar tarefa automaticamente', emoji: '✅' },
 ];
 
 interface AutomationRule {
@@ -142,18 +143,36 @@ export default function AutomationsPage() {
               <label className="text-[11px] font-bold text-muted-foreground uppercase mb-1.5 block">
                 {newRule.action === 'ADD_TAG' ? 'Etiqueta a adicionar' :
                  newRule.action === 'SEND_INTERNAL_NOTE' ? 'Texto da nota interna' :
+                 newRule.action === 'CREATE_TASK' ? 'Título da tarefa a criar' :
                  'Valor da ação'}
               </label>
               <input
-                value={newRule.action_value}
-                onChange={e => setNewRule(p => ({ ...p, action_value: e.target.value }))}
+                value={newRule.action === 'CREATE_TASK'
+                  ? (() => { try { return JSON.parse(newRule.action_value).title ?? newRule.action_value; } catch { return newRule.action_value; } })()
+                  : newRule.action_value
+                }
+                onChange={e => {
+                  const v = e.target.value;
+                  setNewRule(p => ({
+                    ...p,
+                    action_value: p.action === 'CREATE_TASK'
+                      ? JSON.stringify({ title: v, due_hours: 48 })
+                      : v,
+                  }));
+                }}
                 placeholder={
                   newRule.action === 'ADD_TAG' ? 'ex: urgente' :
                   newRule.action === 'SEND_INTERNAL_NOTE' ? 'ex: Cliente sem resposta há 24h — verificar' :
+                  newRule.action === 'CREATE_TASK' ? 'ex: Entrar em contato com o lead' :
                   ''
                 }
                 className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40"
               />
+              {newRule.action === 'CREATE_TASK' && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  A tarefa será criada automaticamente com prazo de 48h vinculada ao lead/conversa.
+                </p>
+              )}
             </div>
           </div>
           <div className="flex justify-end gap-2">
