@@ -174,7 +174,7 @@ export class MessagesService {
     this.chatGateway.emitConversationsUpdate(null);
   }
 
-  async sendMessage(conversationId: string, text: string, replyToId?: string, senderId?: string) {
+  async sendMessage(conversationId: string, text: string, replyToId?: string, senderId?: string, isInternal?: boolean) {
     const convo = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
       include: { lead: true }
@@ -182,6 +182,23 @@ export class MessagesService {
 
     if (!convo || !convo.lead) {
       throw new BadRequestException('Conversa inválida');
+    }
+
+    // Nota interna: salva no BD com type='internal_note', não envia ao WhatsApp
+    if (isInternal) {
+      const note = await this.prisma.message.create({
+        data: {
+          conversation_id: convo.id,
+          direction: 'out',
+          type: 'internal_note',
+          text,
+          external_message_id: `note_${Date.now()}`,
+          status: 'enviado',
+          reply_to_id: replyToId || null,
+        },
+      });
+      this.chatGateway.emitNewMessage(convo.id, note);
+      return note;
     }
 
     await this.autoReassignIfNeeded(convo, senderId);

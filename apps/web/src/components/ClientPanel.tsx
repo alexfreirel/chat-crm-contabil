@@ -204,6 +204,10 @@ export function ClientPanel({
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
 
+  // Histórico de conversas anteriores
+  const [convHistory, setConvHistory] = useState<any[]>([]);
+  const [convHistoryOpen, setConvHistoryOpen] = useState(false);
+
   useEffect(() => {
     setLoading(true);
     setResolvedAgent(null);
@@ -229,6 +233,8 @@ export function ClientPanel({
       if (sortedConvs?.[0]?.id) setResolvedConvId(sortedConvs[0].id);
       const agent = sortedConvs?.[0]?.assigned_user;
       if (agent) setResolvedAgent(agent);
+      // Guardar histórico de conversas (exceto a mais recente que está ativa)
+      setConvHistory(sortedConvs.slice(1).filter((c: any) => c.status === 'CLOSED' || c.status === 'MONITORING'));
       const docs: DocItem[] = [];
       convs.forEach((conv: any) => {
         conv.messages?.forEach((msg: any) => {
@@ -941,6 +947,54 @@ export function ClientPanel({
                 </div>
               )}
             </div>
+
+            {/* Conversas anteriores */}
+            {convHistory.length > 0 && (
+              <div className="border-t border-border">
+                <button
+                  className="w-full px-6 py-4 flex items-center justify-between hover:bg-accent/30 transition-colors"
+                  onClick={() => setConvHistoryOpen(!convHistoryOpen)}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <MessageSquare size={15} className="text-blue-400" />
+                    <span className="text-[13px] font-bold text-foreground">Conversas anteriores</span>
+                    <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
+                      {convHistory.length}
+                    </span>
+                  </div>
+                  {convHistoryOpen ? <ChevronUp size={15} className="text-muted-foreground" /> : <ChevronDown size={15} className="text-muted-foreground" />}
+                </button>
+                {convHistoryOpen && (
+                  <div className="px-4 pb-4 flex flex-col gap-2">
+                    {convHistory.map((c: any) => {
+                      const lastMsg = c.messages?.at(-1);
+                      const dateStr = c.last_message_at
+                        ? new Date(c.last_message_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+                        : '—';
+                      const assignedName = c.assigned_user?.name || c.assignedAgentName || null;
+                      return (
+                        <div key={c.id} className="flex flex-col gap-1 p-3 rounded-xl bg-muted/40 border border-border/60">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[11px] font-bold text-muted-foreground">{dateStr}</span>
+                            {assignedName && (
+                              <span className="text-[10px] text-muted-foreground truncate">@{assignedName}</span>
+                            )}
+                          </div>
+                          {lastMsg?.text && (
+                            <p className="text-[12px] text-foreground/80 truncate">
+                              {lastMsg.direction === 'out' ? '↪ ' : ''}{lastMsg.text}
+                            </p>
+                          )}
+                          {c.legal_area && (
+                            <span className="text-[10px] text-violet-400 font-medium">⚖️ {c.legal_area}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Ficha Trabalhista */}
             {lead && (() => {
