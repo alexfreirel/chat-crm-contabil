@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Bell, Volume2, Play, Monitor } from 'lucide-react';
+import { Bell, Volume2, Play, Monitor, Palette } from 'lucide-react';
 import {
   NOTIFICATION_SOUNDS,
   getNotificationSoundId,
@@ -16,6 +16,7 @@ import {
   setDesktopNotifEnabled,
   requestNotificationPermission,
 } from '@/lib/desktopNotifications';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default function NotificationsSettingsPage() {
   const [selected, setSelected] = useState<SoundId>('ding');
@@ -69,6 +70,25 @@ export default function NotificationsSettingsPage() {
         <p className="text-sm text-muted-foreground">
           Configure alertas sonoros e notificacoes do navegador.
         </p>
+      </div>
+
+      {/* Aparência */}
+      <div className="bg-card border border-border rounded-2xl p-6 space-y-3 mb-6">
+        <div className="flex items-center gap-2 mb-5">
+          <Palette size={15} className="text-muted-foreground" />
+          <h2 className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+            Aparencia
+          </h2>
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[14px] font-semibold">Tema da Interface</p>
+            <p className="text-[12px] text-muted-foreground">
+              Alterne entre modo escuro e modo claro
+            </p>
+          </div>
+          <ThemeToggle />
+        </div>
       </div>
 
       {/* Desktop notifications toggle */}

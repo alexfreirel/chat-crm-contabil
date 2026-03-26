@@ -241,6 +241,8 @@ export default function Dashboard() {
   });
   // IDs de conversas onde a barra de resposta rápida foi dispensada
   const [dismissedQuickReply, setDismissedQuickReply] = useState<Set<string>>(new Set());
+  // Bulk selection de conversas
+  const [selectedBulk, setSelectedBulk] = useState<Set<string>>(new Set());
   // Badge de novas mensagens enquanto usuário está scrollado acima
   const [newMsgsWhileScrolled, setNewMsgsWhileScrolled] = useState(0);
   const isScrolledUpRef = useRef(false);
@@ -1672,6 +1674,25 @@ export default function Dashboard() {
     }
   };
 
+  const toggleBulk = useCallback((id: string) => {
+    setSelectedBulk(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleBulkAction = useCallback(async (action: 'close' | 'assign', ids: string[]) => {
+    if (action === 'close') {
+      try {
+        await Promise.all(ids.map(id => api.patch(`/conversations/${id}/status`, { status: 'FECHADO' })));
+        setConversations(prev => prev.filter(c => !ids.includes(c.id)));
+        setSelectedBulk(new Set());
+        showSuccess(`${ids.length} conversa${ids.length > 1 ? 's' : ''} encerrada${ids.length > 1 ? 's' : ''}`);
+      } catch { showError('Erro ao encerrar conversas'); }
+    }
+  }, []);
+
   const handleQuickAcceptTransfer = async (conversationId: string) => {
     try {
       await api.patch(`/conversations/${conversationId}/transfer-accept`);
@@ -1994,6 +2015,10 @@ export default function Dashboard() {
         onShowTransferPopup={(pt) => { setIncomingTransfer(pt); setShowDeclineInput(false); setDeclineReason(''); }}
         onLightbox={setLightbox}
         hasDisconnectedInstance={Object.values(instanceStatuses).some(s => s === 'close')}
+        selectedBulk={selectedBulk}
+        onToggleBulk={toggleBulk}
+        onClearBulk={() => setSelectedBulk(new Set())}
+        onBulkAction={handleBulkAction}
       />
 
       {/* INBOX OPEN BUTTON (when collapsed) - desktop only */}

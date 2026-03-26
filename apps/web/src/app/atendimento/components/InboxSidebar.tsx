@@ -1,6 +1,7 @@
 'use client';
 
 import { Search, X, PanelLeftClose, Bell, Clock } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
 import {
   requestNotificationPermission,
   dismissBanner,
@@ -8,6 +9,15 @@ import {
 import { showSuccess } from '@/lib/toast';
 import { normalizeStage } from '@/lib/crmStages';
 import type { ConversationSummary } from '../types';
+
+// ─── Saved Filters Type ──────────────────────────────────────
+
+interface SavedFilter {
+  id: string;
+  name: string;
+  inboxId: string | null;
+  leadFilter: string;
+}
 
 // ─── Helpers ────────────────────────────────────────────────────
 
@@ -117,6 +127,11 @@ export interface InboxSidebarProps {
   loading: boolean;
   isMobile: boolean;
   showNotifBanner: boolean;
+  // Bulk selection
+  selectedBulk?: Set<string>;
+  onToggleBulk?: (id: string) => void;
+  onClearBulk?: () => void;
+  onBulkAction?: (action: 'close' | 'assign', ids: string[]) => void;
   // Callbacks
   onSelectConversation: (id: string) => void;
   onSetSearchQuery: (q: string) => void;
@@ -149,6 +164,10 @@ export function InboxSidebar({
   loading,
   isMobile,
   showNotifBanner,
+  selectedBulk,
+  onToggleBulk,
+  onClearBulk,
+  onBulkAction,
   onSelectConversation,
   onSetSearchQuery,
   onSetLeadFilter,
@@ -164,6 +183,55 @@ export function InboxSidebar({
 
   const myActiveConvs = (c: ConversationSummary) =>
     (c.status === 'ACTIVE' || c.status === 'MONITORING') && c.assignedAgentId === currentUserId;
+
+  // ─── Saved Filters ────────────────────────────────────────────
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
+  const [showSaveInput, setShowSaveInput] = useState(false);
+  const [saveInputValue, setSaveInputValue] = useState('');
+  const saveInputRef = useRef<HTMLInputElement>(null);
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('inbox_saved_filters');
+      if (raw) setSavedFilters(JSON.parse(raw));
+    } catch { /* ignore */ }
+  }, []);
+
+  const persistSavedFilters = (filters: SavedFilter[]) => {
+    setSavedFilters(filters);
+    try { localStorage.setItem('inbox_saved_filters', JSON.stringify(filters)); } catch { /* ignore */ }
+  };
+
+  const hasNonDefaultFilter = selectedInboxId !== null || leadFilter !== '';
+
+  const handleSaveFilter = () => {
+    const name = saveInputValue.trim();
+    if (!name) return;
+    const newFilter: SavedFilter = {
+      id: Date.now().toString(),
+      name,
+      inboxId: selectedInboxId,
+      leadFilter,
+    };
+    persistSavedFilters([...savedFilters, newFilter]);
+    setSaveInputValue('');
+    setShowSaveInput(false);
+  };
+
+  const handleDeleteSavedFilter = (id: string) => {
+    persistSavedFilters(savedFilters.filter((f) => f.id !== id));
+  };
+
+  const handleApplySavedFilter = (f: SavedFilter) => {
+    onSetSelectedInboxId(f.inboxId);
+    onSetLeadFilter(f.leadFilter);
+  };
+
+  // Focus the save input when shown
+  useEffect(() => {
+    if (showSaveInput) saveInputRef.current?.focus();
+  }, [showSaveInput]);
 
   return (
     <section className={`flex flex-col overflow-hidden bg-card border-r border-border shrink-0 z-40 transition-all duration-300 ${isMobile ? (selectedId ? 'hidden' : 'w-full') : (inboxOpen ? 'w-[380px]' : 'w-0')}`}>
@@ -294,28 +362,96 @@ export function InboxSidebar({
           </div>
         )}
 
-        <div className="flex bg-muted rounded-xl p-1 w-full relative">
-          {[
-            { value: '', label: 'Tudo', count: conversations.filter(c => normalizeStage(c.leadStage) !== 'PERDIDO').length },
-            { value: 'MINE', label: 'Minhas', count: conversations.filter(c => c.assignedAgentId === currentUserId && c.status !== 'CLOSED' && normalizeStage(c.leadStage) !== 'PERDIDO').length },
-            { value: 'WAITING', label: 'Espera', count: conversations.filter(c => c.status === 'WAITING' && normalizeStage(c.leadStage) !== 'PERDIDO').length },
-            { value: 'BOT', label: 'SophIA', count: conversations.filter(c => c.aiMode && c.assignedAgentId === currentUserId && normalizeStage(c.leadStage) !== 'PERDIDO').length },
-            { value: 'ADIADO', label: 'Adiados', count: adiadoConversations.filter(c => normalizeStage(c.leadStage) !== 'PERDIDO').length },
-          ].map((tab) => (
+        <div className="flex items-center gap-2">
+          <div className="flex bg-muted rounded-xl p-1 flex-1 relative">
+            {[
+              { value: '', label: 'Tudo', count: conversations.filter(c => normalizeStage(c.leadStage) !== 'PERDIDO').length },
+              { value: 'MINE', label: 'Minhas', count: conversations.filter(c => c.assignedAgentId === currentUserId && c.status !== 'CLOSED' && normalizeStage(c.leadStage) !== 'PERDIDO').length },
+              { value: 'WAITING', label: 'Espera', count: conversations.filter(c => c.status === 'WAITING' && normalizeStage(c.leadStage) !== 'PERDIDO').length },
+              { value: 'BOT', label: 'SophIA', count: conversations.filter(c => c.aiMode && c.assignedAgentId === currentUserId && normalizeStage(c.leadStage) !== 'PERDIDO').length },
+              { value: 'ADIADO', label: 'Adiados', count: adiadoConversations.filter(c => normalizeStage(c.leadStage) !== 'PERDIDO').length },
+            ].map((tab) => (
+              <button
+                key={tab.value}
+                onClick={() => onSetLeadFilter(tab.value)}
+                className={`flex-1 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all relative ${leadFilter === tab.value ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-background/50'}`}
+              >
+                {tab.label}
+                {tab.count > 0 && (
+                  <span className="absolute -top-2.5 -right-2 min-w-[26px] h-[26px] px-1.5 rounded-full bg-red-500 text-white text-[12px] font-bold leading-[26px] text-center shadow-md">
+                    {tab.count > 99 ? '99+' : tab.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Save filter button — only shown when a non-default filter is active */}
+          {hasNonDefaultFilter && (
             <button
-              key={tab.value}
-              onClick={() => onSetLeadFilter(tab.value)}
-              className={`flex-1 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all relative ${leadFilter === tab.value ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-background/50'}`}
+              onClick={() => setShowSaveInput((v) => !v)}
+              className="shrink-0 text-base leading-none px-2 py-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+              title="Salvar filtro atual"
+              aria-label="Salvar filtro"
             >
-              {tab.label}
-              {tab.count > 0 && (
-                <span className="absolute -top-2.5 -right-2 min-w-[26px] h-[26px] px-1.5 rounded-full bg-red-500 text-white text-[12px] font-bold leading-[26px] text-center shadow-md">
-                  {tab.count > 99 ? '99+' : tab.count}
-                </span>
-              )}
+              💾
             </button>
-          ))}
+          )}
         </div>
+
+        {/* Inline save input */}
+        {showSaveInput && (
+          <div className="flex items-center gap-2">
+            <input
+              ref={saveInputRef}
+              type="text"
+              value={saveInputValue}
+              onChange={(e) => setSaveInputValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSaveFilter();
+                if (e.key === 'Escape') { setShowSaveInput(false); setSaveInputValue(''); }
+              }}
+              placeholder="Nome do filtro…"
+              className="flex-1 px-3 py-1.5 text-[12px] bg-accent/50 border border-border rounded-lg placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary/40 transition-all"
+            />
+            <button
+              onClick={handleSaveFilter}
+              className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-[11px] font-bold hover:opacity-90 transition-opacity"
+            >
+              Salvar
+            </button>
+            <button
+              onClick={() => { setShowSaveInput(false); setSaveInputValue(''); }}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Cancelar"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {/* Saved filter chips */}
+        {savedFilters.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {savedFilters.map((f) => (
+              <div
+                key={f.id}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-semibold text-primary/80 cursor-pointer hover:bg-primary/20 transition-colors group"
+                onClick={() => handleApplySavedFilter(f)}
+                title={`Aplicar filtro: ${f.name}`}
+              >
+                <span>{f.name}</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDeleteSavedFilter(f.id); }}
+                  className="text-primary/50 hover:text-primary transition-colors ml-0.5"
+                  aria-label={`Remover filtro ${f.name}`}
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className={`flex-1 overflow-y-auto w-full custom-scrollbar ${isMobile && !selectedId ? 'pb-16' : ''}`}>
@@ -333,6 +469,8 @@ export function InboxSidebar({
               const dateKey = convDate ? getDateKey(convDate) : '__nodate__';
               const showDateSep = dateKey !== lastConvDateKey;
               if (showDateSep) lastConvDateKey = dateKey;
+              const isBulkSelected = selectedBulk?.has(conv.id) ?? false;
+              const inBulkMode = (selectedBulk?.size ?? 0) > 0;
               return (
                 <div key={conv.id}>
                   {showDateSep && convDate && (
@@ -340,16 +478,33 @@ export function InboxSidebar({
                   )}
                   <div
                     onClick={() => {
+                      if (inBulkMode) {
+                        onToggleBulk?.(conv.id);
+                        return;
+                      }
                       onSelectConversation(conv.id);
                       onSetUnreadCounts(prev => { const n = { ...prev }; delete n[conv.id]; return n; });
                     }}
-                    className={`flex gap-4 p-4 border-b border-border/50 cursor-pointer transition-colors relative
+                    className={`group flex gap-4 p-4 border-b border-border/50 cursor-pointer transition-colors relative
                       ${selectedId === conv.id ? 'bg-accent/50' : 'hover:bg-accent/30'}
+                      ${isBulkSelected ? 'bg-primary/10' : ''}
                     `}
                   >
-                    {selectedId === conv.id && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />}
-                    {/* Avatar + score badge */}
-                    <div className="flex flex-col items-center gap-0.5 shrink-0">
+                    {selectedId === conv.id && !inBulkMode && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />}
+                    {/* Checkbox (visible on hover or in bulk mode) + Avatar + score badge */}
+                    <div className="flex flex-col items-center gap-0.5 shrink-0 relative">
+                      <div
+                        className={`absolute -left-1 top-0 z-10 transition-opacity ${inBulkMode ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                        onClick={(e) => { e.stopPropagation(); onToggleBulk?.(conv.id); }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isBulkSelected}
+                          onChange={() => onToggleBulk?.(conv.id)}
+                          className="w-4 h-4 rounded accent-primary cursor-pointer"
+                          aria-label={`Selecionar ${conv.contactName || conv.contactPhone}`}
+                        />
+                      </div>
                       <div
                         className={`w-11 h-11 rounded-full bg-accent border border-border flex items-center justify-center overflow-hidden shadow-sm ${conv.profile_picture_url ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
                         onClick={conv.profile_picture_url ? (e) => { e.stopPropagation(); onLightbox(conv.profile_picture_url!); } : undefined}
@@ -492,6 +647,15 @@ export function InboxSidebar({
           })()
         )}
       </div>
+
+      {/* Bulk action bar */}
+      {(selectedBulk?.size ?? 0) > 0 && (
+        <div className="shrink-0 border-t border-border bg-card p-3 flex items-center gap-2">
+          <span className="text-xs font-bold text-foreground flex-1">{selectedBulk!.size} selecionada{selectedBulk!.size > 1 ? 's' : ''}</span>
+          <button onClick={() => onBulkAction?.('close', [...selectedBulk!])} className="px-3 py-1.5 text-xs font-bold bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-colors">Encerrar</button>
+          <button onClick={() => onClearBulk?.()} className="px-3 py-1.5 text-xs font-bold bg-muted text-muted-foreground rounded-lg hover:bg-muted/80 transition-colors">Cancelar</button>
+        </div>
+      )}
     </section>
   );
 }

@@ -6,7 +6,7 @@ import {
   MessageSquare, ListTodo, Scale, BookOpen, DollarSign, TrendingUp,
   Clock, AlertTriangle, Calendar, Briefcase, Settings, Bell,
   Loader2, ChevronRight, Gavel, FileText, Activity,
-  LayoutDashboard,
+  LayoutDashboard, Download,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { showError } from '@/lib/toast';
@@ -107,8 +107,77 @@ function getStageCount(stages: { stage: string; count: number }[], id: string): 
   return stages.find((s) => s.stage === id)?.count || 0;
 }
 
+function calcAgentScore(m: TeamMember): number {
+  let score = 70;
+  if (m.overdueTasks > 0) score -= Math.min(30, m.overdueTasks * 5);
+  if (m.pendingTasks > 10) score -= Math.min(15, (m.pendingTasks - 10) * 1.5);
+  if (m.totalCollected > 0) score += Math.min(20, (m.totalCollected / 10000) * 2);
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
 function firstName(name: string): string {
   return name.split(' ')[0];
+}
+
+/* ──────────────────────────────────────────────────────────────
+   CSV Export
+────────────────────────────────────────────────────────────── */
+function exportDashboardCSV(data: DashboardData, isAdmin: boolean) {
+  const rows: string[] = [];
+
+  // Section 1: Stats
+  rows.push('ESTATÍSTICAS GERAIS');
+  rows.push('Métrica,Valor');
+  rows.push(`Conversas Abertas,${data.conversations.open}`);
+  rows.push(`Tarefas Pendentes,${data.tasks.pending + data.tasks.inProgress}`);
+  rows.push(`Tarefas Atrasadas,${data.tasks.overdue}`);
+  rows.push(`Casos Ativos,${data.legalCases.total}`);
+  rows.push(`Processos,${data.trackingCases.total}`);
+  if (data.inboxStats) {
+    rows.push(`Atendimentos Encerrados Hoje,${data.inboxStats.closedToday}`);
+    rows.push(`Atendimentos Encerrados Esta Semana,${data.inboxStats.closedThisWeek}`);
+    rows.push(`Atendimentos Encerrados Este Mês,${data.inboxStats.closedThisMonth}`);
+  }
+  rows.push('');
+
+  // Section 2: Lead Pipeline
+  rows.push('PIPELINE DE LEADS');
+  rows.push('Etapa,Quantidade');
+  for (const item of data.leadPipeline) {
+    rows.push(`${item.stage},${item.count}`);
+  }
+  rows.push('');
+
+  // Section 3: Team metrics (admin only)
+  if (isAdmin && data.teamMetrics.length > 0) {
+    rows.push('MÉTRICAS DA EQUIPE');
+    rows.push('Nome,Função,Conversas Abertas,Casos Ativos,Tarefas Pendentes,Tarefas Atrasadas,Recebido,A Receber');
+    for (const m of data.teamMetrics) {
+      rows.push(`"${m.name}",${m.role},${m.openConversations},${m.activeCases},${m.pendingTasks},${m.overdueTasks},${m.totalCollected},${m.totalReceivable}`);
+    }
+    rows.push('');
+  }
+
+  // Section 4: Financial summary
+  rows.push('RESUMO FINANCEIRO');
+  rows.push('Categoria,Valor (R$)');
+  rows.push(`Contratado,${data.financials.totalContracted}`);
+  rows.push(`Recebido,${data.financials.totalCollected}`);
+  rows.push(`A Receber,${data.financials.totalReceivable}`);
+  rows.push(`Em Atraso,${data.financials.totalOverdue}`);
+  rows.push(`Parcelas em Atraso,${data.financials.overdueCount}`);
+
+  const csv = '\uFEFF' + rows.join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const date = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.download = `dashboard_${date}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 /* ──────────────────────────────────────────────────────────────
@@ -239,11 +308,22 @@ export default function DashboardPage() {
       <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6 pb-28 md:pb-6">
 
         {/* ─── A) Greeting ─── */}
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold text-foreground">
-            {getGreeting()}, {firstName(data.user.name)} 👋
-          </h1>
-          <p className="text-sm text-muted-foreground capitalize">{formatDateFull()}</p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold text-foreground">
+              {getGreeting()}, {firstName(data.user.name)} 👋
+            </h1>
+            <p className="text-sm text-muted-foreground capitalize">{formatDateFull()}</p>
+          </div>
+          <button
+            onClick={() => exportDashboardCSV(data, isAdmin)}
+            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-accent border border-border transition-all"
+            title="Exportar dados como CSV"
+            aria-label="Exportar CSV"
+          >
+            <Download size={14} />
+            Exportar CSV
+          </button>
         </div>
 
         {/* ─── B) Stats Grid Principal ─── */}
@@ -384,7 +464,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Header row */}
-            <div className="hidden md:grid grid-cols-[1fr_70px_70px_70px_70px_100px_100px] gap-2 mb-2 text-[9px] text-muted-foreground font-bold uppercase tracking-wider px-1">
+            <div className="hidden md:grid grid-cols-[1fr_70px_70px_70px_70px_100px_100px_60px] gap-2 mb-2 text-[9px] text-muted-foreground font-bold uppercase tracking-wider px-1">
               <span>Membro</span>
               <span className="text-center">Conversas</span>
               <span className="text-center">Casos</span>
@@ -392,6 +472,7 @@ export default function DashboardPage() {
               <span className="text-center">Atrasadas</span>
               <span className="text-right">Recebido</span>
               <span className="text-right">A Receber</span>
+              <span className="text-center">Score</span>
             </div>
 
             <div className="space-y-1.5">
@@ -404,11 +485,17 @@ export default function DashboardPage() {
                   : load > avgLoad
                     ? 'bg-amber-500'
                     : 'bg-emerald-500';
+                const score = calcAgentScore(member);
+                const scoreBadgeClass = score >= 80
+                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25'
+                  : score >= 60
+                    ? 'bg-amber-500/15 text-amber-400 border border-amber-500/25'
+                    : 'bg-red-500/15 text-red-400 border border-red-500/25';
 
                 return (
                   <div key={member.userId} className="bg-muted/30 rounded-lg p-2.5">
                     {/* Desktop row */}
-                    <div className="hidden md:grid grid-cols-[1fr_70px_70px_70px_70px_100px_100px] gap-2 items-center">
+                    <div className="hidden md:grid grid-cols-[1fr_70px_70px_70px_70px_100px_100px_60px] gap-2 items-center">
                       <div className="flex items-center gap-2 min-w-0">
                         <div className="w-7 h-7 rounded-full bg-primary/20 text-primary text-[11px] font-bold flex items-center justify-center shrink-0">
                           {member.name.charAt(0).toUpperCase()}
@@ -424,6 +511,9 @@ export default function DashboardPage() {
                       <span className={`text-xs text-center font-bold ${member.overdueTasks > 0 ? 'text-red-500' : 'text-foreground'}`}>{member.overdueTasks}</span>
                       <span className="text-xs text-right font-semibold text-emerald-500">{fmtBRL(member.totalCollected)}</span>
                       <span className="text-xs text-right font-semibold text-amber-500">{fmtBRL(member.totalReceivable)}</span>
+                      <div className="flex justify-center">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${scoreBadgeClass}`}>{score}</span>
+                      </div>
                     </div>
 
                     {/* Mobile card */}
@@ -432,10 +522,11 @@ export default function DashboardPage() {
                         <div className="w-7 h-7 rounded-full bg-primary/20 text-primary text-[11px] font-bold flex items-center justify-center shrink-0">
                           {member.name.charAt(0).toUpperCase()}
                         </div>
-                        <div>
+                        <div className="flex-1 min-w-0">
                           <p className="text-xs font-semibold text-foreground">{member.name}</p>
                           <p className="text-[9px] text-muted-foreground">{member.role === 'ADMIN' ? 'Admin' : member.role}</p>
                         </div>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${scoreBadgeClass}`}>{score}</span>
                       </div>
                       <div className="grid grid-cols-4 gap-2 text-center">
                         <div>
@@ -458,7 +549,7 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Load bar */}
-                    <div className="mt-1.5 h-1 bg-muted rounded-full overflow-hidden">
+                    <div className="mt-1.5 h-1.5 bg-muted rounded-full overflow-hidden" title={`Carga de trabalho: ${load} itens`}>
                       <div className={`h-full rounded-full transition-all duration-500 ${loadColor}`} style={{ width: `${loadPct}%` }} />
                     </div>
                   </div>

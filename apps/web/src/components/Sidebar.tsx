@@ -6,6 +6,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { LogOut, Users, Briefcase, Settings, Palette, Check, MessageSquare, Megaphone, FileEdit, BookOpen, Calendar, LayoutDashboard, FileText } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { API_BASE_URL } from '@/lib/api';
+import { NotificationCenter } from '@/app/atendimento/components/NotificationCenter';
 
 const THEMES = [
   { id: 'logo-dark', name: 'Dark (Logo)', color: '#000000' },
@@ -193,6 +194,15 @@ export function Sidebar() {
             dbStatus === 'offline' ? 'bg-red-500 shadow-red-500/20 animate-pulse' :
             'bg-amber-500 shadow-amber-500/20 animate-spin-slow'
           }`} />
+        </div>
+
+        {/* Notification Center */}
+        <div
+          className="w-full flex justify-center"
+          onMouseEnter={(e) => showTooltip(e, 'Notificações')}
+          onMouseLeave={hideTooltip}
+        >
+          <NotificationCenter />
         </div>
 
         {/* Theme picker */}
