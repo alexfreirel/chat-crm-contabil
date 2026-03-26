@@ -7,6 +7,7 @@ import { ChatGateway } from '../gateway/chat.gateway';
 import { LeadsService } from '../leads/leads.service';
 import { InboxesService } from '../inboxes/inboxes.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
+import { FollowupService } from '../followup/followup.service';
 
 interface EvolutionWebhookPayload {
   event: string;
@@ -454,9 +455,8 @@ export class EvolutionService {
       `[FOLLOWUP-LISTENER] Resposta recebida do lead ${leadId} em sequência "${enrollment.sequence.name}"`,
     );
 
-    // Analisar intenção com IA (lazy load para evitar circular dep)
+    // Analisar intenção com IA (resolve via ModuleRef — sem circular dep em build)
     try {
-      const { FollowupService } = await import('../followup/followup.service');
       const followupSvc = this.moduleRef.get(FollowupService, { strict: false });
       if (!followupSvc) return;
 
@@ -482,8 +482,7 @@ export class EvolutionService {
           data: {
             title: `Lead quente respondeu: ${enrollment.lead.name || enrollment.lead.phone}`,
             description: `Lead respondeu positivamente ao follow-up da sequência "${enrollment.sequence.name}".\n\nResposta: "${responseText}"\n\nAnálise IA: ${analise.resumo}\nPróxima ação sugerida: ${analise.proxima_acao}`,
-            status: 'PENDENTE',
-            priority: 'URGENTE',
+            status: 'A_FAZER',
             due_at: new Date(Date.now() + 2 * 3600000), // 2 horas
             lead_id: leadId,
             assigned_user_id: null, // será assignado pelo responsável
@@ -505,8 +504,7 @@ export class EvolutionService {
           data: {
             title: `Revisão necessária: ${enrollment.lead.name || enrollment.lead.phone}`,
             description: `A IA detectou que este lead precisa de atenção humana.\n\nResposta: "${responseText}"\n\nMotivo: ${analise.resumo}`,
-            status: 'PENDENTE',
-            priority: 'ALTA',
+            status: 'A_FAZER',
             due_at: new Date(Date.now() + 4 * 3600000),
             lead_id: leadId,
             assigned_user_id: null,

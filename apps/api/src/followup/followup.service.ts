@@ -431,7 +431,15 @@ Considere requer_humano=true se:
   // ─── Seed de Sequências Padrão ───────────────────────────────────────────
 
   async seedDefaultSequences() {
-    const sequences = [
+    type StepDef = {
+      position: number; delay_hours: number; channel: string;
+      tone: string; objective: string; auto_send: boolean; custom_prompt?: string;
+    };
+    type SeqDef = {
+      name: string; description: string; category: string;
+      auto_enroll_stages: string[]; max_attempts: number; steps: StepDef[];
+    };
+    const sequences: SeqDef[] = [
       {
         name: 'Novo Lead — Captação',
         description: 'Sequência padrão para novos leads que ainda não contrataram',

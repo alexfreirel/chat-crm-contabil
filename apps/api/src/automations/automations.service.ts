@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+import { FollowupService } from '../followup/followup.service';
 
 @Injectable()
 export class AutomationsService {
@@ -79,7 +80,6 @@ export class AutomationsService {
       // ENROLL_FOLLOWUP — enrola o lead em uma sequência de follow-up pelo ID
       if (rule.action === 'ENROLL_FOLLOWUP' && context.leadId) {
         try {
-          const { FollowupService } = await import('../followup/followup.service');
           const followupService = this.moduleRef.get(FollowupService, { strict: false });
           if (followupService) {
             await followupService.enrollLead(context.leadId, rule.action_value);

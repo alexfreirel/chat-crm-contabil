@@ -5,6 +5,7 @@ import { ChatGateway } from '../gateway/chat.gateway';
 import { Prisma, Lead } from '@crm/shared';
 import { LegalCasesService } from '../legal-cases/legal-cases.service';
 import { AutomationsService } from '../automations/automations.service';
+import { FollowupService } from '../followup/followup.service';
 import OpenAI from 'openai';
 
 /**
@@ -254,9 +255,8 @@ export class LeadsService {
     );
 
     // Auto-enroll em sequências de follow-up configuradas para o novo stage
-    // Lazy-load via ModuleRef para evitar dependência circular (FollowupModule → LeadsModule)
+    // Resolve via ModuleRef para evitar dependência circular na inicialização do módulo
     try {
-      const { FollowupService } = await import('../followup/followup.service');
       const followupService = this.moduleRef.get(FollowupService, { strict: false });
       if (followupService) {
         followupService.autoEnrollByStage(id, stage).catch((err: Error) =>
