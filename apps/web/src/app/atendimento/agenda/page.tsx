@@ -12,7 +12,8 @@ import {
   Plus, X, Calendar as CalendarIcon, Filter, ChevronDown,
   ChevronLeft, ChevronRight,
   Clock, MapPin, User, FileText, Gavel, AlertTriangle, CheckCircle2, Bell,
-  Search, Download, Copy, Repeat, MessageSquare, Users, Send
+  Search, Download, Copy, Repeat, MessageSquare, Users, Send,
+  LayoutGrid, CalendarDays as CalendarViewIcon,
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 import api, { API_BASE_URL } from '@/lib/api';
@@ -101,6 +102,12 @@ const PRIORITY_LABELS: Record<string, string> = {
   ALTA: 'Alta',
   URGENTE: 'Urgente',
 };
+
+const KANBAN_COLUMNS = [
+  { id: 'AGENDADO',  label: 'A Fazer',      emoji: '📋', color: '#3b82f6' },
+  { id: 'CONFIRMADO', label: 'Em Andamento', emoji: '🔄', color: '#f59e0b' },
+  { id: 'CONCLUIDO', label: 'Concluído',    emoji: '✅', color: '#22c55e' },
+];
 
 const REMINDER_OPTIONS = [
   { value: 15, label: '15 minutos antes' },
@@ -354,8 +361,25 @@ export default function AgendaPage() {
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [mounted, setMounted] = useState(false);
   const [hoverTooltip, setHoverTooltip] = useState<{ event: CalendarEvent; x: number; y: number } | null>(null);
+  const [kanbanView, setKanbanView] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
+
+  // Atalho de teclado: 'N' abre modal de criação
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName?.toUpperCase();
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        openCreateModal();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -1051,6 +1075,14 @@ export default function AgendaPage() {
                     {ev.location && (
                       <p className="text-[10px] text-muted-foreground/70 truncate mt-0.5">📍 {ev.location}</p>
                     )}
+                    {isOverdue && (() => {
+                      const days = Math.max(0, Math.floor((Date.now() - new Date(ev.start_at).getTime()) / 86400000));
+                      return (
+                        <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-red-400 bg-red-400/10 px-1.5 py-0.5 rounded-full mt-1">
+                          {days > 0 ? `${days}d atraso` : 'Venceu hoje'}
+                        </span>
+                      );
+                    })()}
                   </button>
                 );
               })}
@@ -1159,10 +1191,25 @@ export default function AgendaPage() {
             <Download size={14} />
           </button>
 
-          {/* + Novo Evento */}
+          {/* Toggle Kanban / Calendário */}
+          <button
+            onClick={() => setKanbanView(v => !v)}
+            className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-colors ${
+              kanbanView
+                ? 'bg-accent border-accent-foreground/20 text-foreground'
+                : 'border-border text-muted-foreground hover:bg-accent'
+            }`}
+            title={kanbanView ? 'Ver Calendário' : 'Ver Kanban de Tarefas'}
+          >
+            {kanbanView ? <CalendarViewIcon size={14} /> : <LayoutGrid size={14} />}
+            <span>{kanbanView ? 'Calendário' : 'Kanban'}</span>
+          </button>
+
+          {/* + Novo Evento (atalho: N) */}
           <button
             onClick={() => openCreateModal()}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors shadow-sm"
+            title="Criar evento (atalho: N)"
           >
             <Plus size={15} />
             <span className="hidden sm:inline">Novo Evento</span>
@@ -1197,7 +1244,99 @@ export default function AgendaPage() {
           </div>
         )}
 
-        {/* Calendário schedule-x */}
+        {/* ══ KANBAN VIEW ══ */}
+        {kanbanView ? (
+          <div className="flex-1 overflow-auto p-4">
+            <div className="flex gap-3 h-full" style={{ minWidth: 600 }}>
+              {KANBAN_COLUMNS.map(col => {
+                const colEvents = events.filter(e =>
+                  e.type === 'TAREFA' && e.status === col.id
+                );
+                return (
+                  <div key={col.id} className="flex flex-col flex-1 min-w-[220px] max-w-[320px]">
+                    {/* Cabeçalho da coluna */}
+                    <div
+                      className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl border"
+                      style={{ borderColor: col.color + '40', background: col.color + '10' }}
+                    >
+                      <span className="text-sm">{col.emoji}</span>
+                      <span className="text-sm font-bold text-foreground">{col.label}</span>
+                      <span className="ml-auto text-xs font-bold text-muted-foreground bg-background/60 px-2 py-0.5 rounded-full">
+                        {colEvents.length}
+                      </span>
+                    </div>
+
+                    {/* Cards */}
+                    <div className="flex flex-col gap-2 flex-1 overflow-y-auto custom-scrollbar pb-4">
+                      {colEvents.map(ev => {
+                        const priorityColor = PRIORITY_COLORS[ev.priority] ?? '#6b7280';
+                        const isOverdue = new Date(ev.start_at) < new Date() && col.id !== 'CONCLUIDO';
+                        const daysOverdue = isOverdue
+                          ? Math.max(0, Math.floor((Date.now() - new Date(ev.start_at).getTime()) / 86400000))
+                          : 0;
+                        return (
+                          <div
+                            key={ev.id}
+                            className="bg-card border border-border rounded-xl p-3 cursor-pointer hover:shadow-md hover:border-primary/30 transition-all group"
+                            style={{ borderLeft: `3px solid ${priorityColor}` }}
+                            onClick={() => openEditModal(ev)}
+                          >
+                            <p className="text-sm font-semibold text-foreground mb-1 group-hover:text-primary transition-colors leading-snug">
+                              {ev.title}
+                            </p>
+                            <div className="flex flex-wrap gap-x-2 text-[10px] text-muted-foreground mb-2">
+                              <span className="flex items-center gap-0.5">
+                                <Clock size={9} />
+                                {new Date(ev.start_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                              </span>
+                              {ev.assigned_user && <span>· {ev.assigned_user.name}</span>}
+                              {ev.lead && <span>· {ev.lead.name || ev.lead.phone}</span>}
+                            </div>
+
+                            {isOverdue && (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-red-400 bg-red-400/10 px-2 py-0.5 rounded-full mb-2">
+                                ⚠️ {daysOverdue > 0 ? `${daysOverdue}d atraso` : 'Venceu hoje'}
+                              </span>
+                            )}
+
+                            {/* Mover para outra coluna */}
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity mt-1 flex-wrap">
+                              {KANBAN_COLUMNS.filter(c => c.id !== col.id).map(target => (
+                                <button
+                                  key={target.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    api.patch(`/calendar/events/${ev.id}`, { status: target.id })
+                                      .then(() => setEvents(prev =>
+                                        prev.map(x => x.id === ev.id ? { ...x, status: target.id } : x)
+                                      ));
+                                  }}
+                                  className="text-[9px] font-bold px-2 py-0.5 rounded-full border border-border hover:bg-accent transition-colors"
+                                  style={{ color: target.color }}
+                                >
+                                  → {target.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Estado vazio por coluna */}
+                      {colEvents.length === 0 && (
+                        <div className="flex flex-col items-center gap-2 py-10 rounded-xl border-2 border-dashed border-border/30">
+                          <span className="text-3xl opacity-20">{col.emoji}</span>
+                          <p className="text-xs text-muted-foreground/40">Nenhuma tarefa</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+        /* ══ CALENDÁRIO SCHEDULE-X ══ */
         <div className="flex-1 overflow-auto">
           <div className="sx-react-calendar-wrapper h-full min-h-[500px]" style={{
             ['--sx-color-primary' as any]: 'hsl(var(--primary))',
@@ -1208,6 +1347,7 @@ export default function AgendaPage() {
             {calendar && <ScheduleXCalendar calendarApp={calendar} />}
           </div>
         </div>
+        )}
 
       </div>{/* fim área principal */}
 

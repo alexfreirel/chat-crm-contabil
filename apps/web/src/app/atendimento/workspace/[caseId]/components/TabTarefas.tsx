@@ -197,6 +197,10 @@ export default function TabTarefas({
           {filteredTasks.map(task => {
             const isDone = task.status === 'CONCLUIDO';
             const statusInfo = STATUS_MAP[task.status] || { label: task.status, color: 'badge-ghost' };
+            const isOverdue = !isDone && task.start_at && new Date(task.start_at) < new Date();
+            const daysOverdue = isOverdue
+              ? Math.max(0, Math.floor((Date.now() - new Date(task.start_at).getTime()) / 86400000))
+              : 0;
 
             return (
               <div
@@ -238,6 +242,13 @@ export default function TabTarefas({
                     )}
                   </div>
                 </div>
+
+                {/* SLA badge */}
+                {isOverdue && (
+                  <span className="shrink-0 text-[10px] font-bold text-red-400 bg-red-400/10 px-2 py-0.5 rounded-full self-center">
+                    {daysOverdue > 0 ? `${daysOverdue}d` : 'Hoje'}
+                  </span>
+                )}
 
                 {/* Ver na Agenda */}
                 <button
