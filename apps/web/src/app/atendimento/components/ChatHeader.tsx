@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Bot, BotOff, UserCheck, CornerDownLeft, Inbox, Eye, ClipboardList, ArrowLeft, ChevronDown, ChevronRight, MoreVertical, Clock } from 'lucide-react';
+import { Bot, BotOff, UserCheck, CornerDownLeft, Inbox, Eye, ClipboardList, ArrowLeft, ChevronDown, ChevronRight, MoreVertical, Clock, Copy, Check } from 'lucide-react';
 import { CRM_STAGES, findStage, normalizeStage } from '@/lib/crmStages';
 import type { ConversationSummary, ActiveTask } from '../types';
 
@@ -116,6 +116,7 @@ export function ChatHeader({
 }: ChatHeaderProps) {
   const [showReschedule, setShowReschedule] = useState(false);
   const [rescheduleDate, setRescheduleDate] = useState('');
+  const [copiedPhone, setCopiedPhone] = useState(false);
   const isAdiado = selected?.status === 'ADIADO';
   const isOverdue = activeTask?.dueAt ? new Date(activeTask.dueAt) < new Date() : false;
 
@@ -158,8 +159,25 @@ export function ChatHeader({
             <h3 className="font-bold text-base md:text-lg leading-tight truncate">{selected.contactName || selected.contactPhone}</h3>
             <ChevronRight size={14} className="text-muted-foreground shrink-0" />
           </div>
-          <div className="text-[11px] md:text-xs text-muted-foreground uppercase tracking-wider font-semibold mt-0.5 md:mt-1 truncate">
-            {selected.channel} <span className="mx-1">•</span> {selected.contactPhone}
+          <div className="flex items-center gap-1 mt-0.5 md:mt-1">
+            <span className="text-[11px] md:text-xs text-muted-foreground uppercase tracking-wider font-semibold truncate">
+              {selected.channel} <span className="mx-1">•</span> {selected.contactPhone}
+            </span>
+            {selected.contactPhone && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigator.clipboard.writeText(selected.contactPhone).then(() => {
+                    setCopiedPhone(true);
+                    setTimeout(() => setCopiedPhone(false), 2000);
+                  });
+                }}
+                title="Copiar número"
+                className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              >
+                {copiedPhone ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+              </button>
+            )}
           </div>
           {contactPresence && contactPresence !== 'unavailable' && (
             <span className="text-[10px] font-medium text-emerald-400">

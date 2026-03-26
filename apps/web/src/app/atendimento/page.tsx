@@ -216,9 +216,18 @@ export default function Dashboard() {
   });
   const scrollRef = useRef<HTMLDivElement>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  // Drafts persistidos em localStorage (chave: conversationId → texto)
+  const [drafts, setDrafts] = useState<Record<string, string>>(() => {
+    if (typeof window === 'undefined') return {};
+    try { return JSON.parse(localStorage.getItem('inbox_drafts') || '{}'); } catch { return {}; }
+  });
   // IDs de conversas onde a barra de resposta rápida foi dispensada
   const [dismissedQuickReply, setDismissedQuickReply] = useState<Set<string>>(new Set());
+  // Badge de novas mensagens enquanto usuário está scrollado acima
+  const [newMsgsWhileScrolled, setNewMsgsWhileScrolled] = useState(0);
+  const isScrolledUpRef = useRef(false);
+  // Ref de mensagens para acesso em keyboard handlers sem depender de closure
+  const messagesRef = useRef<MessageItem[]>([]);
   const socketRef = useRef<Socket | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -280,11 +289,81 @@ export default function Dashboard() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // ─── Tab title unread badge ───────────────────────────────────
+  // ─── Tab title + favicon dinâmico com badge de não lidos ─────
   useEffect(() => {
     const total = Object.values(unreadCounts).reduce((sum, n) => sum + n, 0);
     document.title = total > 0 ? `(${total}) Atendimento | LexCRM` : 'Atendimento | LexCRM';
+
+    // Favicon dinâmico via Canvas API
+    const link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]') ||
+      (() => { const l = document.createElement('link'); l.rel = 'icon'; document.head.appendChild(l); return l; })();
+
+    if (total === 0) {
+      link.href = '/favicon.ico';
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = 32; canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    // Ícone base (texto ⚖ em fundo escuro)
+    ctx.fillStyle = '#1a1a2e';
+    ctx.beginPath(); ctx.arc(16, 16, 16, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 18px serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('⚖', 16, 16);
+    // Badge vermelho com contador
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath(); ctx.arc(24, 8, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(total > 9 ? '9+' : String(total), 24, 8);
+    link.href = canvas.toDataURL('image/png');
   }, [unreadCounts]);
+
+  // ─── Manter messagesRef em sync com o estado ──────────────────
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+
+  // ─── Draft: salvar em localStorage ao digitar ─────────────────
+  useEffect(() => {
+    if (!selectedId || selectedId.startsWith('demo-')) return;
+    setDrafts(prev => {
+      const updated = { ...prev };
+      if (text.trim()) { updated[selectedId] = text; } else { delete updated[selectedId]; }
+      try { localStorage.setItem('inbox_drafts', JSON.stringify(updated)); } catch { /* quota excedida */ }
+      return updated;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, selectedId]);
+
+  // ─── Draft: restaurar texto ao trocar de conversa ─────────────
+  useEffect(() => {
+    if (selectedId && !selectedId.startsWith('demo-')) {
+      const saved = drafts[selectedId] ?? '';
+      setText(saved);
+    } else {
+      setText('');
+    }
+    // Reset badge de scroll ao trocar de conversa
+    setNewMsgsWhileScrolled(0);
+    isScrolledUpRef.current = false;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
+  // ─── Scroll tracker: detectar se usuário está acima do fundo ──
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !selectedId) return;
+    const handleScroll = () => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+      isScrolledUpRef.current = !atBottom;
+      if (atBottom) setNewMsgsWhileScrolled(0);
+    };
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, [selectedId]);
 
   // ─── Desktop notification banner check ────────────────────────
   useEffect(() => {
@@ -348,6 +427,19 @@ export default function Dashboard() {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
         e.preventDefault();
         if (selectedId && !selectedId.startsWith('demo-')) handleToggleAiMode();
+        return;
+      }
+
+      // Alt+R: responder à última mensagem recebida do cliente
+      if (e.altKey && (e.key === 'r' || e.key === 'R') && !isInputFocused) {
+        e.preventDefault();
+        if (selectedId && !selectedId.startsWith('demo-')) {
+          const lastIn = [...messagesRef.current].reverse().find(m => m.direction === 'in');
+          if (lastIn) {
+            setReplyingTo(lastIn);
+            requestAnimationFrame(() => inputRef.current?.focus());
+          }
+        }
         return;
       }
 
@@ -863,10 +955,17 @@ export default function Dashboard() {
     };
   }, [selectedId, msgRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-scroll (only when NOT loading older messages)
+  // Auto-scroll inteligente: rola ao fundo exceto se usuário está scrollado acima lendo histórico
   useEffect(() => {
-    if (scrollRef.current && !loadingMoreMsgs) {
+    if (!scrollRef.current || loadingMoreMsgs) return;
+    const lastMsg = messages[messages.length - 1];
+    // Sempre rola se: sem msgs, usuário está no fundo, ou última msg é outgoing (o próprio operador enviou)
+    if (!lastMsg || !isScrolledUpRef.current || lastMsg.direction === 'out') {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      setNewMsgsWhileScrolled(0);
+    } else {
+      // Usuário está scrollado acima e chegou mensagem do cliente → mostrar badge
+      setNewMsgsWhileScrolled(prev => prev + 1);
     }
   }, [messages, loadingMoreMsgs]);
 
@@ -1886,6 +1985,18 @@ export default function Dashboard() {
                 <Image src="/landing/LOGO SEM FUNDO 01.png" alt="" width={883} height={453}
                   style={{ width: '620px', height: 'auto', opacity: 0.13 }} aria-hidden />
               </div>
+              {/* Botão scroll-to-bottom: aparece quando há novas mensagens e usuário está acima */}
+              {newMsgsWhileScrolled > 0 && (
+                <button
+                  onClick={() => {
+                    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+                    setNewMsgsWhileScrolled(0);
+                  }}
+                  className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-full shadow-lg text-xs font-bold hover:bg-primary/90 transition-all animate-bounce-subtle"
+                >
+                  ↓ {newMsgsWhileScrolled} nova{newMsgsWhileScrolled > 1 ? 's' : ''} mensagem{newMsgsWhileScrolled > 1 ? 's' : ''}
+                </button>
+              )}
             <div className="absolute inset-0 px-1 sm:px-6 md:px-8 py-3 sm:py-5 md:py-8 overflow-y-auto custom-scrollbar" ref={scrollRef} onClick={handleChatAreaClick}>
               <div className="flex flex-col gap-3 md:gap-4 max-w-4xl mx-auto pb-4 relative z-10">
                 {/* Skeleton de carregamento de mensagens */}
