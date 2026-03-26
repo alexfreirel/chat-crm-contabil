@@ -245,7 +245,7 @@ export class FollowupService {
     // Processos
     const casos = await this.prisma.legalCase.findMany({
       where: { lead_id: lead.id },
-      select: { process_number: true, case_type: true, status: true, next_hearing_at: true },
+      select: { case_number: true, action_type: true, stage: true, legal_area: true },
       take: 5,
     });
 
@@ -278,9 +278,8 @@ export class FollowupService {
       },
       processual: casos.length > 0 ? {
         processos: casos.map(c => ({
-          numero: c.process_number || 'Sem número', tipo: c.case_type || 'Geral',
-          status: c.status || 'Em andamento',
-          proximo_andamento: c.next_hearing_at ? c.next_hearing_at.toLocaleDateString('pt-BR') : undefined,
+          numero: c.case_number || 'Sem número', tipo: c.action_type || 'Geral',
+          area: c.legal_area || 'Geral', status: c.stage || 'Em andamento',
         })),
       } : undefined,
       tarefa: {

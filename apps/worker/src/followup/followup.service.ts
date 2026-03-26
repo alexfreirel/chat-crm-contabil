@@ -38,22 +38,22 @@ export class FollowupService {
     const ultimaMsgDirecao = ultimasMsgs[0]?.direction || 'N/A';
     const sentimentoGeral = this.avaliarSentimento(diasSemContato, ultimaMsgDirecao, ultimasMsgs);
 
-    // Processos jurídicos
+    // Processos jurídicos — campos reais do schema: case_number, action_type, stage, legal_area
     const casos = await this.prisma.legalCase.findMany({
       where: { lead_id: lead.id },
-      select: { process_number: true, case_type: true, status: true, next_hearing_at: true, legal_area: true },
+      select: { case_number: true, action_type: true, stage: true, legal_area: true },
       take: 5,
     });
 
     // Verificar inadimplência via honorários
     const honorarios = await this.prisma.caseHonorario.findMany({
       where: { legal_case: { lead_id: lead.id } },
-      include: { payments: { where: { status: 'PENDENTE' }, select: { value: true, due_date: true } } },
+      include: { payments: { where: { status: 'PENDENTE' }, select: { amount: true, due_date: true } } },
       take: 5,
     });
     const pagamentosPendentes = honorarios.flatMap(h => h.payments);
     const inadimplente = pagamentosPendentes.some(p => p.due_date && new Date(p.due_date) < new Date());
-    const valorDevido = pagamentosPendentes.reduce((sum, p) => sum + (p.value || 0), 0);
+    const valorDevido = pagamentosPendentes.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
     // Advogado responsável
     const advogadoNome = (convo as any)?.assigned_user?.name || 'André Lustosa';
@@ -97,9 +97,8 @@ export class FollowupService {
       },
       processual: casos.length > 0 ? {
         processos: casos.map(c => ({
-          numero: c.process_number || 'Sem número', tipo: c.case_type || 'Geral',
-          area: (c as any).legal_area || 'Geral', status: c.status || 'Em andamento',
-          proxima_data: c.next_hearing_at ? c.next_hearing_at.toLocaleDateString('pt-BR') : undefined,
+          numero: c.case_number || 'Sem número', tipo: c.action_type || 'Geral',
+          area: c.legal_area || 'Geral', status: c.stage || 'Em andamento',
         })),
         total_encerrados: 0,
       } : undefined,
