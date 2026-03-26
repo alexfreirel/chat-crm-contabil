@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ChatGateway } from '../gateway/chat.gateway';
 import { Prisma, Lead } from '@crm/shared';
 import { LegalCasesService } from '../legal-cases/legal-cases.service';
+import { AutomationsService } from '../automations/automations.service';
 import OpenAI from 'openai';
 
 /**
@@ -26,11 +27,17 @@ export class LeadsService {
     private prisma: PrismaService,
     private legalCasesService: LegalCasesService,
     private chatGateway: ChatGateway,
+    private automationsService: AutomationsService,
   ) {}
 
   async create(data: Prisma.LeadCreateInput): Promise<Lead> {
     if (data.phone) data = { ...data, phone: to12Digits(data.phone) };
-    return this.prisma.lead.create({ data });
+    const lead = await this.prisma.lead.create({ data });
+    // Fire automation hooks asynchronously (don't block the response)
+    this.automationsService.onNewLead(lead.id, lead.tenant_id ?? undefined).catch(err =>
+      this.logger.warn(`onNewLead automation error for lead ${lead.id}: ${err}`),
+    );
+    return lead;
   }
 
   async findAll(tenant_id?: string, inbox_id?: string, page?: number, limit?: number, search?: string, stage?: string) {
@@ -238,6 +245,11 @@ export class LeadsService {
 
     // Broadcast: notificar outros clientes sobre mudanca de stage do lead
     this.chatGateway.emitConversationsUpdate(tenantId ?? null);
+
+    // Fire stage-change automation hooks asynchronously
+    this.automationsService.onStageChange(id, stage, tenantId).catch(err =>
+      this.logger.warn(`onStageChange automation error for lead ${id}: ${err}`),
+    );
 
     // Auto-criacao de LegalCase quando lead atinge FINALIZADO
     if (stage === 'FINALIZADO') {

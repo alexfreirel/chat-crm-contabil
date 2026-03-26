@@ -916,3 +916,18 @@ model AiChatMessage {
 
   @@index([chat_id, created_at])
 }
+
+model AutomationRule {
+  id           String   @id @default(cuid())
+  tenant_id    String?
+  name         String
+  trigger      String   // NEW_LEAD | STAGE_CHANGE | NO_RESPONSE_24H | NO_RESPONSE_48H | PAYMENT_OVERDUE
+  action       String   // ADD_TAG | SEND_INTERNAL_NOTE | CHANGE_STAGE
+  action_value String
+  enabled      Boolean  @default(true)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@index([tenant_id])
+  @@index([trigger, enabled])
+}

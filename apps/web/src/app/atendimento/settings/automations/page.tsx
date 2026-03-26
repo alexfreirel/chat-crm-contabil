@@ -1,7 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { Zap, Plus, Trash2 } from 'lucide-react';
-import { showSuccess } from '@/lib/toast';
+import { showSuccess, showError } from '@/lib/toast';
+import api from '@/lib/api';
 
 const TRIGGERS = [
   { value: 'NEW_LEAD', label: 'Novo lead criado', emoji: '🆕' },
@@ -22,42 +23,61 @@ interface AutomationRule {
   name: string;
   trigger: string;
   action: string;
-  actionValue: string;
+  action_value: string;
   enabled: boolean;
 }
 
 export default function AutomationsPage() {
   const [rules, setRules] = useState<AutomationRule[]>([]);
+  const [loading, setLoading] = useState(false);
   const [showNew, setShowNew] = useState(false);
-  const [newRule, setNewRule] = useState({ name: '', trigger: 'NEW_LEAD', action: 'ADD_TAG', actionValue: '' });
+  const [newRule, setNewRule] = useState({ name: '', trigger: 'NEW_LEAD', action: 'ADD_TAG', action_value: '' });
+
+  const loadRules = async () => {
+    try {
+      setLoading(true);
+      const res = await api.get('/automations');
+      setRules(res.data);
+    } catch {
+      showError('Erro ao carregar automações');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('automation_rules');
-      if (saved) setRules(JSON.parse(saved));
-    } catch { /* ignore */ }
+    loadRules();
   }, []);
 
-  const persist = (updated: AutomationRule[]) => {
-    setRules(updated);
-    localStorage.setItem('automation_rules', JSON.stringify(updated));
+  const addRule = async () => {
+    if (!newRule.name.trim() || !newRule.action_value.trim()) return;
+    try {
+      await api.post('/automations', newRule);
+      await loadRules();
+      setNewRule({ name: '', trigger: 'NEW_LEAD', action: 'ADD_TAG', action_value: '' });
+      setShowNew(false);
+      showSuccess('Automação criada');
+    } catch {
+      showError('Erro ao criar automação');
+    }
   };
 
-  const addRule = () => {
-    if (!newRule.name.trim() || !newRule.actionValue.trim()) return;
-    const rule: AutomationRule = { ...newRule, id: Date.now().toString(), enabled: true };
-    persist([...rules, rule]);
-    setNewRule({ name: '', trigger: 'NEW_LEAD', action: 'ADD_TAG', actionValue: '' });
-    setShowNew(false);
-    showSuccess('Automação criada');
+  const toggleRule = async (rule: AutomationRule) => {
+    try {
+      await api.patch(`/automations/${rule.id}`, { enabled: !rule.enabled });
+      await loadRules();
+    } catch {
+      showError('Erro ao atualizar automação');
+    }
   };
 
-  const toggleRule = (id: string) => {
-    persist(rules.map(r => r.id === id ? { ...r, enabled: !r.enabled } : r));
-  };
-
-  const deleteRule = (id: string) => {
-    persist(rules.filter(r => r.id !== id));
+  const deleteRule = async (id: string) => {
+    try {
+      await api.delete(`/automations/${id}`);
+      await loadRules();
+    } catch {
+      showError('Erro ao remover automação');
+    }
   };
 
   const getTriggerLabel = (v: string) => TRIGGERS.find(t => t.value === v);
@@ -125,8 +145,8 @@ export default function AutomationsPage() {
                  'Valor da ação'}
               </label>
               <input
-                value={newRule.actionValue}
-                onChange={e => setNewRule(p => ({ ...p, actionValue: e.target.value }))}
+                value={newRule.action_value}
+                onChange={e => setNewRule(p => ({ ...p, action_value: e.target.value }))}
                 placeholder={
                   newRule.action === 'ADD_TAG' ? 'ex: urgente' :
                   newRule.action === 'SEND_INTERNAL_NOTE' ? 'ex: Cliente sem resposta há 24h — verificar' :
@@ -154,7 +174,9 @@ export default function AutomationsPage() {
       )}
 
       {/* Rules list */}
-      {rules.length === 0 && !showNew ? (
+      {loading ? (
+        <div className="text-center py-12 text-muted-foreground text-sm">Carregando...</div>
+      ) : rules.length === 0 && !showNew ? (
         <div className="text-center py-12 text-muted-foreground">
           <Zap size={32} className="mx-auto mb-3 opacity-20" />
           <p className="font-medium text-sm">Nenhuma automação configurada</p>
@@ -174,11 +196,11 @@ export default function AutomationsPage() {
                   <p className="text-sm font-bold text-foreground">{rule.name}</p>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
                     {trigger?.emoji} {trigger?.label} → {action?.emoji} {action?.label}:{' '}
-                    <span className="font-medium text-foreground">{rule.actionValue}</span>
+                    <span className="font-medium text-foreground">{rule.action_value}</span>
                   </p>
                 </div>
                 <button
-                  onClick={() => toggleRule(rule.id)}
+                  onClick={() => toggleRule(rule)}
                   className={`text-sm font-bold px-3 py-1 rounded-lg border transition-colors ${
                     rule.enabled
                       ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
@@ -198,13 +220,6 @@ export default function AutomationsPage() {
           })}
         </div>
       )}
-
-      <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4">
-        <p className="text-xs text-amber-400 font-medium flex items-center gap-2">
-          <Zap size={12} />
-          As automações são processadas localmente. Integração com o servidor será ativada em breve.
-        </p>
-      </div>
     </div>
   );
 }

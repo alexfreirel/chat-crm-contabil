@@ -5,9 +5,10 @@ import { LeadsCleanupService } from './leads-cleanup.service';
 import { LeadNotesService } from './lead-notes.service';
 import { LeadNotesController } from './lead-notes.controller';
 import { LegalCasesModule } from '../legal-cases/legal-cases.module';
+import { AutomationsModule } from '../automations/automations.module';
 
 @Module({
-  imports: [LegalCasesModule],
+  imports: [LegalCasesModule, AutomationsModule],
   controllers: [LeadsController, LeadNotesController],
   providers: [LeadsService, LeadsCleanupService, LeadNotesService],
   exports: [LeadsService],
