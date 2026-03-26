@@ -68,7 +68,7 @@ jobs:
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: 🚀 SSH → Pull e atualizar serviços no Swarm
+      - name: 🚀 SSH → Pull e atualizar serviços
         if: steps.check.outputs.skip == 'false'
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -84,19 +84,37 @@ jobs:
             docker pull andreflustosa/chat-crm-juridico-web:latest
             docker pull andreflustosa/chat-crm-juridico-worker:latest
 
-            echo "🔄 Atualizando serviços no Swarm..."
-            docker service update \
-              --image andreflustosa/chat-crm-juridico-api:latest \
-              --with-registry-auth --force ${STACK}_crm-api
+            # Detecta modo: Swarm ou Compose
+            if docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null | grep -q "active"; then
+              echo "🔄 Modo Swarm — atualizando services..."
+              docker service update \
+                --image andreflustosa/chat-crm-juridico-api:latest \
+                --with-registry-auth --force ${STACK}_api
 
-            docker service update \
-              --image andreflustosa/chat-crm-juridico-web:latest \
-              --with-registry-auth --force ${STACK}_crm-web
+              docker service update \
+                --image andreflustosa/chat-crm-juridico-web:latest \
+                --with-registry-auth --force ${STACK}_web
 
-            docker service update \
-              --image andreflustosa/chat-crm-juridico-worker:latest \
-              --with-registry-auth --force ${STACK}_crm-worker
+              docker service update \
+                --image andreflustosa/chat-crm-juridico-worker:latest \
+                --with-registry-auth --force ${STACK}_worker
 
-            echo "✅ Deploy concluído!"
-            docker service ls --format "table {{.Name}}\t{{.Image}}\t{{.Replicas}}" \
-              | grep -E "lustosaadvogados_crm|NAME"
+              echo "✅ Swarm atualizado!"
+              docker service ls --format "table {{.Name}}\t{{.Image}}\t{{.Replicas}}" \
+                | grep -E "${STACK}|NAME"
+            else
+              echo "🔄 Modo Compose — reiniciando containers..."
+              # Portainer armazena stacks em /opt/stacks/<stack-name>/
+              STACK_DIR="/opt/stacks/${STACK}"
+              if [ -d "$STACK_DIR" ]; then
+                cd "$STACK_DIR"
+                docker compose pull api worker web
+                docker compose up -d --no-deps --force-recreate api worker web
+              else
+                # Fallback: recria via container_name definidos no portainer-stack.yml
+                docker restart crm-api crm-worker crm-web 2>/dev/null || true
+              fi
+              echo "✅ Containers atualizados!"
+              docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" \
+                | grep -E "crm-|NAMES"
+            fi
