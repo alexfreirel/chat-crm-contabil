@@ -439,7 +439,12 @@ export class CalendarService {
 
   async getAvailability(userId: string, dateStr: string, durationMinutes: number, tenantId?: string) {
     const date = new Date(dateStr);
-    const dayOfWeek = date.getDay(); // 0=dom..6=sab
+    if (isNaN(date.getTime())) {
+      throw new BadRequestException('Data inválida');
+    }
+    // Use America/Sao_Paulo timezone to determine day of week correctly
+    const saoPauloDate = new Date(new Date(dateStr).toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+    const dayOfWeek = saoPauloDate.getDay(); // 0=dom..6=sab
 
     // 0. Verificar se e feriado (com filtro de tenant)
     const isHoliday = await this.isHoliday(date, tenantId);
@@ -866,14 +871,17 @@ export class CalendarService {
 
   // ─── Ownership Check ──────────────────────────────────
 
-  async checkOwnership(eventId: string, userId: string, userRole: string): Promise<boolean> {
+  async checkOwnership(eventId: string, userId: string, userRole: string, tenantId?: string): Promise<boolean> {
     if (userRole === 'ADMIN') return true;
     const event = await this.prisma.calendarEvent.findUnique({
       where: { id: eventId },
-      select: { created_by_id: true, assigned_user_id: true },
+      select: { created_by_id: true, assigned_user_id: true, tenant_id: true },
     });
     if (!event) throw new NotFoundException('Evento nao encontrado');
-    return event.created_by_id === userId || event.assigned_user_id === userId;
+    // Tenant isolation check
+    if (tenantId && event.tenant_id && event.tenant_id !== tenantId) return false;
+    return event.created_by_id === userId ||
+      (event.assigned_user_id !== null && event.assigned_user_id === userId);
   }
 
   // ─── Comments ─────────────────────────────────────────
@@ -917,9 +925,13 @@ export class CalendarService {
 
   // ─── Legal Case Tasks ─────────────────────────────────
 
-  async findByLegalCase(legalCaseId: string) {
+  async findByLegalCase(legalCaseId: string, type?: string, tenantId?: string) {
     return this.prisma.calendarEvent.findMany({
-      where: { legal_case_id: legalCaseId, type: 'TAREFA' },
+      where: {
+        legal_case_id: legalCaseId,
+        ...(type ? { type } : {}),
+        ...(tenantId ? { OR: [{ tenant_id: tenantId }, { tenant_id: null }] } : {}),
+      },
       include: {
         assigned_user: { select: { id: true, name: true } },
         created_by: { select: { id: true, name: true } },

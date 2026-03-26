@@ -47,11 +47,12 @@ export class TasksService {
       return { data, total, page, limit };
     }
 
-    return this.prisma.task.findMany({
+    const data = await this.prisma.task.findMany({
       where,
       include: includeOpts,
       orderBy: { created_at: 'desc' },
     });
+    return { data, total: data.length, page: 1, limit: data.length };
   }
 
   async create(data: {
@@ -97,7 +98,13 @@ export class TasksService {
     // Sync calendar event status
     if (task.calendar_event_id) {
       try {
-        const calStatus = status === 'CONCLUIDA' ? 'CONCLUIDO' : status === 'CANCELADA' ? 'CANCELADO' : undefined;
+        const statusMap: Record<string, string> = {
+          'CONCLUIDA': 'CONCLUIDO',
+          'CANCELADA': 'CANCELADO',
+          'EM_PROGRESSO': 'CONFIRMADO',
+          'A_FAZER': 'AGENDADO',
+        };
+        const calStatus = statusMap[status];
         if (calStatus) {
           await this.calendarService.updateStatus(task.calendar_event_id, calStatus);
         }
