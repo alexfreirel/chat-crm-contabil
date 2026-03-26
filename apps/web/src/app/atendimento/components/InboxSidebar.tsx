@@ -400,6 +400,24 @@ export function InboxSidebar({
                             Aten. {conv.originAssignedUserId ? conv.originAssignedUserName : conv.assignedAgentName}
                           </span>
                         )}
+                        {/* Badge SLA: aguardando resposta há mais de 15min */}
+                        {(() => {
+                          const unread = unreadCounts[conv.id] || 0;
+                          if (unread === 0 || conv.status === 'CLOSED' || conv.status === 'ADIADO') return null;
+                          const waitingMins = conv.lastMessageAt
+                            ? Math.floor((Date.now() - new Date(conv.lastMessageAt).getTime()) / 60000)
+                            : 0;
+                          if (waitingMins < 15) return null;
+                          const isUrgent = waitingMins >= 60;
+                          return (
+                            <span
+                              title={`Cliente aguardando resposta há ${waitingMins >= 60 ? `${Math.floor(waitingMins / 60)}h${waitingMins % 60 > 0 ? `${waitingMins % 60}min` : ''}` : `${waitingMins}min`}`}
+                              className={`inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${isUrgent ? 'bg-red-500/15 text-red-400 border-red-500/30' : 'bg-amber-500/15 text-amber-400 border-amber-500/30'}`}
+                            >
+                              ⏱ {waitingMins >= 60 ? `${Math.floor(waitingMins / 60)}h` : `${waitingMins}min`}
+                            </span>
+                          );
+                        })()}
                       </div>
                       {conv.legalArea && (
                         <div className="mb-1.5 flex items-center gap-1.5 flex-wrap">
@@ -429,9 +447,27 @@ export function InboxSidebar({
                           </div>
                         );
                       })()}
-                      <p className={`text-sm truncate ${(unreadCounts[conv.id] || 0) > 0 ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
-                        {conv.lastMessage}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className={`text-sm truncate flex-1 ${(unreadCounts[conv.id] || 0) > 0 ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                          {conv.lastMessage}
+                        </p>
+                        {/* Chip de dormência: sem atividade há mais de 2 dias */}
+                        {(() => {
+                          if (!conv.lastMessageAt || conv.status === 'CLOSED' || conv.status === 'ADIADO') return null;
+                          const stage = normalizeStage(conv.leadStage || '');
+                          if (stage === 'PERDIDO' || stage === 'FINALIZADO') return null;
+                          const days = Math.floor((Date.now() - new Date(conv.lastMessageAt).getTime()) / 86400000);
+                          if (days < 2) return null;
+                          return (
+                            <span
+                              title={`Sem atividade há ${days} dia${days > 1 ? 's' : ''}`}
+                              className="shrink-0 text-[9px] font-bold text-muted-foreground/70 bg-muted/60 border border-border/60 rounded-full px-1.5 py-0.5"
+                            >
+                              💤 {days}d
+                            </span>
+                          );
+                        })()}
+                      </div>
                     </div>
                   </div>
                 </div>
