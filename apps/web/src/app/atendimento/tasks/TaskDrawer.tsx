@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   X, CheckCircle2, Circle, Plus, Trash2, Loader2,
   CalendarDays, User, Briefcase, MessageSquare,
-  CheckSquare, ChevronRight,
+  CheckSquare, ChevronRight, Pencil, Check,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { showError, showSuccess } from '@/lib/toast';
@@ -74,6 +74,11 @@ export function TaskDrawer({
   const [sendingComment, setSendingComment] = useState(false);
   const commentsEndRef = useRef<HTMLDivElement>(null);
 
+  // Edição inline
+  type EditField = 'title' | 'description' | 'due_at';
+  const [editingField, setEditingField] = useState<EditField | null>(null);
+  const [editValue, setEditValue] = useState('');
+
   // ─── Fetch task detail ──────────────────────────────────────────────────────
 
   const fetchTask = useCallback(async () => {
@@ -141,6 +146,34 @@ export function TaskDrawer({
     } catch { showError('Erro ao remover item'); }
   };
 
+  const startEdit = (field: EditField) => {
+    if (!task) return;
+    setEditingField(field);
+    if (field === 'due_at') {
+      // datetime-local format: YYYY-MM-DDTHH:mm
+      setEditValue(task.due_at ? task.due_at.slice(0, 16) : '');
+    } else {
+      setEditValue((task[field] as string) ?? '');
+    }
+  };
+
+  const handleSaveField = async () => {
+    if (!task || !editingField) return;
+    const payload: Record<string, string | null> = {};
+    if (editingField === 'title' && !editValue.trim()) { setEditingField(null); return; }
+    if (editingField === 'due_at') {
+      payload.due_at = editValue ? new Date(editValue).toISOString() : null;
+    } else {
+      payload[editingField] = editValue.trim() || null;
+    }
+    try {
+      await api.patch(`/tasks/${task.id}`, payload);
+      setTask(prev => prev ? { ...prev, ...payload } as TaskDetail : prev);
+      showSuccess('Tarefa atualizada');
+    } catch { showError('Erro ao salvar'); }
+    setEditingField(null);
+  };
+
   const handleAddComment = async () => {
     if (!newComment.trim() || !task) return;
     setSendingComment(true);
@@ -185,9 +218,24 @@ export function TaskDrawer({
               }
             </button>
           )}
-          <h2 className="flex-1 text-sm font-semibold text-foreground truncate">
-            {loading ? 'Carregando...' : task?.title ?? 'Tarefa'}
-          </h2>
+          {editingField === 'title' ? (
+            <input
+              autoFocus
+              value={editValue}
+              onChange={e => setEditValue(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSaveField(); if (e.key === 'Escape') setEditingField(null); }}
+              onBlur={handleSaveField}
+              className="flex-1 text-sm font-semibold bg-transparent border-b border-primary outline-none text-foreground"
+            />
+          ) : (
+            <h2
+              className="flex-1 text-sm font-semibold text-foreground truncate cursor-text hover:text-primary transition-colors"
+              onClick={() => !loading && startEdit('title')}
+              title="Clique para editar"
+            >
+              {loading ? 'Carregando...' : task?.title ?? 'Tarefa'}
+            </h2>
+          )}
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
@@ -216,17 +264,33 @@ export function TaskDrawer({
                   );
                 })()}
 
-                {/* Due date */}
-                {task.due_at && (
-                  <span className={`flex items-center gap-1 text-[11px] font-semibold ${
-                    new Date(task.due_at) < new Date() && task.status !== 'CONCLUIDA'
-                      ? 'text-red-400' : 'text-muted-foreground'
-                  }`}>
+                {/* Due date — editável */}
+                {editingField === 'due_at' ? (
+                  <input
+                    autoFocus
+                    type="datetime-local"
+                    value={editValue}
+                    onChange={e => setEditValue(e.target.value)}
+                    onBlur={handleSaveField}
+                    onKeyDown={e => { if (e.key === 'Enter') handleSaveField(); if (e.key === 'Escape') setEditingField(null); }}
+                    className="text-[11px] bg-background border border-primary/40 rounded-lg px-2 py-0.5 outline-none text-foreground"
+                  />
+                ) : (
+                  <button
+                    onClick={() => startEdit('due_at')}
+                    className={`flex items-center gap-1 text-[11px] font-semibold hover:opacity-80 transition-opacity group ${
+                      task.due_at && new Date(task.due_at) < new Date() && task.status !== 'CONCLUIDA'
+                        ? 'text-red-400' : 'text-muted-foreground'
+                    }`}
+                    title="Clique para editar prazo"
+                  >
                     <CalendarDays size={10} />
-                    {new Date(task.due_at).toLocaleDateString('pt-BR', {
-                      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-                    })}
-                  </span>
+                    {task.due_at
+                      ? new Date(task.due_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+                      : <span className="opacity-50">Sem prazo</span>
+                    }
+                    <Pencil size={8} className="opacity-0 group-hover:opacity-60 transition-opacity" />
+                  </button>
                 )}
 
                 {/* Assigned */}
@@ -244,9 +308,35 @@ export function TaskDrawer({
                 )}
               </div>
 
-              {/* Description */}
-              {task.description && (
-                <p className="text-xs text-muted-foreground leading-relaxed">{task.description}</p>
+              {/* Description — editável */}
+              {editingField === 'description' ? (
+                <textarea
+                  autoFocus
+                  rows={3}
+                  value={editValue}
+                  onChange={e => setEditValue(e.target.value)}
+                  onBlur={handleSaveField}
+                  onKeyDown={e => { if (e.key === 'Escape') setEditingField(null); if (e.key === 'Enter' && e.ctrlKey) handleSaveField(); }}
+                  placeholder="Descrição da tarefa..."
+                  className="w-full text-xs bg-background border border-primary/40 rounded-lg px-2 py-1.5 outline-none text-foreground resize-none placeholder:text-muted-foreground/40"
+                />
+              ) : (
+                <button
+                  onClick={() => startEdit('description')}
+                  className="w-full text-left group"
+                  title="Clique para editar descrição"
+                >
+                  {task.description ? (
+                    <p className="text-xs text-muted-foreground leading-relaxed group-hover:text-foreground transition-colors">
+                      {task.description}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors flex items-center gap-1">
+                      <Pencil size={10} />
+                      Adicionar descrição...
+                    </p>
+                  )}
+                </button>
               )}
             </div>
 

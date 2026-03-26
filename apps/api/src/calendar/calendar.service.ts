@@ -382,7 +382,7 @@ export class CalendarService {
 
   // ─── Conflict Detection ─────────────────────────────────
 
-  async checkConflicts(userId: string, startAt: string, endAt: string, excludeEventId?: string) {
+  async checkConflicts(userId: string, startAt: string, endAt: string, excludeEventId?: string, tenantId?: string) {
     const start = new Date(startAt);
     const end = new Date(endAt);
     const where: any = {
@@ -395,6 +395,13 @@ export class CalendarService {
         { end_at: null, start_at: { gte: start } },
       ],
     };
+    // Isolamento de tenant: admin de um tenant não vê agenda de outro tenant
+    if (tenantId) {
+      where.AND = [
+        ...(where.AND || []),
+        { OR: [{ tenant_id: tenantId }, { tenant_id: null }] },
+      ];
+    }
     if (excludeEventId) where.id = { not: excludeEventId };
     return this.prisma.calendarEvent.findMany({
       where,

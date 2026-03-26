@@ -509,15 +509,24 @@ export class TasksService {
 
     try {
       const openai = new OpenAI({ apiKey });
+      // Sanitizar inputs para prevenir prompt injection: truncar e remover backticks
+      const sanitize = (s?: string, max = 200) =>
+        (s || '').slice(0, max).replace(/`/g, "'").replace(/[\r\n]+/g, ' ').trim();
+      const safeTitle      = sanitize(context.title, 200)      || 'Não informado';
+      const safeDesc       = sanitize(context.description, 400) || 'Não disponível';
+      const safeLead       = sanitize(context.leadName, 100)    || 'Não informado';
+      const safeCase       = sanitize(context.caseSummary, 300) || 'Não disponível';
+      const safeTasks      = (context.recentTasks || []).map(t => sanitize(t, 80)).join('; ') || 'Nenhuma';
+      const safeAssigned   = sanitize(context.assignedTo, 100)  || 'Não definido';
       const prompt = `Você é um assistente jurídico especializado. Analise o contexto abaixo e sugira a próxima ação mais importante que o responsável deveria tomar.
 
 Contexto:
-- Tarefa/Situação: ${context.title || 'Não informado'}
-- Descrição: ${context.description || 'Não disponível'}
-- Cliente/Lead: ${context.leadName || 'Não informado'}
-- Resumo do caso: ${context.caseSummary || 'Não disponível'}
-- Tarefas recentes relacionadas: ${context.recentTasks?.join('; ') || 'Nenhuma'}
-- Responsável atual: ${context.assignedTo || 'Não definido'}
+- Tarefa/Situação: ${safeTitle}
+- Descrição: ${safeDesc}
+- Cliente/Lead: ${safeLead}
+- Resumo do caso: ${safeCase}
+- Tarefas recentes relacionadas: ${safeTasks}
+- Responsável atual: ${safeAssigned}
 
 Responda APENAS em JSON válido no formato:
 {"acao": "texto da ação sugerida (máx 80 chars)", "urgencia": "alta|media|baixa", "justificativa": "por que esta ação é prioritária (máx 120 chars)", "tipo": "ligacao|email|elaborar_peca|reuniao|protocolar|outro"}`;

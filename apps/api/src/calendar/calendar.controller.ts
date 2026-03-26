@@ -133,7 +133,7 @@ export class CalendarController {
     // Usuários não-admin só podem checar conflitos da própria agenda
     const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'admin';
     const effectiveUserId = isAdmin ? (userId || req.user.id) : req.user.id;
-    return this.calendarService.checkConflicts(effectiveUserId, start, end, excludeId);
+    return this.calendarService.checkConflicts(effectiveUserId, start, end, excludeId, req.user?.tenant_id);
   }
 
   // ─── Availability ─────────────────────────────────────

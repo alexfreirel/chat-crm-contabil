@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 import api, { API_BASE_URL } from '@/lib/api';
+import { showError, showSuccess } from '@/lib/toast';
 import { playNotificationSound } from '@/lib/notificationSounds';
 import { AvailabilityPicker } from '@/components/AvailabilityPicker';
 
@@ -366,6 +367,7 @@ export default function AgendaPage() {
   useEffect(() => { setMounted(true); }, []);
 
   // Atalho de teclado: 'N' abre modal de criação
+  // openCreateModal é estável via useCallback([currentUserId]) — sem stale closure
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName?.toUpperCase();
@@ -378,8 +380,7 @@ export default function AgendaPage() {
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [openCreateModal]);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -631,7 +632,7 @@ export default function AgendaPage() {
 
   // ─── Modal Handlers ─────────────────────────────────
 
-  const openCreateModal = (dateTime?: string) => {
+  const openCreateModal = useCallback((dateTime?: string) => {
     const now = new Date();
     let date: string;
     let time: string;
@@ -684,7 +685,8 @@ export default function AgendaPage() {
     setNewComment('');
     setConflictWarning([]);
     setShowModal(true);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUserId]);
 
   const openEditModal = (ev: CalendarEvent) => {
     setFormData({
@@ -729,7 +731,7 @@ export default function AgendaPage() {
       setNewComment('');
       fetchEventComments(editingEvent.id);
     } catch (e: any) {
-      alert('Erro ao comentar: ' + (e?.response?.data?.message || e?.message));
+      showError(e?.response?.data?.message || e?.message || 'Erro ao comentar');
     }
   };
 
@@ -779,7 +781,7 @@ export default function AgendaPage() {
       setConflictWarning([]);
       if (rangeRef.current) fetchEvents(rangeRef.current.start, rangeRef.current.end);
     } catch (e: any) {
-      alert('Erro ao salvar: ' + (e?.response?.data?.message || e?.message || 'Tente novamente'));
+      showError(e?.response?.data?.message || e?.message || 'Erro ao salvar. Tente novamente');
     }
   };
 
@@ -790,34 +792,52 @@ export default function AgendaPage() {
       setEditingEvent({ ...editingEvent, status: newStatus });
       if (rangeRef.current) fetchEvents(rangeRef.current.start, rangeRef.current.end);
     } catch (e: any) {
-      alert('Erro: ' + (e?.response?.data?.message || e?.message));
+      showError(e?.response?.data?.message || e?.message || 'Erro ao alterar status');
     }
   };
 
   const handleDelete = async (scope: 'single' | 'all' = 'single') => {
     if (!editingEvent) return;
     const isRecurring = (editingEvent as any).parent_event_id || (editingEvent as any).recurrence_rule;
+
     if (isRecurring && scope === 'single') {
+      // Evento recorrente: perguntar se quer deletar a série inteira ou só este
       const deleteAll = confirm('Este evento faz parte de uma série.\n\nClique OK para excluir TODA a série.\nClique Cancelar para excluir apenas este evento.');
       if (deleteAll) {
+        // Usuário confirmou deleção de toda a série
         const parentId = (editingEvent as any).parent_event_id || editingEvent.id;
         try {
           await api.delete(`/calendar/events/${parentId}?deleteScope=all`);
           setShowModal(false);
+          showSuccess('Série de eventos removida');
           if (rangeRef.current) fetchEvents(rangeRef.current.start, rangeRef.current.end);
         } catch (e: any) {
-          alert('Erro: ' + (e?.response?.data?.message || e?.message));
+          showError(e?.response?.data?.message || e?.message || 'Erro ao remover série');
         }
-        return;
+      } else {
+        // Usuário cancelou a deleção da série — perguntar se quer deletar só este
+        if (!confirm('Remover apenas este evento da série?')) return;
+        try {
+          await api.delete(`/calendar/events/${editingEvent.id}`);
+          setShowModal(false);
+          showSuccess('Evento removido');
+          if (rangeRef.current) fetchEvents(rangeRef.current.start, rangeRef.current.end);
+        } catch (e: any) {
+          showError(e?.response?.data?.message || e?.message || 'Erro ao remover evento');
+        }
       }
+      return; // sempre encerra aqui para eventos recorrentes
     }
+
+    // Evento simples (não recorrente)
     if (!confirm('Remover este evento?')) return;
     try {
       await api.delete(`/calendar/events/${editingEvent.id}`);
       setShowModal(false);
+      showSuccess('Evento removido');
       if (rangeRef.current) fetchEvents(rangeRef.current.start, rangeRef.current.end);
     } catch (e: any) {
-      alert('Erro ao remover: ' + (e?.response?.data?.message || e?.message));
+      showError(e?.response?.data?.message || e?.message || 'Erro ao remover evento');
     }
   };
 
@@ -865,7 +885,7 @@ export default function AgendaPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      alert('Erro ao exportar');
+      showError('Erro ao exportar evento');
     }
   };
 
@@ -890,7 +910,7 @@ export default function AgendaPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      alert('Erro ao exportar');
+      showError('Erro ao exportar calendário');
     }
   };
 

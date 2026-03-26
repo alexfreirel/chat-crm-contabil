@@ -5,12 +5,13 @@ import {
   Plus, CheckCircle2, Circle, Search, X, ChevronDown,
   User, Briefcase, MessageSquare, AlertTriangle, Loader2,
   CheckSquare, Filter, RotateCcw, CalendarDays, Sparkles,
-  Zap, Clock, TrendingDown,
+  Zap, TrendingDown, LayoutGrid, List, Printer,
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 import api from '@/lib/api';
 import { showError, showSuccess, showInfo } from '@/lib/toast';
 import { TaskDrawer } from './TaskDrawer';
+import { KanbanBoard } from './KanbanBoard';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -114,6 +115,9 @@ export default function TasksPage() {
   // ── Sprint 5: Task Drawer
   const [drawerTaskId, setDrawerTaskId] = useState<string | null>(null);
 
+  // ── Sprint 6: Visualização (Lista / Kanban)
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
+
   // ── Sprint 4: Workload + NBA
   const [workload, setWorkload] = useState<WorkloadUser[]>([]);
   const [nba, setNba] = useState<NbaResult | null>(null);
@@ -122,12 +126,13 @@ export default function TasksPage() {
 
   // ─── Fetch de tasks ───────────────────────────────────────────────────────
 
-  const fetchTasks = useCallback(async (pg = 1) => {
+  const fetchTasks = useCallback(async (pg = 1, forceMode?: 'list' | 'kanban') => {
     setLoading(true);
+    const mode = forceMode ?? viewMode;
     try {
       const params: Record<string, string> = {
-        page: String(pg),
-        limit: String(LIMIT),
+        page: String(mode === 'kanban' ? 1 : pg),
+        limit: String(mode === 'kanban' ? '500' : String(LIMIT)),
       };
       if (statusFilter) params.status = statusFilter;
       if (assignedFilter) params.assignedUserId = assignedFilter;
@@ -136,14 +141,14 @@ export default function TasksPage() {
 
       const res = await api.get('/tasks', { params });
       const { data, total: t } = res.data;
-      setTasks(pg === 1 ? data : prev => [...prev, ...data]);
+      setTasks(pg === 1 || mode === 'kanban' ? data : prev => [...prev, ...data]);
       setTotal(t);
     } catch {
       showError('Erro ao carregar tarefas');
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, assignedFilter, dueFilter, search]);
+  }, [statusFilter, assignedFilter, dueFilter, search, viewMode]);
 
   // Fetch de contadores (sem filtros)
   const fetchStats = useCallback(async () => {
@@ -154,7 +159,7 @@ export default function TasksPage() {
       ]);
       const allTasks: Task[] = all.data?.data || [];
       setStats({
-        total: allTasks.length,
+        total: all.data?.total ?? allTasks.length,
         a_fazer: allTasks.filter(t => t.status === 'A_FAZER').length,
         em_progresso: allTasks.filter(t => t.status === 'EM_PROGRESSO').length,
         concluida: allTasks.filter(t => t.status === 'CONCLUIDA').length,
@@ -252,6 +257,52 @@ export default function TasksPage() {
     setAssignedFilter(''); setSearch(''); setSearchInput('');
   };
 
+  // Sprint 6: Atalhos de teclado globais
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable;
+      if (isEditable) return;
+      if (e.key === 'n' || e.key === 'N') { e.preventDefault(); setShowNew(v => !v); }
+      if (e.key === 'k' || e.key === 'K') { e.preventDefault(); setViewMode(v => v === 'kanban' ? 'list' : 'kanban'); }
+      if (e.key === 'Escape') {
+        if (drawerTaskId) setDrawerTaskId(null);
+        else if (showNew) setShowNew(false);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [drawerTaskId, showNew]);
+
+  // Sprint 6: Impressão / PDF de produtividade
+  const handlePrint = () => {
+    const win = window.open('', '_blank');
+    if (!win) return;
+    const rows = tasks.map(t => {
+      const due = t.due_at ? new Date(t.due_at).toLocaleDateString('pt-BR') : '—';
+      const resp = t.assigned_user?.name ?? '—';
+      const lead = t.lead?.name || t.lead?.phone || '—';
+      const status = STATUS_CONFIG[t.status]?.label ?? t.status;
+      return `<tr>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee;">${t.title}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee;">${status}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee;">${due}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee;">${resp}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee;">${lead}</td>
+      </tr>`;
+    }).join('');
+    win.document.write(`<!DOCTYPE html><html><head>
+      <title>Relatório de Tarefas — ${new Date().toLocaleDateString('pt-BR')}</title>
+      <style>body{font-family:sans-serif;padding:24px;color:#111;}h1{font-size:18px;margin-bottom:4px;}p{color:#666;font-size:13px;margin-bottom:20px;}table{width:100%;border-collapse:collapse;font-size:13px;}th{text-align:left;padding:8px 10px;background:#f5f5f5;border-bottom:2px solid #ddd;}</style>
+    </head><body>
+      <h1>Relatório de Tarefas</h1>
+      <p>Gerado em ${new Date().toLocaleString('pt-BR')} · Total: ${stats.total} · A Fazer: ${stats.a_fazer} · Em Progresso: ${stats.em_progresso} · Concluídas: ${stats.concluida} · Vencidas: ${stats.vencidas}</p>
+      <table><thead><tr><th>Título</th><th>Status</th><th>Prazo</th><th>Responsável</th><th>Lead</th></tr></thead><tbody>${rows}</tbody></table>
+    </body></html>`);
+    win.document.close();
+    win.print();
+  };
+
   // Sprint 4: Sugestão de próxima ação por IA
   const fetchNba = async () => {
     setNbaLoading(true);
@@ -295,13 +346,42 @@ export default function TasksPage() {
               <p className="text-xs text-muted-foreground">{total} tarefa{total !== 1 ? 's' : ''} {hasFilters ? 'filtradas' : 'no total'}</p>
             </div>
           </div>
-          <button
-            onClick={() => setShowNew(v => !v)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm"
-          >
-            <Plus size={15} />
-            Nova tarefa
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Vista toggle */}
+            <div className="flex items-center bg-accent/60 rounded-xl p-1 gap-0.5">
+              <button
+                onClick={() => setViewMode('list')}
+                title="Vista Lista (L)"
+                className={`p-1.5 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                <List size={15} />
+              </button>
+              <button
+                onClick={() => setViewMode('kanban')}
+                title="Vista Kanban (K)"
+                className={`p-1.5 rounded-lg transition-colors ${viewMode === 'kanban' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                <LayoutGrid size={15} />
+              </button>
+            </div>
+
+            {/* Imprimir / PDF */}
+            <button
+              onClick={handlePrint}
+              title="Imprimir / Exportar PDF"
+              className="p-2 rounded-xl border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <Printer size={15} />
+            </button>
+
+            <button
+              onClick={() => setShowNew(v => !v)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm"
+            >
+              <Plus size={15} />
+              Nova tarefa
+            </button>
+          </div>
         </div>
 
         {/* Produtividade cards */}
@@ -409,6 +489,13 @@ export default function TasksPage() {
               value={newTitle}
               onChange={e => setNewTitle(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleCreate()}
+            />
+            <textarea
+              rows={2}
+              className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/60 outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+              placeholder="Descrição (opcional)"
+              value={newDesc}
+              onChange={e => setNewDesc(e.target.value)}
             />
             <div className="flex gap-2">
               <input
@@ -532,10 +619,37 @@ export default function TasksPage() {
             Limpar
           </button>
         )}
+
+        {/* Atalhos de teclado hint */}
+        <div className="ml-auto flex items-center gap-2 text-[10px] text-muted-foreground/50 select-none">
+          <span><kbd className="px-1 py-0.5 rounded bg-accent/60 font-mono text-[9px]">N</kbd> nova</span>
+          <span><kbd className="px-1 py-0.5 rounded bg-accent/60 font-mono text-[9px]">K</kbd> kanban</span>
+          <span><kbd className="px-1 py-0.5 rounded bg-accent/60 font-mono text-[9px]">Esc</kbd> fechar</span>
+        </div>
       </div>
 
-      {/* ── Lista de tarefas ── */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar">
+      {/* ── Vista Kanban ── */}
+      {viewMode === 'kanban' && (
+        <div className="flex-1 overflow-hidden">
+          {loading ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 size={28} className="animate-spin text-primary/40" />
+            </div>
+          ) : (
+            <KanbanBoard
+              tasks={tasks}
+              onTaskClick={(id) => setDrawerTaskId(id)}
+              onStatusChange={(id, status) => {
+                setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+                fetchStats();
+              }}
+            />
+          )}
+        </div>
+      )}
+
+      {/* ── Vista Lista ── */}
+      {viewMode === 'list' && <div className="flex-1 overflow-y-auto custom-scrollbar">
         {loading && page === 1 ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 size={28} className="animate-spin text-primary/40" />
@@ -665,7 +779,7 @@ export default function TasksPage() {
             )}
           </div>
         )}
-      </div>
+      </div>}
 
       {/* Sprint 5: Task Detail Drawer */}
       {drawerTaskId && (
