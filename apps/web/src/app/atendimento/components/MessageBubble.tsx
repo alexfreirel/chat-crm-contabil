@@ -78,6 +78,7 @@ export interface MessageBubbleProps {
   onImageDownload: (url: string) => void;
   onDocDownload: (url: string, name: string) => void;
   onReact?: (id: string, emoji: string) => void;
+  onForward?: (msg: MessageItem) => void;
   /** Fase atual da conversa (exibida no badge da IA) */
   nextStep?: string | null;
 }
@@ -100,6 +101,7 @@ function MessageBubbleInner({
   onImageDownload,
   onDocDownload,
   onReact,
+  onForward,
 }: MessageBubbleProps) {
   // Nota interna: renderização especial em amber sem envio ao WhatsApp
   if (msg.type === 'internal_note') {
@@ -133,6 +135,16 @@ function MessageBubbleInner({
           >
             <Reply size={13} />
           </button>
+          {onForward && msg.text && msg.type !== 'deleted' && (
+            <button
+              onClick={() => onForward(msg)}
+              className="p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary"
+              title="Encaminhar mensagem"
+              aria-label="Encaminhar mensagem"
+            >
+              <span className="text-[11px] font-bold leading-none">↪</span>
+            </button>
+          )}
           <button
             onClick={() => onDelete(msg.id)}
             className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"

@@ -31,7 +31,7 @@ import ContratoTrabalhistaModal from '@/components/modals/ContratoTrabalhistaMod
 import { InboxSidebar } from './components/InboxSidebar';
 import { ChatHeader } from './components/ChatHeader';
 
-// ─── Slash commands registrados ───────────────────────────────────────────────
+// ─── Slash commands estáticos registrados ─────────────────────────────────────
 const SLASH_COMMANDS = [
   {
     id: 'contrato_trabalhista',
@@ -40,7 +40,6 @@ const SLASH_COMMANDS = [
     Icon: FileText,
   },
 ] as const;
-type SlashCommandId = typeof SLASH_COMMANDS[number]['id'];
 
 function getWsUrl(): string {
   if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
@@ -189,6 +188,18 @@ export default function Dashboard() {
   const [adiadoConversations, setAdiadoConversations] = useState<ConversationSummary[]>([]);
   const [slashMenuIndex, setSlashMenuIndex] = useState(0);
   const [slashMenuPos, setSlashMenuPos] = useState<{ bottom: number; left: number } | null>(null);
+  // Respostas rápidas (canned responses) carregadas do servidor
+  const [cannedResponses, setCannedResponsesState] = useState<{ id: string; label: string; text: string }[]>([]);
+  // Quick snooze dropdown (atalho sem abrir o modal completo)
+  const [quickSnoozeOpen, setQuickSnoozeOpen] = useState(false);
+  const quickSnoozeRef = useRef<HTMLDivElement>(null);
+  // Busca dentro da conversa
+  const [msgSearchOpen, setMsgSearchOpen] = useState(false);
+  const [msgSearchQuery, setMsgSearchQuery] = useState('');
+  const msgSearchInputRef = useRef<HTMLInputElement>(null);
+  // Encaminhar mensagem
+  const [forwardMsg, setForwardMsg] = useState<{ id: string; text: string } | null>(null);
+  const [forwardSearch, setForwardSearch] = useState('');
   // Typing indicators
   const [typingUsers, setTypingUsers] = useState<Record<string, { userName: string; timeout: ReturnType<typeof setTimeout> }>>({});
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -475,7 +486,27 @@ export default function Dashboard() {
     setShowLawyerDropdown(false);
     setShowLegalAreaDropdown(false);
     setShowDetailsPanel(false);
+    setMsgSearchOpen(false);
+    setMsgSearchQuery('');
+    setQuickSnoozeOpen(false);
   }, [selectedId]);
+
+  // Quick snooze: fechar ao clicar fora
+  useEffect(() => {
+    if (!quickSnoozeOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (quickSnoozeRef.current && !quickSnoozeRef.current.contains(e.target as Node)) {
+        setQuickSnoozeOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [quickSnoozeOpen]);
+
+  // Busca: focar input ao abrir
+  useEffect(() => {
+    if (msgSearchOpen) requestAnimationFrame(() => msgSearchInputRef.current?.focus());
+  }, [msgSearchOpen]);
 
   // Fechar dropdown de área ao clicar fora
   useEffect(() => {
@@ -787,6 +818,13 @@ export default function Dashboard() {
     fetchSpecialists(true);
   }, [fetchConversations, fetchAdiadoConversations, fetchPendingTransfers, selectedInboxId]);
 
+  // Canned responses — fetch once on mount (não depende do inbox)
+  useEffect(() => {
+    api.get('/settings/canned-responses', { _silent401: true } as any)
+      .then(r => setCannedResponsesState(r.data || []))
+      .catch(() => {});
+  }, []);
+
   // Auto-abrir conversa vinda do CRM (via sessionStorage 'crm_open_conv')
   // Roda uma vez no mount — não depende da lista de conversas estar carregada.
   // As mensagens são buscadas via API usando o ID diretamente.
@@ -1053,11 +1091,30 @@ export default function Dashboard() {
     prevSelectedIdForDraft.current = selectedId;
   }, [selectedId, text]);
 
-  // ─── Slash command menu ────────────────────────────────────────────────────
+  // ─── Slash command menu (estáticos + canned responses dinâmicos) ────────────
+  const allSlashItems = useMemo(() => [
+    ...SLASH_COMMANDS.map(cmd => ({
+      id: cmd.id,
+      label: cmd.label,
+      description: cmd.description,
+      Icon: cmd.Icon,
+      isCanned: false as const,
+      cannedText: '',
+    })),
+    ...cannedResponses.map(cr => ({
+      id: `canned_${cr.id}`,
+      label: cr.label,
+      description: cr.text.length > 60 ? cr.text.slice(0, 60) + '…' : cr.text,
+      Icon: MessageSquare,
+      isCanned: true as const,
+      cannedText: cr.text,
+    })),
+  ], [cannedResponses]);
+
   const slashQuery = text.startsWith('/') && !text.includes(' ') ? text.slice(1).toLowerCase() : null;
   const filteredSlashCommands = slashQuery !== null
-    ? SLASH_COMMANDS.filter(cmd =>
-        cmd.id.includes(slashQuery) || cmd.label.toLowerCase().includes(slashQuery)
+    ? allSlashItems.filter(cmd =>
+        cmd.id.toLowerCase().includes(slashQuery) || cmd.label.toLowerCase().includes(slashQuery)
       )
     : [];
   const showSlashMenu = slashQuery !== null && filteredSlashCommands.length > 0;
@@ -1072,9 +1129,15 @@ export default function Dashboard() {
     }
   }, [showSlashMenu]);
 
-  const executeSlashCommand = (cmdId: SlashCommandId) => {
+  const executeSlashCommand = (cmdId: string) => {
+    const item = allSlashItems.find(i => i.id === cmdId);
     setText('');
     setSlashMenuIndex(0);
+    if (item?.isCanned) {
+      setText(item.cannedText);
+      requestAnimationFrame(() => inputRef.current?.focus());
+      return;
+    }
     if (cmdId === 'contrato_trabalhista') setShowContratoModal(true);
   };
   // ──────────────────────────────────────────────────────────────────────────
@@ -1429,6 +1492,47 @@ export default function Dashboard() {
     }
   };
 
+  const handleQuickSnooze = async (taskTitle: string, dueAt: string) => {
+    const conv = conversations.find(c => c.id === selectedId) ?? adiadoConversations.find(c => c.id === selectedId);
+    if (!conv?.leadId || !selectedId) return;
+    setQuickSnoozeOpen(false);
+    try {
+      if (conv.activeTask) {
+        await api.patch(`/tasks/${conv.activeTask.id}/status`, { status: 'CANCELADA' });
+      }
+      await api.post('/tasks', {
+        title: taskTitle,
+        lead_id: conv.leadId,
+        conversation_id: selectedId,
+        due_at: dueAt,
+      });
+      if (conv.status !== 'ADIADO') {
+        await api.patch(`/conversations/${selectedId}/defer`);
+      }
+      setSelectedId(null);
+      showSuccess('⏰ Atendimento adiado!');
+      fetchConversations(selectedInboxIdRef.current, true);
+      fetchAdiadoConversations(selectedInboxIdRef.current);
+    } catch {
+      showError('Erro ao adiar atendimento');
+    }
+  };
+
+  const handleForwardMessage = async (destConversationId: string) => {
+    if (!forwardMsg?.text?.trim()) return;
+    setForwardMsg(null);
+    setForwardSearch('');
+    try {
+      await api.post('/messages/send', {
+        conversationId: destConversationId,
+        text: `↪️ *Mensagem encaminhada:*\n${forwardMsg.text}`,
+      });
+      showSuccess('Mensagem encaminhada');
+    } catch {
+      showError('Erro ao encaminhar mensagem');
+    }
+  };
+
   const handleRescheduleTask = async (newDate: string) => {
     const conv = conversations.find(c => c.id === selectedId) ?? adiadoConversations.find(c => c.id === selectedId);
     if (!conv?.activeTask) return;
@@ -1465,15 +1569,36 @@ export default function Dashboard() {
       await api.patch(`/conversations/${incomingTransfer.conversationId}/transfer-accept`);
       shownTransferIdsRef.current.delete(incomingTransfer.conversationId);
       // Salvar contexto (motivo + áudios) para exibir no chat após aceitar
+      const baseContext = {
+        fromUserName: incomingTransfer.fromUserName,
+        reason: incomingTransfer.reason,
+        audioIds: incomingTransfer.audioIds || [],
+      };
       if (incomingTransfer.reason || incomingTransfer.audioIds?.length) {
-        setTransferContextMap(prev => ({
-          ...prev,
-          [incomingTransfer.conversationId]: {
-            fromUserName: incomingTransfer.fromUserName,
-            reason: incomingTransfer.reason,
-            audioIds: incomingTransfer.audioIds || [],
-          },
-        }));
+        setTransferContextMap(prev => ({ ...prev, [incomingTransfer.conversationId]: baseContext }));
+      }
+      // #11: Buscar resumo IA do lead para exibir no banner de contexto
+      const conv = conversations.find(c => c.id === incomingTransfer.conversationId);
+      if (conv?.leadId) {
+        api.get(`/leads/${conv.leadId}/summary`, { _silent401: true } as any)
+          .then(r => {
+            const summary = r.data?.summary;
+            if (summary) {
+              setTransferContextMap(prev => {
+                const existing = prev[incomingTransfer.conversationId] || baseContext;
+                return {
+                  ...prev,
+                  [incomingTransfer.conversationId]: {
+                    ...existing,
+                    reason: existing.reason
+                      ? `${existing.reason}\n\n🤖 Resumo IA: ${summary}`
+                      : `🤖 Resumo IA: ${summary}`,
+                  },
+                };
+              });
+            }
+          })
+          .catch(() => { /* resumo é opcional — falha silenciosa */ });
       }
       setIncomingTransfer(null);
       fetchPendingTransfers(true);
@@ -1717,6 +1842,13 @@ export default function Dashboard() {
   const isDemo = selectedId?.startsWith('demo-');
   const isRealConvo = selectedId && !isDemo;
   const isClosed = selected?.status === 'CLOSED';
+
+  // Mensagens filtradas pela busca dentro da conversa
+  const displayMessages = useMemo(() => {
+    if (!msgSearchOpen || !msgSearchQuery.trim()) return messages;
+    const q = msgSearchQuery.toLowerCase().trim();
+    return messages.filter(m => m.text?.toLowerCase().includes(q));
+  }, [messages, msgSearchOpen, msgSearchQuery]);
 
   const handleImageDownload = async (src: string) => {
     try {
@@ -1969,6 +2101,34 @@ export default function Dashboard() {
               );
             })()}
 
+            {/* Barra de busca dentro da conversa */}
+            {msgSearchOpen && (
+              <div className="px-4 py-2 border-b border-border bg-card/80 backdrop-blur-sm shrink-0 flex items-center gap-2">
+                <Search size={14} className="text-muted-foreground shrink-0" />
+                <input
+                  ref={msgSearchInputRef}
+                  type="text"
+                  value={msgSearchQuery}
+                  onChange={e => setMsgSearchQuery(e.target.value)}
+                  placeholder="Buscar nas mensagens..."
+                  className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
+                  onKeyDown={e => { if (e.key === 'Escape') { setMsgSearchOpen(false); setMsgSearchQuery(''); } }}
+                />
+                {msgSearchQuery && (
+                  <span className="text-[10px] text-muted-foreground shrink-0">
+                    {displayMessages.length} resultado{displayMessages.length !== 1 ? 's' : ''}
+                  </span>
+                )}
+                <button
+                  onClick={() => { setMsgSearchOpen(false); setMsgSearchQuery(''); }}
+                  className="p-1 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                  title="Fechar busca"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
             {/* Typing indicator */}
             {Object.keys(typingUsers).length > 0 && (
               <div className="px-4 py-1 text-xs text-muted-foreground bg-muted/30 border-b border-border animate-pulse">
@@ -2031,14 +2191,14 @@ export default function Dashboard() {
                     )}
                   </div>
                 )}
-                {isRealConvo && messages.length > 0 ? (
+                {isRealConvo && displayMessages.length > 0 ? (
                   (() => {
                     let lastMsgDateKey = '';
                     // Fase atual da conversa — exibida no badge de IA
                     const convNextStep = conversations.find(c => c.id === selectedId)?.nextStep || null;
                     // Dedup: remove mensagens com mesmo id (safety net contra race conditions)
                     const seen = new Set<string>();
-                    const uniqueMessages = messages.filter(m => {
+                    const uniqueMessages = displayMessages.filter(m => {
                       if (seen.has(m.id)) return false;
                       seen.add(m.id);
                       return true;
@@ -2073,12 +2233,15 @@ export default function Dashboard() {
                         onDocPreview={setDocPreview}
                         onImageDownload={handleImageDownload}
                         onDocDownload={handleDocDownload}
+                        onForward={(m) => { if (m.text) { setForwardMsg({ id: m.id, text: m.text }); setForwardSearch(''); } }}
                         nextStep={convNextStep}
                       />
                         </Fragment>
                       );
                     });
                   })()
+                ) : isRealConvo && displayMessages.length === 0 && msgSearchOpen && msgSearchQuery ? (
+                  <div className="text-center text-muted-foreground py-20">Nenhum resultado para &ldquo;{msgSearchQuery}&rdquo;</div>
                 ) : isRealConvo && messages.length === 0 ? (
                   <div className="text-center text-muted-foreground py-20">Nenhuma mensagem nesta conversa.</div>
                 ) : (
@@ -2531,15 +2694,54 @@ export default function Dashboard() {
                       🔒
                     </button>
                   )}
-                  {/* Desktop: botão adiar atendimento (atalho rápido) */}
-                  {!isMobile && selected?.leadId && (
+                  {/* Desktop: botão busca dentro da conversa */}
+                  {!isMobile && isRealConvo && (
                     <button
-                      onClick={openTaskModal}
-                      title="Adiar atendimento (criar lembrete)"
-                      className="p-2.5 md:p-3 rounded-xl bg-card border border-border text-muted-foreground hover:text-amber-400 hover:border-amber-500/30 hover:bg-amber-500/10 transition-colors shrink-0 mb-0.5"
+                      onClick={() => setMsgSearchOpen(v => !v)}
+                      title="Buscar nas mensagens (Ctrl+F)"
+                      className={`p-2.5 md:p-3 rounded-xl border transition-colors shrink-0 mb-0.5 ${msgSearchOpen ? 'bg-primary/10 border-primary/30 text-primary' : 'bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}
                     >
-                      <Clock size={20} />
+                      <Search size={20} />
                     </button>
+                  )}
+                  {/* Desktop: botão adiar atendimento com quick snooze dropdown */}
+                  {!isMobile && selected?.leadId && (
+                    <div className="relative shrink-0 mb-0.5" ref={quickSnoozeRef}>
+                      <button
+                        onClick={() => setQuickSnoozeOpen(v => !v)}
+                        title="Adiar atendimento — clique para presets rápidos"
+                        className={`p-2.5 md:p-3 rounded-xl border transition-colors ${quickSnoozeOpen ? 'bg-amber-500/20 border-amber-500/40 text-amber-400' : 'bg-card border-border text-muted-foreground hover:text-amber-400 hover:border-amber-500/30 hover:bg-amber-500/10'}`}
+                      >
+                        <Clock size={20} />
+                      </button>
+                      {quickSnoozeOpen && (
+                        <div className="absolute bottom-full mb-2 left-0 bg-card border border-border rounded-xl shadow-2xl w-48 py-1 z-50 text-sm">
+                          <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Adiar por</p>
+                          {[
+                            { label: '1 hora', getDate: () => { const d = new Date(); d.setHours(d.getHours() + 1); return d.toISOString(); } },
+                            { label: '3 horas', getDate: () => { const d = new Date(); d.setHours(d.getHours() + 3); return d.toISOString(); } },
+                            { label: 'Amanhã 9h', getDate: () => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d.toISOString(); } },
+                            { label: 'Próxima semana', getDate: () => { const d = new Date(); d.setDate(d.getDate() + 7); d.setHours(9, 0, 0, 0); return d.toISOString(); } },
+                          ].map(p => (
+                            <button
+                              key={p.label}
+                              onClick={() => handleQuickSnooze(`Retornar — ${p.label}`, p.getDate())}
+                              className="w-full text-left px-3 py-2 hover:bg-accent transition-colors text-foreground flex items-center gap-2"
+                            >
+                              ⏰ {p.label}
+                            </button>
+                          ))}
+                          <div className="border-t border-border mt-1 pt-1">
+                            <button
+                              onClick={() => { setQuickSnoozeOpen(false); openTaskModal(); }}
+                              className="w-full text-left px-3 py-2 hover:bg-accent transition-colors text-muted-foreground text-[12px] flex items-center gap-2"
+                            >
+                              📅 Personalizado...
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   {/* Hidden file input */}
@@ -3098,6 +3300,63 @@ export default function Dashboard() {
               >
                 Encerrar
               </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal Encaminhar Mensagem */}
+      {forwardMsg && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm dark" onClick={() => setForwardMsg(null)}>
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-foreground">↪️ Encaminhar mensagem</h3>
+              <button onClick={() => setForwardMsg(null)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="text-sm text-muted-foreground bg-accent/30 rounded-lg px-3 py-2 mb-4 line-clamp-3 italic">
+              &ldquo;{forwardMsg.text}&rdquo;
+            </div>
+            <div className="relative mb-3">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <input
+                autoFocus
+                type="text"
+                value={forwardSearch}
+                onChange={e => setForwardSearch(e.target.value)}
+                placeholder="Buscar conversa..."
+                className="w-full pl-8 pr-3 py-2 text-sm bg-accent/50 border border-border rounded-lg placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40 text-foreground"
+              />
+            </div>
+            <div className="max-h-56 overflow-y-auto custom-scrollbar space-y-0.5">
+              {conversations
+                .filter(c => c.id !== selectedId && (
+                  !forwardSearch.trim() ||
+                  c.contactName?.toLowerCase().includes(forwardSearch.toLowerCase()) ||
+                  c.contactPhone?.toLowerCase().includes(forwardSearch.toLowerCase())
+                ))
+                .slice(0, 25)
+                .map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => handleForwardMessage(c.id)}
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-accent transition-colors flex items-center gap-3"
+                  >
+                    <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-[11px] font-bold text-primary shrink-0">
+                      {(c.contactName || '?')[0].toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{c.contactName || c.contactPhone}</p>
+                      {c.lastMessage && <p className="text-[11px] text-muted-foreground truncate">{c.lastMessage}</p>}
+                    </div>
+                  </button>
+                ))
+              }
+              {conversations.filter(c => c.id !== selectedId && (!forwardSearch.trim() || c.contactName?.toLowerCase().includes(forwardSearch.toLowerCase()))).length === 0 && (
+                <p className="text-center text-muted-foreground text-sm py-4">Nenhuma conversa encontrada</p>
+              )}
             </div>
           </div>
         </div>,

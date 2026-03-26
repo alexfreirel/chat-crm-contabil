@@ -101,6 +101,17 @@ export class SettingsService {
     });
   }
 
+  // ─── Canned Responses ─────────────────────────────────────────
+  async getCannedResponses(): Promise<{ id: string; label: string; text: string }[]> {
+    const raw = await this.get('CANNED_RESPONSES');
+    if (!raw) return [];
+    try { return JSON.parse(raw); } catch { return []; }
+  }
+
+  async setCannedResponses(responses: { id: string; label: string; text: string }[]): Promise<void> {
+    await this.set('CANNED_RESPONSES', JSON.stringify(responses));
+  }
+
   async getWhatsAppConfig() {
     const dbApiUrl = await this.get('EVOLUTION_API_URL');
     const dbApiKey = await this.get('EVOLUTION_GLOBAL_APIKEY');
