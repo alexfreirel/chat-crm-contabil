@@ -99,7 +99,7 @@ export class MessagesController {
     if (!dto.text || !dto.text.trim()) {
       throw new BadRequestException('Texto nao pode ser vazio');
     }
-    return this.messagesService.sendMessage(dto.conversationId, dto.text.trim(), dto.replyToId, req.user?.id);
+    return this.messagesService.sendMessage(dto.conversationId, dto.text.trim(), dto.replyToId, req.user?.id, dto.isInternal);
   }
 
   @Throttle({ default: { ttl: 60000, limit: 10 } })

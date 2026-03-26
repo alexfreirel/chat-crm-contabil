@@ -173,6 +173,10 @@ export default function Dashboard() {
   // Modal de motivo de perda (PERDIDO) — exigido pelo backend
   const [lossModal, setLossModal] = useState<{ leadId: string; leadName: string } | null>(null);
   const [lossReason, setLossReason] = useState('');
+  // Modal de encerramento de conversa
+  const [closeConvModal, setCloseConvModal] = useState(false);
+  // Modo nota interna (mensagem não enviada ao cliente)
+  const [internalNoteMode, setInternalNoteMode] = useState(false);
   // Chave para forçar re-fetch de mensagens (incrementada no reconnect do socket)
   const [msgRefreshKey, setMsgRefreshKey] = useState(0);
   // Modal de criação rápida de tarefa a partir do chat
@@ -1100,7 +1104,7 @@ export default function Dashboard() {
       id: optimisticId,
       conversation_id: selectedId,
       direction: 'out',
-      type: 'text',
+      type: internalNoteMode ? 'internal_note' : 'text',
       text: msgText,
       created_at: new Date().toISOString(),
       status: 'enviando',
@@ -1108,12 +1112,14 @@ export default function Dashboard() {
       media: [],
     };
     setMessages(prev => [...prev, optimisticMsg]);
+    if (internalNoteMode) setInternalNoteMode(false);
 
     try {
       const res = await api.post('/messages/send', {
         conversationId: selectedId,
         text: msgText,
         ...(replyId ? { replyToId: replyId } : {}),
+        ...(optimisticMsg.type === 'internal_note' ? { isInternal: true } : {}),
       });
       // Substituir msg otimista pela real do servidor
       // Se o WebSocket já substituiu a otimista, o ID real já está na lista — não duplicar
@@ -1160,9 +1166,14 @@ export default function Dashboard() {
     }
   };
 
-  const handleClose = async () => {
+  const handleClose = () => {
     if (!selectedId || selectedId.startsWith('demo-')) return;
-    if (!confirm('Fechar esta conversa?')) return;
+    setCloseConvModal(true);
+  };
+
+  const confirmClose = async () => {
+    if (!selectedId) return;
+    setCloseConvModal(false);
     try {
       await api.patch(`/conversations/${selectedId}/close`);
       setSelectedId(null);
@@ -1670,7 +1681,10 @@ export default function Dashboard() {
         });
     }
     let result: ConversationSummary[];
-    if (leadFilter === 'ACTIVE') {
+    if (leadFilter === 'MINE') {
+      // Minhas conversas: todas atribuídas ao usuário atual (qualquer status exceto CLOSED)
+      result = conversations.filter(c => c.assignedAgentId === currentUserId && c.status !== 'CLOSED');
+    } else if (leadFilter === 'ACTIVE') {
       result = conversations.filter(myActiveConvs);
     } else if (leadFilter === 'BOT') {
       result = conversations.filter(c => c.aiMode && c.assignedAgentId === currentUserId);
@@ -2507,6 +2521,16 @@ export default function Dashboard() {
                         : <Paperclip size={20} />}
                     </button>
                   )}
+                  {/* Botão nota interna */}
+                  {!isMobile && isRealConvo && (
+                    <button
+                      onClick={() => setInternalNoteMode(prev => !prev)}
+                      title={internalNoteMode ? 'Modo nota interna ativo (clique para desativar)' : 'Nota interna — só visível para a equipe'}
+                      className={`p-2.5 md:p-3 rounded-xl border transition-colors shrink-0 mb-0.5 ${internalNoteMode ? 'bg-amber-500/20 border-amber-500/40 text-amber-400' : 'bg-card border-border text-muted-foreground hover:text-amber-400 hover:border-amber-500/30 hover:bg-amber-500/10'}`}
+                    >
+                      🔒
+                    </button>
+                  )}
                   {/* Desktop: botão adiar atendimento (atalho rápido) */}
                   {!isMobile && selected?.leadId && (
                     <button
@@ -2591,10 +2615,13 @@ export default function Dashboard() {
                           handleSend();
                         }
                       }}
-                      placeholder={isRealConvo ? "Digite sua mensagem..." : "Selecione uma conversa..."}
+                      placeholder={internalNoteMode ? "🔒 Nota interna — visível só para a equipe..." : (isRealConvo ? "Digite sua mensagem..." : "Selecione uma conversa...")}
                       disabled={!isRealConvo || sending}
-                      className={`w-full bg-card border border-border rounded-2xl py-3 md:py-4 focus:outline-none focus:ring-2 focus:ring-primary shadow-sm text-foreground disabled:opacity-50 text-sm md:text-base resize-none leading-normal overflow-hidden pl-4 ${
+                      className={`w-full border rounded-2xl py-3 md:py-4 focus:outline-none focus:ring-2 shadow-sm disabled:opacity-50 text-sm md:text-base resize-none leading-normal overflow-hidden pl-4 ${
                         isRealConvo ? (isMobile ? 'pr-[7rem]' : 'pr-24') : 'pr-4'
+                      } ${internalNoteMode
+                        ? 'bg-amber-500/10 border-amber-500/40 focus:ring-amber-500/30 text-amber-100 placeholder:text-amber-400/60'
+                        : 'bg-card border-border focus:ring-primary text-foreground'
                       }`}
                     />
                     {/* Contador de caracteres */}
@@ -3038,6 +3065,43 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Encerramento de Conversa */}
+      {closeConvModal && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm dark" onClick={() => setCloseConvModal(false)}>
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
+                <X size={20} className="text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-foreground">Encerrar conversa</h3>
+                <p className="text-[12px] text-muted-foreground">
+                  {selected?.contactName || 'Este atendimento'} será marcado como encerrado.
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground mb-5">
+              O histórico de mensagens será preservado. A conversa não receberá novas mensagens automáticas.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setCloseConvModal(false)}
+                className="px-4 py-2 text-sm rounded-lg border border-border text-muted-foreground hover:bg-accent transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmClose}
+                className="px-4 py-2 text-sm rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 font-bold hover:bg-red-500/20 transition-colors"
+              >
+                Encerrar
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Toast de Lembrete de Tarefa Agendada */}
