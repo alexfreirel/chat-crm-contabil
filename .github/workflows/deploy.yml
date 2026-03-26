@@ -70,6 +70,7 @@ jobs:
 
       - name: 🚀 SSH → Pull e atualizar serviços
         if: steps.check.outputs.skip == 'false'
+        continue-on-error: true   # não quebra o workflow se SSH falhar (ex: chave pública ainda não adicionada à VPS)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
