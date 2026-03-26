@@ -322,6 +322,23 @@ export class SettingsController {
     return { ok: true };
   }
 
+  // ─── Canned Responses ─────────────────────────────────
+
+  @Get('canned-responses')
+  async getCannedResponses() {
+    return this.settingsService.getCannedResponses();
+  }
+
+  @Patch('canned-responses')
+  async setCannedResponses(
+    @Request() req: any,
+    @Body() body: { responses: { id: string; label: string; text: string }[] },
+  ) {
+    if (req.user.role !== 'ADMIN') throw new ForbiddenException('Apenas administradores');
+    await this.settingsService.setCannedResponses(body.responses || []);
+    return { ok: true };
+  }
+
   // ─── TTS (Text-to-Speech) ─────────────────────────────
 
   @Get('tts')
