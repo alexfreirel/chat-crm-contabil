@@ -32,14 +32,21 @@ interface DossieCompleto {
 @Injectable()
 export class FollowupService {
   private readonly logger = new Logger(FollowupService.name);
-  private openai: OpenAI;
+  private _openai: OpenAI | null = null;
+
+  private get openai(): OpenAI {
+    if (!this._openai) {
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) throw new Error('OPENAI_API_KEY não configurada. Configure a variável de ambiente para usar o Follow-up IA.');
+      this._openai = new OpenAI({ apiKey });
+    }
+    return this._openai;
+  }
 
   constructor(
     private prisma: PrismaService,
     @InjectQueue('followup-jobs') private followupQueue: Queue,
-  ) {
-    this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  }
+  ) {}
 
   // ─── CRUD Sequências ─────────────────────────────────────────────────────
 
