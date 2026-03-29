@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
+import { CalendarService } from '../calendar/calendar.service';
 
 function toDateStr(date: Date): string {
   return date.toISOString().slice(0, 10); // yyyy-MM-dd
@@ -13,6 +14,112 @@ function subtractDays(date: Date, days: number): Date {
   return d;
 }
 
+function addBusinessDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  let added = 0;
+  while (added < days) {
+    d.setDate(d.getDate() + 1);
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) added++;
+  }
+  return d;
+}
+
+// ─── Classificação de publicações DJEN ─────────────────────────
+
+interface ClassifiedPublication {
+  taskTitle: string;
+  taskDescription: string;
+  dueDays: number; // dias úteis para o prazo
+  priority: 'URGENTE' | 'NORMAL' | 'BAIXA';
+}
+
+function classifyPublication(
+  tipoComunicacao: string | null,
+  assunto: string | null,
+  conteudo: string,
+): ClassifiedPublication | null {
+  const text = [tipoComunicacao, assunto, conteudo].join(' ').toLowerCase();
+
+  // Ordem: mais específico primeiro
+  if (/sentença|sentenca/.test(text)) {
+    return {
+      taskTitle: 'Analisar sentença e orientar cliente',
+      taskDescription: 'Publicação de sentença recebida via DJEN. Analisar mérito, prazo recursal e orientar cliente.',
+      dueDays: 15,
+      priority: 'URGENTE',
+    };
+  }
+  if (/acórdão|acordao/.test(text)) {
+    return {
+      taskTitle: 'Analisar acórdão e recurso cabível',
+      taskDescription: 'Publicação de acórdão recebida via DJEN. Analisar decisão e avaliar cabimento de recurso.',
+      dueDays: 15,
+      priority: 'URGENTE',
+    };
+  }
+  if (/citação|citacao/.test(text)) {
+    return {
+      taskTitle: 'Elaborar contestação — prazo iniciado',
+      taskDescription: 'Citação publicada no DJEN. Verificar prazo para contestação e elaborar defesa.',
+      dueDays: 15,
+      priority: 'URGENTE',
+    };
+  }
+  if (/audiência|audiencia|designada|designando/.test(text)) {
+    return {
+      taskTitle: 'Preparar audiência e notificar cliente',
+      taskDescription: 'Audiência designada via DJEN. Preparar documentos, testemunhas e notificar cliente.',
+      dueDays: 3,
+      priority: 'URGENTE',
+    };
+  }
+  if (/pagamento|art.*523|cumpri/.test(text)) {
+    return {
+      taskTitle: 'Notificar cliente — prazo de pagamento',
+      taskDescription: 'Intimação de pagamento recebida via DJEN. Notificar cliente sobre prazo legal.',
+      dueDays: 5,
+      priority: 'URGENTE',
+    };
+  }
+  if (/manifestação|manifestacao|impugnação|impugnacao/.test(text)) {
+    return {
+      taskTitle: 'Elaborar manifestação / impugnação',
+      taskDescription: 'Intimação para manifestação recebida via DJEN.',
+      dueDays: 10,
+      priority: 'NORMAL',
+    };
+  }
+  if (/trânsito|transito em julgado/.test(text)) {
+    return {
+      taskTitle: 'Iniciar cumprimento de sentença',
+      taskDescription: 'Trânsito em julgado certificado via DJEN. Avaliar início da execução.',
+      dueDays: 30,
+      priority: 'NORMAL',
+    };
+  }
+  if (/despacho|determinação|determinacao/.test(text)) {
+    return {
+      taskTitle: 'Cumprir determinação judicial',
+      taskDescription: 'Despacho/determinação publicado no DJEN. Verificar providências necessárias.',
+      dueDays: 10,
+      priority: 'NORMAL',
+    };
+  }
+  if (/julgamento|pauta/.test(text)) {
+    return {
+      taskTitle: 'Preparar sustentação oral',
+      taskDescription: 'Processo incluído em pauta de julgamento via DJEN.',
+      dueDays: 5,
+      priority: 'URGENTE',
+    };
+  }
+
+  return null; // publicação genérica, sem tarefa automática
+}
+
+// ─────────────────────────────────────────────────────────────────
+
 @Injectable()
 export class DjenService {
   private readonly logger = new Logger(DjenService.name);
@@ -21,6 +128,7 @@ export class DjenService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
+    private readonly calendarService: CalendarService,
   ) {}
 
   /** Cron diário às 8h — sincroniza publicações de ontem e hoje */
@@ -34,9 +142,9 @@ export class DjenService {
     this.logger.log('[DJEN] Sync diário concluído.');
   }
 
-  async syncForDate(date: string): Promise<{ date: string; saved: number; errors: number }> {
-    const oabNumber = (await this.settings.get('DJEN_OAB_NUMBER')) || '14209';
-    const oabUf     = (await this.settings.get('DJEN_OAB_UF'))     || 'AL';
+  async syncForDate(date: string): Promise<{ date: string; saved: number; errors: number; tasksCreated: number }> {
+    const oabNumber  = (await this.settings.get('DJEN_OAB_NUMBER'))  || '14209';
+    const oabUf      = (await this.settings.get('DJEN_OAB_UF'))      || 'AL';
     const lawyerName = (await this.settings.get('DJEN_LAWYER_NAME')) || 'André Freire Lustosa';
 
     const params = new URLSearchParams({
@@ -55,19 +163,20 @@ export class DjenService {
       });
       if (!res.ok) {
         this.logger.warn(`[DJEN] API retornou ${res.status} para ${date}`);
-        return { date, saved: 0, errors: 1 };
+        return { date, saved: 0, errors: 1, tasksCreated: 0 };
       }
       const data: any = await res.json();
-      // Suporte a múltiplos formatos de resposta da API PJe
       items = data?.items || data?.content || data?.data || (Array.isArray(data) ? data : []);
       this.logger.log(`[DJEN] ${items.length} publicações encontradas para ${date}`);
     } catch (e) {
       this.logger.error(`[DJEN] Erro ao consultar API para ${date}: ${e}`);
-      return { date, saved: 0, errors: 1 };
+      return { date, saved: 0, errors: 1, tasksCreated: 0 };
     }
 
     let saved = 0;
     let errors = 0;
+    let tasksCreated = 0;
+
     for (const item of items) {
       try {
         const comunicacaoId = item.id ?? item.idComunicacao ?? item.comunicacaoId;
@@ -81,19 +190,25 @@ export class DjenService {
 
         // Tenta vincular ao LegalCase pelo número do processo
         let legalCaseId: string | null = null;
+        let legalCase: { id: string; lawyer_id: string; tenant_id: string | null } | null = null;
+
         if (numeroProcesso) {
-          const lc = await this.prisma.legalCase.findFirst({
+          legalCase = await this.prisma.legalCase.findFirst({
             where: { case_number: numeroProcesso, in_tracking: true },
-            select: { id: true },
+            select: { id: true, lawyer_id: true, tenant_id: true },
           });
-          if (lc) legalCaseId = lc.id;
+          if (legalCase) legalCaseId = legalCase.id;
         }
 
         const dataDisp = item.dataDisponibilizacao
           ? new Date(item.dataDisponibilizacao)
           : new Date(date);
 
-        await this.prisma.djenPublication.upsert({
+        const tipoComunicacao = item.tipoComunicacao || item.tipo || null;
+        const assunto = item.assunto || null;
+        const conteudo = item.conteudo || item.texto || item.descricao || '';
+
+        const pub = await this.prisma.djenPublication.upsert({
           where: { comunicacao_id: Number(comunicacaoId) },
           update: { legal_case_id: legalCaseId },
           create: {
@@ -101,23 +216,54 @@ export class DjenService {
             data_disponibilizacao: dataDisp,
             numero_processo: numeroProcesso,
             classe_processual: item.classeProcessual || item.classe || null,
-            assunto: item.assunto || null,
-            tipo_comunicacao: item.tipoComunicacao || item.tipo || null,
-            conteudo: item.conteudo || item.texto || item.descricao || '',
+            assunto,
+            tipo_comunicacao: tipoComunicacao,
+            conteudo,
             nome_advogado: item.nomeAdvogado || lawyerName,
             raw_json: item,
             legal_case_id: legalCaseId,
           },
         });
         saved++;
+
+        // ─── Auto-criar tarefa ao vincular publicação a um processo ───────
+        if (legalCase && pub) {
+          const classification = classifyPublication(tipoComunicacao, assunto, conteudo);
+          if (classification) {
+            try {
+              const dueAt = addBusinessDays(dataDisp, classification.dueDays);
+              await this.calendarService.create({
+                type: 'TAREFA',
+                title: `[DJEN] ${classification.taskTitle}`,
+                description: classification.taskDescription,
+                start_at: dueAt.toISOString(),
+                end_at: new Date(dueAt.getTime() + 30 * 60000).toISOString(),
+                assigned_user_id: legalCase.lawyer_id,
+                legal_case_id: legalCase.id,
+                created_by_id: legalCase.lawyer_id,
+                tenant_id: legalCase.tenant_id || undefined,
+                priority: classification.priority,
+                reminders: [
+                  { minutes_before: 1440, channel: 'PUSH' },
+                ],
+              });
+              tasksCreated++;
+              this.logger.log(
+                `[DJEN] Tarefa automática criada para processo ${numeroProcesso}: "${classification.taskTitle}"`,
+              );
+            } catch (e: any) {
+              this.logger.warn(`[DJEN] Falha ao criar tarefa automática: ${e.message}`);
+            }
+          }
+        }
       } catch (e) {
         this.logger.error(`[DJEN] Erro ao salvar publicação: ${e}`);
         errors++;
       }
     }
 
-    this.logger.log(`[DJEN] ${date}: ${saved} salvas, ${errors} erros`);
-    return { date, saved, errors };
+    this.logger.log(`[DJEN] ${date}: ${saved} salvas, ${errors} erros, ${tasksCreated} tarefas criadas`);
+    return { date, saved, errors, tasksCreated };
   }
 
   async findRecent(days = 7) {
@@ -126,8 +272,13 @@ export class DjenService {
       where: { data_disponibilizacao: { gte: since } },
       include: {
         legal_case: {
-          select: { id: true, case_number: true, legal_area: true, tracking_stage: true,
-            lead: { select: { name: true } } },
+          select: {
+            id: true,
+            case_number: true,
+            legal_area: true,
+            tracking_stage: true,
+            lead: { select: { name: true } },
+          },
         },
       },
       orderBy: { data_disponibilizacao: 'desc' },

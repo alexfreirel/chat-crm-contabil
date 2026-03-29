@@ -6,9 +6,9 @@ import {
   User, Search, RefreshCw, MessageSquare, MoreVertical, ChevronDown, ChevronRight,
   Plus, X, Calendar, FileText, Clock, Archive, ArchiveRestore, Send,
   AlertTriangle, CheckCircle2, Loader2, ExternalLink, Bell, RefreshCcw, BookOpen,
+  LayoutList, LayoutGrid, DollarSign, Scale, Gavel, ArrowUpDown,
 } from 'lucide-react';
 import api from '@/lib/api';
-import { formatPhone } from '@/lib/utils';
 import { TRACKING_STAGES, findTrackingStage } from '@/lib/legalStages';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -28,6 +28,12 @@ interface LegalCase {
   archive_reason: string | null;
   notes: string | null;
   court: string | null;
+  action_type: string | null;
+  claim_value: string | null;
+  opposing_party: string | null;
+  judge: string | null;
+  priority: string;
+  stage_changed_at: string;
   created_at: string;
   updated_at: string;
   lead: {
@@ -51,10 +57,7 @@ interface DjenPublication {
   conteudo: string;
   nome_advogado: string | null;
   legal_case_id: string | null;
-  legal_case?: {
-    id: string;
-    lead: { name: string | null };
-  } | null;
+  legal_case?: { id: string; lead: { name: string | null } } | null;
   created_at: string;
 }
 
@@ -106,6 +109,33 @@ function formatDate(dateStr: string | null | undefined): string {
   return new Date(dateStr).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
+function daysInStage(dateStr: string | null | undefined): number {
+  if (!dateStr) return 0;
+  return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+}
+
+
+const PRIORITY_CONFIG: Record<string, { label: string; color: string; borderColor: string; badgeClass: string }> = {
+  URGENTE: {
+    label: 'Urgente',
+    color: '#ef4444',
+    borderColor: 'border-l-red-500',
+    badgeClass: 'bg-red-500/12 text-red-400 border-red-500/20',
+  },
+  NORMAL: {
+    label: 'Normal',
+    color: '#f59e0b',
+    borderColor: 'border-l-amber-500',
+    badgeClass: 'bg-amber-500/12 text-amber-400 border-amber-500/20',
+  },
+  BAIXA: {
+    label: 'Baixa',
+    color: '#6b7280',
+    borderColor: 'border-l-gray-500',
+    badgeClass: 'bg-gray-500/12 text-gray-400 border-gray-500/20',
+  },
+};
+
 const EVENT_TYPES = [
   { id: 'PUBLICACAO', label: 'Publicação', color: '#3b82f6' },
   { id: 'DESPACHO', label: 'Despacho', color: '#8b5cf6' },
@@ -118,6 +148,11 @@ const TASK_STATUSES = [
   { id: 'AGENDADO', label: 'A fazer', color: '#6b7280' },
   { id: 'CONFIRMADO', label: 'Em andamento', color: '#3b82f6' },
   { id: 'CONCLUIDO', label: 'Concluída', color: '#10b981' },
+];
+
+const LEGAL_AREAS = [
+  'Trabalhista', 'Cível', 'Criminal', 'Previdenciário',
+  'Tributário', 'Consumidor', 'Família', 'Administrativo',
 ];
 
 // ─── ProcessoCard ──────────────────────────────────────────────
@@ -149,6 +184,12 @@ function ProcessoCard({
   }, [showMenu]);
 
   const djenCount = legalCase._count?.djen_publications ?? 0;
+  const taskCount = legalCase._count?.tasks ?? 0;
+  const eventCount = legalCase._count?.events ?? 0;
+  const days = daysInStage(legalCase.stage_changed_at || legalCase.updated_at);
+  const priority = PRIORITY_CONFIG[legalCase.priority] ?? PRIORITY_CONFIG.NORMAL;
+  const isUrgente = legalCase.priority === 'URGENTE';
+  const stageOld = days > 30;
 
   return (
     <div
@@ -156,31 +197,18 @@ function ProcessoCard({
       onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; onDragStart(); }}
       onDragEnd={onDragEnd}
       onClick={onClick}
-      className={`group p-3.5 bg-card border border-border rounded-xl cursor-grab active:cursor-grabbing select-none transition-all ${
+      className={`group relative p-3.5 bg-card border border-border rounded-xl cursor-grab active:cursor-grabbing select-none transition-all border-l-4 ${priority.borderColor} ${
         isDragging
           ? 'opacity-40 scale-95 rotate-1 shadow-2xl ring-2 ring-primary/30'
-          : 'hover:border-border/80 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/10'
-      }`}
+          : 'hover:border-r-border/80 hover:border-t-border/80 hover:border-b-border/80 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/10'
+      } ${isUrgente ? 'ring-1 ring-red-500/20' : ''}`}
     >
-      {/* Header */}
-      <div className="flex items-start gap-2.5 mb-2">
-        <div className="w-8 h-8 rounded-full bg-accent border border-border flex items-center justify-center overflow-hidden shrink-0 shadow-sm mt-0.5">
-          {legalCase.lead?.profile_picture_url ? (
-            <img src={legalCase.lead.profile_picture_url} alt="" className="w-full h-full object-cover" loading="lazy" />
-          ) : (
-            <User size={13} className="text-muted-foreground opacity-60" />
-          )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <h4 className="text-[13px] font-semibold text-foreground leading-tight truncate">
-            {legalCase.lead?.name || 'Sem nome'}
-          </h4>
-          <p className="text-[10px] text-muted-foreground font-mono truncate">
-            {legalCase.case_number || 'Sem número'}
-          </p>
-        </div>
+      {/* Priority badge + Menu */}
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold border ${priority.badgeClass}`}>
+          {legalCase.priority === 'URGENTE' ? '🔴' : legalCase.priority === 'BAIXA' ? '⬜' : '🟡'} {priority.label}
+        </span>
 
-        {/* Menu */}
         <div className="relative shrink-0" ref={menuRef}>
           <button
             onClick={(e) => { e.stopPropagation(); setShowMenu(v => !v); }}
@@ -207,6 +235,30 @@ function ProcessoCard({
         </div>
       </div>
 
+      {/* Client + Opposing party */}
+      <div className="mb-2">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-full bg-accent border border-border flex items-center justify-center overflow-hidden shrink-0">
+            {legalCase.lead?.profile_picture_url ? (
+              <img src={legalCase.lead.profile_picture_url} alt="" className="w-full h-full object-cover" loading="lazy" />
+            ) : (
+              <User size={11} className="text-muted-foreground opacity-60" />
+            )}
+          </div>
+          <h4 className="text-[13px] font-semibold text-foreground leading-tight truncate flex-1">
+            {legalCase.lead?.name || 'Sem nome'}
+          </h4>
+        </div>
+        {legalCase.opposing_party && (
+          <p className="text-[10px] text-muted-foreground mt-0.5 pl-8 truncate">
+            vs. {legalCase.opposing_party}
+          </p>
+        )}
+        <p className="text-[10px] text-muted-foreground font-mono truncate pl-8 mt-0.5">
+          {legalCase.case_number || 'Sem número'}
+        </p>
+      </div>
+
       {/* Badges */}
       <div className="flex flex-wrap gap-1 mb-2">
         {legalCase.legal_area && (
@@ -223,24 +275,29 @@ function ProcessoCard({
 
       {/* Footer */}
       <div className="flex items-center justify-between text-[10px] text-muted-foreground/70">
-        <div className="flex items-center gap-2">
-          {(legalCase._count?.tasks ?? 0) > 0 && (
-            <span className="flex items-center gap-0.5">
-              <CheckCircle2 size={10} /> {legalCase._count?.tasks}
+        <div className="flex items-center gap-2.5">
+          {taskCount > 0 && (
+            <span className="flex items-center gap-0.5" title={`${taskCount} tarefas`}>
+              <CheckCircle2 size={10} /> {taskCount}
             </span>
           )}
-          {(legalCase._count?.events ?? 0) > 0 && (
-            <span className="flex items-center gap-0.5">
-              <FileText size={10} /> {legalCase._count?.events}
+          {eventCount > 0 && (
+            <span className="flex items-center gap-0.5" title={`${eventCount} movimentações`}>
+              <FileText size={10} /> {eventCount}
             </span>
           )}
           {djenCount > 0 && (
-            <span className="flex items-center gap-0.5 text-amber-400">
+            <span className="flex items-center gap-0.5 text-amber-400 font-semibold" title={`${djenCount} publicações DJEN`}>
               <Bell size={10} /> {djenCount}
             </span>
           )}
         </div>
-        <span>{timeAgo(legalCase.updated_at)}</span>
+        <span
+          className={`flex items-center gap-0.5 ${stageOld ? 'text-amber-400 font-semibold' : ''}`}
+          title={`${days} dias nesta etapa`}
+        >
+          <Clock size={9} /> {days}d
+        </span>
       </div>
     </div>
   );
@@ -260,6 +317,7 @@ function ProcessoDetailPanel({
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'info' | 'djen' | 'events' | 'tasks'>('info');
   const [saving, setSaving] = useState(false);
+  const [savedFeedback, setSavedFeedback] = useState(false);
 
   // Info fields
   const [trackingStage, setTrackingStage] = useState(legalCase.tracking_stage || 'DISTRIBUIDO');
@@ -267,6 +325,11 @@ function ProcessoDetailPanel({
   const [court, setCourt] = useState(legalCase.court || '');
   const [notes, setNotes] = useState(legalCase.notes || '');
   const [legalArea, setLegalArea] = useState(legalCase.legal_area || '');
+  const [priority, setPriority] = useState(legalCase.priority || 'NORMAL');
+  const [opposingParty, setOpposingParty] = useState(legalCase.opposing_party || '');
+  const [actionType, setActionType] = useState(legalCase.action_type || '');
+  const [claimValue, setClaimValue] = useState(legalCase.claim_value || '');
+  const [judge, setJudge] = useState(legalCase.judge || '');
 
   // Archive
   const [showArchive, setShowArchive] = useState(false);
@@ -344,18 +407,42 @@ function ProcessoDetailPanel({
   const saveInfo = async () => {
     setSaving(true);
     try {
+      const promises: Promise<any>[] = [];
+
       if (trackingStage !== legalCase.tracking_stage) {
-        await api.patch(`/legal-cases/${legalCase.id}/tracking-stage`, { trackingStage });
+        promises.push(api.patch(`/legal-cases/${legalCase.id}/tracking-stage`, { trackingStage }));
       }
       if (caseNumber !== (legalCase.case_number || '')) {
-        await api.patch(`/legal-cases/${legalCase.id}/case-number`, { caseNumber });
+        promises.push(api.patch(`/legal-cases/${legalCase.id}/case-number`, { caseNumber }));
       }
-      if (notes !== (legalCase.notes || '')) {
-        await api.patch(`/legal-cases/${legalCase.id}/notes`, { notes });
+
+      // Consolidate all detail fields into one call
+      const detailsChanged =
+        priority !== (legalCase.priority || 'NORMAL') ||
+        opposingParty !== (legalCase.opposing_party || '') ||
+        actionType !== (legalCase.action_type || '') ||
+        claimValue !== (legalCase.claim_value || '') ||
+        judge !== (legalCase.judge || '') ||
+        court !== (legalCase.court || '') ||
+        notes !== (legalCase.notes || '') ||
+        legalArea !== (legalCase.legal_area || '');
+
+      if (detailsChanged) {
+        promises.push(api.patch(`/legal-cases/${legalCase.id}/details`, {
+          priority,
+          opposing_party: opposingParty || undefined,
+          action_type: actionType || undefined,
+          claim_value: claimValue ? parseFloat(claimValue) : undefined,
+          judge: judge || undefined,
+          court: court || undefined,
+          notes: notes || undefined,
+          legal_area: legalArea || undefined,
+        }));
       }
-      if (court !== (legalCase.court || '')) {
-        await api.patch(`/legal-cases/${legalCase.id}/court`, { court });
-      }
+
+      await Promise.all(promises);
+      setSavedFeedback(true);
+      setTimeout(() => setSavedFeedback(false), 2000);
       onRefresh();
     } catch {} finally { setSaving(false); }
   };
@@ -414,13 +501,8 @@ function ProcessoDetailPanel({
   };
 
   const toggleTaskExpand = (taskId: string) => {
-    if (expandedTask === taskId) {
-      setExpandedTask(null);
-      setComments([]);
-    } else {
-      setExpandedTask(taskId);
-      fetchComments(taskId);
-    }
+    if (expandedTask === taskId) { setExpandedTask(null); setComments([]); }
+    else { setExpandedTask(taskId); fetchComments(taskId); }
   };
 
   const handleAddComment = async () => {
@@ -463,14 +545,13 @@ function ProcessoDetailPanel({
   };
 
   const stageInfo = findTrackingStage(legalCase.tracking_stage);
+  const priorityConfig = PRIORITY_CONFIG[legalCase.priority] ?? PRIORITY_CONFIG.NORMAL;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-stretch justify-end">
-      {/* Overlay */}
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
-      {/* Panel */}
-      <div className="relative w-full max-w-[580px] bg-card border-l border-border flex flex-col overflow-hidden animate-in slide-in-from-right duration-200">
+      <div className="relative w-full max-w-[600px] bg-card border-l border-border flex flex-col overflow-hidden animate-in slide-in-from-right duration-200">
         {/* Header */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-border shrink-0">
           <div className="w-10 h-10 rounded-full bg-accent border border-border flex items-center justify-center overflow-hidden">
@@ -482,9 +563,16 @@ function ProcessoDetailPanel({
           </div>
           <div className="flex-1 min-w-0">
             <h2 className="text-base font-bold text-foreground truncate">{legalCase.lead?.name || 'Sem nome'}</h2>
-            <p className="text-[11px] text-muted-foreground font-mono">{legalCase.case_number || 'Sem número'}</p>
+            {legalCase.opposing_party && (
+              <p className="text-[11px] text-muted-foreground truncate">vs. {legalCase.opposing_party}</p>
+            )}
+            <p className="text-[10px] text-muted-foreground font-mono">{legalCase.case_number || 'Sem número'}</p>
           </div>
           <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold border"
+              style={{ backgroundColor: `${priorityConfig.color}20`, color: priorityConfig.color, borderColor: `${priorityConfig.color}40` }}>
+              {legalCase.priority}
+            </span>
             <span
               className="px-2 py-0.5 rounded-full text-[9px] font-bold"
               style={{ backgroundColor: `${stageInfo.color}20`, color: stageInfo.color }}
@@ -502,7 +590,7 @@ function ProcessoDetailPanel({
           {([
             { id: 'info', label: 'Processo' },
             { id: 'djen', label: `DJEN (${djenPubs.length})` },
-            { id: 'events', label: `Movimentações (${events.length})` },
+            { id: 'events', label: `Movim. (${events.length})` },
             { id: 'tasks', label: `Tarefas (${tasks.length})` },
           ] as const).map(tab => (
             <button
@@ -525,33 +613,75 @@ function ProcessoDetailPanel({
           {/* ─── INFO TAB ─── */}
           {activeTab === 'info' && (
             <div className="p-5 space-y-4">
-              {/* Tracking Stage */}
-              <div>
-                <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Etapa do Processo</label>
-                <select
-                  value={trackingStage}
-                  onChange={e => setTrackingStage(e.target.value)}
-                  className="mt-1 w-full px-3 py-2 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40"
-                >
-                  {TRACKING_STAGES.map(s => (
-                    <option key={s.id} value={s.id}>{s.emoji} {s.label}</option>
-                  ))}
-                </select>
+
+              {/* Prioridade + Etapa */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Prioridade</label>
+                  <select
+                    value={priority}
+                    onChange={e => setPriority(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  >
+                    <option value="URGENTE">🔴 Urgente</option>
+                    <option value="NORMAL">🟡 Normal</option>
+                    <option value="BAIXA">⬜ Baixa</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Etapa do Processo</label>
+                  <select
+                    value={trackingStage}
+                    onChange={e => setTrackingStage(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  >
+                    {TRACKING_STAGES.map(s => (
+                      <option key={s.id} value={s.id}>{s.emoji} {s.label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              {/* Legal Area */}
+              {/* Área Jurídica + Tipo de Ação */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Área Jurídica</label>
+                  <select
+                    value={legalArea}
+                    onChange={e => setLegalArea(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  >
+                    <option value="">Selecionar...</option>
+                    {LEGAL_AREAS.map(a => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Tipo de Ação</label>
+                  <input
+                    type="text"
+                    value={actionType}
+                    onChange={e => setActionType(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40"
+                    placeholder="Reclamatória, Indenizatória..."
+                  />
+                </div>
+              </div>
+
+              {/* Parte contrária */}
               <div>
-                <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Área Jurídica</label>
+                <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                  <Scale size={11} /> Parte Contrária
+                </label>
                 <input
                   type="text"
-                  value={legalArea}
-                  onChange={e => setLegalArea(e.target.value)}
+                  value={opposingParty}
+                  onChange={e => setOpposingParty(e.target.value)}
                   className="mt-1 w-full px-3 py-2 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40"
-                  placeholder="Trabalhista, Cível, etc."
+                  placeholder="Nome da parte contrária"
                 />
               </div>
 
-              {/* Case number + Court */}
+              {/* Nº Processo + Vara */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Nº Processo</label>
@@ -575,21 +705,55 @@ function ProcessoDetailPanel({
                 </div>
               </div>
 
+              {/* Valor da Causa + Juiz */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                    <DollarSign size={11} /> Valor da Causa
+                  </label>
+                  <input
+                    type="number"
+                    value={claimValue}
+                    onChange={e => setClaimValue(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40"
+                    placeholder="0,00"
+                    step="0.01"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                    <Gavel size={11} /> Juiz / Relator
+                  </label>
+                  <input
+                    type="text"
+                    value={judge}
+                    onChange={e => setJudge(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40"
+                    placeholder="Dr. João Silva"
+                  />
+                </div>
+              </div>
+
               {/* Filed at */}
               {legalCase.filed_at && (
                 <div className="flex items-center gap-2 text-[11px] text-muted-foreground bg-accent/30 rounded-lg px-3 py-2">
                   <Calendar size={12} />
                   <span>Ajuizado em <strong>{new Date(legalCase.filed_at).toLocaleDateString('pt-BR')}</strong></span>
+                  <span className="ml-auto text-[10px]">
+                    <Clock size={10} className="inline mr-0.5" />
+                    {daysInStage(legalCase.stage_changed_at || legalCase.updated_at)}d nesta etapa
+                  </span>
                 </div>
               )}
 
-              {/* Notes */}
+              {/* Notas */}
               <div>
-                <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Notas</label>
+                <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Notas Internas</label>
                 <textarea
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
-                  rows={4}
+                  rows={3}
                   className="mt-1 w-full px-3 py-2 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40 resize-none"
                   placeholder="Observações internas..."
                 />
@@ -599,13 +763,13 @@ function ProcessoDetailPanel({
               <button
                 onClick={saveInfo}
                 disabled={saving}
-                className="w-full py-2.5 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full py-2.5 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {saving ? <Loader2 size={14} className="animate-spin" /> : null}
-                Salvar Alterações
+                {savedFeedback ? '✓ Salvo!' : 'Salvar Alterações'}
               </button>
 
-              {/* Open in chat */}
+              {/* Actions */}
               {legalCase.conversation_id && (
                 <button
                   onClick={openInChat}
@@ -615,7 +779,6 @@ function ProcessoDetailPanel({
                 </button>
               )}
 
-              {/* Archive / Unarchive */}
               {legalCase.archived ? (
                 <button
                   onClick={handleUnarchive}
@@ -644,12 +807,7 @@ function ProcessoDetailPanel({
                         placeholder="Motivo do arquivamento..."
                       />
                       <label className="flex items-center gap-2 text-[12px] text-muted-foreground cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={notifyLead}
-                          onChange={e => setNotifyLead(e.target.checked)}
-                          className="rounded"
-                        />
+                        <input type="checkbox" checked={notifyLead} onChange={e => setNotifyLead(e.target.checked)} className="rounded" />
                         Notificar cliente via WhatsApp
                       </label>
                       <button
@@ -753,9 +911,7 @@ function ProcessoDetailPanel({
                     onChange={e => setNewEventType(e.target.value)}
                     className="w-full px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none"
                   >
-                    {EVENT_TYPES.map(t => (
-                      <option key={t.id} value={t.id}>{t.label}</option>
-                    ))}
+                    {EVENT_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                   </select>
                   <input
                     type="text"
@@ -787,18 +943,8 @@ function ProcessoDetailPanel({
                     />
                   </div>
                   <div className="flex gap-2">
-                    <button
-                      onClick={handleCreateEvent}
-                      className="flex-1 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:opacity-90"
-                    >
-                      Criar
-                    </button>
-                    <button
-                      onClick={() => setShowNewEvent(false)}
-                      className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg"
-                    >
-                      Cancelar
-                    </button>
+                    <button onClick={handleCreateEvent} className="flex-1 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:opacity-90">Criar</button>
+                    <button onClick={() => setShowNewEvent(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg">Cancelar</button>
                   </div>
                 </div>
               )}
@@ -815,10 +961,8 @@ function ProcessoDetailPanel({
                       <div key={event.id} className="p-3 border border-border rounded-xl group hover:bg-accent/20 transition-colors">
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-2 mb-1">
-                            <span
-                              className="px-2 py-0.5 rounded-full text-[9px] font-bold"
-                              style={{ backgroundColor: `${typeInfo.color}20`, color: typeInfo.color }}
-                            >
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold"
+                              style={{ backgroundColor: `${typeInfo.color}20`, color: typeInfo.color }}>
                               {typeInfo.label}
                             </span>
                             {event.event_date && (
@@ -835,16 +979,10 @@ function ProcessoDetailPanel({
                           </button>
                         </div>
                         <h4 className="text-[13px] font-semibold text-foreground">{event.title}</h4>
-                        {event.description && (
-                          <p className="text-[11px] text-muted-foreground mt-1">{event.description}</p>
-                        )}
+                        {event.description && <p className="text-[11px] text-muted-foreground mt-1">{event.description}</p>}
                         {event.reference_url && (
-                          <a
-                            href={event.reference_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline mt-1"
-                          >
+                          <a href={event.reference_url} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline mt-1">
                             <ExternalLink size={9} /> Ver referência
                           </a>
                         )}
@@ -861,10 +999,7 @@ function ProcessoDetailPanel({
             <div className="p-5 space-y-3">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider">Tarefas</h3>
-                <button
-                  onClick={() => setShowNewTask(!showNewTask)}
-                  className="text-[11px] font-semibold text-primary hover:text-primary/80 flex items-center gap-1"
-                >
+                <button onClick={() => setShowNewTask(!showNewTask)} className="text-[11px] font-semibold text-primary hover:text-primary/80 flex items-center gap-1">
                   <Plus size={12} /> Nova Tarefa
                 </button>
               </div>
@@ -892,9 +1027,7 @@ function ProcessoDetailPanel({
                       className="px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none"
                     >
                       <option value="">Atribuir a...</option>
-                      {interns.map(i => (
-                        <option key={i.id} value={i.id}>{i.name}</option>
-                      ))}
+                      {interns.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
                     </select>
                     <input
                       type="date"
@@ -904,12 +1037,8 @@ function ProcessoDetailPanel({
                     />
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={handleCreateTask} className="flex-1 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:opacity-90">
-                      Criar
-                    </button>
-                    <button onClick={() => setShowNewTask(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg">
-                      Cancelar
-                    </button>
+                    <button onClick={handleCreateTask} className="flex-1 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:opacity-90">Criar</button>
+                    <button onClick={() => setShowNewTask(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg">Cancelar</button>
                   </div>
                 </div>
               )}
@@ -937,19 +1066,13 @@ function ProcessoDetailPanel({
                           <h4 className="text-[13px] font-semibold text-foreground truncate">{task.title}</h4>
                           <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground">
                             {task.assigned_user && (
-                              <span className="flex items-center gap-0.5">
-                                <User size={9} /> {task.assigned_user.name}
-                              </span>
+                              <span className="flex items-center gap-0.5"><User size={9} /> {task.assigned_user.name}</span>
                             )}
                             {task.start_at && (
-                              <span className="flex items-center gap-0.5">
-                                <Calendar size={9} /> {new Date(task.start_at).toLocaleDateString('pt-BR')}
-                              </span>
+                              <span className="flex items-center gap-0.5"><Calendar size={9} /> {new Date(task.start_at).toLocaleDateString('pt-BR')}</span>
                             )}
                             {(task._count?.comments ?? 0) > 0 && (
-                              <span className="flex items-center gap-0.5">
-                                <MessageSquare size={9} /> {task._count?.comments}
-                              </span>
+                              <span className="flex items-center gap-0.5"><MessageSquare size={9} /> {task._count?.comments}</span>
                             )}
                           </div>
                         </div>
@@ -960,9 +1083,7 @@ function ProcessoDetailPanel({
                           className="text-[10px] font-bold px-2 py-1 rounded-full border-0 focus:outline-none cursor-pointer"
                           style={{ backgroundColor: `${statusInfo.color}20`, color: statusInfo.color }}
                         >
-                          {TASK_STATUSES.map(s => (
-                            <option key={s.id} value={s.id}>{s.label}</option>
-                          ))}
+                          {TASK_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                         </select>
                       </div>
 
@@ -971,7 +1092,6 @@ function ProcessoDetailPanel({
                           {task.description && (
                             <p className="text-[12px] text-muted-foreground italic mb-2">{task.description}</p>
                           )}
-
                           {loadingComments ? (
                             <div className="text-center text-[11px] text-muted-foreground animate-pulse py-2">Carregando…</div>
                           ) : comments.length === 0 ? (
@@ -994,7 +1114,6 @@ function ProcessoDetailPanel({
                               ))}
                             </div>
                           )}
-
                           <div className="flex gap-2 pt-1">
                             <input
                               type="text"
@@ -1026,6 +1145,145 @@ function ProcessoDetailPanel({
   );
 }
 
+// ─── Tabela View ───────────────────────────────────────────────
+
+type SortField = 'lead' | 'area' | 'stage' | 'priority' | 'days' | 'updated';
+type SortDir = 'asc' | 'desc';
+
+function TabelaView({
+  cases,
+  onSelect,
+}: {
+  cases: LegalCase[];
+  onSelect: (c: LegalCase) => void;
+}) {
+  const [sortField, setSortField] = useState<SortField>('days');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortField(field); setSortDir('desc'); }
+  };
+
+  const PRIORITY_ORDER = { URGENTE: 0, NORMAL: 1, BAIXA: 2 };
+
+  const sorted = [...cases].sort((a, b) => {
+    let cmp = 0;
+    if (sortField === 'lead') cmp = (a.lead?.name || '').localeCompare(b.lead?.name || '');
+    else if (sortField === 'area') cmp = (a.legal_area || '').localeCompare(b.legal_area || '');
+    else if (sortField === 'stage') cmp = (a.tracking_stage || '').localeCompare(b.tracking_stage || '');
+    else if (sortField === 'priority') cmp = (PRIORITY_ORDER[a.priority as keyof typeof PRIORITY_ORDER] ?? 1) - (PRIORITY_ORDER[b.priority as keyof typeof PRIORITY_ORDER] ?? 1);
+    else if (sortField === 'days') cmp = daysInStage(b.stage_changed_at) - daysInStage(a.stage_changed_at);
+    else if (sortField === 'updated') cmp = new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  const SortHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
+    <th
+      className="px-3 py-2.5 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground select-none whitespace-nowrap"
+      onClick={() => toggleSort(field)}
+    >
+      <span className="flex items-center gap-1">
+        {children}
+        <ArrowUpDown size={9} className={sortField === field ? 'text-primary' : 'opacity-30'} />
+      </span>
+    </th>
+  );
+
+  return (
+    <div className="flex-1 overflow-auto p-6">
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr className="border-b border-border">
+            <SortHeader field="priority">Prior.</SortHeader>
+            <SortHeader field="lead">Cliente</SortHeader>
+            <th className="px-3 py-2.5 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Nº Processo</th>
+            <SortHeader field="area">Área</SortHeader>
+            <th className="px-3 py-2.5 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Vara</th>
+            <SortHeader field="stage">Etapa</SortHeader>
+            <SortHeader field="days">Dias</SortHeader>
+            <th className="px-3 py-2.5 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Tarefas</th>
+            <th className="px-3 py-2.5 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-wider">DJEN</th>
+            <SortHeader field="updated">Atualizado</SortHeader>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map(c => {
+            const stageInfo = findTrackingStage(c.tracking_stage);
+            const pCfg = PRIORITY_CONFIG[c.priority] ?? PRIORITY_CONFIG.NORMAL;
+            const days = daysInStage(c.stage_changed_at || c.updated_at);
+            const djenCount = c._count?.djen_publications ?? 0;
+            return (
+              <tr
+                key={c.id}
+                onClick={() => onSelect(c)}
+                className="border-b border-border/50 hover:bg-accent/30 cursor-pointer transition-colors group"
+              >
+                <td className="px-3 py-2.5">
+                  <span className={`inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-bold border ${pCfg.badgeClass}`}>
+                    {c.priority}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5">
+                  <div className="font-semibold text-[13px] text-foreground truncate max-w-[150px]">
+                    {c.lead?.name || '—'}
+                  </div>
+                  {c.opposing_party && (
+                    <div className="text-[10px] text-muted-foreground truncate max-w-[150px]">vs. {c.opposing_party}</div>
+                  )}
+                </td>
+                <td className="px-3 py-2.5">
+                  <span className="font-mono text-[11px] text-muted-foreground">{c.case_number || '—'}</span>
+                </td>
+                <td className="px-3 py-2.5">
+                  {c.legal_area ? (
+                    <span className="text-[11px] text-violet-400">{c.legal_area}</span>
+                  ) : '—'}
+                </td>
+                <td className="px-3 py-2.5">
+                  <span className="text-[11px] text-muted-foreground truncate max-w-[100px] block">{c.court || '—'}</span>
+                </td>
+                <td className="px-3 py-2.5">
+                  <span className="text-[11px] font-semibold" style={{ color: stageInfo.color }}>
+                    {stageInfo.emoji} {stageInfo.label}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5">
+                  <span className={`text-[12px] font-semibold ${days > 30 ? 'text-amber-400' : 'text-muted-foreground'}`}>
+                    {days}d
+                  </span>
+                </td>
+                <td className="px-3 py-2.5">
+                  <span className="text-[12px] text-muted-foreground">{c._count?.tasks ?? 0}</span>
+                </td>
+                <td className="px-3 py-2.5">
+                  {djenCount > 0 ? (
+                    <span className="text-[12px] text-amber-400 font-semibold flex items-center gap-0.5">
+                      <Bell size={10} /> {djenCount}
+                    </span>
+                  ) : (
+                    <span className="text-[12px] text-muted-foreground">—</span>
+                  )}
+                </td>
+                <td className="px-3 py-2.5">
+                  <span className="text-[11px] text-muted-foreground">{timeAgo(c.updated_at)}</span>
+                </td>
+              </tr>
+            );
+          })}
+          {sorted.length === 0 && (
+            <tr>
+              <td colSpan={10} className="text-center py-12 text-muted-foreground text-sm">
+                Nenhum processo encontrado
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────────
 
 export default function ProcessosPage() {
@@ -1035,7 +1293,9 @@ export default function ProcessosPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [areaFilter, setAreaFilter] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
   const [view, setView] = useState<'active' | 'archived'>('active');
+  const [displayView, setDisplayView] = useState<'kanban' | 'tabela'>('kanban');
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [selectedCase, setSelectedCase] = useState<LegalCase | null>(null);
@@ -1067,8 +1327,7 @@ export default function ProcessosPage() {
     if (!isPanning.current || !boardRef.current) return;
     e.preventDefault();
     const x = e.pageX - boardRef.current.offsetLeft;
-    const walk = (x - panStartX.current) * 1.5;
-    boardRef.current.scrollLeft = panScrollLeft.current - walk;
+    boardRef.current.scrollLeft = panScrollLeft.current - (x - panStartX.current) * 1.5;
   };
 
   const handleBoardMouseUp = () => {
@@ -1135,35 +1394,76 @@ export default function ProcessosPage() {
       const name = (c.lead?.name || '').toLowerCase();
       const phone = (c.lead?.phone || '').toLowerCase();
       const caseNum = (c.case_number || '').toLowerCase();
-      if (!name.includes(q) && !phone.includes(q) && !caseNum.includes(q)) return false;
+      const opp = (c.opposing_party || '').toLowerCase();
+      if (!name.includes(q) && !phone.includes(q) && !caseNum.includes(q) && !opp.includes(q)) return false;
     }
     if (areaFilter && c.legal_area !== areaFilter) return false;
+    if (priorityFilter && c.priority !== priorityFilter) return false;
     return true;
   });
 
   const getStageCase = (stageId: string) =>
     filteredCases
       .filter(c => (c.tracking_stage || 'DISTRIBUIDO') === stageId)
-      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+      .sort((a, b) => {
+        // Sort: URGENTE first, then by days in stage desc
+        const PORD = { URGENTE: 0, NORMAL: 1, BAIXA: 2 };
+        const pa = PORD[a.priority as keyof typeof PORD] ?? 1;
+        const pb = PORD[b.priority as keyof typeof PORD] ?? 1;
+        if (pa !== pb) return pa - pb;
+        return daysInStage(b.stage_changed_at) - daysInStage(a.stage_changed_at);
+      });
+
+  const urgentCount = cases.filter(c => c.priority === 'URGENTE').length;
 
   return (
     <div className="flex h-screen bg-background font-sans antialiased text-foreground overflow-hidden">
       <main className="flex-1 flex flex-col overflow-hidden">
 
         {/* Header */}
-        <header className="px-6 py-5 border-b border-border shrink-0 flex items-center gap-4">
-          <div className="flex-1">
+        <header className="px-6 py-4 border-b border-border shrink-0 flex items-center gap-3 flex-wrap">
+          <div className="flex-1 min-w-0">
             <h1 className="text-xl font-bold text-foreground tracking-tight flex items-center gap-2">
               <BookOpen size={20} className="text-primary" />
               {view === 'archived' ? 'Processos Arquivados' : 'Processos Judiciais'}
+              {urgentCount > 0 && view === 'active' && (
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-500/12 text-red-400 border border-red-500/20">
+                  {urgentCount} urgente{urgentCount !== 1 ? 's' : ''}
+                </span>
+              )}
             </h1>
             <p className="text-[12px] text-muted-foreground mt-0.5">
-              {filteredCases.length} processo{filteredCases.length !== 1 ? 's' : ''} {searchQuery || areaFilter ? 'filtrados' : 'em acompanhamento'}
+              {filteredCases.length} processo{filteredCases.length !== 1 ? 's' : ''}{' '}
+              {searchQuery || areaFilter || priorityFilter ? 'filtrados' : 'em acompanhamento'}
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* View toggle */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* View toggle (kanban/tabela) — só para processos ativos */}
+            {view === 'active' && (
+              <div className="flex rounded-lg border border-border overflow-hidden">
+                <button
+                  onClick={() => setDisplayView('kanban')}
+                  className={`px-2.5 py-1.5 text-[11px] font-semibold flex items-center gap-1 transition-colors ${
+                    displayView === 'kanban' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'
+                  }`}
+                  title="Kanban"
+                >
+                  <LayoutGrid size={13} />
+                </button>
+                <button
+                  onClick={() => setDisplayView('tabela')}
+                  className={`px-2.5 py-1.5 text-[11px] font-semibold flex items-center gap-1 transition-colors border-l border-border ${
+                    displayView === 'tabela' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'
+                  }`}
+                  title="Tabela"
+                >
+                  <LayoutList size={13} />
+                </button>
+              </div>
+            )}
+
+            {/* View toggle (active/archived) */}
             {view === 'active' ? (
               <button
                 onClick={() => setView('archived')}
@@ -1181,16 +1481,33 @@ export default function ProcessosPage() {
             )}
 
             {/* DJEN toggle */}
-            <button
-              onClick={() => setShowDjen(!showDjen)}
-              className={`text-[11px] font-semibold flex items-center gap-1.5 px-3 py-1.5 border rounded-lg transition-colors ${
-                showDjen
-                  ? 'text-amber-500 border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10'
-                  : 'text-muted-foreground border-border hover:bg-accent'
-              }`}
-            >
-              <Bell size={13} /> DJEN {djenPubs.length > 0 && `(${djenPubs.length})`}
-            </button>
+            {view === 'active' && displayView === 'kanban' && (
+              <button
+                onClick={() => setShowDjen(!showDjen)}
+                className={`text-[11px] font-semibold flex items-center gap-1.5 px-3 py-1.5 border rounded-lg transition-colors ${
+                  showDjen
+                    ? 'text-amber-500 border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10'
+                    : 'text-muted-foreground border-border hover:bg-accent'
+                }`}
+              >
+                <Bell size={13} /> DJEN {djenPubs.length > 0 && `(${djenPubs.length})`}
+              </button>
+            )}
+
+            {/* Priority filter */}
+            <div className="relative">
+              <select
+                value={priorityFilter}
+                onChange={e => setPriorityFilter(e.target.value)}
+                className="appearance-none pl-3 pr-7 py-1.5 text-[12px] bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40 cursor-pointer"
+              >
+                <option value="">Prioridade</option>
+                <option value="URGENTE">🔴 Urgente</option>
+                <option value="NORMAL">🟡 Normal</option>
+                <option value="BAIXA">⬜ Baixa</option>
+              </select>
+              <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            </div>
 
             {/* Area filter */}
             {allAreas.length > 0 && (
@@ -1275,8 +1592,11 @@ export default function ProcessosPage() {
               </div>
             )}
           </div>
+        ) : displayView === 'tabela' ? (
+          /* ─── Tabela View ─── */
+          <TabelaView cases={filteredCases} onSelect={setSelectedCase} />
         ) : (
-          /* ─── Active: Kanban + DJEN Panel ─── */
+          /* ─── Kanban + DJEN Panel ─── */
           <div className="flex-1 flex overflow-hidden">
             {/* Kanban Board */}
             <div className="flex-1 flex flex-col overflow-hidden">
@@ -1365,7 +1685,6 @@ export default function ProcessosPage() {
             {/* DJEN Side Panel */}
             {showDjen && (
               <div className="w-[300px] shrink-0 border-l border-border flex flex-col bg-card/50 overflow-hidden">
-                {/* DJEN Header */}
                 <div className="px-4 py-3 border-b border-border flex items-center justify-between shrink-0">
                   <div>
                     <h3 className="text-[12px] font-bold text-foreground flex items-center gap-1.5">
@@ -1384,7 +1703,6 @@ export default function ProcessosPage() {
                   </button>
                 </div>
 
-                {/* DJEN List */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
                   {loadingDjen ? (
                     <div className="text-center py-8 text-muted-foreground text-[11px] animate-pulse">Carregando…</div>
@@ -1399,9 +1717,7 @@ export default function ProcessosPage() {
                         <div
                           key={pub.id}
                           className={`rounded-xl border overflow-hidden transition-all ${
-                            pub.legal_case_id
-                              ? 'border-border bg-card'
-                              : 'border-amber-500/30 bg-amber-500/5'
+                            pub.legal_case_id ? 'border-border bg-card' : 'border-amber-500/30 bg-amber-500/5'
                           }`}
                         >
                           <div
@@ -1415,9 +1731,7 @@ export default function ProcessosPage() {
                               />
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-                                  <span className="text-[9px] text-muted-foreground">
-                                    {formatDate(pub.data_disponibilizacao)}
-                                  </span>
+                                  <span className="text-[9px] text-muted-foreground">{formatDate(pub.data_disponibilizacao)}</span>
                                   {pub.tipo_comunicacao && (
                                     <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-blue-500/10 text-blue-400">
                                       {pub.tipo_comunicacao}
@@ -1429,12 +1743,8 @@ export default function ProcessosPage() {
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-[11px] text-foreground font-mono truncate">
-                                  {pub.numero_processo}
-                                </p>
-                                {pub.assunto && (
-                                  <p className="text-[10px] text-muted-foreground truncate">{pub.assunto}</p>
-                                )}
+                                <p className="text-[11px] text-foreground font-mono truncate">{pub.numero_processo}</p>
+                                {pub.assunto && <p className="text-[10px] text-muted-foreground truncate">{pub.assunto}</p>}
                                 {pub.legal_case?.lead?.name && (
                                   <p className="text-[10px] text-primary truncate">{pub.legal_case.lead.name}</p>
                                 )}
