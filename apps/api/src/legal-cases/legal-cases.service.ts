@@ -392,7 +392,7 @@ export class LegalCasesService {
     notes?: string;
     filed_at?: string;
   }) {
-    const VALID_TRACKING = TRACKING_STAGES.map(s => s.id);
+    const VALID_TRACKING = TRACKING_STAGES.map(s => s.id) as string[];
     const trackingStage = (
       data.tracking_stage && VALID_TRACKING.includes(data.tracking_stage)
         ? data.tracking_stage
