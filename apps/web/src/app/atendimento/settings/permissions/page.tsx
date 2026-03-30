@@ -125,14 +125,18 @@ function PermIcon({ p }: { p: Permission }) {
 export default function PermissionsSettingsPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'matrix' | 'users'>('matrix');
 
   useEffect(() => {
     api.get('/users')
-      .then(r => setUsers(r.data || []))
-      .catch(() => {})
+      .then(r => {
+        const data = Array.isArray(r.data) ? r.data : [];
+        setUsers(data);
+      })
+      .catch(() => setLoadError(true))
       .finally(() => setLoadingUsers(false));
   }, []);
 
@@ -146,10 +150,20 @@ export default function PermissionsSettingsPage() {
     setUpdatingId(null);
   };
 
+  // Normaliza o role para comparação (case-insensitive)
+  const normalizeRole = (r: string | null | undefined): Role | null => {
+    if (!r) return null;
+    const upper = r.toUpperCase() as Role;
+    return ROLES.includes(upper) ? upper : null;
+  };
+
   const usersByRole = ROLES.map(role => ({
     role,
-    users: users.filter(u => u.role === role),
+    users: users.filter(u => normalizeRole(u.role) === role),
   }));
+
+  // Usuários com role desconhecida/nula ficam visíveis no grupo "Sem perfil"
+  const orphanUsers = users.filter(u => normalizeRole(u.role) === null);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-background">
@@ -239,8 +253,14 @@ export default function PermissionsSettingsPage() {
               <div className="flex items-center justify-center py-16">
                 <Loader2 size={24} className="animate-spin text-muted-foreground" />
               </div>
+            ) : loadError ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <Shield size={32} className="text-destructive/50" />
+                <p className="text-[13px] text-muted-foreground">Erro ao carregar usuários. Verifique sua conexão e recarregue.</p>
+              </div>
             ) : (
-              usersByRole.map(({ role, users: roleUsers }) => (
+              <>
+              {usersByRole.map(({ role, users: roleUsers }) => (
                 <div key={role} className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
                   <div className={`px-5 py-3.5 border-b border-border flex items-center gap-3`}>
                     <span className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${ROLE_COLORS[role]}`}>
@@ -291,12 +311,12 @@ export default function PermissionsSettingsPage() {
                                     key={r}
                                     onClick={() => changeRole(user.id, r)}
                                     className={`w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-semibold transition-colors hover:bg-accent ${
-                                      user.role === r ? 'text-primary bg-primary/5' : 'text-foreground'
+                                      normalizeRole(user.role) === r ? 'text-primary bg-primary/5' : 'text-foreground'
                                     }`}
                                   >
-                                    <span className={`w-2 h-2 rounded-full ${user.role === r ? 'bg-primary' : 'bg-muted'}`} />
+                                    <span className={`w-2 h-2 rounded-full ${normalizeRole(user.role) === r ? 'bg-primary' : 'bg-muted'}`} />
                                     {ROLE_LABELS[r]}
-                                    {user.role === r && <Check size={12} className="ml-auto text-primary" />}
+                                    {normalizeRole(user.role) === r && <Check size={12} className="ml-auto text-primary" />}
                                   </button>
                                 ))}
                               </div>
@@ -307,7 +327,69 @@ export default function PermissionsSettingsPage() {
                     </div>
                   )}
                 </div>
-              ))
+              ))}
+
+              {/* Grupo de usuários com role inválida/nula */}
+              {orphanUsers.length > 0 && (
+                <div className="bg-card rounded-2xl border border-destructive/30 shadow-sm overflow-hidden">
+                  <div className="px-5 py-3.5 border-b border-border flex items-center gap-3">
+                    <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold border bg-destructive/10 text-destructive border-destructive/20">
+                      Sem perfil definido
+                    </span>
+                    <span className="text-[12px] text-muted-foreground">
+                      {orphanUsers.length} {orphanUsers.length === 1 ? 'usuário' : 'usuários'} com role inválida ou nula
+                    </span>
+                  </div>
+                  <div className="divide-y divide-border/50">
+                    {orphanUsers.map(user => (
+                      <div key={user.id} className="px-5 py-3 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0 text-[13px] font-bold text-muted-foreground">
+                            {(user.name || user.email || '?')[0].toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-[13px] font-semibold text-foreground truncate">{user.name || '(sem nome)'}</div>
+                            <div className="text-[11px] text-muted-foreground truncate">{user.email}</div>
+                            {user.role && (
+                              <div className="text-[10px] text-destructive/70 font-mono mt-0.5">role no banco: "{user.role}"</div>
+                            )}
+                          </div>
+                        </div>
+                        {/* Permite corrigir o role direto daqui */}
+                        <div className="relative shrink-0">
+                          <button
+                            onClick={() => setOpenDropdown(openDropdown === user.id ? null : user.id)}
+                            disabled={updatingId === user.id}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-destructive/40 bg-background hover:bg-accent text-[12px] font-semibold text-destructive transition-colors disabled:opacity-50"
+                          >
+                            {updatingId === user.id
+                              ? <Loader2 size={12} className="animate-spin" />
+                              : <Shield size={12} />
+                            }
+                            Atribuir role
+                            <ChevronDown size={12} />
+                          </button>
+                          {openDropdown === user.id && (
+                            <div className="absolute right-0 top-full mt-1 w-44 bg-card border border-border rounded-xl shadow-xl z-50 py-1 overflow-hidden">
+                              {ROLES.map(r => (
+                                <button
+                                  key={r}
+                                  onClick={() => changeRole(user.id, r)}
+                                  className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-semibold transition-colors hover:bg-accent text-foreground"
+                                >
+                                  <span className="w-2 h-2 rounded-full bg-muted" />
+                                  {ROLE_LABELS[r]}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              </>
             )}
           </div>
         )}
