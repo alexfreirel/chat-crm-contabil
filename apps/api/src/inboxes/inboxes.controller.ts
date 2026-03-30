@@ -15,6 +15,7 @@ export class InboxesController {
   }
 
   @Get('operators')
+  @Roles('ADMIN')
   async getAllOperators() {
     return this.inboxesService.findAllOperators();
   }

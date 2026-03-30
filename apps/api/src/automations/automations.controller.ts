@@ -7,6 +7,7 @@ export class AutomationsController {
   constructor(private readonly automationsService: AutomationsService) {}
 
   @Get()
+  @Roles('ADMIN')
   findAll(@Request() req: any) {
     return this.automationsService.findAll(req.user.tenantId);
   }

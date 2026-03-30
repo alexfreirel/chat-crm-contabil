@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Re
 import type { Response } from 'express';
 import { CalendarService } from './calendar.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import {
   CreateEventDto,
   UpdateEventDto,
@@ -169,6 +170,7 @@ export class CalendarController {
   }
 
   @Post('appointment-types')
+  @Roles('ADMIN')
   createAppointmentType(@Body() data: CreateAppointmentTypeDto, @Request() req: any) {
     return this.calendarService.createAppointmentType({
       ...data,
@@ -177,11 +179,13 @@ export class CalendarController {
   }
 
   @Patch('appointment-types/:id')
+  @Roles('ADMIN')
   updateAppointmentType(@Param('id') id: string, @Body() data: UpdateAppointmentTypeDto) {
     return this.calendarService.updateAppointmentType(id, data);
   }
 
   @Delete('appointment-types/:id')
+  @Roles('ADMIN')
   deleteAppointmentType(@Param('id') id: string) {
     return this.calendarService.deleteAppointmentType(id);
   }
@@ -194,6 +198,7 @@ export class CalendarController {
   }
 
   @Post('holidays')
+  @Roles('ADMIN')
   createHoliday(@Body() data: CreateHolidayDto, @Request() req: any) {
     return this.calendarService.createHoliday({
       ...data,
@@ -202,11 +207,13 @@ export class CalendarController {
   }
 
   @Patch('holidays/:id')
+  @Roles('ADMIN')
   updateHoliday(@Param('id') id: string, @Body() data: UpdateHolidayDto) {
     return this.calendarService.updateHoliday(id, data);
   }
 
   @Delete('holidays/:id')
+  @Roles('ADMIN')
   deleteHoliday(@Param('id') id: string) {
     return this.calendarService.deleteHoliday(id);
   }
@@ -256,8 +263,8 @@ export class CalendarController {
   // ─── Migration ────────────────────────────────────────
 
   @Post('migrate-tasks')
-  async migrateTasks(@Request() req: any) {
-    if (req.user.role !== 'ADMIN') throw new ForbiddenException('Apenas ADMIN pode migrar');
+  @Roles('ADMIN')
+  async migrateTasks() {
     return this.calendarService.migrateOrphanTasks();
   }
 }

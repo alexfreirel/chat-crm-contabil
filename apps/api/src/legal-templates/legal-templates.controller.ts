@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { LegalTemplatesService } from './legal-templates.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @UseGuards(JwtAuthGuard)
 @Controller('legal-templates')
@@ -19,6 +20,7 @@ export class LegalTemplatesController {
   constructor(private readonly service: LegalTemplatesService) {}
 
   @Get()
+  @Roles('ADMIN', 'ADVOGADO', 'ESTAGIARIO')
   findAll(
     @Query('legal_area') legalArea?: string,
     @Query('type') type?: string,
@@ -33,6 +35,7 @@ export class LegalTemplatesController {
   }
 
   @Post()
+  @Roles('ADMIN', 'ADVOGADO')
   create(
     @Body() body: {
       name: string;
@@ -49,6 +52,7 @@ export class LegalTemplatesController {
   }
 
   @Get(':id')
+  @Roles('ADMIN', 'ADVOGADO', 'ESTAGIARIO')
   findById(
     @Param('id') id: string,
     @Request() req: any,
@@ -57,6 +61,7 @@ export class LegalTemplatesController {
   }
 
   @Patch(':id')
+  @Roles('ADMIN', 'ADVOGADO')
   update(
     @Param('id') id: string,
     @Body() body: {
@@ -73,6 +78,7 @@ export class LegalTemplatesController {
   }
 
   @Delete(':id')
+  @Roles('ADMIN')
   remove(
     @Param('id') id: string,
     @Query('force') force?: string,
