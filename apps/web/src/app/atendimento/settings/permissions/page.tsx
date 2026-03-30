@@ -128,6 +128,7 @@ export default function PermissionsSettingsPage() {
   const [loadError, setLoadError] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [dropdownUpward, setDropdownUpward] = useState(false);
   const [activeTab, setActiveTab] = useState<'matrix' | 'users'>('matrix');
 
   useEffect(() => {
@@ -292,7 +293,11 @@ export default function PermissionsSettingsPage() {
                           {/* Role selector */}
                           <div className="relative shrink-0">
                             <button
-                              onClick={() => setOpenDropdown(openDropdown === user.id ? null : user.id)}
+                              onClick={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setDropdownUpward(rect.bottom > window.innerHeight * 0.6);
+                                setOpenDropdown(openDropdown === user.id ? null : user.id);
+                              }}
                               disabled={updatingId === user.id}
                               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-accent text-[12px] font-semibold text-foreground transition-colors disabled:opacity-50"
                             >
@@ -305,7 +310,7 @@ export default function PermissionsSettingsPage() {
                             </button>
 
                             {openDropdown === user.id && (
-                              <div className="absolute right-0 top-full mt-1 w-44 bg-card border border-border rounded-xl shadow-xl z-50 py-1 overflow-hidden">
+                              <div className={`absolute right-0 w-44 bg-card border border-border rounded-xl shadow-xl z-50 py-1 overflow-hidden ${dropdownUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                                 {ROLES.map(r => (
                                   <button
                                     key={r}
@@ -358,7 +363,11 @@ export default function PermissionsSettingsPage() {
                         {/* Permite corrigir o role direto daqui */}
                         <div className="relative shrink-0">
                           <button
-                            onClick={() => setOpenDropdown(openDropdown === user.id ? null : user.id)}
+                            onClick={(e) => {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setDropdownUpward(rect.bottom > window.innerHeight * 0.6);
+                              setOpenDropdown(openDropdown === user.id ? null : user.id);
+                            }}
                             disabled={updatingId === user.id}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-destructive/40 bg-background hover:bg-accent text-[12px] font-semibold text-destructive transition-colors disabled:opacity-50"
                           >
@@ -370,7 +379,7 @@ export default function PermissionsSettingsPage() {
                             <ChevronDown size={12} />
                           </button>
                           {openDropdown === user.id && (
-                            <div className="absolute right-0 top-full mt-1 w-44 bg-card border border-border rounded-xl shadow-xl z-50 py-1 overflow-hidden">
+                            <div className={`absolute right-0 w-44 bg-card border border-border rounded-xl shadow-xl z-50 py-1 overflow-hidden ${dropdownUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                               {ROLES.map(r => (
                                 <button
                                   key={r}
