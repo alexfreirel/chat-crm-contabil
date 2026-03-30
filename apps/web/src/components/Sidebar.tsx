@@ -189,7 +189,15 @@ export function Sidebar() {
       setThemeMenuPos(null);
     } else {
       const rect = e.currentTarget.getBoundingClientRect();
-      setThemeMenuPos({ top: rect.top, left: rect.right + 8 });
+      // Altura estimada do popup: header + 5 items + padding ≈ 248px
+      const MENU_HEIGHT = 248;
+      const MENU_MARGIN = 8;
+      const rawTop = rect.top;
+      // Garante que o popup não ultrapasse a borda inferior da viewport
+      const top = rawTop + MENU_HEIGHT + MENU_MARGIN > window.innerHeight
+        ? window.innerHeight - MENU_HEIGHT - MENU_MARGIN
+        : rawTop;
+      setThemeMenuPos({ top, left: rect.right + 8 });
       setShowThemeMenu(true);
     }
     hideTooltip();
@@ -303,7 +311,7 @@ export function Sidebar() {
       {mounted && showThemeMenu && themeMenuPos && createPortal(
         <div
           ref={themePopupRef}
-          style={{ position: 'fixed', top: themeMenuPos.top, left: themeMenuPos.left, zIndex: 9999 }}
+          style={{ position: 'fixed', top: themeMenuPos.top, left: themeMenuPos.left, zIndex: 9999, maxHeight: 'calc(100vh - 16px)', overflowY: 'auto' }}
           className="bg-card border border-border rounded-xl p-3 flex flex-col gap-2 w-48 shadow-2xl"
         >
           <p className="text-[11px] font-bold text-muted-foreground uppercase ml-1 mb-1 tracking-wider">Temas</p>
