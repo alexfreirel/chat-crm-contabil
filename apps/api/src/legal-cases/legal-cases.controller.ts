@@ -119,6 +119,11 @@ export class LegalCasesController {
       priority?: string;
       notes?: string;
       filed_at?: string;
+      // Integração lead
+      lead_id?: string;
+      lead_name?: string;
+      lead_phone?: string;
+      lead_email?: string;
     },
     @Request() req: any,
   ) {

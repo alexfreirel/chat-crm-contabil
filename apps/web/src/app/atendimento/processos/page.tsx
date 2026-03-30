@@ -1159,6 +1159,24 @@ function CadastrarProcessoModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  // ── Lead ──────────────────────────────────────────────────────
+  type LeadMode = 'existing' | 'new';
+  const [leadMode, setLeadMode] = useState<LeadMode>('existing');
+
+  // modo existente
+  const [leadSearch, setLeadSearch] = useState('');
+  const [leadResults, setLeadResults] = useState<{ id: string; name: string | null; phone: string; email: string | null }[]>([]);
+  const [leadSearching, setLeadSearching] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<{ id: string; name: string | null; phone: string } | null>(null);
+  const [showLeadDropdown, setShowLeadDropdown] = useState(false);
+  const leadSearchRef = useRef<HTMLDivElement>(null);
+
+  // modo novo
+  const [newLeadPhone, setNewLeadPhone] = useState('');
+  const [newLeadName, setNewLeadName] = useState('');
+  const [newLeadEmail, setNewLeadEmail] = useState('');
+
+  // ── Processo ──────────────────────────────────────────────────
   const [caseNumber, setCaseNumber] = useState('');
   const [legalArea, setLegalArea] = useState('');
   const [actionType, setActionType] = useState('');
@@ -1174,7 +1192,34 @@ function CadastrarProcessoModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Máscara CNJ: 0000000-00.0000.0.00.0000
+  // Busca de leads com debounce
+  useEffect(() => {
+    if (leadMode !== 'existing') return;
+    if (!leadSearch.trim()) { setLeadResults([]); setShowLeadDropdown(false); return; }
+    const t = setTimeout(async () => {
+      setLeadSearching(true);
+      try {
+        const res = await api.get('/leads', { params: { search: leadSearch.trim(), limit: 8 } });
+        const items = res.data?.data || res.data || [];
+        setLeadResults(items);
+        setShowLeadDropdown(true);
+      } catch { setLeadResults([]); } finally { setLeadSearching(false); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [leadSearch, leadMode]);
+
+  // Fechar dropdown ao clicar fora
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (leadSearchRef.current && !leadSearchRef.current.contains(e.target as Node)) {
+        setShowLeadDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Máscara CNJ
   const handleCaseNumberChange = (val: string) => {
     const digits = val.replace(/\D/g, '').slice(0, 20);
     let masked = digits;
@@ -1188,6 +1233,9 @@ function CadastrarProcessoModal({
 
   const handleSubmit = async () => {
     if (!caseNumber.trim()) { setError('Informe o número do processo.'); return; }
+    if (leadMode === 'existing' && !selectedLead) { setError('Selecione o cliente ou escolha "Novo cliente".'); return; }
+    if (leadMode === 'new' && !newLeadPhone.replace(/\D/g,'')) { setError('Informe o telefone do novo cliente.'); return; }
+
     setSaving(true);
     setError('');
     try {
@@ -1203,6 +1251,11 @@ function CadastrarProcessoModal({
         priority,
         notes: notes || undefined,
         filed_at: filedAt || undefined,
+        // Lead integration
+        lead_id: leadMode === 'existing' && selectedLead ? selectedLead.id : undefined,
+        lead_phone: leadMode === 'new' ? newLeadPhone : undefined,
+        lead_name: leadMode === 'new' ? newLeadName || undefined : undefined,
+        lead_email: leadMode === 'new' ? newLeadEmail || undefined : undefined,
       });
       onSuccess();
       onClose();
@@ -1213,10 +1266,13 @@ function CadastrarProcessoModal({
     }
   };
 
+  const inputCls = 'mt-1 w-full px-3 py-2.5 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40';
+  const labelCls = 'text-[11px] font-bold text-muted-foreground uppercase tracking-wider';
+
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative w-full max-w-[640px] mx-4 bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-150">
+      <div className="relative w-full max-w-[660px] mx-4 bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden animate-in zoom-in-95 duration-150">
 
         {/* Header */}
         <div className="flex items-center gap-3 px-6 py-4 border-b border-border shrink-0">
@@ -1233,155 +1289,269 @@ function CadastrarProcessoModal({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-4">
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-5">
 
-          {/* Nº Processo */}
-          <div>
-            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-              Nº Processo CNJ <span className="text-destructive">*</span>
-            </label>
-            <input
-              type="text"
-              value={caseNumber}
-              onChange={e => handleCaseNumberChange(e.target.value)}
-              className="mt-1 w-full px-3 py-2.5 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 font-mono"
-              placeholder="0000000-00.0000.0.00.0000"
-              autoFocus
-            />
+          {/* ── Seção: Cliente ─────────────────────────────────── */}
+          <div className="rounded-xl border border-border bg-accent/20 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                <User size={11} /> Cliente / Parte Autora
+              </p>
+              {/* Toggle */}
+              <div className="flex rounded-lg border border-border overflow-hidden text-[11px] font-semibold">
+                <button
+                  onClick={() => { setLeadMode('existing'); setSelectedLead(null); setLeadSearch(''); }}
+                  className={`px-3 py-1.5 transition-colors ${leadMode === 'existing' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}
+                >
+                  Cliente existente
+                </button>
+                <button
+                  onClick={() => { setLeadMode('new'); setSelectedLead(null); }}
+                  className={`px-3 py-1.5 transition-colors ${leadMode === 'new' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}
+                >
+                  Novo cliente
+                </button>
+              </div>
+            </div>
+
+            {leadMode === 'existing' ? (
+              <div ref={leadSearchRef} className="relative">
+                {selectedLead ? (
+                  /* Lead selecionado */
+                  <div className="flex items-center gap-3 px-3 py-2.5 bg-primary/5 border border-primary/30 rounded-lg">
+                    <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+                      <User size={13} className="text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-foreground truncate">{selectedLead.name || 'Sem nome'}</p>
+                      <p className="text-[11px] text-muted-foreground font-mono">{selectedLead.phone}</p>
+                    </div>
+                    <button
+                      onClick={() => { setSelectedLead(null); setLeadSearch(''); }}
+                      className="p-1 text-muted-foreground hover:text-foreground rounded"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                ) : (
+                  /* Campo de busca */
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                    <input
+                      type="text"
+                      value={leadSearch}
+                      onChange={e => setLeadSearch(e.target.value)}
+                      onFocus={() => leadSearch && setShowLeadDropdown(true)}
+                      className="w-full pl-9 pr-3 py-2.5 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      placeholder="Buscar por nome, telefone ou e-mail..."
+                      autoFocus
+                    />
+                    {leadSearching && (
+                      <Loader2 size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground animate-spin" />
+                    )}
+                  </div>
+                )}
+
+                {/* Dropdown de resultados */}
+                {showLeadDropdown && !selectedLead && leadResults.length > 0 && (
+                  <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-popover border border-border rounded-xl shadow-xl overflow-hidden">
+                    {leadResults.map(lead => (
+                      <button
+                        key={lead.id}
+                        onClick={() => { setSelectedLead(lead); setShowLeadDropdown(false); setLeadSearch(''); }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-accent text-left transition-colors"
+                      >
+                        <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center shrink-0">
+                          <User size={12} className="text-muted-foreground" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-semibold text-foreground truncate">{lead.name || '(sem nome)'}</p>
+                          <p className="text-[11px] text-muted-foreground font-mono">{lead.phone}{lead.email ? ` · ${lead.email}` : ''}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {showLeadDropdown && !selectedLead && leadResults.length === 0 && leadSearch.length > 1 && !leadSearching && (
+                  <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-popover border border-border rounded-xl shadow-xl p-3 text-center">
+                    <p className="text-[12px] text-muted-foreground">Nenhum cliente encontrado.</p>
+                    <button
+                      onClick={() => { setLeadMode('new'); setNewLeadName(leadSearch); setShowLeadDropdown(false); }}
+                      className="mt-1.5 text-[12px] font-semibold text-primary hover:underline"
+                    >
+                      + Cadastrar "{leadSearch}" como novo cliente
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Modo novo cliente */
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={labelCls}>Telefone <span className="text-destructive">*</span></label>
+                    <input
+                      type="tel"
+                      value={newLeadPhone}
+                      onChange={e => setNewLeadPhone(e.target.value)}
+                      className={inputCls}
+                      placeholder="(00) 00000-0000"
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Nome do Cliente</label>
+                    <input
+                      type="text"
+                      value={newLeadName}
+                      onChange={e => setNewLeadName(e.target.value)}
+                      className={inputCls}
+                      placeholder="Nome completo"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className={labelCls}>E-mail</label>
+                  <input
+                    type="email"
+                    value={newLeadEmail}
+                    onChange={e => setNewLeadEmail(e.target.value)}
+                    className={inputCls}
+                    placeholder="cliente@email.com"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Se já existir um cliente com esse telefone, ele será vinculado automaticamente.
+                </p>
+              </div>
+            )}
           </div>
 
-          {/* Etapa atual + Prioridade */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Etapa Atual</label>
-              <select
-                value={trackingStage}
-                onChange={e => setTrackingStage(e.target.value)}
-                className="mt-1 w-full px-3 py-2.5 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40"
-              >
-                {TRACKING_STAGES.map(s => (
-                  <option key={s.id} value={s.id}>{s.emoji} {s.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Prioridade</label>
-              <select
-                value={priority}
-                onChange={e => setPriority(e.target.value)}
-                className="mt-1 w-full px-3 py-2.5 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40"
-              >
-                <option value="URGENTE">🔴 Urgente</option>
-                <option value="NORMAL">🟡 Normal</option>
-                <option value="BAIXA">⬜ Baixa</option>
-              </select>
-            </div>
-          </div>
+          {/* ── Seção: Processo ────────────────────────────────── */}
+          <div className="space-y-4">
+            <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <BookOpen size={11} /> Dados do Processo
+            </p>
 
-          {/* Área + Tipo de Ação */}
-          <div className="grid grid-cols-2 gap-3">
+            {/* Nº Processo */}
             <div>
-              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Área Jurídica</label>
-              <select
-                value={legalArea}
-                onChange={e => setLegalArea(e.target.value)}
-                className="mt-1 w-full px-3 py-2.5 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40"
-              >
-                <option value="">Selecionar...</option>
-                {LEGAL_AREAS_LIST.map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Tipo de Ação</label>
-              <input
-                type="text"
-                value={actionType}
-                onChange={e => setActionType(e.target.value)}
-                className="mt-1 w-full px-3 py-2.5 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40"
-                placeholder="Reclamatória, Indenizatória..."
-              />
-            </div>
-          </div>
-
-          {/* Parte Contrária */}
-          <div>
-            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-              <Scale size={11} /> Parte Contrária
-            </label>
-            <input
-              type="text"
-              value={opposingParty}
-              onChange={e => setOpposingParty(e.target.value)}
-              className="mt-1 w-full px-3 py-2.5 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40"
-              placeholder="Nome do réu / reclamado"
-            />
-          </div>
-
-          {/* Vara + Juiz */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Vara / Tribunal</label>
-              <input
-                type="text"
-                value={court}
-                onChange={e => setCourt(e.target.value)}
-                className="mt-1 w-full px-3 py-2.5 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40"
-                placeholder="1ª Vara do Trabalho"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                <Gavel size={11} /> Juiz / Relator
+              <label className={labelCls}>
+                Nº Processo CNJ <span className="text-destructive">*</span>
               </label>
               <input
                 type="text"
-                value={judge}
-                onChange={e => setJudge(e.target.value)}
-                className="mt-1 w-full px-3 py-2.5 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40"
-                placeholder="Dr. João Silva"
+                value={caseNumber}
+                onChange={e => handleCaseNumberChange(e.target.value)}
+                className={`${inputCls} font-mono`}
+                placeholder="0000000-00.0000.0.00.0000"
               />
             </div>
-          </div>
 
-          {/* Valor da Causa + Data de Ajuizamento */}
-          <div className="grid grid-cols-2 gap-3">
+            {/* Etapa + Prioridade */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Etapa Atual</label>
+                <select value={trackingStage} onChange={e => setTrackingStage(e.target.value)} className={inputCls}>
+                  {TRACKING_STAGES.map(s => (
+                    <option key={s.id} value={s.id}>{s.emoji} {s.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Prioridade</label>
+                <select value={priority} onChange={e => setPriority(e.target.value)} className={inputCls}>
+                  <option value="URGENTE">🔴 Urgente</option>
+                  <option value="NORMAL">🟡 Normal</option>
+                  <option value="BAIXA">⬜ Baixa</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Área + Tipo de Ação */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Área Jurídica</label>
+                <select value={legalArea} onChange={e => setLegalArea(e.target.value)} className={inputCls}>
+                  <option value="">Selecionar...</option>
+                  {LEGAL_AREAS_LIST.map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Tipo de Ação</label>
+                <input
+                  type="text"
+                  value={actionType}
+                  onChange={e => setActionType(e.target.value)}
+                  className={inputCls}
+                  placeholder="Reclamatória, Indenizatória..."
+                />
+              </div>
+            </div>
+
+            {/* Parte Contrária */}
             <div>
-              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                <DollarSign size={11} /> Valor da Causa
+              <label className={`${labelCls} flex items-center gap-1`}>
+                <Scale size={11} /> Parte Contrária
               </label>
               <input
-                type="number"
-                value={claimValue}
-                onChange={e => setClaimValue(e.target.value)}
-                className="mt-1 w-full px-3 py-2.5 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40"
-                placeholder="0,00"
-                step="0.01"
-                min="0"
+                type="text"
+                value={opposingParty}
+                onChange={e => setOpposingParty(e.target.value)}
+                className={inputCls}
+                placeholder="Nome do réu / reclamado"
               />
             </div>
-            <div>
-              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                <Calendar size={11} /> Data de Ajuizamento
-              </label>
-              <input
-                type="date"
-                value={filedAt}
-                onChange={e => setFiledAt(e.target.value)}
-                className="mt-1 w-full px-3 py-2.5 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-            </div>
-          </div>
 
-          {/* Notas */}
-          <div>
-            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Notas Internas</label>
-            <textarea
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              rows={3}
-              className="mt-1 w-full px-3 py-2 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
-              placeholder="Observações sobre o processo..."
-            />
+            {/* Vara + Juiz */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Vara / Tribunal</label>
+                <input type="text" value={court} onChange={e => setCourt(e.target.value)} className={inputCls} placeholder="1ª Vara do Trabalho" />
+              </div>
+              <div>
+                <label className={`${labelCls} flex items-center gap-1`}>
+                  <Gavel size={11} /> Juiz / Relator
+                </label>
+                <input type="text" value={judge} onChange={e => setJudge(e.target.value)} className={inputCls} placeholder="Dr. João Silva" />
+              </div>
+            </div>
+
+            {/* Valor + Data */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={`${labelCls} flex items-center gap-1`}>
+                  <DollarSign size={11} /> Valor da Causa
+                </label>
+                <input
+                  type="number"
+                  value={claimValue}
+                  onChange={e => setClaimValue(e.target.value)}
+                  className={inputCls}
+                  placeholder="0,00"
+                  step="0.01"
+                  min="0"
+                />
+              </div>
+              <div>
+                <label className={`${labelCls} flex items-center gap-1`}>
+                  <Calendar size={11} /> Data de Ajuizamento
+                </label>
+                <input type="date" value={filedAt} onChange={e => setFiledAt(e.target.value)} className={inputCls} />
+              </div>
+            </div>
+
+            {/* Notas */}
+            <div>
+              <label className={labelCls}>Notas Internas</label>
+              <textarea
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                rows={3}
+                className="mt-1 w-full px-3 py-2 text-sm bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+                placeholder="Observações sobre o processo..."
+              />
+            </div>
           </div>
 
           {error && (
