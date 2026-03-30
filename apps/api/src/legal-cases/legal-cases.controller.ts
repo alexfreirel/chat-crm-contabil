@@ -134,6 +134,15 @@ export class LegalCasesController {
     });
   }
 
+  @Patch(':id/lead')
+  updateLead(
+    @Param('id') id: string,
+    @Body() body: { lead_id?: string; lead_phone?: string; lead_name?: string; lead_email?: string },
+    @Request() req: any,
+  ) {
+    return this.service.updateLead(id, { ...body, tenant_id: req.user?.tenant_id });
+  }
+
   @Patch(':id/stage')
   updateStage(@Param('id') id: string, @Body('stage') stage: string, @Request() req: any) {
     return this.service.updateStage(id, stage, req.user.id, req.user?.tenant_id);

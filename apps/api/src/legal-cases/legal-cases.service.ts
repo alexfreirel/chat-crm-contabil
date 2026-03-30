@@ -514,6 +514,81 @@ export class LegalCasesService {
     return legalCase;
   }
 
+  // ─── VINCULAR / CRIAR CLIENTE (LEAD) ──────────────────────────
+
+  async updateLead(id: string, data: {
+    lead_id?: string;
+    lead_phone?: string;
+    lead_name?: string;
+    lead_email?: string;
+    tenant_id?: string;
+  }) {
+    await this.verifyTenantOwnership(id, data.tenant_id);
+
+    const lc = await this.prisma.legalCase.findUnique({
+      where: { id },
+      select: { id: true, lead_id: true, lead: { select: { phone: true, name: true } } },
+    });
+    if (!lc) throw new NotFoundException('Processo não encontrado');
+
+    let finalLeadId: string;
+
+    if (data.lead_id) {
+      const existing = await this.prisma.lead.findUnique({ where: { id: data.lead_id }, select: { id: true } });
+      if (!existing) throw new BadRequestException('Lead informado não encontrado.');
+      finalLeadId = data.lead_id;
+
+    } else if (data.lead_phone) {
+      const normalizedPhone = data.lead_phone.replace(/\D/g, '');
+      if (!normalizedPhone) throw new BadRequestException('Telefone inválido.');
+
+      // Verifica se já existe lead com esse telefone
+      const byPhone = await this.prisma.lead.findFirst({
+        where: { phone: { contains: normalizedPhone } },
+        select: { id: true },
+      });
+
+      if (byPhone) {
+        finalLeadId = byPhone.id;
+      } else {
+        const newLead = await this.prisma.lead.create({
+          data: {
+            phone: normalizedPhone,
+            name: data.lead_name || null,
+            email: data.lead_email || null,
+            tenant_id: data.tenant_id,
+            origin: 'CADASTRO_PROCESSO',
+          },
+          select: { id: true },
+        });
+        finalLeadId = newLead.id;
+      }
+    } else {
+      throw new BadRequestException('Informe lead_id ou lead_phone.');
+    }
+
+    // Remove o lead placeholder antigo se era PROC_xxx e não tem outros processos
+    const oldIsPlaceholder = lc.lead?.phone?.startsWith('PROC_') || lc.lead?.name?.startsWith('[Processo]');
+    if (oldIsPlaceholder && lc.lead_id !== finalLeadId) {
+      const otherCases = await this.prisma.legalCase.count({ where: { lead_id: lc.lead_id, id: { not: id } } });
+      if (otherCases === 0) {
+        // Deleta o placeholder (não tem outros processos vinculados)
+        await this.prisma.lead.delete({ where: { id: lc.lead_id } }).catch(() => {});
+      }
+    }
+
+    const updated = await this.prisma.legalCase.update({
+      where: { id },
+      data: { lead_id: finalLeadId },
+      include: {
+        lead: { select: { id: true, name: true, phone: true, email: true, profile_picture_url: true } },
+        _count: { select: { tasks: true, events: true, djen_publications: true } },
+      },
+    });
+
+    return updated;
+  }
+
   // ─── PROTOCOLO → PROCESSOS ─────────────────────────────────────
 
   async sendToTracking(id: string, caseNumber: string, court?: string, tenantId?: string) {
