@@ -396,22 +396,31 @@ function CreateProcessModal({
             {/* Modo: busca de existente */}
             {clientMode === 'search' && (
               <div className="relative">
-                <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border transition-colors ${
-                  selectedLead ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-border bg-background'
-                }`}>
-                  {selectedLead ? (
-                    <>
-                      <UserCheck size={14} className="text-emerald-400 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[12px] font-semibold text-foreground truncate">{selectedLead.name}</p>
-                        <p className="text-[10px] text-muted-foreground font-mono">{selectedLead.phone}</p>
-                      </div>
-                      <button onClick={clearLead} className="p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors shrink-0">
-                        <X size={12} />
-                      </button>
-                    </>
-                  ) : (
-                    <>
+                {selectedLead ? (
+                  /* Cliente selecionado — card destacado */
+                  <div className="flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-emerald-500/50 bg-emerald-500/5">
+                    <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0 overflow-hidden">
+                      {selectedLead.profile_picture_url
+                        ? <img src={selectedLead.profile_picture_url} alt="" className="w-full h-full object-cover" />
+                        : <UserCheck size={18} className="text-emerald-400" />
+                      }
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[14px] font-bold text-foreground">{selectedLead.name || 'Sem nome'}</p>
+                      <p className="text-[11px] text-muted-foreground font-mono mt-0.5">{selectedLead.phone}</p>
+                    </div>
+                    <button
+                      onClick={clearLead}
+                      className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shrink-0"
+                      title="Trocar cliente"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  /* Campo de busca */
+                  <>
+                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-border bg-background">
                       {searchingLead
                         ? <Loader2 size={13} className="text-muted-foreground shrink-0 animate-spin" />
                         : <Search size={13} className="text-muted-foreground shrink-0" />
@@ -425,35 +434,35 @@ function CreateProcessModal({
                         placeholder="Digite o nome ou telefone do cliente…"
                         className="flex-1 bg-transparent text-[12px] text-foreground placeholder:text-muted-foreground outline-none"
                       />
-                    </>
-                  )}
-                </div>
-                {showLeadDropdown && leadResults.length > 0 && (
-                  <div className="absolute top-full mt-1 left-0 right-0 z-20 bg-card border border-border rounded-xl shadow-xl overflow-hidden">
-                    {leadResults.map(lead => (
-                      <button
-                        key={lead.id}
-                        onClick={() => selectLead(lead)}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-accent transition-colors text-left"
-                      >
-                        <div className="w-7 h-7 rounded-full bg-accent border border-border flex items-center justify-center shrink-0 overflow-hidden">
-                          {lead.profile_picture_url
-                            ? <img src={lead.profile_picture_url} alt="" className="w-full h-full object-cover" />
-                            : <User size={12} className="text-muted-foreground" />
-                          }
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[12px] font-semibold text-foreground truncate">{lead.name}</p>
-                          <p className="text-[10px] text-muted-foreground font-mono">{lead.phone}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {!selectedLead && !leadSearch && (
-                  <p className="text-[10px] text-muted-foreground mt-1.5">
-                    Busque pelo nome ou número de telefone do cliente cadastrado.
-                  </p>
+                    </div>
+                    {showLeadDropdown && leadResults.length > 0 && (
+                      <div className="absolute top-full mt-1 left-0 right-0 z-20 bg-card border border-border rounded-xl shadow-xl overflow-hidden">
+                        {leadResults.map(lead => (
+                          <button
+                            key={lead.id}
+                            onClick={() => selectLead(lead)}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-accent transition-colors text-left"
+                          >
+                            <div className="w-7 h-7 rounded-full bg-accent border border-border flex items-center justify-center shrink-0 overflow-hidden">
+                              {lead.profile_picture_url
+                                ? <img src={lead.profile_picture_url} alt="" className="w-full h-full object-cover" />
+                                : <User size={12} className="text-muted-foreground" />
+                              }
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[13px] font-semibold text-foreground">{lead.name}</p>
+                              <p className="text-[10px] text-muted-foreground font-mono">{lead.phone}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {!leadSearch && (
+                      <p className="text-[10px] text-muted-foreground mt-1.5">
+                        Busque pelo nome ou número de telefone do cliente cadastrado.
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -509,12 +518,17 @@ function CreateProcessModal({
               <div className="space-y-2">
                 {/* Urgência + Resumo */}
                 {urgConf && (
-                  <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border ${urgConf.bg} ${urgConf.border}`}>
-                    <urgConf.icon size={14} className={`${urgConf.text} shrink-0`} />
-                    <div className="flex-1 min-w-0">
+                  <div className={`px-3 py-2.5 rounded-xl border ${urgConf.bg} ${urgConf.border}`}>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <urgConf.icon size={13} className={`${urgConf.text} shrink-0`} />
                       <p className={`text-[11px] font-bold ${urgConf.text}`}>{urgConf.label} · {analysis.prazo_dias} dias úteis</p>
-                      <p className="text-[11px] text-foreground/80 mt-0.5 line-clamp-2">{analysis.resumo}</p>
                     </div>
+                    <p className="text-[11px] text-foreground/80 leading-relaxed">{analysis.resumo}</p>
+                    {analysis.tipo_acao && (
+                      <p className="text-[10px] text-muted-foreground mt-1.5 font-medium">
+                        Tipo de ação: <span className="text-foreground/70">{analysis.tipo_acao}</span>
+                      </p>
+                    )}
                   </div>
                 )}
                 {/* Tarefa sugerida */}
