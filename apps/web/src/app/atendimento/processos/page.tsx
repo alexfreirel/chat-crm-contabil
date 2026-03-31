@@ -50,6 +50,12 @@ interface LegalCase {
     id: string;
     name: string | null;
   } | null;
+  calendar_events?: {
+    id: string;
+    start_at: string;
+    title: string;
+    location: string | null;
+  }[];
   _count?: { tasks: number; events: number; djen_publications: number };
 }
 
@@ -284,6 +290,31 @@ function ProcessoCard({
           </span>
         )}
       </div>
+
+      {/* Próxima audiência */}
+      {legalCase.calendar_events?.[0] && (() => {
+        const ev = legalCase.calendar_events![0];
+        const d = new Date(ev.start_at);
+        const hoje = new Date();
+        const diffDias = Math.ceil((d.getTime() - hoje.getTime()) / 86400000);
+        const isProxima = diffDias <= 7;
+        const isHoje = diffDias <= 0 && diffDias > -1;
+        return (
+          <div className={`mt-1.5 flex items-center gap-1.5 px-2 py-1.5 rounded-lg border ${
+            isHoje
+              ? 'bg-red-500/12 border-red-500/30'
+              : isProxima
+              ? 'bg-amber-500/10 border-amber-500/25'
+              : 'bg-blue-500/8 border-blue-500/20'
+          }`}>
+            <Calendar size={9} className={isHoje ? 'text-red-400 shrink-0' : isProxima ? 'text-amber-400 shrink-0' : 'text-blue-400 shrink-0'} />
+            <span className={`text-[9px] font-semibold leading-tight ${isHoje ? 'text-red-400' : isProxima ? 'text-amber-400' : 'text-blue-400'}`}>
+              {isHoje ? '🔴 Audiência HOJE' : `Audiência: ${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}
+              {!isHoje && isProxima && ` (em ${diffDias}d)`}
+            </span>
+          </div>
+        );
+      })()}
 
       {/* Aviso: trabalhista em contestação — juntada = data da audiência */}
       {legalCase.legal_area?.toUpperCase().includes('TRABALHIST') && legalCase.tracking_stage === 'CONTESTACAO' && (

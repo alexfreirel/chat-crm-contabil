@@ -60,6 +60,7 @@ export class LegalCasesService {
     if (leadId) where.lead_id = leadId;
     if (caseNumber) where.case_number = { contains: caseNumber, mode: 'insensitive' };
 
+    const now = new Date();
     const includeOpts = {
       lead: {
         select: {
@@ -75,6 +76,22 @@ export class LegalCasesService {
         select: {
           id: true,
           name: true,
+        },
+      },
+      // Próxima audiência agendada (futura)
+      calendar_events: {
+        where: {
+          type: 'AUDIENCIA',
+          start_at: { gte: now },
+          status: { notIn: ['CANCELADO', 'CONCLUIDO'] },
+        },
+        orderBy: { start_at: 'asc' as const },
+        take: 1,
+        select: {
+          id: true,
+          start_at: true,
+          title: true,
+          location: true,
         },
       },
       _count: {
