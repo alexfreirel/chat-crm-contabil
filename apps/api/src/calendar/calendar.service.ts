@@ -38,13 +38,16 @@ export class CalendarService {
     if (query.leadId) where.lead_id = query.leadId;
     if (query.legalCaseId) where.legal_case_id = query.legalCaseId;
 
-    // Filtrar por userId: inclui eventos onde o usuário é responsável OU criador
+    // Filtrar por userId:
+    // - Se o evento TEM um responsável (assigned_user_id preenchido), apenas ele vê.
+    // - Se o evento NÃO TEM responsável, o criador (created_by_id) vê.
+    // Isso garante que ao trocar o advogado, o antigo para de ver o evento.
     if (query.userId) {
       if (!where.AND) where.AND = [];
       where.AND.push({
         OR: [
           { assigned_user_id: query.userId },
-          { created_by_id: query.userId },
+          { assigned_user_id: null, created_by_id: query.userId },
         ],
       });
     }
