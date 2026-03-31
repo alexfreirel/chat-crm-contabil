@@ -24,8 +24,8 @@ jobs:
             dockerfile: infra/Dockerfile.web
             suffix: web
             build-args: |
-              NEXT_PUBLIC_API_URL=https://lexcon.com.br/api
-              NEXT_PUBLIC_WS_URL=wss://lexcon.com.br
+              NEXT_PUBLIC_API_URL=https://lexconassessoriacontabil.com.br/api
+              NEXT_PUBLIC_WS_URL=wss://lexconassessoriacontabil.com.br
               NEXT_PUBLIC_GTM_ID=${{ vars.NEXT_PUBLIC_GTM_ID }}
 
     steps:
