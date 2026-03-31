@@ -187,7 +187,13 @@ export class CalendarReminderWorker extends WorkerHost {
     super();
   }
 
-  async process(job: Job<{ reminderId: string; eventId: string; channel: string }>) {
+  async process(job: Job<any>) {
+    // ── Notificação imediata de audiência agendada ────────────────────────────
+    if (job.name === 'notify-hearing-scheduled') {
+      return this.processHearingScheduled(job.data.eventId);
+    }
+
+    // ── Lembretes antes do evento (fluxo original) ────────────────────────────
     const { reminderId, eventId, channel } = job.data;
 
     if (channel !== 'WHATSAPP' && channel !== 'EMAIL') {
@@ -334,6 +340,167 @@ export class CalendarReminderWorker extends WorkerHost {
       } catch (e: any) {
         this.logger.warn(`[REMINDER] Falha ao salvar reminder_context: ${e.message}`);
       }
+    }
+  }
+
+  // ─── Notificação imediata de audiência agendada ───────────────────────────
+
+  private async processHearingScheduled(eventId: string) {
+    const event = await this.prisma.calendarEvent.findUnique({
+      where: { id: eventId },
+      include: {
+        assigned_user: { select: { id: true, name: true, phone: true } },
+        lead: { select: { id: true, name: true, phone: true } },
+        legal_case: {
+          select: {
+            id: true, case_number: true, legal_area: true, action_type: true,
+            opposing_party: true, court: true, judge: true, claim_value: true, notes: true,
+          },
+        },
+      },
+    });
+
+    if (!event) {
+      this.logger.warn(`[HEARING-NOTIFY] Evento ${eventId} não encontrado — cancelado`);
+      return;
+    }
+    if (['CANCELADO', 'CONCLUIDO'].includes(event.status)) {
+      this.logger.log(`[HEARING-NOTIFY] Evento ${eventId} já está ${event.status} — ignorado`);
+      return;
+    }
+    if (!event.lead?.phone) {
+      this.logger.log(`[HEARING-NOTIFY] Evento ${eventId} sem telefone do cliente — ignorado`);
+      return;
+    }
+
+    const leadId = event.lead.id;
+    const [memory, ficha] = await Promise.all([
+      this.prisma.aiMemory.findUnique({ where: { lead_id: leadId } }).catch(() => null),
+      event.legal_case?.legal_area?.toUpperCase().includes('TRABALHIST')
+        ? this.prisma.fichaTrabalhista.findUnique({ where: { lead_id: leadId } }).catch(() => null)
+        : null,
+    ]);
+
+    const context = buildContext(event, memory, event.legal_case, ficha);
+    const clientPhone = event.lead.phone.replace(/\D/g, '');
+    const firstName = (event.lead.name || 'Cliente').split(' ')[0];
+
+    let msg: string;
+    try {
+      msg = await this.generateHearingScheduledMessage(event, context, firstName);
+      this.logger.log(`[HEARING-NOTIFY] Mensagem IA gerada para ${clientPhone}`);
+    } catch (e: any) {
+      this.logger.warn(`[HEARING-NOTIFY] IA indisponível, usando template: ${e.message}`);
+      msg = this.templateHearingScheduled(event, firstName);
+    }
+
+    try {
+      await this.whatsapp.sendText(clientPhone, msg);
+      this.logger.log(`[HEARING-NOTIFY] WhatsApp enviado para ${clientPhone} sobre audiência ${eventId}`);
+    } catch (e: any) {
+      this.logger.warn(`[HEARING-NOTIFY] Erro ao enviar para ${clientPhone}: ${e.message}`);
+      return;
+    }
+
+    // Salva contexto na conversa para a IA saber do agendamento
+    try {
+      const lastConvo = await this.prisma.conversation.findFirst({
+        where: { lead_id: leadId, status: { not: 'ENCERRADO' } },
+        orderBy: { last_message_at: 'desc' },
+        select: { id: true },
+      });
+      if (lastConvo) {
+        await this.prisma.conversation.update({
+          where: { id: lastConvo.id },
+          data: {
+            reminder_context: {
+              type: 'AUDIENCIA_AGENDADA',
+              event_title: event.title,
+              event_date: formatDateTime(event.start_at),
+              event_date_iso: event.start_at.toISOString(),
+              location: event.location || null,
+              message_sent: msg.slice(0, 800),
+              sent_at: new Date().toISOString(),
+            },
+          },
+        });
+      }
+    } catch (e: any) {
+      this.logger.warn(`[HEARING-NOTIFY] Falha ao salvar contexto: ${e.message}`);
+    }
+  }
+
+  private templateHearingScheduled(event: any, firstName: string): string {
+    const dateStr = formatDateTime(event.start_at);
+    return (
+      `⚖️ *Audiência Agendada*\n\n` +
+      `Olá, ${firstName}!\n\n` +
+      `Gostaríamos de informar que sua audiência foi agendada:\n\n` +
+      `📅 *Data/Hora:* ${dateStr}\n` +
+      (event.location ? `📍 *Local:* ${event.location}\n` : '') +
+      `\nRecomendamos chegar com *30 minutos de antecedência*.\n` +
+      `Qualquer dúvida, estamos à disposição.\n\n` +
+      `_André Lustosa Advogados_`
+    );
+  }
+
+  private async generateHearingScheduledMessage(event: any, context: string, firstName: string): Promise<string> {
+    const aiConfig = await this.settings.getAiConfig();
+    const model = aiConfig.defaultModel || 'gpt-4o-mini';
+    const isAnthropic = model.startsWith('claude');
+    const dateStr = formatDateTime(event.start_at);
+
+    const systemPrompt = `Você é o assistente do escritório de advocacia André Lustosa Advogados.
+Sua tarefa é enviar uma mensagem via WhatsApp informando ao cliente que sua audiência foi agendada.
+
+REGRAS:
+- Escreva em português brasileiro natural e acolhedor
+- Seja direto e claro — o cliente precisa saber a data, horário e local
+- Use formatação WhatsApp (*negrito*) com moderação
+- Personalize com base no histórico/contexto do caso quando relevante
+- NÃO invente informações — use apenas o contexto fornecido
+- Se o caso for trabalhista, reforce brevemente a importância da audiência
+- Oriente a chegar com 30 minutos de antecedência
+- Deixe claro que pode tirar dúvidas respondendo esta mensagem
+- Limite: máximo 200 palavras
+- Finalize com "_André Lustosa Advogados_"`;
+
+    const userPrompt = `Crie uma mensagem informando ao cliente que a audiência foi agendada.
+
+DADOS DA AUDIÊNCIA:
+Data/Hora: ${dateStr}
+${event.location ? `Local: ${event.location}` : 'Local: a confirmar'}
+${event.title ? `Título: ${event.title}` : ''}
+
+CONTEXTO DO CASO:
+${context}
+
+Nome do cliente: "${firstName}"
+
+Gere APENAS a mensagem final para WhatsApp, sem explicações.`;
+
+    if (isAnthropic) {
+      const anthropicKey = (await this.settings.get('ANTHROPIC_API_KEY')) || process.env.ANTHROPIC_API_KEY;
+      if (!anthropicKey) throw new Error('ANTHROPIC_API_KEY não configurada');
+      const client = new Anthropic({ apiKey: anthropicKey });
+      const response = await client.messages.create({
+        model, max_tokens: 350, temperature: 0.7,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+      });
+      return ((response.content[0] as any)?.text || '').trim();
+    } else {
+      const openaiKey = (await this.settings.get('OPENAI_API_KEY')) || process.env.OPENAI_API_KEY;
+      if (!openaiKey) throw new Error('OPENAI_API_KEY não configurada');
+      const openai = new OpenAI({ apiKey: openaiKey });
+      const completion = await openai.chat.completions.create({
+        model, max_tokens: 350, temperature: 0.7,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      });
+      return (completion.choices[0]?.message?.content || '').trim();
     }
   }
 

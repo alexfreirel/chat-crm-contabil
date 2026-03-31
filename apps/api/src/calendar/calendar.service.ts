@@ -213,6 +213,27 @@ export class CalendarService {
     // Enqueue WhatsApp + Email reminders
     await this.enqueueReminders(event.id, event.start_at, event.reminders || []);
 
+    // Notificação imediata ao cliente (1 min de delay) quando audiência é agendada
+    if (data.type === 'AUDIENCIA' && event.lead?.phone) {
+      try {
+        await this.reminderQueue.add(
+          'notify-hearing-scheduled',
+          { eventId: event.id },
+          {
+            delay: 60_000, // 1 minuto — dá tempo ao operador de corrigir antes do envio
+            jobId: `hearing-notify-${event.id}`,
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 5000 },
+            removeOnComplete: true,
+            removeOnFail: 50,
+          },
+        );
+        this.logger.log(`[AUDIENCIA] Notificação agendada ao cliente em 1 min (evento ${event.id})`);
+      } catch (e: any) {
+        this.logger.error(`[AUDIENCIA] Erro ao enfileirar notificação: ${e.message}`);
+      }
+    }
+
     // Expand recurrence if rule set
     if (data.recurrence_rule) {
       await this.expandRecurrence(event);
