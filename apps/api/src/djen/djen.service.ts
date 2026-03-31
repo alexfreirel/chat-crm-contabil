@@ -409,6 +409,7 @@ export class DjenService {
     trackingStage?: string,
     leadName?: string,
     leadPhone?: string,
+    legalArea?: string,
   ) {
     const pub = await this.prisma.djenPublication.findUniqueOrThrow({ where: { id } });
 
@@ -448,18 +449,25 @@ export class DjenService {
       });
     }
 
-    // ─── Detecta área jurídica pelo conteúdo da publicação ───────────────────
-    const text = [pub.tipo_comunicacao, pub.assunto, pub.conteudo].join(' ').toLowerCase();
-    let legalArea = 'CIVIL';
-    if (/trabalh/.test(text)) legalArea = 'TRABALHISTA';
-    else if (/previd|inss/.test(text)) legalArea = 'PREVIDENCIARIO';
-    else if (/tribut|fiscal/.test(text)) legalArea = 'TRIBUTARIO';
-    else if (/famil|divórcio|divorcio/.test(text)) legalArea = 'FAMILIA';
-    else if (/crimin/.test(text)) legalArea = 'CRIMINAL';
+    // ─── Resolve área jurídica: usa valor do frontend (IA) se disponível ─────
+    const VALID_AREAS = ['CIVIL','TRABALHISTA','PREVIDENCIARIO','TRIBUTARIO','FAMILIA','CRIMINAL','CONSUMIDOR','EMPRESARIAL','ADMINISTRATIVO'];
+    let resolvedLegalArea: string;
+    if (legalArea && VALID_AREAS.includes(legalArea.toUpperCase())) {
+      resolvedLegalArea = legalArea.toUpperCase();
+    } else {
+      // Fallback: detecta pelo conteúdo da publicação
+      const text = [pub.tipo_comunicacao, pub.assunto, pub.conteudo].join(' ').toLowerCase();
+      resolvedLegalArea = 'CIVIL';
+      if (/trabalh/.test(text)) resolvedLegalArea = 'TRABALHISTA';
+      else if (/previd|inss/.test(text)) resolvedLegalArea = 'PREVIDENCIARIO';
+      else if (/tribut|fiscal/.test(text)) resolvedLegalArea = 'TRIBUTARIO';
+      else if (/famil|divórcio|divorcio/.test(text)) resolvedLegalArea = 'FAMILIA';
+      else if (/crimin/.test(text)) resolvedLegalArea = 'CRIMINAL';
+    }
 
     // ─── Valida e resolve o estágio de entrada no kanban ─────────────────────
     const VALID_TRACKING = [
-      'DISTRIBUIDO', 'CITACAO', 'CONTESTACAO', 'INSTRUCAO',
+      'DISTRIBUIDO', 'CITACAO', 'CONTESTACAO', 'REPLICA', 'INSTRUCAO',
       'JULGAMENTO', 'RECURSO', 'TRANSITADO', 'EXECUCAO', 'ENCERRADO',
     ];
     const finalTrackingStage = (trackingStage && VALID_TRACKING.includes(trackingStage))
@@ -476,7 +484,7 @@ export class DjenService {
         tracking_stage: finalTrackingStage,
         in_tracking: true,
         filed_at: pub.data_disponibilizacao,
-        legal_area: legalArea,
+        legal_area: resolvedLegalArea,
         stage_changed_at: new Date(),
       },
     });

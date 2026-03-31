@@ -8,7 +8,7 @@ import {
   ChevronRight, Loader2, Plus, Link2, CheckCircle2, Eye,
   Gavel, AlertTriangle, Calendar, Sparkles, X, Clock,
   ArrowRight, CheckSquare, AlertCircle, ChevronDown,
-  Search, User, UserCheck,
+  Search, User, UserCheck, Scale,
 } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -194,6 +194,24 @@ function TaskSuggestion({ analysis, pubId }: { analysis: AiAnalysis; pubId: stri
   );
 }
 
+// ─── Helper: normaliza área jurídica livre → enum ─────────────
+function normalizeArea(raw: string): string {
+  const s = raw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (/trabalhist/.test(s)) return 'TRABALHISTA';
+  if (/previd|inss/.test(s)) return 'PREVIDENCIARIO';
+  if (/tribut|fiscal/.test(s)) return 'TRIBUTARIO';
+  if (/famil|divorcio/.test(s)) return 'FAMILIA';
+  if (/crimin/.test(s)) return 'CRIMINAL';
+  if (/consumi/.test(s)) return 'CONSUMIDOR';
+  if (/empresar/.test(s)) return 'EMPRESARIAL';
+  if (/administrat/.test(s)) return 'ADMINISTRATIVO';
+  if (/civil|civel/.test(s)) return 'CIVIL';
+  // se já vier no formato enum, retorna como está (maiúsculo)
+  const upper = raw.trim().toUpperCase();
+  const known = ['CIVIL','TRABALHISTA','PREVIDENCIARIO','TRIBUTARIO','FAMILIA','CRIMINAL','CONSUMIDOR','EMPRESARIAL','ADMINISTRATIVO'];
+  return known.includes(upper) ? upper : '';
+}
+
 // ─── Modal: Criar Processo ────────────────────────────────────
 
 function CreateProcessModal({
@@ -235,6 +253,11 @@ function CreateProcessModal({
     preloadedAnalysis?.estagio_sugerido || 'DISTRIBUIDO'
   );
 
+  // Área jurídica extraída pela IA
+  const [legalArea, setLegalArea] = useState<string>(
+    preloadedAnalysis?.area_juridica ? normalizeArea(preloadedAnalysis.area_juridica) : ''
+  );
+
   // Submitting
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -256,6 +279,7 @@ function CreateProcessModal({
         const data: AiAnalysis = res.data;
         setAnalysis(data);
         if (data.estagio_sugerido) setSelectedStage(data.estagio_sugerido);
+        if (data.area_juridica) setLegalArea(normalizeArea(data.area_juridica));
       })
       .catch(() => { if (!cancelled) setAiError(true); })
       .finally(() => { if (!cancelled) setAnalyzingAi(false); });
@@ -318,6 +342,7 @@ function CreateProcessModal({
         leadName: clientMode === 'new' ? newName.trim() : undefined,
         leadPhone: clientMode === 'new' ? newPhone.trim() : undefined,
         trackingStage: selectedStage,
+        legalArea: legalArea.trim() || undefined,
       });
       onSuccess();
       router.push('/atendimento/processos');
@@ -623,6 +648,34 @@ function CreateProcessModal({
                 );
               })}
             </div>
+          </div>
+
+          {/* Área Jurídica */}
+          <div>
+            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <Scale size={11} /> Área Jurídica
+            </label>
+            {analysis?.area_juridica && (
+              <p className="text-[10px] text-violet-400 mb-2 flex items-center gap-1">
+                <Sparkles size={9} /> IA identificou: <strong>{analysis.area_juridica}</strong>
+              </p>
+            )}
+            <select
+              value={legalArea}
+              onChange={e => setLegalArea(e.target.value)}
+              className="w-full text-[12px] bg-accent/40 border border-border rounded-xl px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            >
+              <option value="">Selecione a área jurídica…</option>
+              <option value="CIVIL">Cível</option>
+              <option value="TRABALHISTA">Trabalhista</option>
+              <option value="PREVIDENCIARIO">Previdenciário</option>
+              <option value="TRIBUTARIO">Tributário</option>
+              <option value="CRIMINAL">Criminal</option>
+              <option value="FAMILIA">Família</option>
+              <option value="CONSUMIDOR">Consumidor</option>
+              <option value="EMPRESARIAL">Empresarial</option>
+              <option value="ADMINISTRATIVO">Administrativo</option>
+            </select>
           </div>
 
           {/* Error message */}
