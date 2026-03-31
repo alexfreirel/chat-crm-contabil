@@ -304,6 +304,36 @@ export class CalendarReminderWorker extends WorkerHost {
       } catch (e: any) {
         this.logger.warn(`[REMINDER] Erro ao enviar para cliente ${clientPhone}: ${e.message}`);
       }
+
+      // ── Salva contexto do lembrete na conversa ativa do cliente ──────
+      // Permite que a IA saiba que o cliente está respondendo ao lembrete
+      try {
+        const lastConvo = await this.prisma.conversation.findFirst({
+          where: { lead_id: event.lead.id, status: { not: 'ENCERRADO' } },
+          orderBy: { last_message_at: 'desc' },
+          select: { id: true },
+        });
+        if (lastConvo) {
+          await this.prisma.conversation.update({
+            where: { id: lastConvo.id },
+            data: {
+              reminder_context: {
+                type: event.type,
+                event_title: event.title,
+                event_date: formatDateTime(event.start_at),
+                event_date_iso: event.start_at.toISOString(),
+                location: event.location || null,
+                message_sent: clientMsg.slice(0, 800), // limite de tamanho
+                minutes_before: minutesBefore,
+                sent_at: new Date().toISOString(),
+              },
+            },
+          });
+          this.logger.log(`[REMINDER] Contexto salvo na conversa ${lastConvo.id}`);
+        }
+      } catch (e: any) {
+        this.logger.warn(`[REMINDER] Falha ao salvar reminder_context: ${e.message}`);
+      }
     }
   }
 

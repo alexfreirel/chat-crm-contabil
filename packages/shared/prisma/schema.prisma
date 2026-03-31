@@ -129,6 +129,7 @@ model Conversation {
   linked_agent_ids           String[]            @default([]) // Todos os agentes que atenderam
   next_step                  String? // Proximo passo: "duvidas" | "triagem_concluida" | "formulario" | "reuniao" | "encerrado"
   ai_notes                   String? // Observacoes internas da IA (campo notes do JSON)
+  reminder_context           Json? // Contexto do ultimo lembrete WhatsApp enviado ao cliente (audiencia/prazo)
   last_message_at            DateTime            @default(now())
   assigned_user              User?               @relation("AssignedUser", fields: [assigned_user_id], references: [id], onDelete: SetNull)
   assigned_lawyer            User?               @relation("AssignedLawyer", fields: [assigned_lawyer_id], references: [id], onDelete: SetNull)

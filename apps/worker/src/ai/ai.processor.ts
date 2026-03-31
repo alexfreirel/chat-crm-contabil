@@ -1170,6 +1170,31 @@ export class AiProcessor extends WorkerHost {
         }
       }
 
+      // ── Reminder context — injeta aviso se cliente está respondendo a um lembrete recente ──
+      let reminderContextBlock = '';
+      const reminderCtx = (convo as any).reminder_context as any;
+      if (reminderCtx && reminderCtx.sent_at) {
+        const sentAt = new Date(reminderCtx.sent_at);
+        const hoursAgo = Math.round((Date.now() - sentAt.getTime()) / 3_600_000);
+        if (hoursAgo < 48) {
+          const quando = hoursAgo === 0 ? 'há menos de 1 hora' : `há ${hoursAgo} hora(s)`;
+          reminderContextBlock =
+            `\n═══════════════════════════════════════════════════\n` +
+            `⚠️ CONTEXTO — LEMBRETE ENVIADO AO CLIENTE (${quando}):\n` +
+            `Tipo: ${reminderCtx.type || ''}\n` +
+            `Evento: ${reminderCtx.event_title || ''}\n` +
+            `Data/Hora: ${reminderCtx.event_date || ''}\n` +
+            (reminderCtx.location ? `Local: ${reminderCtx.location}\n` : '') +
+            `\nMensagem que foi enviada ao cliente:\n"${(reminderCtx.message_sent || '').slice(0, 500)}"\n` +
+            `\nINSTRUÇÕES IMPORTANTES:\n` +
+            `- Se o cliente está respondendo agora, PROVAVELMENTE é sobre este lembrete.\n` +
+            `- Você JÁ SABE todos os detalhes da audiência — NÃO pergunte data, local ou horário.\n` +
+            `- Responda dúvidas (documentos a levar, como se preparar, o que esperar etc.) com naturalidade.\n` +
+            `- NÃO mencione que foi você quem enviou o lembrete — aja como atendente humano normal.\n` +
+            `═══════════════════════════════════════════════════\n`;
+        }
+      }
+
       const vars: Record<string, string> = {
         lead_name: convo.lead.name || 'Desconhecido',
         lead_phone: convo.lead.phone || '',
@@ -1190,6 +1215,7 @@ export class AiProcessor extends WorkerHost {
         }),
         ficha_status: fichaStatus,
         available_slots: availableSlots,
+        reminder_context: reminderContextBlock,
       };
 
       // Cabeçalho fixo de capacidades — injetado antes de qualquer skill prompt
@@ -1209,7 +1235,7 @@ Use essa data para referências temporais e para saber os valores vigentes (ex: 
 MEMÓRIA DO LEAD (tudo que já foi coletado sobre este cliente):
 {{lead_memory}}
 ═══════════════════════════════════════════════════
-
+{{reminder_context}}
 REGRA CRÍTICA — PROIBIDO REPETIR PERGUNTAS:
 - O histórico COMPLETO da conversa está nos turns acima (user/assistant). LEIA TUDO antes de responder.
 - A MEMÓRIA DO LEAD acima contém TODOS os fatos já extraídos de conversas anteriores.
