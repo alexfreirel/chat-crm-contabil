@@ -307,7 +307,8 @@ export class DjenService {
               );
 
               // ── Se for publicação de audiência, tentar criar evento no calendário ──
-              if (/audiência|audiencia|designada|designando/.test(text)) {
+              const pubText = [tipoComunicacao, assunto, conteudo].join(' ').toLowerCase();
+              if (/audiência|audiencia|designada|designando/.test(pubText)) {
                 try {
                   const hearingDate = extractHearingDateTime(conteudo);
                   if (hearingDate) {
