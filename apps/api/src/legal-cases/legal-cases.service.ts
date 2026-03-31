@@ -249,15 +249,53 @@ export class LegalCasesService {
       }
     }
 
+    // ── Reverter lead para não-cliente se todos os processos foram arquivados ──
+    // Verifica se restam processos ativos (não arquivados) para este lead
+    const activeCases = await this.prisma.legalCase.count({
+      where: { lead_id: legalCase.lead_id, archived: false },
+    });
+
+    if (activeCases === 0 && legalCase.lead?.is_client) {
+      await this.prisma.lead.update({
+        where: { id: legalCase.lead_id },
+        data: {
+          is_client: false,
+          became_client_at: null,
+          stage: 'PERDIDO',
+          stage_entered_at: new Date(),
+          loss_reason: `Processo arquivado: ${reason}`,
+        },
+      });
+      this.logger.log(`[ARCHIVE] Lead ${legalCase.lead_id} revertido para não-cliente (sem processos ativos)`);
+    }
+
     return legalCase;
   }
 
   async unarchive(id: string, tenantId?: string) {
     await this.verifyTenantOwnership(id, tenantId);
-    return this.prisma.legalCase.update({
+    const legalCase = await this.prisma.legalCase.update({
       where: { id },
       data: { archived: false, archive_reason: null, stage: 'VIABILIDADE' },
+      include: { lead: { select: { id: true, is_client: true } } },
     });
+
+    // ── Restaurar lead como cliente se teve um processo reativado ──
+    if (legalCase.lead && !legalCase.lead.is_client) {
+      await this.prisma.lead.update({
+        where: { id: legalCase.lead.id },
+        data: {
+          is_client: true,
+          became_client_at: new Date(),
+          stage: 'FINALIZADO',
+          stage_entered_at: new Date(),
+          loss_reason: null,
+        },
+      });
+      this.logger.log(`[UNARCHIVE] Lead ${legalCase.lead.id} restaurado como cliente`);
+    }
+
+    return legalCase;
   }
 
   // ─── CASE NUMBER ────────────────────────────────────────────────
