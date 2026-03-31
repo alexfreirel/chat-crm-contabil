@@ -2456,6 +2456,7 @@ function ProcessosPageContent() {
                         }}
                         onDrop={() => {
                           if (draggingId) moveCase(draggingId, stage.id);
+                          setDraggingId(null);
                           setDragOverStage(null);
                         }}
                       >
