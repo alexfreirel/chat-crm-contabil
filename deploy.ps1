@@ -5,7 +5,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$DOCKERHUB_USER  = "lexcon"
+$DOCKERHUB_USER  = "lexconassessoria"
 $API_URL         = "https://lexcon.com.br/api"
 $WS_URL          = "wss://lexcon.com.br"
 $PORTAINER_HOOK  = ""   # cole aqui o webhook do Portainer se quiser redeploy automático

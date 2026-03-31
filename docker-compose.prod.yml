@@ -46,7 +46,7 @@ services:
 
   # ------ NestJS Core API ------
   crm-api:
-    image: lexcon/chat-crm-contabil-api:latest
+    image: lexconassessoria/chat-crm-contabil-api:latest
     build:
       context: .
       dockerfile: infra/Dockerfile.backend
@@ -82,7 +82,7 @@ services:
 
   # ------ NestJS Worker ------
   crm-worker:
-    image: lexcon/chat-crm-contabil-worker:latest
+    image: lexconassessoria/chat-crm-contabil-worker:latest
     build:
       context: .
       dockerfile: infra/Dockerfile.backend
@@ -109,7 +109,7 @@ services:
 
   # ------ Next.js Frontend ------
   crm-web:
-    image: lexcon/chat-crm-contabil-web:latest
+    image: lexconassessoria/chat-crm-contabil-web:latest
     build:
       context: .
       dockerfile: infra/Dockerfile.web

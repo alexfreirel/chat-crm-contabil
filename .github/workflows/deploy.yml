@@ -48,7 +48,7 @@ jobs:
           file: ${{ matrix.dockerfile }}
           build-args: ${{ matrix.build-args }}
           push: true
-          tags: lexcon/chat-crm-contabil-${{ matrix.suffix }}:latest
+          tags: lexconassessoria/chat-crm-contabil-${{ matrix.suffix }}:latest
           no-cache: true
 
   # ─── Deploy automático na VPS após todos os builds ───────────────────────
@@ -81,9 +81,9 @@ jobs:
             STACK="lexcon"
 
             echo "📦 Pulling novas imagens do Docker Hub..."
-            docker pull lexcon/chat-crm-contabil-api:latest
-            docker pull lexcon/chat-crm-contabil-web:latest
-            docker pull lexcon/chat-crm-contabil-worker:latest
+            docker pull lexconassessoria/chat-crm-contabil-api:latest
+            docker pull lexconassessoria/chat-crm-contabil-web:latest
+            docker pull lexconassessoria/chat-crm-contabil-worker:latest
 
             # Limpa imagens antigas para liberar espaço em disco antes do deploy
             echo "🧹 Limpando imagens Docker não utilizadas..."
@@ -94,7 +94,7 @@ jobs:
               echo "🔄 Modo Swarm — atualizando services sequencialmente..."
 
               docker service update \
-                --image lexcon/chat-crm-contabil-api:latest \
+                --image lexconassessoria/chat-crm-contabil-api:latest \
                 --with-registry-auth --force \
                 --update-parallelism 1 \
                 --update-delay 5s \
@@ -102,7 +102,7 @@ jobs:
                 ${STACK}_api
 
               docker service update \
-                --image lexcon/chat-crm-contabil-web:latest \
+                --image lexconassessoria/chat-crm-contabil-web:latest \
                 --with-registry-auth --force \
                 --update-parallelism 1 \
                 --update-delay 5s \
@@ -110,7 +110,7 @@ jobs:
                 ${STACK}_web
 
               docker service update \
-                --image lexcon/chat-crm-contabil-worker:latest \
+                --image lexconassessoria/chat-crm-contabil-worker:latest \
                 --with-registry-auth --force \
                 --update-parallelism 1 \
                 --update-delay 5s \
