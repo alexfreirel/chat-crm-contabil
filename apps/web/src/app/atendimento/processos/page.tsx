@@ -7,7 +7,7 @@ import {
   User, Search, RefreshCw, MessageSquare, MoreVertical, ChevronDown, ChevronRight,
   Plus, X, Calendar, FileText, Clock, Archive, ArchiveRestore, Send,
   AlertTriangle, CheckCircle2, Loader2, ExternalLink, Bell, RefreshCcw, BookOpen,
-  LayoutList, LayoutGrid, DollarSign, Scale, Gavel, ArrowUpDown, FolderPlus,
+  LayoutList, LayoutGrid, DollarSign, Scale, Gavel, ArrowUpDown, FolderPlus, Pencil, Trash2,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { TRACKING_STAGES, findTrackingStage } from '@/lib/legalStages';
@@ -292,25 +292,35 @@ function ProcessoCard({
       </div>
 
       {/* Próxima audiência */}
-      {legalCase.calendar_events?.[0] && (() => {
-        const ev = legalCase.calendar_events![0];
+      {legalCase.calendar_events && legalCase.calendar_events.length > 0 && (() => {
+        const nowCard = new Date();
+        // Prefere o próximo evento futuro; se todos forem passados, mostra o mais recente
+        const ev = legalCase.calendar_events!.find(e => new Date(e.start_at) >= nowCard)
+          ?? legalCase.calendar_events![legalCase.calendar_events!.length - 1];
         const d = new Date(ev.start_at);
         const hoje = new Date();
         const diffDias = Math.ceil((d.getTime() - hoje.getTime()) / 86400000);
-        const isProxima = diffDias <= 7;
+        const isPast = diffDias < 0;
+        const isProxima = !isPast && diffDias <= 7;
         const isHoje = diffDias <= 0 && diffDias > -1;
+        const dateLabel = `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às ${d.getUTCHours().toString().padStart(2,'0')}:${d.getUTCMinutes().toString().padStart(2,'0')}`;
         return (
           <div className={`mt-1.5 flex items-center gap-1.5 px-2 py-1.5 rounded-lg border ${
             isHoje
               ? 'bg-red-500/12 border-red-500/30'
+              : isPast
+              ? 'bg-gray-500/8 border-gray-500/20'
               : isProxima
               ? 'bg-amber-500/10 border-amber-500/25'
               : 'bg-blue-500/8 border-blue-500/20'
           }`}>
-            <Calendar size={9} className={isHoje ? 'text-red-400 shrink-0' : isProxima ? 'text-amber-400 shrink-0' : 'text-blue-400 shrink-0'} />
-            <span className={`text-[9px] font-semibold leading-tight ${isHoje ? 'text-red-400' : isProxima ? 'text-amber-400' : 'text-blue-400'}`}>
-              {isHoje ? '🔴 Audiência HOJE' : `Audiência: ${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}
-              {!isHoje && isProxima && ` (em ${diffDias}d)`}
+            <Calendar size={9} className={isHoje ? 'text-red-400 shrink-0' : isPast ? 'text-gray-400 shrink-0' : isProxima ? 'text-amber-400 shrink-0' : 'text-blue-400 shrink-0'} />
+            <span className={`text-[9px] font-semibold leading-tight ${isHoje ? 'text-red-400' : isPast ? 'text-gray-400' : isProxima ? 'text-amber-400' : 'text-blue-400'}`}>
+              {isHoje
+                ? '🔴 Audiência HOJE'
+                : isPast
+                ? `✅ Realizada: ${dateLabel}`
+                : `Audiência: ${dateLabel}${isProxima ? ` (em ${diffDias}d)` : ''}`}
             </span>
           </div>
         );
@@ -606,6 +616,9 @@ function ProcessoDetailPanel({
   const [newTaskDue, setNewTaskDue] = useState('');
   const [interns, setInterns] = useState<Intern[]>([]);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState<string | null>(null);
+  const [editTaskForm, setEditTaskForm] = useState({ title: '', description: '', date: '', assignee: '' });
+  const [savingTask, setSavingTask] = useState(false);
   const [comments, setComments] = useState<{ id: string; text: string; created_at: string; user: { id: string; name: string } }[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
   const [newComment, setNewComment] = useState('');
@@ -814,6 +827,43 @@ function ProcessoDetailPanel({
     try {
       await api.patch(`/calendar/events/${taskId}/status`, { status });
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status } : t));
+    } catch {}
+  };
+
+  const openEditTask = (task: CaseTask) => {
+    const dateVal = task.start_at ? task.start_at.slice(0, 10) : '';
+    setEditTaskForm({
+      title: task.title,
+      description: task.description || '',
+      date: dateVal,
+      assignee: task.assigned_user_id || '',
+    });
+    setEditingTask(task.id);
+    setExpandedTask(null);
+  };
+
+  const handleSaveTaskEdit = async (taskId: string) => {
+    if (!editTaskForm.title.trim()) return;
+    setSavingTask(true);
+    try {
+      const startAt = editTaskForm.date ? new Date(editTaskForm.date).toISOString() : undefined;
+      await api.patch(`/calendar/events/${taskId}`, {
+        title: editTaskForm.title.trim(),
+        description: editTaskForm.description.trim() || null,
+        start_at: startAt,
+        assigned_user_id: editTaskForm.assignee || null,
+      });
+      setEditingTask(null);
+      fetchTasks();
+    } catch {} finally { setSavingTask(false); }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm('Remover esta tarefa?')) return;
+    try {
+      await api.delete(`/calendar/events/${taskId}`);
+      setTasks(prev => prev.filter(t => t.id !== taskId));
+      if (editingTask === taskId) setEditingTask(null);
     } catch {}
   };
 
@@ -1620,11 +1670,14 @@ function ProcessoDetailPanel({
                   const statusInfo = TASK_STATUSES.find(s => s.id === task.status) ?? TASK_STATUSES[0];
                   const isExpanded = expandedTask === task.id;
 
+                  const isEditing = editingTask === task.id;
+
                   return (
                     <div key={task.id} className="border border-border rounded-xl overflow-hidden">
+                      {/* ── Linha principal da tarefa ── */}
                       <div
                         className="p-3 flex items-start gap-3 cursor-pointer hover:bg-accent/30 transition-colors"
-                        onClick={() => toggleTaskExpand(task.id)}
+                        onClick={() => !isEditing && toggleTaskExpand(task.id)}
                       >
                         <ChevronRight
                           size={14}
@@ -1644,18 +1697,84 @@ function ProcessoDetailPanel({
                             )}
                           </div>
                         </div>
-                        <select
-                          value={task.status}
-                          onClick={e => e.stopPropagation()}
-                          onChange={e => { e.stopPropagation(); handleTaskStatusChange(task.id, e.target.value); }}
-                          className="text-[10px] font-bold px-2 py-1 rounded-full border-0 focus:outline-none cursor-pointer"
-                          style={{ backgroundColor: `${statusInfo.color}20`, color: statusInfo.color }}
-                        >
-                          {TASK_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-                        </select>
+                        {/* Status select + botão editar */}
+                        <div className="flex flex-col items-end gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                          <select
+                            value={task.status}
+                            onChange={e => handleTaskStatusChange(task.id, e.target.value)}
+                            className="text-[10px] font-bold px-2 py-1 rounded-full border-0 focus:outline-none cursor-pointer"
+                            style={{ backgroundColor: `${statusInfo.color}20`, color: statusInfo.color }}
+                          >
+                            {TASK_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                          </select>
+                          <button
+                            onClick={() => isEditing ? setEditingTask(null) : openEditTask(task)}
+                            className="text-[9px] font-semibold text-primary hover:text-primary/80 flex items-center gap-0.5 transition-colors"
+                          >
+                            <Pencil size={9} /> {isEditing ? 'Fechar' : 'Editar'}
+                          </button>
+                        </div>
                       </div>
 
-                      {isExpanded && (
+                      {/* ── Formulário de edição inline ── */}
+                      {isEditing && (
+                        <div className="border-t border-border bg-accent/10 p-3 space-y-2">
+                          <input
+                            type="text"
+                            value={editTaskForm.title}
+                            onChange={e => setEditTaskForm(f => ({ ...f, title: e.target.value }))}
+                            className="w-full px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40"
+                            placeholder="Título"
+                          />
+                          <textarea
+                            value={editTaskForm.description}
+                            onChange={e => setEditTaskForm(f => ({ ...f, description: e.target.value }))}
+                            rows={2}
+                            className="w-full px-3 py-2 text-[12px] bg-card border border-border rounded-lg focus:outline-none resize-none"
+                            placeholder="Descrição (opcional)"
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <select
+                              value={editTaskForm.assignee}
+                              onChange={e => setEditTaskForm(f => ({ ...f, assignee: e.target.value }))}
+                              className="px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none"
+                            >
+                              <option value="">Atribuir a...</option>
+                              {interns.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                            </select>
+                            <input
+                              type="date"
+                              value={editTaskForm.date}
+                              onChange={e => setEditTaskForm(f => ({ ...f, date: e.target.value }))}
+                              className="px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleSaveTaskEdit(task.id)}
+                              disabled={!editTaskForm.title.trim() || savingTask}
+                              className="flex-1 py-1.5 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:opacity-90 disabled:opacity-40"
+                            >
+                              {savingTask ? 'Salvando…' : 'Salvar'}
+                            </button>
+                            <button
+                              onClick={() => setEditingTask(null)}
+                              className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTask(task.id)}
+                              className="px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                              title="Remover tarefa"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {isExpanded && !isEditing && (
                         <div className="border-t border-border bg-accent/10 p-3 space-y-2">
                           {task.description && (
                             <p className="text-[12px] text-muted-foreground italic mb-2">{task.description}</p>

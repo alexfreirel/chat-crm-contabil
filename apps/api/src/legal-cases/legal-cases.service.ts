@@ -78,15 +78,15 @@ export class LegalCasesService {
           name: true,
         },
       },
-      // Próxima audiência agendada (futura)
+      // Audiências (próximas ou até 30 dias no passado)
       calendar_events: {
         where: {
           type: 'AUDIENCIA',
-          start_at: { gte: now },
+          start_at: { gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) },
           status: { notIn: ['CANCELADO', 'CONCLUIDO'] },
         },
         orderBy: { start_at: 'asc' as const },
-        take: 1,
+        take: 5,
         select: {
           id: true,
           start_at: true,

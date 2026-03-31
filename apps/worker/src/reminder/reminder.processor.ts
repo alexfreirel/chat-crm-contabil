@@ -27,7 +27,16 @@ export class ReminderProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<{ reminderId: string; eventId: string; channel: string }>): Promise<any> {
+  async process(job: Job<any>): Promise<any> {
+    // ── Notificações de audiência (geradas por CalendarService) ──────────────
+    if (job.name === 'notify-hearing-scheduled') {
+      return this.processHearingNotification(job.data.eventId, false);
+    }
+    if (job.name === 'notify-hearing-rescheduled') {
+      return this.processHearingNotification(job.data.eventId, true);
+    }
+
+    // ── Lembretes padrão de evento ────────────────────────────────────────────
     this.logger.log(`Processando lembrete: ${job.id} (canal: ${job.data.channel})`);
 
     try {
@@ -137,6 +146,128 @@ export class ReminderProcessor extends WorkerHost {
       }
     }
     return anySent;
+  }
+
+  // ─── Notificação de audiência agendada / remarcada ─────────────────────────
+
+  private async processHearingNotification(eventId: string, isRescheduled: boolean): Promise<void> {
+    this.logger.log(`[HEARING-NOTIFY] Processando notificação de audiência: ${eventId} (remarcação=${isRescheduled})`);
+
+    const event = await this.prisma.calendarEvent.findUnique({
+      where: { id: eventId },
+      include: {
+        assigned_user: { select: { id: true, name: true, phone: true } },
+        lead: { select: { id: true, name: true, phone: true } },
+        legal_case: { select: { id: true, case_number: true, legal_area: true } },
+      },
+    });
+
+    if (!event) {
+      this.logger.warn(`[HEARING-NOTIFY] Evento ${eventId} não encontrado — ignorado`);
+      return;
+    }
+    if (['CANCELADO', 'CONCLUIDO'].includes(event.status)) {
+      this.logger.log(`[HEARING-NOTIFY] Evento ${eventId} está ${event.status} — ignorado`);
+      return;
+    }
+    if (!event.lead?.phone) {
+      this.logger.log(`[HEARING-NOTIFY] Evento ${eventId} sem telefone do cliente — ignorado`);
+      return;
+    }
+
+    const firstName = (event.lead.name || 'Cliente').split(' ')[0];
+    const dateStr = event.start_at.toLocaleString('pt-BR', {
+      weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', timeZone: 'America/Maceio',
+    });
+
+    const msg = isRescheduled
+      ? (
+        `📅 *Audiência Remarcada*\n\n` +
+        `Olá, ${firstName}!\n\n` +
+        `Sua audiência foi *remarcada* para uma nova data:\n\n` +
+        `📅 *Nova Data/Hora:* ${dateStr}\n` +
+        (event.location ? `📍 *Local:* ${event.location}\n` : '') +
+        `\nPor favor, anote a nova data. Chegue com *30 minutos de antecedência*.\n` +
+        `Qualquer dúvida, é só responder esta mensagem.\n\n` +
+        `_André Lustosa Advogados_`
+      )
+      : (
+        `⚖️ *Audiência Agendada*\n\n` +
+        `Olá, ${firstName}!\n\n` +
+        `Sua audiência foi agendada:\n\n` +
+        `📅 *Data/Hora:* ${dateStr}\n` +
+        (event.location ? `📍 *Local:* ${event.location}\n` : '') +
+        `\nRecomendamos chegar com *30 minutos de antecedência*.\n` +
+        `Qualquer dúvida, estamos à disposição.\n\n` +
+        `_André Lustosa Advogados_`
+      );
+
+    const { apiUrl, apiKey } = await this.settings.getEvolutionConfig();
+    if (!apiUrl) {
+      this.logger.warn('[HEARING-NOTIFY] EVOLUTION_API_URL não configurada — abortado');
+      return;
+    }
+
+    // Busca conversa ativa para obter a instance correta e salvar a mensagem
+    const lastConvo = await this.prisma.conversation.findFirst({
+      where: { lead_id: event.lead.id, status: { not: 'ENCERRADO' } },
+      orderBy: { last_message_at: 'desc' },
+      select: { id: true, instance_name: true },
+    }).catch(() => null);
+
+    const instance = lastConvo?.instance_name || process.env.EVOLUTION_INSTANCE_NAME || '';
+    const clientPhone = event.lead.phone.replace(/\D/g, '');
+
+    let sentMsgId: string | null = null;
+    try {
+      const res = await axios.post(
+        `${apiUrl}/message/sendText/${instance}`,
+        { number: clientPhone, text: msg },
+        { headers: { apikey: apiKey } },
+      );
+      sentMsgId = res.data?.key?.id || null;
+      this.logger.log(`[HEARING-NOTIFY] WhatsApp enviado para ${clientPhone}`);
+    } catch (err: any) {
+      this.logger.error(`[HEARING-NOTIFY] Falha ao enviar WhatsApp para ${clientPhone}: ${err.message}`);
+      return;
+    }
+
+    // Salva mensagem na conversa e reativa a IA
+    if (lastConvo) {
+      try {
+        const evolutionMsgId = sentMsgId || `sys_hearing_${Date.now()}`;
+        await this.prisma.message.create({
+          data: {
+            conversation_id: lastConvo.id,
+            direction: 'out',
+            type: 'text',
+            text: msg,
+            external_message_id: evolutionMsgId,
+            status: 'enviado',
+          },
+        });
+        await this.prisma.conversation.update({
+          where: { id: lastConvo.id },
+          data: {
+            last_message_at: new Date(),
+            ai_mode: true,
+            reminder_context: {
+              type: 'AUDIENCIA_AGENDADA',
+              event_title: event.title,
+              event_date: dateStr,
+              event_date_iso: event.start_at.toISOString(),
+              location: event.location || null,
+              message_sent: msg.slice(0, 800),
+              sent_at: new Date().toISOString(),
+            },
+          },
+        });
+        this.logger.log(`[HEARING-NOTIFY] Mensagem salva e IA reativada na conversa ${lastConvo.id}`);
+      } catch (e: any) {
+        this.logger.warn(`[HEARING-NOTIFY] Falha ao salvar mensagem: ${e.message}`);
+      }
+    }
   }
 
   private async sendEmailReminder(event: any, _reminder: any): Promise<boolean> {
