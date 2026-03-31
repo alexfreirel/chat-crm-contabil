@@ -278,8 +278,8 @@ function ProcessoCard({
           </span>
         )}
         {legalCase.lawyer?.name && (
-          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-500/12 text-emerald-400 text-[9px] font-bold border border-emerald-500/20 truncate max-w-[120px]">
-            👨‍⚖️ {legalCase.lawyer.name.split(' ')[0]}
+          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-500/12 text-emerald-400 text-[9px] font-bold border border-emerald-500/20 truncate max-w-[160px]" title={legalCase.lawyer.name}>
+            👨‍⚖️ {legalCase.lawyer.name}
           </span>
         )}
       </div>
@@ -2049,8 +2049,8 @@ function TabelaView({
                 </td>
                 <td className="px-3 py-2.5">
                   {c.lawyer?.name ? (
-                    <span className="text-[11px] text-emerald-400 font-semibold truncate max-w-[100px] block">
-                      {c.lawyer.name.split(' ')[0]}
+                    <span className="text-[11px] text-emerald-400 font-semibold truncate max-w-[120px] block" title={c.lawyer.name}>
+                      {c.lawyer.name}
                     </span>
                   ) : <span className="text-[11px] text-muted-foreground">—</span>}
                 </td>
