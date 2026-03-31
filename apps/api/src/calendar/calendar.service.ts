@@ -320,6 +320,12 @@ export class CalendarService {
     if (data.end_at) updateData.end_at = new Date(data.end_at);
     if (data.end_at === null) updateData.end_at = null;
 
+    // Carrega estado anterior para detectar mudanças relevantes na audiência
+    const before = await this.prisma.calendarEvent.findUnique({
+      where: { id },
+      select: { type: true, start_at: true, location: true, lead_id: true },
+    });
+
     const event = await this.prisma.calendarEvent.update({
       where: { id },
       data: updateData,
@@ -334,6 +340,34 @@ export class CalendarService {
     if (data.start_at && event.reminders?.length) {
       await this.enqueueReminders(event.id, event.start_at, event.reminders);
       this.logger.log(`Lembretes re-enfileirados para evento ${event.id} (start_at alterado)`);
+    }
+
+    // Se é AUDIÊNCIA e data ou local mudaram → notificar cliente sobre a remarcação
+    const isAudiencia = (before?.type ?? event.type) === 'AUDIENCIA';
+    const dateChanged = data.start_at && new Date(data.start_at).getTime() !== before?.start_at?.getTime();
+    const locationChanged = data.location !== undefined && data.location !== before?.location;
+    if (isAudiencia && (dateChanged || locationChanged) && event.lead?.phone) {
+      try {
+        // Cancela notificação anterior pendente (se operador ainda não enviou)
+        const oldJob = await this.reminderQueue.getJob(`hearing-notify-${event.id}`);
+        if (oldJob) await oldJob.remove();
+        // Enfileira nova notificação de remarcação com 1 minuto de delay
+        await this.reminderQueue.add(
+          'notify-hearing-rescheduled',
+          { eventId: event.id },
+          {
+            delay: 60_000,
+            jobId: `hearing-notify-${event.id}`,
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 5000 },
+            removeOnComplete: true,
+            removeOnFail: 50,
+          },
+        );
+        this.logger.log(`[AUDIENCIA] Notificação de remarcação enfileirada para evento ${event.id}`);
+      } catch (e: any) {
+        this.logger.error(`[AUDIENCIA] Erro ao enfileirar notificação de remarcação: ${e.message}`);
+      }
     }
 
     if (event.assigned_user_id) {

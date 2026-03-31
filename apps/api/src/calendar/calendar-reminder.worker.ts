@@ -190,7 +190,12 @@ export class CalendarReminderWorker extends WorkerHost {
   async process(job: Job<any>) {
     // ── Notificação imediata de audiência agendada ────────────────────────────
     if (job.name === 'notify-hearing-scheduled') {
-      return this.processHearingScheduled(job.data.eventId);
+      return this.processHearingScheduled(job.data.eventId, false);
+    }
+
+    // ── Notificação de remarcação de audiência ────────────────────────────────
+    if (job.name === 'notify-hearing-rescheduled') {
+      return this.processHearingScheduled(job.data.eventId, true);
     }
 
     // ── Lembretes antes do evento (fluxo original) ────────────────────────────
@@ -364,7 +369,7 @@ export class CalendarReminderWorker extends WorkerHost {
 
   // ─── Notificação imediata de audiência agendada ───────────────────────────
 
-  private async processHearingScheduled(eventId: string) {
+  private async processHearingScheduled(eventId: string, isRescheduled = false) {
     const event = await this.prisma.calendarEvent.findUnique({
       where: { id: eventId },
       include: {
@@ -406,11 +411,13 @@ export class CalendarReminderWorker extends WorkerHost {
 
     let msg: string;
     try {
-      msg = await this.generateHearingScheduledMessage(event, context, firstName);
-      this.logger.log(`[HEARING-NOTIFY] Mensagem IA gerada para ${clientPhone}`);
+      msg = await this.generateHearingScheduledMessage(event, context, firstName, isRescheduled);
+      this.logger.log(`[HEARING-NOTIFY] Mensagem IA gerada para ${clientPhone} (remarcação=${isRescheduled})`);
     } catch (e: any) {
       this.logger.warn(`[HEARING-NOTIFY] IA indisponível, usando template: ${e.message}`);
-      msg = this.templateHearingScheduled(event, firstName);
+      msg = isRescheduled
+        ? this.templateHearingRescheduled(event, firstName)
+        : this.templateHearingScheduled(event, firstName);
     }
 
     // Busca a conversa ativa antes de enviar (precisamos do ID para salvar a mensagem)
@@ -471,6 +478,20 @@ export class CalendarReminderWorker extends WorkerHost {
     }
   }
 
+  private templateHearingRescheduled(event: any, firstName: string): string {
+    const dateStr = formatDateTime(event.start_at);
+    return (
+      `📅 *Audiência Remarcada*\n\n` +
+      `Olá, ${firstName}!\n\n` +
+      `Informamos que sua audiência foi *remarcada* para uma nova data:\n\n` +
+      `📅 *Nova Data/Hora:* ${dateStr}\n` +
+      (event.location ? `📍 *Local:* ${event.location}\n` : '') +
+      `\nPor favor, anote a nova data. Chegue com *30 minutos de antecedência*.\n` +
+      `Qualquer dúvida, é só responder esta mensagem.\n\n` +
+      `_André Lustosa Advogados_`
+    );
+  }
+
   private templateHearingScheduled(event: any, firstName: string): string {
     const dateStr = formatDateTime(event.start_at);
     return (
@@ -485,7 +506,7 @@ export class CalendarReminderWorker extends WorkerHost {
     );
   }
 
-  private async generateHearingScheduledMessage(event: any, context: string, firstName: string): Promise<string> {
+  private async generateHearingScheduledMessage(event: any, context: string, firstName: string, isRescheduled = false): Promise<string> {
     const aiConfig = await this.settings.getAiConfig();
     const model = aiConfig.defaultModel || 'gpt-4o-mini';
     const isAnthropic = model.startsWith('claude');
@@ -506,7 +527,21 @@ REGRAS:
 - Limite: máximo 200 palavras
 - Finalize com "_André Lustosa Advogados_"`;
 
-    const userPrompt = `Crie uma mensagem informando ao cliente que a audiência foi agendada.
+    const userPrompt = isRescheduled
+      ? `Crie uma mensagem informando ao cliente que a audiência foi *remarcada* para uma nova data.
+Deixe claro que é uma remarcação (não um novo agendamento).
+
+DADOS DA NOVA AUDIÊNCIA:
+Data/Hora: ${dateStr}
+${event.location ? `Local: ${event.location}` : 'Local: a confirmar'}
+
+CONTEXTO DO CASO:
+${context}
+
+Nome do cliente: "${firstName}"
+
+Gere APENAS a mensagem final para WhatsApp, sem explicações.`
+      : `Crie uma mensagem informando ao cliente que a audiência foi agendada.
 
 DADOS DA AUDIÊNCIA:
 Data/Hora: ${dateStr}
