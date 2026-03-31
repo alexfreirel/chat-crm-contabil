@@ -14,6 +14,12 @@ export class DjenController {
     return this.djenService.syncForDate(date);
   }
 
+  /** Reconcilia publicações não vinculadas com processos já cadastrados */
+  @Post('reconcile')
+  reconcile() {
+    return this.djenService.reconcileUnlinkedPublications().then(count => ({ reconciled: count }));
+  }
+
   /** Marcar todas as não visualizadas como vistas — deve vir ANTES de :id */
   @Patch('mark-all-viewed')
   markAllViewed() {

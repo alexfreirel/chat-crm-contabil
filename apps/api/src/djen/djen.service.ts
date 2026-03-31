@@ -364,7 +364,42 @@ export class DjenService {
     }
 
     this.logger.log(`[DJEN] ${date}: ${saved} salvas, ${errors} erros, ${tasksCreated} tarefas criadas`);
+
+    // ─── Reconciliação: vincula publicações sem processo a casos já existentes ─
+    await this.reconcileUnlinkedPublications();
+
     return { date, saved, errors, tasksCreated };
+  }
+
+  /** Varre publicações não vinculadas e tenta associá-las a processos existentes pelo número */
+  async reconcileUnlinkedPublications(): Promise<number> {
+    const unlinked = await this.prisma.djenPublication.findMany({
+      where: { legal_case_id: null, numero_processo: { not: '' } },
+      select: { id: true, numero_processo: true },
+    });
+
+    if (unlinked.length === 0) return 0;
+
+    let reconciled = 0;
+    for (const pub of unlinked) {
+      if (!pub.numero_processo) continue;
+      const legalCase = await this.prisma.legalCase.findFirst({
+        where: { case_number: pub.numero_processo, in_tracking: true },
+        select: { id: true },
+      });
+      if (!legalCase) continue;
+
+      await this.prisma.djenPublication.update({
+        where: { id: pub.id },
+        data: { legal_case_id: legalCase.id },
+      });
+      reconciled++;
+    }
+
+    if (reconciled > 0) {
+      this.logger.log(`[DJEN] Reconciliação: ${reconciled} publicação(ões) vinculadas a processos existentes`);
+    }
+    return reconciled;
   }
 
   async findRecent(days = 7) {
@@ -570,6 +605,23 @@ export class DjenService {
       where: { id },
       data: { legal_case_id: legalCase.id, viewed_at: new Date() },
     });
+
+    // Vincular todas as demais publicações com o mesmo número de processo
+    if (pub.numero_processo) {
+      const linked = await this.prisma.djenPublication.updateMany({
+        where: {
+          numero_processo: pub.numero_processo,
+          id: { not: id }, // exclui a publicação principal já vinculada
+          legal_case_id: null,
+        },
+        data: { legal_case_id: legalCase.id },
+      });
+      if (linked.count > 0) {
+        this.logger.log(
+          `[DJEN] ${linked.count} publicação(ões) extra(s) vinculadas automaticamente ao processo ${legalCase.id} pelo número ${pub.numero_processo}`,
+        );
+      }
+    }
 
     // Converter lead em cliente: sai da lista de leads e passa a constar como cliente
     await this.prisma.lead.update({
