@@ -68,6 +68,14 @@ function classifyPublication(
       priority: 'URGENTE',
     };
   }
+  if (/perí?cia|laudo pericial|perito designado/.test(text)) {
+    return {
+      taskTitle: 'Preparar para perícia e notificar cliente',
+      taskDescription: 'Perícia designada via DJEN. Notificar cliente sobre data, documentos necessários e orientações.',
+      dueDays: 5,
+      priority: 'URGENTE',
+    };
+  }
   if (/audiência|audiencia|designada|designando/.test(text)) {
     return {
       taskTitle: 'Preparar audiência e notificar cliente',
@@ -585,8 +593,8 @@ export class DjenService {
 
     // ─── Valida e resolve o estágio de entrada no kanban ─────────────────────
     const VALID_TRACKING = [
-      'DISTRIBUIDO', 'CITACAO', 'CONTESTACAO', 'REPLICA', 'INSTRUCAO',
-      'JULGAMENTO', 'RECURSO', 'TRANSITADO', 'EXECUCAO', 'ENCERRADO',
+      'DISTRIBUIDO', 'CITACAO', 'CONTESTACAO', 'REPLICA', 'PERICIA_AGENDADA',
+      'INSTRUCAO', 'JULGAMENTO', 'RECURSO', 'TRANSITADO', 'EXECUCAO', 'ENCERRADO',
     ];
     const finalTrackingStage = (trackingStage && VALID_TRACKING.includes(trackingStage))
       ? trackingStage
@@ -677,16 +685,12 @@ export class DjenService {
       },
     });
 
-    // Bloquear análise se publicação não está vinculada a nenhum processo
-    if (!pub.legal_case_id) {
-      throw new BadRequestException(
-        'Esta publicação não está vinculada a nenhum processo. Vincule-a a um processo antes de criar eventos.'
-      );
-    }
+    // Sem processo vinculado: análise ocorre normalmente, mas event_type será forçado a TAREFA no retorno
+    const hasLinkedCase = !!pub.legal_case_id;
 
     const STAGES = [
-      'DISTRIBUIDO', 'CITACAO', 'CONTESTACAO', 'REPLICA', 'INSTRUCAO',
-      'JULGAMENTO', 'RECURSO', 'TRANSITADO', 'EXECUCAO', 'ENCERRADO',
+      'DISTRIBUIDO', 'CITACAO', 'CONTESTACAO', 'REPLICA', 'PERICIA_AGENDADA',
+      'INSTRUCAO', 'JULGAMENTO', 'RECURSO', 'TRANSITADO', 'EXECUCAO', 'ENCERRADO',
     ];
 
     const DEFAULT_DJEN_PROMPT = `Você é um assistente jurídico especializado em análise de publicações do DJEN (Diário da Justiça Eletrônico) brasileiro. Analise a publicação e retorne um JSON com os campos abaixo. Extraia as informações DIRETAMENTE do texto da publicação quando disponíveis — não invente dados.
@@ -711,8 +715,8 @@ Campos de extração (null se não encontrado no texto):
 - data_audiencia: string | null (data e hora da audiência/sessão se mencionada NO TEXTO, formato ISO "YYYY-MM-DDTHH:MM:00", null se não for publicação de audiência — EXTRAIA DO TEXTO, não invente)
 - data_prazo: string | null (data limite do prazo processual se mencionada NO TEXTO, formato ISO "YYYY-MM-DDTHH:MM:00", null se não houver prazo com data explícita)
 
-Critérios de urgência: URGENTE = citação/intimação com prazo curto (≤15 dias), sentença, audiência marcada. NORMAL = contestação, manifestação, despacho de rotina. BAIXA = distribuição, informativo, arquivamento.
-Critérios de estágio: citação→CITACAO, contestação→CONTESTACAO, réplica→REPLICA, audiência/instrução→INSTRUCAO, sentença/julgamento→JULGAMENTO, recurso→RECURSO, trânsito em julgado→TRANSITADO, execução→EXECUCAO, distribuição→DISTRIBUIDO, encerramento/extinção→ENCERRADO.`;
+Critérios de urgência: URGENTE = citação/intimação com prazo curto (≤15 dias), sentença, audiência marcada, perícia designada. NORMAL = contestação, manifestação, despacho de rotina. BAIXA = distribuição, informativo, arquivamento.
+Critérios de estágio: citação→CITACAO, contestação→CONTESTACAO, réplica→REPLICA, perícia/laudo/perito designado→PERICIA_AGENDADA, audiência/instrução→INSTRUCAO, sentença/julgamento→JULGAMENTO, recurso→RECURSO, trânsito em julgado→TRANSITADO, execução→EXECUCAO, distribuição→DISTRIBUIDO, encerramento/extinção→ENCERRADO.`;
 
     // Usa prompt customizado do banco (se existir) ou o prompt padrão
     const customPrompt = await this.settings.getDjenPrompt();
@@ -780,7 +784,8 @@ ${pub.conteudo.slice(0, 2000)}`;
       tarefa_titulo: parsed.tarefa_titulo || 'Verificar publicação DJEN',
       tarefa_descricao: parsed.tarefa_descricao || '',
       orientacoes: parsed.orientacoes || '',
-      event_type: (['AUDIENCIA', 'PRAZO', 'TAREFA'].includes(parsed.event_type) ? parsed.event_type : 'TAREFA') as 'AUDIENCIA' | 'PRAZO' | 'TAREFA',
+      // Sem processo vinculado: não sugerir criação de eventos de audiência/prazo
+      event_type: (!hasLinkedCase ? 'TAREFA' : (['AUDIENCIA', 'PRAZO', 'TAREFA'].includes(parsed.event_type) ? parsed.event_type : 'TAREFA')) as 'AUDIENCIA' | 'PRAZO' | 'TAREFA',
       model_used: configuredModel,
       // Dados extraídos
       parte_autora: parsed.parte_autora || null,

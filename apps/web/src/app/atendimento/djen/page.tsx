@@ -101,21 +101,23 @@ const URGENCIA_CONFIG = {
 
 const STAGE_LABELS: Record<string, string> = {
   DISTRIBUIDO: 'Distribuído', CITACAO: 'Citação/Intimação', CONTESTACAO: 'Contestação',
-  REPLICA: 'Réplica', INSTRUCAO: 'Audiência/Instrução', JULGAMENTO: 'Julgamento',
-  RECURSO: 'Recurso', TRANSITADO: 'Transitado em Julgado', EXECUCAO: 'Execução', ENCERRADO: 'Encerrado',
+  REPLICA: 'Réplica', PERICIA_AGENDADA: 'Perícia Agendada', INSTRUCAO: 'Audiência/Instrução',
+  JULGAMENTO: 'Julgamento', RECURSO: 'Recurso', TRANSITADO: 'Transitado em Julgado',
+  EXECUCAO: 'Execução', ENCERRADO: 'Encerrado',
 };
 
 const TRACKING_STAGES_DJEN = [
-  { id: 'DISTRIBUIDO',  label: 'Distribuído',           color: '#6366f1', emoji: '📬' },
-  { id: 'CITACAO',      label: 'Citação/Intimação',     color: '#f59e0b', emoji: '📨' },
-  { id: 'CONTESTACAO',  label: 'Contestação',           color: '#ef4444', emoji: '⚔️' },
-  { id: 'REPLICA',      label: 'Réplica',               color: '#06b6d4', emoji: '↩️' },
-  { id: 'INSTRUCAO',    label: 'Audiência/Instrução',   color: '#8b5cf6', emoji: '🎙️' },
-  { id: 'JULGAMENTO',   label: 'Julgamento/Sentença',   color: '#8b5cf6', emoji: '⚖️' },
-  { id: 'RECURSO',      label: 'Recurso',               color: '#ec4899', emoji: '📤' },
-  { id: 'TRANSITADO',   label: 'Trânsito em Julgado',   color: '#10b981', emoji: '✅' },
-  { id: 'EXECUCAO',     label: 'Execução',              color: '#f97316', emoji: '⚡' },
-  { id: 'ENCERRADO',    label: 'Encerrado',             color: '#6b7280', emoji: '🏁' },
+  { id: 'DISTRIBUIDO',      label: 'Distribuído',           color: '#6366f1', emoji: '📬' },
+  { id: 'CITACAO',          label: 'Citação/Intimação',     color: '#f59e0b', emoji: '📨' },
+  { id: 'CONTESTACAO',      label: 'Contestação',           color: '#ef4444', emoji: '⚔️' },
+  { id: 'REPLICA',          label: 'Réplica',               color: '#06b6d4', emoji: '↩️' },
+  { id: 'PERICIA_AGENDADA', label: 'Perícia Agendada',      color: '#0ea5e9', emoji: '🔬' },
+  { id: 'INSTRUCAO',        label: 'Audiência/Instrução',   color: '#8b5cf6', emoji: '🎙️' },
+  { id: 'JULGAMENTO',       label: 'Julgamento/Sentença',   color: '#8b5cf6', emoji: '⚖️' },
+  { id: 'RECURSO',          label: 'Recurso',               color: '#ec4899', emoji: '📤' },
+  { id: 'TRANSITADO',       label: 'Trânsito em Julgado',   color: '#10b981', emoji: '✅' },
+  { id: 'EXECUCAO',         label: 'Execução',              color: '#f97316', emoji: '⚡' },
+  { id: 'ENCERRADO',        label: 'Encerrado',             color: '#6b7280', emoji: '🏁' },
 ] as const;
 
 // ─── TaskSuggestion (sub-componente usado dentro do modal) ────
