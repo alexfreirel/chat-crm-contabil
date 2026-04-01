@@ -34,6 +34,12 @@ interface CrmLead {
     assigned_user: { id: string; name: string } | null;
     assigned_lawyer: { id: string; name: string } | null;
   }>;
+  calendar_events?: Array<{
+    id: string;
+    type: string;
+    title: string;
+    start_at: string;
+  }>;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -103,6 +109,31 @@ function agingBorderClass(days: number, stage: string): string {
   if (days <= 2) return 'border-l-[3px] border-l-emerald-500/50';
   if (days <= 5) return 'border-l-[3px] border-l-yellow-500/60';
   return 'border-l-[3px] border-l-red-500/70';
+}
+
+const EVENT_TYPE_EMOJI: Record<string, string> = {
+  AUDIENCIA: '⚖️',
+  PRAZO: '⏰',
+  CONSULTA: '📞',
+  TAREFA: '✓',
+  OUTRO: '📅',
+};
+
+function eventDaysUntil(startAt: string): number {
+  return Math.floor((new Date(startAt).getTime() - Date.now()) / 86400000);
+}
+
+function eventStyle(daysUntil: number): string {
+  if (daysUntil <= 1) return 'text-red-400 bg-red-500/15 border-red-500/30';
+  if (daysUntil <= 3) return 'text-orange-400 bg-orange-500/15 border-orange-500/30';
+  if (daysUntil <= 7) return 'text-yellow-400 bg-yellow-500/15 border-yellow-500/30';
+  return 'text-blue-400 bg-blue-500/15 border-blue-500/30';
+}
+
+function eventDateLabel(daysUntil: number): string {
+  if (daysUntil === 0) return 'hoje';
+  if (daysUntil === 1) return 'amanhã';
+  return `em ${daysUntil}d`;
 }
 
 function getScoreFactors(lead: CrmLead): string[] {
@@ -178,6 +209,8 @@ function LeadCard({
   const score = computeLeadScore(lead);
   const isNew = (Date.now() - new Date(lead.created_at).getTime()) < 3_600_000;
   const agingBorder = agingBorderClass(days, normalizedStage);
+  const upcomingEvent = lead.calendar_events?.find(e => new Date(e.start_at).getTime() >= Date.now() - 3600000);
+  const upcomingDays = upcomingEvent ? eventDaysUntil(upcomingEvent.start_at) : null;
 
   // Próxima etapa lógica para o botão "Avançar"
   const stageOrder = CRM_STAGES.filter(s => s.id !== 'PERDIDO').map(s => s.id);
@@ -319,6 +352,15 @@ function LeadCard({
           </span>
         ))}
       </div>
+
+      {/* Próximo evento */}
+      {upcomingEvent && upcomingDays !== null && (
+        <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-semibold mb-2 ${eventStyle(upcomingDays)}`}>
+          <span className="shrink-0">{EVENT_TYPE_EMOJI[upcomingEvent.type] ?? '📅'}</span>
+          <span className="truncate flex-1">{upcomingEvent.title}</span>
+          <span className="shrink-0 font-bold">{eventDateLabel(upcomingDays)}</span>
+        </div>
+      )}
 
       {/* Última mensagem */}
       {lastMsg?.text && (
@@ -1334,9 +1376,17 @@ export default function CrmPage() {
       .filter(l => normalizeStage(l.stage) === stageId)
       .sort((a, b) => {
         if (sortBy === 'score') return computeLeadScore(b) - computeLeadScore(a);
-        const ta = a.conversations?.[0]?.last_message_at ? new Date(a.conversations[0].last_message_at).getTime() : 0;
-        const tb = b.conversations?.[0]?.last_message_at ? new Date(b.conversations[0].last_message_at).getTime() : 0;
-        return tb - ta;
+        // Ordenação por evento: evento mais próximo primeiro, depois mais antigo na etapa
+        const now = Date.now();
+        const aEvent = a.calendar_events?.find(e => new Date(e.start_at).getTime() >= now - 3600000);
+        const bEvent = b.calendar_events?.find(e => new Date(e.start_at).getTime() >= now - 3600000);
+        if (aEvent && bEvent) return new Date(aEvent.start_at).getTime() - new Date(bEvent.start_at).getTime();
+        if (aEvent) return -1;
+        if (bEvent) return 1;
+        // Sem eventos: mais antigo na etapa primeiro
+        const ta = a.stage_entered_at ? new Date(a.stage_entered_at).getTime() : now;
+        const tb = b.stage_entered_at ? new Date(b.stage_entered_at).getTime() : now;
+        return ta - tb;
       });
 
   return (

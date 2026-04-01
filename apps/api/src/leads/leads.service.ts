@@ -96,6 +96,12 @@ export class LeadsService {
           assigned_lawyer: { select: { id: true, name: true } },
         },
       },
+      calendar_events: {
+        where: { start_at: { gte: new Date() } },
+        orderBy: { start_at: 'asc' as const },
+        take: 3,
+        select: { id: true, type: true, title: true, start_at: true },
+      },
     };
 
     if (page && limit) {
