@@ -19,9 +19,6 @@ if [ "$RUN_MIGRATIONS" = "true" ]; then
     sleep 3
   done
 
-  echo "[entrypoint] Executando seed do banco..."
-  npx prisma db seed 2>&1 || echo "[entrypoint] Seed falhou ou já executado, continuando..."
-
   cd /app/apps/${APP}
 fi
 
