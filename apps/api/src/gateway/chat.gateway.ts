@@ -177,4 +177,12 @@ export class ChatGateway {
   emitContactPresence(conversationId: string, data: { presence: string; lastSeen?: string }) {
     this.server.to(conversationId).emit('contact_presence', data);
   }
+
+  // ─── Messages Sync ────────────────────────────────────────
+  // Emitido após importar mensagens perdidas do WhatsApp para a sala da conversa.
+  // O frontend usa para saber que deve recarregar o histórico.
+  emitMessagesSynced(conversationId: string, imported: number) {
+    this.logger.log(`[SOCKET] Emitting messages_synced to room ${conversationId}: ${imported} imported`);
+    this.server.to(conversationId).emit('messages_synced', { conversationId, imported });
+  }
 }

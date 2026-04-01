@@ -261,6 +261,8 @@ export default function Dashboard() {
   const currentUserIdRef = useRef<string | null>(currentUserId);
   // IDs de transferências já exibidas no popup (evita re-exibir após fechar)
   const shownTransferIdsRef = useRef<Set<string>>(new Set());
+  // Debounce de sync por conversa: guarda timestamp do último sync (ms) por conversation_id
+  const lastSyncRef = useRef<Map<string, number>>(new Map());
 
   // Keep refs in sync
   useEffect(() => { selectedInboxIdRef.current = selectedInboxId; }, [selectedInboxId]);
@@ -974,6 +976,30 @@ export default function Dashboard() {
           socketRef.current.on('messageUpdate', (updatedMsg: MessageItem) => {
             setMessages(prev => prev.map(m => m.id === updatedMsg.id ? { ...m, ...updatedMsg } : m));
           });
+          socketRef.current.off('messages_synced');
+          socketRef.current.on('messages_synced', async (data: { conversationId: string; imported: number }) => {
+            if (data.conversationId !== selectedIdRef.current) return;
+            if (data.imported <= 0) return;
+            // Recarrega as mensagens silenciosamente — sem loading spinner
+            try {
+              const res = await api.get(`/messages/conversation/${data.conversationId}`, {
+                params: { page: 1, limit: 100 },
+              });
+              const fresh = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+              setMessages(prev => {
+                // Preserva mensagens otimistas pendentes e mescla com as novas do banco
+                const optimistic = prev.filter(m => typeof m.id === 'string' && m.id.startsWith('optimistic_'));
+                const merged = [...fresh];
+                for (const m of optimistic) {
+                  if (!merged.some(e => e.id === m.id)) merged.push(m);
+                }
+                return merged;
+              });
+            } catch {
+              // Silencioso — o usuário pode usar o botão de sync manual
+            }
+          });
+
           socketRef.current.off('contact_presence');
           socketRef.current.on('contact_presence', (data: { presence: string }) => {
             setContactPresence(data.presence);
@@ -1008,6 +1034,17 @@ export default function Dashboard() {
 
         setMsgTotalPages(msgRes.data?.totalPages || 1);
         setMsgCurrentPage(1);
+
+        // ── 3. Sync silencioso em background com o WhatsApp ────────────────
+        // Só sincroniza se passaram mais de 60s desde o último sync desta conversa.
+        const SYNC_DEBOUNCE_MS = 60_000;
+        const lastSync = lastSyncRef.current.get(selectedId) ?? 0;
+        if (Date.now() - lastSync > SYNC_DEBOUNCE_MS) {
+          lastSyncRef.current.set(selectedId, Date.now());
+          api.post(`/messages/conversation/${selectedId}/sync-history`).catch(() => {
+            // Falha silenciosa — sync é best-effort; botão manual no header como fallback
+          });
+        }
       } catch (e) {
         console.error('Failed to fetch conversation', e);
       } finally {

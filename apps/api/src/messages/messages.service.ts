@@ -150,12 +150,13 @@ export class MessagesService {
 
     if (imported > 0) {
       this.logger.log(`[syncHistory] ${imported}/${rawMessages.length} mensagens importadas para conversa ${conversationId}`);
-      // Update conversation timestamp to the most recent message
       await this.prisma.conversation.update({
         where: { id: conversationId },
         data: { last_message_at: new Date() },
       });
-      // Notifica o frontend para recarregar as mensagens da conversa
+      // Notifica apenas o room da conversa para recarregar o histórico.
+      // O frontend escuta 'messages_synced' e recarrega as mensagens silenciosamente.
+      this.chatGateway.emitMessagesSynced(conversationId, imported);
       this.chatGateway.emitConversationsUpdate(null);
     }
 
