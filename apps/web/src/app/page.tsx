@@ -9,9 +9,9 @@ const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://andrelustosaadvogado
 
 const staticContent = {
   hero: {
-    title: 'ANDRÉ LUSTOSA ADVOGADOS',
+    title: 'LEXCON ASSESSORIA E CONSULTORIA TRIBUTARIA',
     subtitle:
-      'Especialistas na proteção dos seus direitos. Atendimento humano, ágil e focado em resultados nas áreas Trabalhista, Previdenciária, Civil e do Consumidor, em todo o Brasil.',
+      'Cuidamos de seus interesses, mostrando a qualidade e eficiência de trabalho.',
     ctaText: 'Fale com um Especialista',
     ctaLink: 'https://wa.me/5582996390799',
   },

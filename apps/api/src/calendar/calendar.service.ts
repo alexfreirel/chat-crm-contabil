@@ -38,13 +38,16 @@ export class CalendarService {
     if (query.leadId) where.lead_id = query.leadId;
     if (query.legalCaseId) where.legal_case_id = query.legalCaseId;
 
-    // Filtrar por userId: inclui eventos onde o usuário é responsável OU criador
+    // Filtrar por userId:
+    // - Se o evento TEM um responsável (assigned_user_id preenchido), apenas ele vê.
+    // - Se o evento NÃO TEM responsável, o criador (created_by_id) vê.
+    // Isso garante que ao trocar o advogado, o antigo para de ver o evento.
     if (query.userId) {
       if (!where.AND) where.AND = [];
       where.AND.push({
         OR: [
           { assigned_user_id: query.userId },
-          { created_by_id: query.userId },
+          { assigned_user_id: null, created_by_id: query.userId },
         ],
       });
     }
@@ -103,7 +106,7 @@ export class CalendarService {
         assigned_user: { select: { id: true, name: true } },
         created_by: { select: { id: true, name: true } },
         lead: { select: { id: true, name: true, phone: true } },
-        legal_case: { select: { id: true, case_number: true, legal_area: true } },
+        legal_case: { select: { id: true, case_number: true, legal_area: true, lead: { select: { name: true } } } },
         appointment_type: true,
         reminders: true,
         _count: { select: { comments: true } },
@@ -119,7 +122,7 @@ export class CalendarService {
         assigned_user: { select: { id: true, name: true } },
         created_by: { select: { id: true, name: true } },
         lead: { select: { id: true, name: true, phone: true } },
-        legal_case: { select: { id: true, case_number: true, legal_area: true } },
+        legal_case: { select: { id: true, case_number: true, legal_area: true, lead: { select: { name: true } } } },
         appointment_type: true,
         reminders: true,
         _count: { select: { comments: true } },
@@ -210,6 +213,27 @@ export class CalendarService {
     // Enqueue WhatsApp + Email reminders
     await this.enqueueReminders(event.id, event.start_at, event.reminders || []);
 
+    // Notificação imediata ao cliente (1 min de delay) quando audiência é agendada
+    if (data.type === 'AUDIENCIA' && event.lead?.phone) {
+      try {
+        await this.reminderQueue.add(
+          'notify-hearing-scheduled',
+          { eventId: event.id },
+          {
+            delay: 60_000, // 1 minuto — dá tempo ao operador de corrigir antes do envio
+            jobId: `hearing-notify-${event.id}`,
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 5000 },
+            removeOnComplete: true,
+            removeOnFail: 50,
+          },
+        );
+        this.logger.log(`[AUDIENCIA] Notificação agendada ao cliente em 1 min (evento ${event.id})`);
+      } catch (e: any) {
+        this.logger.error(`[AUDIENCIA] Erro ao enfileirar notificação: ${e.message}`);
+      }
+    }
+
     // Expand recurrence if rule set
     if (data.recurrence_rule) {
       await this.expandRecurrence(event);
@@ -296,6 +320,12 @@ export class CalendarService {
     if (data.end_at) updateData.end_at = new Date(data.end_at);
     if (data.end_at === null) updateData.end_at = null;
 
+    // Carrega estado anterior para detectar mudanças relevantes na audiência
+    const before = await this.prisma.calendarEvent.findUnique({
+      where: { id },
+      select: { type: true, start_at: true, location: true, lead_id: true },
+    });
+
     const event = await this.prisma.calendarEvent.update({
       where: { id },
       data: updateData,
@@ -310,6 +340,34 @@ export class CalendarService {
     if (data.start_at && event.reminders?.length) {
       await this.enqueueReminders(event.id, event.start_at, event.reminders);
       this.logger.log(`Lembretes re-enfileirados para evento ${event.id} (start_at alterado)`);
+    }
+
+    // Se é AUDIÊNCIA e data ou local mudaram → notificar cliente sobre a remarcação
+    const isAudiencia = (before?.type ?? event.type) === 'AUDIENCIA';
+    const dateChanged = data.start_at && new Date(data.start_at).getTime() !== before?.start_at?.getTime();
+    const locationChanged = data.location !== undefined && data.location !== before?.location;
+    if (isAudiencia && (dateChanged || locationChanged) && event.lead?.phone) {
+      try {
+        // Cancela notificação anterior pendente (se operador ainda não enviou)
+        const oldJob = await this.reminderQueue.getJob(`hearing-notify-${event.id}`);
+        if (oldJob) await oldJob.remove();
+        // Enfileira nova notificação de remarcação com 1 minuto de delay
+        await this.reminderQueue.add(
+          'notify-hearing-rescheduled',
+          { eventId: event.id },
+          {
+            delay: 60_000,
+            jobId: `hearing-notify-${event.id}`,
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 5000 },
+            removeOnComplete: true,
+            removeOnFail: 50,
+          },
+        );
+        this.logger.log(`[AUDIENCIA] Notificação de remarcação enfileirada para evento ${event.id}`);
+      } catch (e: any) {
+        this.logger.error(`[AUDIENCIA] Erro ao enfileirar notificação de remarcação: ${e.message}`);
+      }
     }
 
     if (event.assigned_user_id) {

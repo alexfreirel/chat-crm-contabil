@@ -8,6 +8,7 @@ import { LeadsService } from '../leads/leads.service';
 import { InboxesService } from '../inboxes/inboxes.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { FollowupService } from '../followup/followup.service';
+import { AdminBotService } from '../admin-bot/admin-bot.service';
 
 interface EvolutionWebhookPayload {
   event: string;
@@ -83,6 +84,7 @@ export class EvolutionService {
     @InjectQueue('ai-jobs') private aiQueue: Queue,
     private whatsappService: WhatsappService,
     private moduleRef: ModuleRef,
+    private adminBotService: AdminBotService,
   ) {}
 
   async handleMessagesUpsert(payload: EvolutionWebhookPayload) {
@@ -160,6 +162,33 @@ export class EvolutionService {
       // Only use it as the contact name for incoming messages.
       const isFromMe = key.fromMe === true;
       const pushName = !isFromMe ? ((data.pushName as string) || null) : null;
+      const externalMessageIdCheck = key.id as string;
+      const messageContentCheck =
+        (data.message?.conversation as string) ||
+        (data.message?.extendedTextMessage?.text as string) ||
+        '';
+
+      // ── Admin Command Bot ──────────────────────────────────────────────────
+      // Mensagens vindas de um admin/advogado do sistema são interceptadas aqui
+      // para serem processadas como comandos CRM via IA (function calling).
+      if (!isFromMe && messageContentCheck && await this.adminBotService.isEnabled()) {
+        const sessionKey = `${instanceName}:${phone}`;
+        if (this.adminBotService.isAdminCommand(sessionKey, messageContentCheck)) {
+          const adminUser = await this.adminBotService.findAdminByPhone(phone);
+          if (adminUser && instanceName) {
+            this.logger.log(`[ADMIN-BOT] Comando do admin ${phone} interceptado: "${messageContentCheck.substring(0, 60)}"`);
+            await this.adminBotService.handle(
+              instanceName,
+              phone,
+              messageContentCheck,
+              adminUser.id,
+              adminUser.tenant_id,
+            ).catch((err) => this.logger.error(`[ADMIN-BOT] Erro ao processar comando: ${err.message}`));
+            continue; // Não processar como mensagem de cliente
+          }
+        }
+      }
+      // ── Fim Admin Command Bot ──────────────────────────────────────────────
       const externalMessageId = key.id as string;
       const messageContent =
         (data.message?.conversation as string) ||
@@ -223,7 +252,7 @@ export class EvolutionService {
               lead_id: lead.id,
               channel: 'whatsapp',
               status: 'ABERTO',
-              external_id: remoteJid,
+              external_id: `${phone}@s.whatsapp.net`,
               inbox_id: inboxId,
               instance_name: instanceName,
               tenant_id: inbox?.tenant_id || lead.tenant_id,
@@ -295,6 +324,35 @@ export class EvolutionService {
         this.chatGateway.emitNewMessage(existingMsg.conversation_id, existingMsg);
         this.chatGateway.emitConversationsUpdate(null);
         continue;
+      }
+
+      // Para mensagens enviadas (fromMe=true / send.message echo), verifica se existe uma
+      // mensagem "pendente" na mesma conversa com o mesmo texto salva em menos de 2 minutos.
+      // Isso ocorre quando o CRM salva a mensagem com external_message_id temporário (out_xxx)
+      // porque a Evolution API retornou erro na chamada mas a mensagem foi enviada mesmo assim.
+      // Nesse caso, atualiza o external_message_id em vez de criar duplicata.
+      if (isFromMe && messageContent) {
+        const since = new Date(Date.now() - 2 * 60 * 1000); // janela de 2 minutos
+        const pendingMsg = await this.prisma.message.findFirst({
+          where: {
+            conversation_id: conv.id,
+            direction: 'out',
+            text: messageContent,
+            created_at: { gte: since },
+            external_message_id: { startsWith: 'out_' },
+          },
+          include: { media: true, skill: { select: { id: true, name: true, area: true } } },
+        });
+        if (pendingMsg) {
+          const updated = await this.prisma.message.update({
+            where: { id: pendingMsg.id },
+            data: { external_message_id: externalMessageId, status: 'enviado' },
+            include: { media: true, skill: { select: { id: true, name: true, area: true } } },
+          });
+          this.chatGateway.emitMessageUpdate(conv.id, updated);
+          this.logger.log(`[DEDUP] Msg pendente ${pendingMsg.id} vinculada ao ID real ${externalMessageId}`);
+          continue;
+        }
       }
 
       let msgType = 'text';
@@ -556,9 +614,13 @@ export class EvolutionService {
       if (!pushName && !existingLead) continue; // No name, no existing lead → skip
       const nameToSet = existingLead?.name ? null : pushName;
 
+      // profilePicUrl vem no payload chats.upsert — aproveitamos para manter a foto fresca
+      const profilePicUrl = (data.profilePicUrl as string) || null;
+
       const lead = await this.leadsService.upsert({
         phone,
         name: nameToSet,
+        ...(profilePicUrl ? { profile_picture_url: profilePicUrl } : {}),
         origin: 'whatsapp',
         tenant: inbox?.tenant_id ? { connect: { id: inbox.tenant_id } } : undefined,
       });
@@ -622,10 +684,11 @@ export class EvolutionService {
           this.logger.log(`Nova conversa criada via chat webhook: ${phone} no setor ${inbox?.inbox?.name || 'Nenhum'}`);
         }
       } else {
+        // Só atualiza inbox_id se tiver valor — evita apagar o setor da conversa
         conv = await this.prisma.conversation.update({
           where: { id: conv.id },
           data: {
-            inbox_id: inboxId,
+            ...(inboxId ? { inbox_id: inboxId } : {}),
             instance_name: instanceName,
             tenant_id: inbox?.tenant_id || conv.tenant_id || lead.tenant_id
           }
@@ -663,6 +726,38 @@ export class EvolutionService {
             data: { last_message_at: lm.messageTimestamp ? new Date(lm.messageTimestamp * 1000) : new Date() }
           });
         }
+      }
+    }
+  }
+
+  // ─── chats.delete ────────────────────────────────────────────
+  // Quando o contato deleta o chat no WhatsApp, arquivamos a conversa no CRM
+  // (status FECHADO) para não poluir o inbox. As mensagens são preservadas.
+  async handleChatsDelete(payload: EvolutionWebhookPayload) {
+    this.logger.log(`[WEBHOOK] chats.delete received`);
+    const data = payload?.data;
+    const chats = Array.isArray(data) ? data : [data];
+
+    for (const chat of chats) {
+      if (!chat) continue;
+      const remoteJid = chat.remoteJid || chat.id;
+      if (!remoteJid || remoteJid.includes('@g.us')) continue;
+
+      const phone = extractPhone(remoteJid, chat.remoteJidAlt);
+      if (!phone || phone.length > 13) continue;
+
+      const lead = await this.prisma.lead.findFirst({ where: { phone } });
+      if (!lead) continue;
+
+      // Fechar apenas conversas abertas — não alterar conversas já fechadas/adiadas
+      const updated = await this.prisma.conversation.updateMany({
+        where: { lead_id: lead.id, channel: 'whatsapp', status: 'ABERTO' },
+        data: { status: 'FECHADO' },
+      });
+
+      if (updated.count > 0) {
+        this.chatGateway.emitConversationsUpdate(null);
+        this.logger.log(`[WEBHOOK] chats.delete: ${updated.count} conversa(s) de ${phone} arquivadas`);
       }
     }
   }
@@ -708,6 +803,7 @@ export class EvolutionService {
 
   async handleContactsUpsert(payload: EvolutionWebhookPayload) {
     this.logger.debug(`Recebendo webhook de contatos: ${summarizePayload(payload)}`);
+    const instanceName = payload?.instance || payload?.instanceId;
     const contacts = Array.isArray(payload?.data)
       ? (payload.data as any[])
       : [payload?.data as any];
@@ -733,13 +829,20 @@ export class EvolutionService {
       if (!existingContact && !name) continue; // No name, no existing lead → skip
       const contactNameToSet = existingContact?.name ? null : name;
 
+      // contacts.upsert não envia profilePicUrl no payload — buscar separadamente se o lead não tiver foto
+      let contactPhoto: string | null = null;
+      if (instanceName && (!existingContact || !existingContact.profile_picture_url)) {
+        contactPhoto = await this.whatsappService.fetchProfilePicture(instanceName, phone).catch(() => null);
+      }
+
       await this.leadsService.upsert({
         phone,
         name: contactNameToSet,
+        ...(contactPhoto ? { profile_picture_url: contactPhoto } : {}),
         origin: 'whatsapp',
       });
 
-      this.logger.log(`Contato sincronizado via webhook: ${phone} (${contactNameToSet ?? 'nome preservado'})`);
+      this.logger.log(`Contato sincronizado via webhook: ${phone} (${contactNameToSet ?? 'nome preservado'})${contactPhoto ? ' + foto' : ''}`);
     }
   }
 
@@ -794,17 +897,22 @@ export class EvolutionService {
 
       const updates: Record<string, string> = {};
 
-      // Atualizar nome se mudou
+      // Atualizar nome apenas se:
+      // 1. O contato tem nome
+      // 2. O nome mudou em relação ao registrado
+      // 3. O lead ainda não tem nome (null) OU o novo nome não parece ser nome do escritório.
+      //    contacts.update pode disparar após msgs enviadas trazendo o pushName do escritório —
+      //    para evitar sobrescrita, só aceita nome do webhook se o lead já não tiver nome.
       const newName = contact.pushName || contact.name || contact.verifiedName;
-      if (newName && newName !== lead.name) {
+      if (newName && newName !== lead.name && !lead.name) {
         updates.name = newName;
       }
 
-      // Buscar nova foto de perfil
+      // Buscar nova foto de perfil — URLs do WhatsApp expiram, sempre atualizar com URL fresca
       if (instanceName) {
         try {
           const newPic = await this.whatsappService.fetchProfilePicture(instanceName, phone);
-          if (newPic && newPic !== lead.profile_picture_url) {
+          if (newPic) {
             updates.profile_picture_url = newPic;
           }
         } catch {
@@ -839,6 +947,38 @@ export class EvolutionService {
     });
 
     this.logger.log(`[WEBHOOK] Instance ${instanceName} connection: ${state}`);
+
+    // Quando a instância reconecta, agenda resync das mensagens perdidas durante a queda.
+    // Limitamos às 50 conversas mais recentes para não sobrecarregar.
+    if (state === 'open' && instanceName) {
+      this.logger.log(`[RESYNC] Instância ${instanceName} reconectou — agendando resync de mensagens`);
+      this.scheduleResyncAfterReconnect(instanceName).catch(e =>
+        this.logger.warn(`[RESYNC] Erro ao agendar resync: ${e.message}`),
+      );
+    }
+  }
+
+  private async scheduleResyncAfterReconnect(instanceName: string): Promise<void> {
+    // Aguarda 5 segundos para a instância estabilizar antes de buscar mensagens
+    const STABILIZE_DELAY = 5000;
+
+    const conversations = await this.prisma.conversation.findMany({
+      where: { instance_name: instanceName, status: 'ABERTO' },
+      include: { lead: { select: { phone: true } } },
+      orderBy: { last_message_at: 'desc' },
+      take: 50,
+    });
+
+    this.logger.log(`[RESYNC] ${conversations.length} conversas ativas para resync na instância ${instanceName}`);
+
+    for (const conv of conversations) {
+      if (!conv.lead?.phone) continue;
+      await this.mediaQueue.add(
+        'sync_missed_messages',
+        { conversation_id: conv.id, instance_name: instanceName, phone: conv.lead.phone },
+        { delay: STABILIZE_DELAY, removeOnComplete: true, removeOnFail: false },
+      );
+    }
   }
 
   // ─── presence.update ──────────────────────────────────────────
@@ -856,7 +996,7 @@ export class EvolutionService {
     if (!lead) return;
 
     const conversation = await this.prisma.conversation.findFirst({
-      where: { lead_id: lead.id, status: { in: ['ABERTO', 'WAITING', 'MONITORING'] } },
+      where: { lead_id: lead.id, status: { in: ['ABERTO', 'ADIADO'] } },
       orderBy: { last_message_at: 'desc' },
     });
     if (!conversation) return;

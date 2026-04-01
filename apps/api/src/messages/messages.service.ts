@@ -77,7 +77,7 @@ export class MessagesService {
     const [data, total] = await Promise.all([
       this.prisma.message.findMany({
         where,
-        orderBy: { created_at: 'asc' },
+        orderBy: { created_at: 'desc' },
         skip: (safePage - 1) * safeLimit,
         take: safeLimit,
         include: { media: true, reactions: true, skill: { select: { id: true, name: true, area: true } } },
@@ -104,6 +104,17 @@ export class MessagesService {
     }
 
     const remoteJid = `${convo.lead.phone}@s.whatsapp.net`;
+
+    // Refresh da foto de perfil em background (URLs WhatsApp expiram em ~24-48h)
+    this.whatsapp.fetchProfilePicture(convo.instance_name, convo.lead.phone).then(async (freshUrl) => {
+      if (freshUrl && freshUrl !== convo.lead.profile_picture_url) {
+        await this.prisma.lead.update({
+          where: { id: convo.lead.id },
+          data: { profile_picture_url: freshUrl },
+        }).catch(() => {/* best-effort */});
+      }
+    }).catch(() => {/* best-effort */});
+
     const rawMessages = await this.whatsapp.fetchMessages(convo.instance_name, remoteJid);
 
     if (!rawMessages.length) return { imported: 0, total: 0 };
@@ -150,11 +161,14 @@ export class MessagesService {
 
     if (imported > 0) {
       this.logger.log(`[syncHistory] ${imported}/${rawMessages.length} mensagens importadas para conversa ${conversationId}`);
-      // Update conversation timestamp to the most recent message
       await this.prisma.conversation.update({
         where: { id: conversationId },
         data: { last_message_at: new Date() },
       });
+      // Notifica apenas o room da conversa para recarregar o histórico.
+      // O frontend escuta 'messages_synced' e recarrega as mensagens silenciosamente.
+      this.chatGateway.emitMessagesSynced(conversationId, imported);
+      this.chatGateway.emitConversationsUpdate(null);
     }
 
     return { imported, total: rawMessages.length };

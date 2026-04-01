@@ -55,6 +55,12 @@ export class LegalCasesController {
     return this.service.findAll(lawyerId, stage, archivedBool, inTrackingBool, p, l, req.user?.tenant_id, leadId, caseNumber);
   }
 
+  @Get('encerrados-pendentes')
+  @Roles('ADMIN')
+  findPendingClosure(@Request() req: any) {
+    return this.service.findPendingClosure(req.user?.tenant_id);
+  }
+
   @Get(':id/workspace')
   getWorkspace(@Param('id') id: string, @Request() req: any) {
     return this.service.getWorkspaceData(id, req.user?.tenant_id);
@@ -128,14 +134,28 @@ export class LegalCasesController {
       lead_name?: string;
       lead_phone?: string;
       lead_email?: string;
+      // ADMIN pode escolher o advogado responsável
+      lawyer_id?: string;
     },
     @Request() req: any,
   ) {
+    const isAdmin = req.user.role === 'ADMIN';
     return this.service.createDirect({
       ...body,
       lawyer_id: req.user.id,
+      override_lawyer_id: isAdmin && body.lawyer_id ? body.lawyer_id : undefined,
       tenant_id: req.user.tenant_id,
     });
+  }
+
+  @Patch(':id/lawyer')
+  @Roles('ADMIN', 'ADVOGADO')
+  updateLawyer(
+    @Param('id') id: string,
+    @Body('lawyerId') lawyerId: string,
+    @Request() req: any,
+  ) {
+    return this.service.updateLawyer(id, lawyerId, req.user?.tenant_id);
   }
 
   @Patch(':id/lead')
@@ -153,7 +173,7 @@ export class LegalCasesController {
   }
 
   @Patch(':id/archive')
-  @Roles('ADMIN', 'ADVOGADO')
+  @Roles('ADMIN')
   archive(
     @Param('id') id: string,
     @Body() body: { reason: string; notifyLead?: boolean },
@@ -163,7 +183,7 @@ export class LegalCasesController {
   }
 
   @Patch(':id/unarchive')
-  @Roles('ADMIN', 'ADVOGADO')
+  @Roles('ADMIN')
   unarchive(@Param('id') id: string, @Request() req: any) {
     return this.service.unarchive(id, req.user?.tenant_id);
   }
@@ -222,5 +242,12 @@ export class LegalCasesController {
   @Delete('events/:eventId')
   deleteEvent(@Param('eventId') eventId: string, @Request() req: any) {
     return this.service.deleteEvent(eventId, req.user?.tenant_id);
+  }
+
+  /** Corrige leads com processo ativo que não estão marcados como cliente */
+  @Post('admin/sync-clients')
+  @Roles('ADMIN')
+  syncClients(@Request() req: any) {
+    return this.service.syncClientsFromActiveCases(req.user?.tenant_id);
   }
 }

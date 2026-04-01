@@ -5,14 +5,10 @@ import OpenAI from 'openai';
 @Injectable()
 export class FollowupService {
   private readonly logger = new Logger(FollowupService.name);
-  private openai: OpenAI | null = null;
+  private openai: OpenAI;
 
   constructor(private prisma: PrismaService) {
-    if (process.env.OPENAI_API_KEY) {
-      this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    } else {
-      this.logger.warn('[FOLLOWUP] OPENAI_API_KEY não configurada — geração de mensagens IA desativada.');
-    }
+    this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
 
   async buildDossie(enrollment: any, step: any, lead: any): Promise<any> {
@@ -251,11 +247,6 @@ ${customPrompt ? `\nINSTRUÇÃO ADICIONAL DO ADVOGADO:\n${customPrompt}` : ''}
 IMPORTANTE: Gere uma mensagem DIFERENTE das anteriores em estrutura e abordagem.
 Gere APENAS o texto da mensagem final, sem introduções, sem "Aqui está a mensagem:" etc.`;
 
-    if (!this.openai) {
-      this.logger.warn('[FOLLOWUP] OpenAI não disponível — retornando mensagem padrão.');
-      return this.fallbackMessage(nome);
-    }
-
     try {
       const completion = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
@@ -327,10 +318,6 @@ Considere requer_humano=true se:
 - Assunto sensível (luto, separação, prisão de familiar)
 - Negociação de valores ou acordos
 - Reclamação de serviço`;
-
-    if (!this.openai) {
-      return { sentimento: 'neutro', intencao: 'incerto', urgencia: 'media', requer_humano: false, resumo: 'Sem análise', proxima_acao: 'Revisar manualmente' };
-    }
 
     try {
       const r = await this.openai.chat.completions.create({

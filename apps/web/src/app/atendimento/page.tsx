@@ -261,6 +261,8 @@ export default function Dashboard() {
   const currentUserIdRef = useRef<string | null>(currentUserId);
   // IDs de transferências já exibidas no popup (evita re-exibir após fechar)
   const shownTransferIdsRef = useRef<Set<string>>(new Set());
+  // Debounce de sync por conversa: guarda timestamp do último sync (ms) por conversation_id
+  const lastSyncRef = useRef<Map<string, number>>(new Map());
 
   // Keep refs in sync
   useEffect(() => { selectedInboxIdRef.current = selectedInboxId; }, [selectedInboxId]);
@@ -945,11 +947,20 @@ export default function Dashboard() {
               if (prev.some(m => m.id === msg.id)) return prev;
               // Dedup: já existe pelo external_message_id
               if (msg.external_message_id && prev.some(m => m.external_message_id === msg.external_message_id)) return prev;
-              // Se é outgoing, substituir msg otimista correspondente (optimistic UI)
+              // Se é outgoing, substituir a msg otimista com texto mais próximo (optimistic UI)
+              // Usa o texto para corresponder corretamente quando há múltiplas msgs otimistas
               if (msg.direction === 'out') {
-                const optimisticIdx = prev.findIndex(m => typeof m.id === 'string' && m.id.startsWith('optimistic_'));
+                const optimisticIdx = prev.findIndex(
+                  m => typeof m.id === 'string' && m.id.startsWith('optimistic_') &&
+                       (m.text === msg.text || !msg.text)
+                );
                 if (optimisticIdx >= 0) {
                   return prev.map((m, i) => i === optimisticIdx ? msg : m);
+                }
+                // Fallback: substitui a primeira otimista sem correspondência de texto
+                const fallbackIdx = prev.findIndex(m => typeof m.id === 'string' && m.id.startsWith('optimistic_'));
+                if (fallbackIdx >= 0) {
+                  return prev.map((m, i) => i === fallbackIdx ? msg : m);
                 }
               }
               return [...prev, msg];
@@ -965,6 +976,32 @@ export default function Dashboard() {
           socketRef.current.on('messageUpdate', (updatedMsg: MessageItem) => {
             setMessages(prev => prev.map(m => m.id === updatedMsg.id ? { ...m, ...updatedMsg } : m));
           });
+          socketRef.current.off('messages_synced');
+          socketRef.current.on('messages_synced', async (data: { conversationId: string; imported: number }) => {
+            if (data.conversationId !== selectedIdRef.current) return;
+            if (data.imported <= 0) return;
+            // Recarrega as mensagens silenciosamente — sem loading spinner
+            try {
+              const res = await api.get(`/messages/conversation/${data.conversationId}`, {
+                params: { page: 1, limit: 100 },
+              });
+              const rawFresh = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+              // API retorna DESC; revertemos para exibir em ordem cronológica
+              const fresh = [...rawFresh].reverse();
+              setMessages(prev => {
+                // Preserva mensagens otimistas pendentes e mescla com as novas do banco
+                const optimistic = prev.filter(m => typeof m.id === 'string' && m.id.startsWith('optimistic_'));
+                const merged = [...fresh];
+                for (const m of optimistic) {
+                  if (!merged.some(e => e.id === m.id)) merged.push(m);
+                }
+                return merged;
+              });
+            } catch {
+              // Silencioso — o usuário pode usar o botão de sync manual
+            }
+          });
+
           socketRef.current.off('contact_presence');
           socketRef.current.on('contact_presence', (data: { presence: string }) => {
             setContactPresence(data.presence);
@@ -983,7 +1020,9 @@ export default function Dashboard() {
         const msgRes = await api.get(`/messages/conversation/${selectedId}`, {
           params: { page: 1, limit: 100 },
         });
-        const apiMessages = Array.isArray(msgRes.data) ? msgRes.data : (msgRes.data?.data || []);
+        // API retorna DESC (mais recentes primeiro); revertemos para exibir em ordem cronológica
+        const rawMessages = Array.isArray(msgRes.data) ? msgRes.data : (msgRes.data?.data || []);
+        const apiMessages = [...rawMessages].reverse();
 
         // Mescla mensagens da API com as que chegaram via socket durante o carregamento
         setMessages(prev => {
@@ -999,6 +1038,17 @@ export default function Dashboard() {
 
         setMsgTotalPages(msgRes.data?.totalPages || 1);
         setMsgCurrentPage(1);
+
+        // ── 3. Sync silencioso em background com o WhatsApp ────────────────
+        // Só sincroniza se passaram mais de 60s desde o último sync desta conversa.
+        const SYNC_DEBOUNCE_MS = 60_000;
+        const lastSync = lastSyncRef.current.get(selectedId) ?? 0;
+        if (Date.now() - lastSync > SYNC_DEBOUNCE_MS) {
+          lastSyncRef.current.set(selectedId, Date.now());
+          api.post(`/messages/conversation/${selectedId}/sync-history`).catch(() => {
+            // Falha silenciosa — sync é best-effort; botão manual no header como fallback
+          });
+        }
       } catch (e) {
         console.error('Failed to fetch conversation', e);
       } finally {
@@ -1053,7 +1103,9 @@ export default function Dashboard() {
       const res = await api.get(`/messages/conversation/${convId}`, {
         params: { page: nextPage, limit: 100 },
       });
-      const olderMsgs = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+      const rawOlder = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+      // API retorna DESC; revertemos para manter ordem cronológica ao fazer prepend
+      const olderMsgs = [...rawOlder].reverse();
       const scrollEl = scrollRef.current;
       const prevScrollHeight = scrollEl?.scrollHeight || 0;
       setMessages(prev => {
@@ -1514,11 +1566,11 @@ export default function Dashboard() {
     }
   };
 
-  const handleCompleteTask = async () => {
+  const handleCompleteTask = async (note: string) => {
     const conv = conversations.find(c => c.id === selectedId) ?? adiadoConversations.find(c => c.id === selectedId);
     if (!conv?.activeTask) return;
     try {
-      await api.post(`/tasks/${conv.activeTask.id}/complete-reopen`);
+      await api.post(`/tasks/${conv.activeTask.id}/complete`, { note });
       showSuccess('✅ Tarefa concluída! Conversa reaberta.');
       fetchConversations(selectedInboxIdRef.current, true);
       fetchAdiadoConversations(selectedInboxIdRef.current);
@@ -1568,15 +1620,16 @@ export default function Dashboard() {
     }
   };
 
-  const handleRescheduleTask = async (newDate: string) => {
+  const handlePostponeTask = async (newDate: string, reason: string) => {
     const conv = conversations.find(c => c.id === selectedId) ?? adiadoConversations.find(c => c.id === selectedId);
     if (!conv?.activeTask) return;
     try {
-      await api.patch(`/tasks/${conv.activeTask.id}`, { due_at: newDate });
-      showSuccess('📅 Prazo atualizado!');
+      await api.post(`/tasks/${conv.activeTask.id}/postpone`, { new_due_at: newDate, reason });
+      showSuccess('⏰ Tarefa adiada!');
+      fetchConversations(selectedInboxIdRef.current, true);
       fetchAdiadoConversations(selectedInboxIdRef.current);
     } catch {
-      showError('Erro ao reagendar');
+      showError('Erro ao adiar tarefa');
     }
   };
 
@@ -2111,10 +2164,25 @@ export default function Dashboard() {
               onSetClientPanelLeadId={setClientPanelLeadId}
               onLightbox={setLightbox}
               onCreateTask={openTaskModal}
+              onSyncHistory={async () => {
+                if (!selectedId) return;
+                try {
+                  const res = await api.post(`/messages/conversation/${selectedId}/sync-history`);
+                  const { imported } = res.data;
+                  if (imported > 0) {
+                    setMsgRefreshKey(k => k + 1);
+                    showSuccess(`${imported} mensagem(ns) sincronizada(s) com o WhatsApp`);
+                  } else {
+                    showSuccess('Histórico já está sincronizado');
+                  }
+                } catch {
+                  showError('Falha ao sincronizar histórico');
+                }
+              }}
               contactPresence={contactPresence}
               activeTask={selected?.activeTask}
               onCompleteTask={handleCompleteTask}
-              onRescheduleTask={handleRescheduleTask}
+              onPostponeTask={handlePostponeTask}
               onNewTask={openTaskModal}
               leadTags={selected?.leadTags ?? []}
               onUpdateTags={async (tags) => {

@@ -1,16 +1,20 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { RouteGuard } from '@/components/RouteGuard';
 import {
   User, Search, RefreshCw, MessageSquare, MoreVertical, ChevronDown, ChevronRight,
   Plus, X, Calendar, FileText, Clock, Archive, ArchiveRestore, Send,
   AlertTriangle, CheckCircle2, Loader2, ExternalLink, Bell, RefreshCcw, BookOpen,
-  LayoutList, LayoutGrid, DollarSign, Scale, Gavel, ArrowUpDown, FolderPlus,
+  LayoutList, LayoutGrid, DollarSign, Scale, Gavel, ArrowUpDown, FolderPlus, Pencil, Trash2,
+  Sparkles, AlertCircle,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { TRACKING_STAGES, findTrackingStage } from '@/lib/legalStages';
+import { useRole } from '@/lib/useRole';
+import { ClientPanel } from '@/components/ClientPanel';
+import { EventModal } from '@/components/EventModal';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -44,6 +48,16 @@ interface LegalCase {
     email: string | null;
     profile_picture_url: string | null;
   };
+  lawyer?: {
+    id: string;
+    name: string | null;
+  } | null;
+  calendar_events?: {
+    id: string;
+    start_at: string;
+    title: string;
+    location: string | null;
+  }[];
   _count?: { tasks: number; events: number; djen_publications: number };
 }
 
@@ -60,6 +74,20 @@ interface DjenPublication {
   legal_case_id: string | null;
   legal_case?: { id: string; lead: { name: string | null } } | null;
   created_at: string;
+}
+
+interface AiAnalysis {
+  resumo: string;
+  urgencia: 'URGENTE' | 'NORMAL' | 'BAIXA';
+  tipo_acao: string;
+  prazo_dias: number;
+  estagio_sugerido: string | null;
+  tarefa_titulo: string;
+  tarefa_descricao: string;
+  orientacoes: string;
+  event_type: 'AUDIENCIA' | 'PRAZO' | 'TAREFA';
+  data_audiencia: string | null;
+  data_prazo: string | null;
 }
 
 interface CaseTask {
@@ -272,13 +300,63 @@ function ProcessoCard({
             🏛️ {legalCase.court}
           </span>
         )}
+        {legalCase.lawyer?.name && (
+          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-500/12 text-emerald-400 text-[9px] font-bold border border-emerald-500/20 truncate max-w-[160px]" title={legalCase.lawyer.name}>
+            👨‍⚖️ {legalCase.lawyer.name}
+          </span>
+        )}
       </div>
+
+      {/* Próxima audiência */}
+      {legalCase.calendar_events && legalCase.calendar_events.length > 0 && (() => {
+        const nowCard = new Date();
+        // Prefere o próximo evento futuro; se todos forem passados, mostra o mais recente
+        const ev = legalCase.calendar_events!.find(e => new Date(e.start_at) >= nowCard)
+          ?? legalCase.calendar_events![legalCase.calendar_events!.length - 1];
+        const d = new Date(ev.start_at);
+        const hoje = new Date();
+        const diffDias = Math.ceil((d.getTime() - hoje.getTime()) / 86400000);
+        const isPast = diffDias < 0;
+        const isProxima = !isPast && diffDias <= 7;
+        const isHoje = diffDias <= 0 && diffDias > -1;
+        const dateLabel = `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às ${d.getUTCHours().toString().padStart(2,'0')}:${d.getUTCMinutes().toString().padStart(2,'0')}`;
+        return (
+          <div className={`mt-1.5 flex items-center gap-1.5 px-2 py-1.5 rounded-lg border ${
+            isHoje
+              ? 'bg-red-500/12 border-red-500/30'
+              : isPast
+              ? 'bg-gray-500/8 border-gray-500/20'
+              : isProxima
+              ? 'bg-amber-500/10 border-amber-500/25'
+              : 'bg-blue-500/8 border-blue-500/20'
+          }`}>
+            <Calendar size={9} className={isHoje ? 'text-red-400 shrink-0' : isPast ? 'text-gray-400 shrink-0' : isProxima ? 'text-amber-400 shrink-0' : 'text-blue-400 shrink-0'} />
+            <span className={`text-[9px] font-semibold leading-tight ${isHoje ? 'text-red-400' : isPast ? 'text-gray-400' : isProxima ? 'text-amber-400' : 'text-blue-400'}`}>
+              {isHoje
+                ? '🔴 Audiência HOJE'
+                : isPast
+                ? `✅ Realizada: ${dateLabel}`
+                : `Audiência: ${dateLabel}${isProxima ? ` (em ${diffDias}d)` : ''}`}
+            </span>
+          </div>
+        );
+      })()}
+
+      {/* Aviso: trabalhista em contestação — juntada = data da audiência */}
+      {legalCase.legal_area?.toUpperCase().includes('TRABALHIST') && legalCase.tracking_stage === 'CONTESTACAO' && (
+        <div className="mt-1.5 flex items-start gap-1.5 px-2 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/25">
+          <AlertTriangle size={9} className="text-amber-400 shrink-0 mt-0.5" />
+          <span className="text-[9px] text-amber-400 font-semibold leading-tight">
+            Atenção: juntada da contestação ocorre na data da audiência
+          </span>
+        </div>
+      )}
 
       {/* Footer */}
       <div className="flex items-center justify-between text-[10px] text-muted-foreground/70">
         <div className="flex items-center gap-2.5">
           {taskCount > 0 && (
-            <span className="flex items-center gap-0.5" title={`${taskCount} tarefas`}>
+            <span className="flex items-center gap-0.5" title={`${taskCount} eventos`}>
               <CheckCircle2 size={10} /> {taskCount}
             </span>
           )}
@@ -304,21 +382,210 @@ function ProcessoCard({
   );
 }
 
+// ─── AgendarAudienciaModal ────────────────────────────────────
+// Exibido quando o usuário tenta mover um card para INSTRUCAO sem
+// ter cadastrado uma audiência para esse processo.
+
+function AgendarAudienciaModal({
+  legalCase,
+  suggestedDate,
+  onScheduled,
+  onSkip,
+  onCancel,
+}: {
+  legalCase: LegalCase;
+  suggestedDate?: string | null;
+  onScheduled: () => void;
+  onSkip: () => void;
+  onCancel: () => void;
+}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [date, setDate] = useState(suggestedDate ? suggestedDate.slice(0, 10) : '');
+  const [time, setTime] = useState(suggestedDate ? (suggestedDate.slice(11, 16) || '09:00') : '09:00');
+  const [title, setTitle] = useState('Audiência de Instrução e Julgamento');
+  const [location, setLocation] = useState(legalCase.court || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    if (!date) { setError('Informe a data da audiência para continuar.'); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const startAt = `${date}T${time || '09:00'}:00`;
+      const h = parseInt((time || '09:00').split(':')[0]);
+      const m = parseInt((time || '09:00').split(':')[1] || '0');
+      const endH = String(h + 1 < 24 ? h + 1 : h).padStart(2, '0');
+      const endAt = `${date}T${endH}:${String(m).padStart(2, '0')}:00`;
+
+      await api.post('/calendar/events', {
+        type: 'AUDIENCIA',
+        title: title.trim() || 'Audiência',
+        start_at: startAt,
+        end_at: endAt,
+        legal_case_id: legalCase.id,
+        lead_id: legalCase.lead_id,
+        location: location.trim() || undefined,
+        priority: 'URGENTE',
+        reminders: [
+          { minutes_before: 1440, channel: 'WHATSAPP' },
+          { minutes_before: 60, channel: 'WHATSAPP' },
+        ],
+      });
+      onScheduled();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'Erro ao agendar. Tente novamente.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative z-10 w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-border bg-amber-500/5">
+          <div className="w-9 h-9 rounded-xl bg-amber-500/15 flex items-center justify-center shrink-0">
+            <Calendar size={16} className="text-amber-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-bold text-foreground">Cadastrar Data da Audiência</p>
+            <p className="text-[11px] text-amber-400/80 mt-0.5">
+              Obrigatório para mover para Audiência/Instrução
+            </p>
+          </div>
+          <button onClick={onCancel} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent">
+            <X size={14} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-5 py-4 space-y-4">
+          {/* Info do processo */}
+          <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-accent/30 border border-border text-[12px] text-muted-foreground">
+            <Scale size={12} className="shrink-0" />
+            <span className="truncate font-mono">{legalCase.case_number || 'Processo sem número'}</span>
+            <span className="shrink-0">·</span>
+            <span className="truncate">{legalCase.lead?.name || 'Sem cliente'}</span>
+          </div>
+
+          {/* Título */}
+          <div>
+            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+              Tipo de Audiência
+            </label>
+            <input
+              type="text"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              className="w-full text-[12px] bg-background border border-border rounded-xl px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+              placeholder="Audiência de Instrução e Julgamento"
+            />
+          </div>
+
+          {/* Data + Hora */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                Data *
+              </label>
+              <input
+                type="date"
+                value={date}
+                min={today}
+                onChange={e => setDate(e.target.value)}
+                className="w-full text-[12px] bg-background border border-border rounded-xl px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                Hora
+              </label>
+              <input
+                type="time"
+                value={time}
+                onChange={e => setTime(e.target.value)}
+                className="w-full text-[12px] bg-background border border-border rounded-xl px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+              />
+            </div>
+          </div>
+
+          {/* Local */}
+          <div>
+            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+              Local / Vara
+            </label>
+            <input
+              type="text"
+              value={location}
+              onChange={e => setLocation(e.target.value)}
+              placeholder={legalCase.court || 'Ex: 1ª Vara do Trabalho'}
+              className="w-full text-[12px] bg-background border border-border rounded-xl px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+            />
+          </div>
+
+          {error && (
+            <p className="text-[12px] text-red-400 flex items-center gap-1.5">
+              <AlertTriangle size={11} /> {error}
+            </p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center gap-2 px-5 py-4 border-t border-border">
+          <button
+            onClick={onSkip}
+            className="text-[11px] font-medium text-muted-foreground hover:text-foreground px-3 py-2 rounded-xl border border-border hover:bg-accent transition-colors"
+            title="Mover sem agendar audiência"
+          >
+            Pular por agora
+          </button>
+          <div className="flex-1" />
+          <button
+            onClick={onCancel}
+            className="text-[12px] font-semibold px-4 py-2 rounded-xl border border-border text-muted-foreground hover:bg-accent transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !date}
+            className="flex items-center gap-1.5 text-[12px] font-bold px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-500/90 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {saving ? <Loader2 size={12} className="animate-spin" /> : <Calendar size={12} />}
+            {saving ? 'Agendando…' : 'Agendar e Mover'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Case Detail Panel ─────────────────────────────────────────
 
 function ProcessoDetailPanel({
   legalCase,
   onClose,
   onRefresh,
+  onOpenClientPanel,
 }: {
   legalCase: LegalCase;
   onClose: () => void;
   onRefresh: () => void;
+  onOpenClientPanel: (leadId: string) => void;
 }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'info' | 'djen' | 'events' | 'tasks'>('info');
+  const { isAdmin } = useRole();
   const [saving, setSaving] = useState(false);
   const [savedFeedback, setSavedFeedback] = useState(false);
+
+  // Advogado responsável
+  const [lawyers, setLawyers] = useState<{ id: string; name: string | null }[]>([]);
+  const [lawyerSelectId, setLawyerSelectId] = useState(legalCase.lawyer?.id || '');
+  const [changingLawyer, setChangingLawyer] = useState(false);
+  const [lawyerError, setLawyerError] = useState('');
 
   // Info fields
   const [trackingStage, setTrackingStage] = useState(legalCase.tracking_stage || 'DISTRIBUIDO');
@@ -358,13 +625,13 @@ function ProcessoDetailPanel({
   // Tasks
   const [tasks, setTasks] = useState<CaseTask[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
-  const [showNewTask, setShowNewTask] = useState(false);
-  const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskDesc, setNewTaskDesc] = useState('');
-  const [newTaskAssignee, setNewTaskAssignee] = useState('');
-  const [newTaskDue, setNewTaskDue] = useState('');
-  const [interns, setInterns] = useState<Intern[]>([]);
+  const [showEventModal, setShowEventModal] = useState(false);
+  const [interns, setInterns] = useState<Intern[]>([]);       // estagiários do advogado
+  const [allUsers, setAllUsers] = useState<Intern[]>([]);      // todos os usuários do sistema
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState<string | null>(null);
+  const [editTaskForm, setEditTaskForm] = useState({ title: '', description: '', date: '', assignee: '' });
+  const [savingTask, setSavingTask] = useState(false);
   const [comments, setComments] = useState<{ id: string; text: string; created_at: string; user: { id: string; name: string } }[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
   const [newComment, setNewComment] = useState('');
@@ -383,6 +650,13 @@ function ProcessoDetailPanel({
   const [djenPubs, setDjenPubs] = useState<DjenPublication[]>([]);
   const [loadingDjen, setLoadingDjen] = useState(false);
   const [expandedDjen, setExpandedDjen] = useState<string | null>(null);
+  const [analyzingDjen, setAnalyzingDjen] = useState<string | null>(null);
+  const [djenAnalyses, setDjenAnalyses] = useState<Record<string, AiAnalysis>>({});
+  const [djenTaskCreated, setDjenTaskCreated] = useState<Record<string, boolean>>({});
+  const [creatingDjenTask, setCreatingDjenTask] = useState<string | null>(null);
+  const [djenEventPreview, setDjenEventPreview] = useState<Record<string, {
+    type: string; title: string; date: string; time: string; description: string; priority: string;
+  }>>({});
 
   const fetchTasks = useCallback(async () => {
     setLoadingTasks(true);
@@ -402,8 +676,15 @@ function ProcessoDetailPanel({
 
   const fetchInterns = useCallback(async () => {
     try {
+      // Estagiários vinculados ao advogado responsável pelo processo
       const res = await api.get(`/users/${legalCase.lawyer_id}/interns`);
       setInterns(res.data || []);
+    } catch {}
+    try {
+      // Todos os usuários com perfil (para campo Responsável em eventos não-prazo)
+      const res2 = await api.get('/users?limit=100');
+      const data = res2.data?.data || res2.data?.users || res2.data || [];
+      setAllUsers(data.filter((u: any) => u.role));
     } catch {}
   }, [legalCase.lawyer_id]);
 
@@ -421,6 +702,12 @@ function ProcessoDetailPanel({
     fetchInterns();
     fetchDjen();
   }, [fetchTasks, fetchEvents, fetchInterns, fetchDjen]);
+
+  // Busca lista de advogados (apenas para ADMIN)
+  useEffect(() => {
+    if (!isAdmin) return;
+    api.get('/users/lawyers').then(res => setLawyers(res.data || [])).catch(() => {});
+  }, [isAdmin]);
 
   // Busca de leads para vinculação (debounce)
   useEffect(() => {
@@ -448,6 +735,20 @@ function ProcessoDetailPanel({
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  const handleUpdateLawyer = async () => {
+    if (!lawyerSelectId) return;
+    setLawyerError('');
+    setChangingLawyer(true);
+    try {
+      await api.patch(`/legal-cases/${legalCase.id}/lawyer`, { lawyerId: lawyerSelectId });
+      onRefresh();
+    } catch (e: any) {
+      setLawyerError(e?.response?.data?.message || 'Erro ao atualizar advogado.');
+    } finally {
+      setChangingLawyer(false);
+    }
+  };
 
   const handleLinkLead = async () => {
     setLinkError('');
@@ -528,31 +829,47 @@ function ProcessoDetailPanel({
     } catch {}
   };
 
-  const handleCreateTask = async () => {
-    if (!newTaskTitle.trim()) return;
-    const startAt = newTaskDue ? new Date(newTaskDue).toISOString() : new Date().toISOString();
-    const endAt = new Date(new Date(startAt).getTime() + 30 * 60000).toISOString();
-    try {
-      await api.post('/calendar/events', {
-        type: 'TAREFA',
-        title: newTaskTitle,
-        description: newTaskDesc || undefined,
-        legal_case_id: legalCase.id,
-        assigned_user_id: newTaskAssignee || undefined,
-        start_at: startAt,
-        end_at: endAt,
-        priority: 'NORMAL',
-      });
-      setNewTaskTitle(''); setNewTaskDesc(''); setNewTaskAssignee(''); setNewTaskDue('');
-      setShowNewTask(false);
-      fetchTasks();
-    } catch {}
-  };
-
   const handleTaskStatusChange = async (taskId: string, status: string) => {
     try {
       await api.patch(`/calendar/events/${taskId}/status`, { status });
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status } : t));
+    } catch {}
+  };
+
+  const openEditTask = (task: CaseTask) => {
+    const dateVal = task.start_at ? task.start_at.slice(0, 10) : '';
+    setEditTaskForm({
+      title: task.title,
+      description: task.description || '',
+      date: dateVal,
+      assignee: task.assigned_user_id || '',
+    });
+    setEditingTask(task.id);
+    setExpandedTask(null);
+  };
+
+  const handleSaveTaskEdit = async (taskId: string) => {
+    if (!editTaskForm.title.trim()) return;
+    setSavingTask(true);
+    try {
+      const startAt = editTaskForm.date ? new Date(editTaskForm.date).toISOString() : undefined;
+      await api.patch(`/calendar/events/${taskId}`, {
+        title: editTaskForm.title.trim(),
+        description: editTaskForm.description.trim() || null,
+        start_at: startAt,
+        assigned_user_id: editTaskForm.assignee || null,
+      });
+      setEditingTask(null);
+      fetchTasks();
+    } catch {} finally { setSavingTask(false); }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm('Remover esta tarefa?')) return;
+    try {
+      await api.delete(`/calendar/events/${taskId}`);
+      setTasks(prev => prev.filter(t => t.id !== taskId));
+      if (editingTask === taskId) setEditingTask(null);
     } catch {}
   };
 
@@ -643,6 +960,13 @@ function ProcessoDetailPanel({
             >
               {stageInfo.emoji} {stageInfo.label}
             </span>
+            <button
+              onClick={() => onOpenClientPanel(legalCase.lead_id)}
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
+              title="Abrir Painel do Cliente"
+            >
+              <User size={16} />
+            </button>
             <button onClick={onClose} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-all">
               <X size={18} />
             </button>
@@ -655,7 +979,7 @@ function ProcessoDetailPanel({
             { id: 'info', label: 'Processo' },
             { id: 'djen', label: `DJEN (${djenPubs.length})` },
             { id: 'events', label: `Movim. (${events.length})` },
-            { id: 'tasks', label: `Tarefas (${tasks.length})` },
+            { id: 'tasks', label: `Eventos (${tasks.length})` },
           ] as const).map(tab => (
             <button
               key={tab.id}
@@ -708,6 +1032,13 @@ function ProcessoDetailPanel({
                     <p className="text-[13px] font-semibold text-foreground truncate">{legalCase.lead?.name || 'Sem nome'}</p>
                     <p className="text-[11px] text-muted-foreground font-mono">{legalCase.lead?.phone}</p>
                   </div>
+                  <button
+                    onClick={() => onOpenClientPanel(legalCase.lead_id)}
+                    className="shrink-0 text-[10px] font-semibold text-primary border border-primary/30 px-2 py-1 rounded-lg hover:bg-primary/10 transition-colors flex items-center gap-1"
+                    title="Abrir Painel do Cliente"
+                  >
+                    <User size={10} /> Ver perfil
+                  </button>
                   <button
                     onClick={() => setShowLeadSection(v => !v)}
                     className="shrink-0 text-[10px] text-muted-foreground hover:text-foreground border border-border px-2 py-1 rounded-lg hover:bg-accent transition-colors"
@@ -868,6 +1199,44 @@ function ProcessoDetailPanel({
                   </div>
                 </div>
               )}
+
+              {/* ── Bloco Advogado Responsável ───────────────────── */}
+              <div className="rounded-xl border border-border bg-accent/20 p-3 space-y-2">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  👨‍⚖️ Advogado Responsável
+                </p>
+                {isAdmin ? (
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={lawyerSelectId}
+                      onChange={e => setLawyerSelectId(e.target.value)}
+                      className="flex-1 px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40"
+                    >
+                      <option value="">Selecionar advogado…</option>
+                      {lawyers.map(l => (
+                        <option key={l.id} value={l.id}>{l.name || l.id}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleUpdateLawyer}
+                      disabled={changingLawyer || !lawyerSelectId || lawyerSelectId === legalCase.lawyer?.id}
+                      className="px-3 py-2 text-[12px] font-semibold bg-primary text-primary-foreground rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5 transition-all shrink-0"
+                    >
+                      {changingLawyer ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                      Salvar
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-[13px] font-semibold text-foreground">
+                    {legalCase.lawyer?.name || <span className="text-muted-foreground italic text-sm">Não atribuído</span>}
+                  </p>
+                )}
+                {lawyerError && (
+                  <p className="text-[11px] text-destructive flex items-center gap-1">
+                    <AlertTriangle size={11} /> {lawyerError}
+                  </p>
+                )}
+              </div>
 
               {/* Prioridade + Etapa */}
               <div className="grid grid-cols-2 gap-3">
@@ -1035,47 +1404,123 @@ function ProcessoDetailPanel({
               )}
 
               {legalCase.archived ? (
-                <button
-                  onClick={handleUnarchive}
-                  className="w-full py-2 text-sm text-blue-500 hover:text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-500/10 transition-colors flex items-center justify-center gap-2"
-                >
-                  <ArchiveRestore size={14} /> Desarquivar Processo
-                </button>
-              ) : (
-                <>
-                  <button
-                    onClick={() => setShowArchive(!showArchive)}
-                    className="w-full py-2 text-sm text-amber-500 hover:text-amber-400 border border-amber-500/30 rounded-lg hover:bg-amber-500/10 transition-colors flex items-center justify-center gap-2"
-                  >
-                    <Archive size={14} /> Encerrar / Arquivar
+                isAdmin && (
+                  <button onClick={handleUnarchive} className="w-full py-2 text-sm text-blue-500 hover:text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-500/10 transition-colors flex items-center justify-center gap-2">
+                    <ArchiveRestore size={14} /> Reativar Processo
                   </button>
-                  {showArchive && (
-                    <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl space-y-3">
-                      <div className="flex items-center gap-2 text-amber-500 text-[12px] font-bold">
-                        <AlertTriangle size={14} /> Arquivar processo
-                      </div>
-                      <textarea
-                        value={archiveReason}
-                        onChange={e => setArchiveReason(e.target.value)}
-                        rows={2}
-                        className="w-full px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none"
-                        placeholder="Motivo do arquivamento..."
-                      />
-                      <label className="flex items-center gap-2 text-[12px] text-muted-foreground cursor-pointer">
-                        <input type="checkbox" checked={notifyLead} onChange={e => setNotifyLead(e.target.checked)} className="rounded" />
-                        Notificar cliente via WhatsApp
-                      </label>
-                      <button
-                        onClick={handleArchive}
-                        disabled={archiving}
-                        className="w-full py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
-                      >
-                        {archiving ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />}
-                        Confirmar Arquivamento
-                      </button>
+                )
+              ) : legalCase.tracking_stage === 'ENCERRADO' ? (
+                isAdmin ? (
+                  <>
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                      <AlertTriangle size={13} className="text-amber-500 shrink-0" />
+                      <p className="text-[11px] text-amber-500 font-semibold">Processo aguardando arquivamento</p>
                     </div>
-                  )}
-                </>
+                    <button
+                      onClick={() => setShowArchive(!showArchive)}
+                      className="w-full py-2 text-sm text-amber-500 hover:text-amber-400 border border-amber-500/30 rounded-lg hover:bg-amber-500/10 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Archive size={14} /> Arquivar Processo
+                    </button>
+                    {showArchive && (
+                      <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl space-y-3">
+                        <div className="flex items-center gap-2 text-amber-500 text-[12px] font-bold">
+                          <AlertTriangle size={14} /> Confirmar arquivamento
+                        </div>
+                        <textarea
+                          value={archiveReason}
+                          onChange={e => setArchiveReason(e.target.value)}
+                          rows={2}
+                          className="w-full px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none"
+                          placeholder="Motivo do arquivamento..."
+                        />
+                        <label className="flex items-center gap-2 text-[12px] text-muted-foreground cursor-pointer">
+                          <input type="checkbox" checked={notifyLead} onChange={e => setNotifyLead(e.target.checked)} className="rounded" />
+                          Notificar cliente via WhatsApp
+                        </label>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              try {
+                                await api.patch(`/legal-cases/${legalCase.id}/tracking-stage`, { trackingStage: 'TRANSITADO' });
+                                onRefresh();
+                                setShowArchive(false);
+                              } catch {}
+                            }}
+                            className="flex-1 py-2 text-sm font-semibold border border-border rounded-lg hover:bg-accent transition-colors text-muted-foreground"
+                          >
+                            Reativar
+                          </button>
+                          <button
+                            onClick={handleArchive}
+                            disabled={archiving}
+                            className="flex-1 py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                          >
+                            {archiving ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />}
+                            Arquivar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                    <Clock size={13} className="text-amber-500 shrink-0" />
+                    <div>
+                      <p className="text-[11px] text-amber-500 font-semibold">Aguardando revisão do administrador</p>
+                      <p className="text-[10px] text-muted-foreground">Solicitação de encerramento enviada</p>
+                    </div>
+                  </div>
+                )
+              ) : (
+                !isAdmin ? (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await api.patch(`/legal-cases/${legalCase.id}/tracking-stage`, { trackingStage: 'ENCERRADO' });
+                        onRefresh();
+                      } catch {}
+                    }}
+                    className="w-full py-2 text-sm text-muted-foreground hover:text-amber-400 border border-border rounded-lg hover:border-amber-500/30 hover:bg-amber-500/5 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Archive size={14} /> Solicitar Encerramento
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setShowArchive(!showArchive)}
+                      className="w-full py-2 text-sm text-amber-500 hover:text-amber-400 border border-amber-500/30 rounded-lg hover:bg-amber-500/10 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Archive size={14} /> Encerrar / Arquivar
+                    </button>
+                    {showArchive && (
+                      <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl space-y-3">
+                        <div className="flex items-center gap-2 text-amber-500 text-[12px] font-bold">
+                          <AlertTriangle size={14} /> Arquivar processo
+                        </div>
+                        <textarea
+                          value={archiveReason}
+                          onChange={e => setArchiveReason(e.target.value)}
+                          rows={2}
+                          className="w-full px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none"
+                          placeholder="Motivo do arquivamento..."
+                        />
+                        <label className="flex items-center gap-2 text-[12px] text-muted-foreground cursor-pointer">
+                          <input type="checkbox" checked={notifyLead} onChange={e => setNotifyLead(e.target.checked)} className="rounded" />
+                          Notificar cliente via WhatsApp
+                        </label>
+                        <button
+                          onClick={handleArchive}
+                          disabled={archiving}
+                          className="w-full py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                          {archiving ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />}
+                          Confirmar Arquivamento
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )
               )}
             </div>
           )}
@@ -1103,44 +1548,278 @@ function ProcessoDetailPanel({
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {djenPubs.map(pub => (
-                    <div key={pub.id} className="border border-border rounded-xl overflow-hidden">
-                      <div
-                        className="p-3 flex items-start gap-3 cursor-pointer hover:bg-accent/30 transition-colors"
-                        onClick={() => setExpandedDjen(expandedDjen === pub.id ? null : pub.id)}
-                      >
-                        <ChevronRight
-                          size={14}
-                          className={`text-muted-foreground mt-0.5 shrink-0 transition-transform ${expandedDjen === pub.id ? 'rotate-90' : ''}`}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap mb-1">
-                            {pub.tipo_comunicacao && (
-                              <span className="px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[9px] font-bold border border-blue-500/20">
-                                {pub.tipo_comunicacao}
+                  {djenPubs.map(pub => {
+                    const analysis = djenAnalyses[pub.id];
+                    const isAnalyzing = analyzingDjen === pub.id;
+                    const isExpanded = expandedDjen === pub.id;
+                    const URGENCIA_CFG = {
+                      URGENTE: { bg: 'bg-red-500/10', text: 'text-red-400', Icon: AlertCircle },
+                      NORMAL:  { bg: 'bg-amber-500/10', text: 'text-amber-400', Icon: Clock },
+                      BAIXA:   { bg: 'bg-gray-500/10', text: 'text-gray-400', Icon: CheckCircle2 },
+                    };
+                    return (
+                      <div key={pub.id} className="border border-border rounded-xl overflow-hidden">
+                        {/* Header row */}
+                        <div className="p-3 flex items-start gap-2">
+                          <button
+                            className="mt-0.5 shrink-0"
+                            onClick={() => setExpandedDjen(isExpanded ? null : pub.id)}
+                          >
+                            <ChevronRight
+                              size={14}
+                              className={`text-muted-foreground transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                            />
+                          </button>
+                          <div
+                            className="flex-1 min-w-0 cursor-pointer"
+                            onClick={() => setExpandedDjen(isExpanded ? null : pub.id)}
+                          >
+                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                              {pub.tipo_comunicacao && (
+                                <span className="px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[9px] font-bold border border-blue-500/20">
+                                  {pub.tipo_comunicacao}
+                                </span>
+                              )}
+                              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                                <Calendar size={9} /> {formatDate(pub.data_disponibilizacao)}
                               </span>
+                              {analysis && (() => {
+                                const cfg = URGENCIA_CFG[analysis.urgencia];
+                                return (
+                                  <span className={`text-[9px] font-bold px-1 py-0.5 rounded flex items-center gap-0.5 ${cfg.bg} ${cfg.text}`}>
+                                    <cfg.Icon size={8} /> {analysis.urgencia}
+                                  </span>
+                                );
+                              })()}
+                            </div>
+                            {pub.assunto && (
+                              <p className="text-[12px] font-semibold text-foreground line-clamp-1">{pub.assunto}</p>
                             )}
-                            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                              <Calendar size={9} /> {formatDate(pub.data_disponibilizacao)}
-                            </span>
+                            {pub.classe_processual && (
+                              <p className="text-[11px] text-muted-foreground truncate">{pub.classe_processual}</p>
+                            )}
                           </div>
-                          {pub.assunto && (
-                            <p className="text-[12px] font-semibold text-foreground line-clamp-1">{pub.assunto}</p>
-                          )}
-                          {pub.classe_processual && (
-                            <p className="text-[11px] text-muted-foreground truncate">{pub.classe_processual}</p>
-                          )}
+                          {/* Botão IA — bloqueado se não há processo vinculado */}
+                          <button
+                            onClick={async () => {
+                              if (!pub.legal_case_id) return;
+                              if (analysis || isAnalyzing) {
+                                setExpandedDjen(isExpanded ? null : pub.id);
+                                return;
+                              }
+                              setAnalyzingDjen(pub.id);
+                              setExpandedDjen(pub.id);
+                              try {
+                                const res = await api.post(`/djen/${pub.id}/analyze`);
+                                setDjenAnalyses(prev => ({ ...prev, [pub.id]: res.data }));
+                              } catch {} finally { setAnalyzingDjen(null); }
+                            }}
+                            disabled={!pub.legal_case_id}
+                            className={`shrink-0 flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-lg border transition-colors ${
+                              !pub.legal_case_id
+                                ? 'opacity-40 cursor-not-allowed border-border text-muted-foreground'
+                                : analysis
+                                ? 'bg-violet-500/15 text-violet-300 border-violet-500/30'
+                                : 'text-violet-400 border-violet-500/30 bg-violet-500/5 hover:bg-violet-500/10'
+                            }`}
+                            title={!pub.legal_case_id ? 'Vincule ao processo antes de analisar' : 'Analisar com IA'}
+                          >
+                            {isAnalyzing ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                            IA
+                          </button>
                         </div>
+
+                        {/* Conteúdo expandido */}
+                        {isExpanded && (
+                          <div className="border-t border-border bg-accent/10 p-3 space-y-3">
+                            {/* Texto bruto */}
+                            <p className="text-[11px] text-foreground/80 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto custom-scrollbar">
+                              {pub.conteudo}
+                            </p>
+
+                            {/* Análise IA */}
+                            {isAnalyzing && (
+                              <div className="flex items-center gap-2 text-[11px] text-violet-400 animate-pulse">
+                                <Loader2 size={12} className="animate-spin" /> Analisando com IA…
+                              </div>
+                            )}
+                            {analysis && (
+                              <div className="space-y-2 border-t border-border/50 pt-3">
+                                <div className="flex items-center gap-1 text-[10px] font-bold text-violet-400 uppercase tracking-wider">
+                                  <Sparkles size={10} /> Análise IA
+                                </div>
+                                <p className="text-[11px] text-foreground/90 leading-relaxed">{analysis.resumo}</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {analysis.tipo_acao && (
+                                    <span className="text-[10px] bg-card border border-border px-2 py-0.5 rounded-full text-foreground/70">
+                                      {analysis.tipo_acao}
+                                    </span>
+                                  )}
+                                  {analysis.prazo_dias > 0 && (
+                                    <span className="text-[10px] bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full text-amber-400 flex items-center gap-0.5">
+                                      <Clock size={9} /> Prazo: {analysis.prazo_dias}d
+                                    </span>
+                                  )}
+                                </div>
+                                {analysis.orientacoes && (
+                                  <div className="bg-card border border-border rounded-lg p-2.5">
+                                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Orientações</p>
+                                    <p className="text-[11px] text-foreground/80 leading-relaxed">{analysis.orientacoes}</p>
+                                  </div>
+                                )}
+                                {/* Evento sugerido — com preview antes de criar */}
+                                {analysis.tarefa_titulo && !djenTaskCreated[pub.id] && (() => {
+                                  const preview = djenEventPreview[pub.id];
+                                  const eventTypeLabels: Record<string, string> = { AUDIENCIA: '⚖️ Audiência', PRAZO: '🕐 Prazo', TAREFA: '✅ Tarefa' };
+                                  // Calcula data/hora sugerida pela IA
+                                  // IMPORTANTE: extraímos data e hora diretamente da string ISO da IA,
+                                  // sem criar objetos Date — assim evitamos conversão de fuso (UTC-3 do browser).
+                                  const pad = (n: number) => String(n).padStart(2, '0');
+                                  const isoFromAi = (() => {
+                                    if (analysis.event_type === 'AUDIENCIA' && analysis.data_audiencia) return analysis.data_audiencia;
+                                    if (analysis.event_type === 'PRAZO' && analysis.data_prazo) return analysis.data_prazo;
+                                    return null;
+                                  })();
+                                  const defaultDate = (() => {
+                                    if (isoFromAi) return isoFromAi.slice(0, 10); // "YYYY-MM-DD"
+                                    // fallback: data da publicação + prazo_dias úteis (usa UTC pois pub.data_disponibilizacao é ISO)
+                                    const base = new Date(pub.data_disponibilizacao);
+                                    let days = analysis.prazo_dias > 0 ? analysis.prazo_dias : 0;
+                                    while (days > 0) { base.setUTCDate(base.getUTCDate() + 1); if (base.getUTCDay() !== 0 && base.getUTCDay() !== 6) days--; }
+                                    return `${base.getUTCFullYear()}-${pad(base.getUTCMonth()+1)}-${pad(base.getUTCDate())}`;
+                                  })();
+                                  const defaultTime = isoFromAi ? isoFromAi.slice(11, 16) || '09:00' : '09:00';
+                                  const defaultPriority = analysis.urgencia === 'URGENTE' ? 'ALTA' : analysis.urgencia === 'BAIXA' ? 'BAIXA' : 'NORMAL';
+                                  return (
+                                    <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-2.5 space-y-2">
+                                      <div className="flex items-center justify-between">
+                                        <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+                                          {eventTypeLabels[analysis.event_type] || '✅ Tarefa'} sugerida
+                                        </p>
+                                        {!preview && (
+                                          <button
+                                            onClick={() => setDjenEventPreview(prev => ({ ...prev, [pub.id]: {
+                                              type: analysis.event_type || 'TAREFA',
+                                              title: analysis.tarefa_titulo,
+                                              date: defaultDate,
+                                              time: defaultTime,
+                                              description: analysis.tarefa_descricao || '',
+                                              priority: defaultPriority,
+                                            }}))}
+                                            className="text-[10px] font-semibold text-emerald-400 hover:text-emerald-300 underline"
+                                          >
+                                            Revisar e criar
+                                          </button>
+                                        )}
+                                      </div>
+                                      <p className="text-[11px] font-semibold text-foreground">{analysis.tarefa_titulo}</p>
+                                      {analysis.tarefa_descricao && !preview && (
+                                        <p className="text-[10px] text-muted-foreground">{analysis.tarefa_descricao}</p>
+                                      )}
+
+                                      {/* Preview editável */}
+                                      {preview && (
+                                        <div className="space-y-2 border-t border-emerald-500/20 pt-2">
+                                          <p className="text-[10px] font-bold text-emerald-400/80 uppercase tracking-wider">Confirme antes de criar</p>
+                                          {/* Tipo */}
+                                          <div>
+                                            <label className="text-[10px] text-muted-foreground mb-0.5 block">Tipo</label>
+                                            <select
+                                              value={preview.type}
+                                              onChange={e => setDjenEventPreview(prev => ({ ...prev, [pub.id]: { ...prev[pub.id], type: e.target.value } }))}
+                                              className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground outline-none"
+                                            >
+                                              <option value="AUDIENCIA">⚖️ Audiência</option>
+                                              <option value="PRAZO">🕐 Prazo</option>
+                                              <option value="TAREFA">✅ Tarefa</option>
+                                              <option value="OUTRO">📌 Outro</option>
+                                            </select>
+                                          </div>
+                                          {/* Título */}
+                                          <div>
+                                            <label className="text-[10px] text-muted-foreground mb-0.5 block">Título</label>
+                                            <input
+                                              value={preview.title}
+                                              onChange={e => setDjenEventPreview(prev => ({ ...prev, [pub.id]: { ...prev[pub.id], title: e.target.value } }))}
+                                              className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground outline-none"
+                                            />
+                                          </div>
+                                          {/* Data e hora */}
+                                          <div className="flex gap-2">
+                                            <div className="flex-1">
+                                              <label className="text-[10px] text-muted-foreground mb-0.5 block">Data</label>
+                                              <input
+                                                type="date"
+                                                value={preview.date}
+                                                onChange={e => setDjenEventPreview(prev => ({ ...prev, [pub.id]: { ...prev[pub.id], date: e.target.value } }))}
+                                                className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground outline-none"
+                                              />
+                                            </div>
+                                            <div className="w-24">
+                                              <label className="text-[10px] text-muted-foreground mb-0.5 block">Hora</label>
+                                              <input
+                                                type="time"
+                                                value={preview.time}
+                                                onChange={e => setDjenEventPreview(prev => ({ ...prev, [pub.id]: { ...prev[pub.id], time: e.target.value } }))}
+                                                className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground outline-none"
+                                              />
+                                            </div>
+                                          </div>
+                                          {/* Botões */}
+                                          <div className="flex gap-2 pt-1">
+                                            <button
+                                              onClick={() => setDjenEventPreview(prev => { const n = { ...prev }; delete n[pub.id]; return n; })}
+                                              className="flex-1 py-1.5 text-xs font-semibold border border-border rounded-lg text-muted-foreground hover:bg-accent transition-colors"
+                                            >
+                                              Cancelar
+                                            </button>
+                                            <button
+                                              disabled={!preview.title || !preview.date || creatingDjenTask === pub.id}
+                                              onClick={async () => {
+                                                setCreatingDjenTask(pub.id);
+                                                try {
+                                                  const [y, m, d] = preview.date.split('-').map(Number);
+                                                  const [h, mi] = preview.time.split(':').map(Number);
+                                                  const start = new Date(Date.UTC(y, m-1, d, h, mi, 0));
+                                                  const dur = preview.type === 'AUDIENCIA' ? 60 : 30;
+                                                  await api.post('/calendar/events', {
+                                                    type: preview.type,
+                                                    title: preview.title,
+                                                    description: preview.description || undefined,
+                                                    legal_case_id: legalCase.id,
+                                                    lead_id: legalCase.lead?.id || undefined,
+                                                    start_at: start.toISOString(),
+                                                    end_at: new Date(start.getTime() + dur * 60000).toISOString(),
+                                                    priority: preview.priority,
+                                                  });
+                                                  setDjenTaskCreated(prev => ({ ...prev, [pub.id]: true }));
+                                                  setDjenEventPreview(prev => { const n = { ...prev }; delete n[pub.id]; return n; });
+                                                  fetchTasks();
+                                                } catch {} finally { setCreatingDjenTask(null); }
+                                              }}
+                                              className="flex-1 py-1.5 text-xs font-semibold bg-emerald-500/80 text-white rounded-lg hover:bg-emerald-500 transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                                            >
+                                              {creatingDjenTask === pub.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
+                                              Confirmar
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+                                {djenTaskCreated[pub.id] && (
+                                  <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-semibold">
+                                    <CheckCircle2 size={13} /> Evento criado no calendário
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      {expandedDjen === pub.id && (
-                        <div className="border-t border-border bg-accent/10 p-3">
-                          <p className="text-[11px] text-foreground/80 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto custom-scrollbar">
-                            {pub.conteudo}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1253,65 +1932,40 @@ function ProcessoDetailPanel({
           {activeTab === 'tasks' && (
             <div className="p-5 space-y-3">
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider">Tarefas</h3>
-                <button onClick={() => setShowNewTask(!showNewTask)} className="text-[11px] font-semibold text-primary hover:text-primary/80 flex items-center gap-1">
-                  <Plus size={12} /> Nova Tarefa
+                <h3 className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider">Eventos</h3>
+                <button onClick={() => setShowEventModal(true)} className="text-[11px] font-semibold text-primary hover:text-primary/80 flex items-center gap-1">
+                  <Plus size={12} /> Novo Evento
                 </button>
               </div>
 
-              {showNewTask && (
-                <div className="p-4 bg-accent/30 border border-border rounded-xl space-y-3">
-                  <input
-                    type="text"
-                    value={newTaskTitle}
-                    onChange={e => setNewTaskTitle(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40"
-                    placeholder="Título da tarefa"
-                  />
-                  <textarea
-                    value={newTaskDesc}
-                    onChange={e => setNewTaskDesc(e.target.value)}
-                    rows={2}
-                    className="w-full px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none resize-none"
-                    placeholder="Descrição (opcional)"
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <select
-                      value={newTaskAssignee}
-                      onChange={e => setNewTaskAssignee(e.target.value)}
-                      className="px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none"
-                    >
-                      <option value="">Atribuir a...</option>
-                      {interns.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-                    </select>
-                    <input
-                      type="date"
-                      value={newTaskDue}
-                      onChange={e => setNewTaskDue(e.target.value)}
-                      className="px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={handleCreateTask} className="flex-1 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:opacity-90">Criar</button>
-                    <button onClick={() => setShowNewTask(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg">Cancelar</button>
-                  </div>
-                </div>
+              {showEventModal && (
+                <EventModal
+                  caseId={legalCase.id}
+                  lawyerId={legalCase.lawyer_id}
+                  users={allUsers}
+                  interns={interns}
+                  onClose={() => setShowEventModal(false)}
+                  onCreated={fetchTasks}
+                />
               )}
 
               {loadingTasks ? (
-                <div className="text-center py-8 text-muted-foreground text-sm animate-pulse">Carregando tarefas…</div>
+                <div className="text-center py-8 text-muted-foreground text-sm animate-pulse">Carregando eventos…</div>
               ) : tasks.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground text-[12px]">Nenhuma tarefa criada</div>
+                <div className="text-center py-8 text-muted-foreground text-[12px]">Nenhum evento criado</div>
               ) : (
                 tasks.map(task => {
                   const statusInfo = TASK_STATUSES.find(s => s.id === task.status) ?? TASK_STATUSES[0];
                   const isExpanded = expandedTask === task.id;
 
+                  const isEditing = editingTask === task.id;
+
                   return (
                     <div key={task.id} className="border border-border rounded-xl overflow-hidden">
+                      {/* ── Linha principal da tarefa ── */}
                       <div
                         className="p-3 flex items-start gap-3 cursor-pointer hover:bg-accent/30 transition-colors"
-                        onClick={() => toggleTaskExpand(task.id)}
+                        onClick={() => !isEditing && toggleTaskExpand(task.id)}
                       >
                         <ChevronRight
                           size={14}
@@ -1331,18 +1985,84 @@ function ProcessoDetailPanel({
                             )}
                           </div>
                         </div>
-                        <select
-                          value={task.status}
-                          onClick={e => e.stopPropagation()}
-                          onChange={e => { e.stopPropagation(); handleTaskStatusChange(task.id, e.target.value); }}
-                          className="text-[10px] font-bold px-2 py-1 rounded-full border-0 focus:outline-none cursor-pointer"
-                          style={{ backgroundColor: `${statusInfo.color}20`, color: statusInfo.color }}
-                        >
-                          {TASK_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-                        </select>
+                        {/* Status select + botão editar */}
+                        <div className="flex flex-col items-end gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                          <select
+                            value={task.status}
+                            onChange={e => handleTaskStatusChange(task.id, e.target.value)}
+                            className="text-[10px] font-bold px-2 py-1 rounded-full border-0 focus:outline-none cursor-pointer"
+                            style={{ backgroundColor: `${statusInfo.color}20`, color: statusInfo.color }}
+                          >
+                            {TASK_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                          </select>
+                          <button
+                            onClick={() => isEditing ? setEditingTask(null) : openEditTask(task)}
+                            className="text-[9px] font-semibold text-primary hover:text-primary/80 flex items-center gap-0.5 transition-colors"
+                          >
+                            <Pencil size={9} /> {isEditing ? 'Fechar' : 'Editar'}
+                          </button>
+                        </div>
                       </div>
 
-                      {isExpanded && (
+                      {/* ── Formulário de edição inline ── */}
+                      {isEditing && (
+                        <div className="border-t border-border bg-accent/10 p-3 space-y-2">
+                          <input
+                            type="text"
+                            value={editTaskForm.title}
+                            onChange={e => setEditTaskForm(f => ({ ...f, title: e.target.value }))}
+                            className="w-full px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40"
+                            placeholder="Título"
+                          />
+                          <textarea
+                            value={editTaskForm.description}
+                            onChange={e => setEditTaskForm(f => ({ ...f, description: e.target.value }))}
+                            rows={2}
+                            className="w-full px-3 py-2 text-[12px] bg-card border border-border rounded-lg focus:outline-none resize-none"
+                            placeholder="Descrição (opcional)"
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <select
+                              value={editTaskForm.assignee}
+                              onChange={e => setEditTaskForm(f => ({ ...f, assignee: e.target.value }))}
+                              className="px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none"
+                            >
+                              <option value="">Atribuir a...</option>
+                              {interns.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                            </select>
+                            <input
+                              type="date"
+                              value={editTaskForm.date}
+                              onChange={e => setEditTaskForm(f => ({ ...f, date: e.target.value }))}
+                              className="px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleSaveTaskEdit(task.id)}
+                              disabled={!editTaskForm.title.trim() || savingTask}
+                              className="flex-1 py-1.5 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:opacity-90 disabled:opacity-40"
+                            >
+                              {savingTask ? 'Salvando…' : 'Salvar'}
+                            </button>
+                            <button
+                              onClick={() => setEditingTask(null)}
+                              className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTask(task.id)}
+                              className="px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                              title="Remover tarefa"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {isExpanded && !isEditing && (
                         <div className="border-t border-border bg-accent/10 p-3 space-y-2">
                           {task.description && (
                             <p className="text-[12px] text-muted-foreground italic mb-2">{task.description}</p>
@@ -1414,6 +2134,17 @@ function CadastrarProcessoModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const { isAdmin } = useRole();
+
+  // ── Advogado (ADMIN only) ─────────────────────────────────────
+  const [lawyers, setLawyers] = useState<{ id: string; name: string | null }[]>([]);
+  const [selectedLawyerId, setSelectedLawyerId] = useState('');
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    api.get('/users/lawyers').then(res => setLawyers(res.data || [])).catch(() => {});
+  }, [isAdmin]);
+
   // ── Lead ──────────────────────────────────────────────────────
   type LeadMode = 'existing' | 'new';
   const [leadMode, setLeadMode] = useState<LeadMode>('existing');
@@ -1511,6 +2242,8 @@ function CadastrarProcessoModal({
         lead_phone: leadMode === 'new' ? newLeadPhone : undefined,
         lead_name: leadMode === 'new' ? newLeadName || undefined : undefined,
         lead_email: leadMode === 'new' ? newLeadEmail || undefined : undefined,
+        // Advogado (ADMIN pode escolher; demais usam o próprio user via req.user.id no backend)
+        lawyer_id: isAdmin && selectedLawyerId ? selectedLawyerId : undefined,
       });
       onSuccess();
       onClose();
@@ -1682,6 +2415,28 @@ function CadastrarProcessoModal({
               </div>
             )}
           </div>
+
+          {/* ── Seção: Advogado Responsável (ADMIN only) ─────── */}
+          {isAdmin && lawyers.length > 0 && (
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-3">
+                👨‍⚖️ Advogado Responsável
+              </p>
+              <select
+                value={selectedLawyerId}
+                onChange={e => setSelectedLawyerId(e.target.value)}
+                className={inputCls}
+              >
+                <option value="">Atribuir automaticamente (padrão)</option>
+                {lawyers.map(l => (
+                  <option key={l.id} value={l.id}>{l.name || l.id}</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-muted-foreground mt-1.5">
+                Se não selecionado, o processo será atribuído a você.
+              </p>
+            </div>
+          )}
 
           {/* ── Seção: Processo ────────────────────────────────── */}
           <div className="space-y-4">
@@ -1893,6 +2648,7 @@ function TabelaView({
             <th className="px-3 py-2.5 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Nº Processo</th>
             <SortHeader field="area">Área</SortHeader>
             <th className="px-3 py-2.5 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Vara</th>
+            <th className="px-3 py-2.5 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Advogado</th>
             <SortHeader field="stage">Etapa</SortHeader>
             <SortHeader field="days">Dias</SortHeader>
             <th className="px-3 py-2.5 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Tarefas</th>
@@ -1935,6 +2691,13 @@ function TabelaView({
                 </td>
                 <td className="px-3 py-2.5">
                   <span className="text-[11px] text-muted-foreground truncate max-w-[100px] block">{c.court || '—'}</span>
+                </td>
+                <td className="px-3 py-2.5">
+                  {c.lawyer?.name ? (
+                    <span className="text-[11px] text-emerald-400 font-semibold truncate max-w-[120px] block" title={c.lawyer.name}>
+                      {c.lawyer.name}
+                    </span>
+                  ) : <span className="text-[11px] text-muted-foreground">—</span>}
                 </td>
                 <td className="px-3 py-2.5">
                   <span className="text-[11px] font-semibold" style={{ color: stageInfo.color }}>
@@ -1981,9 +2744,11 @@ function TabelaView({
 
 function ProcessosPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [cases, setCases] = useState<LegalCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [areaFilter, setAreaFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
@@ -1993,6 +2758,25 @@ function ProcessosPageContent() {
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [selectedCase, setSelectedCase] = useState<LegalCase | null>(null);
   const [showCadastrarModal, setShowCadastrarModal] = useState(false);
+  const [clientPanelLeadId, setClientPanelLeadId] = useState<string | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const { isAdmin: currentUserIsAdmin } = useRole();
+
+  const [pendingClosure, setPendingClosure] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!currentUserIsAdmin) return;
+    api.get('/legal-cases/encerrados-pendentes')
+      .then(r => setPendingClosure(r.data || []))
+      .catch(() => {});
+  }, [currentUserIsAdmin, cases]); // refresh when cases change
+
+  // Mover para INSTRUCAO requer audiência agendada
+  const [pendingMoveToInstrucao, setPendingMoveToInstrucao] = useState<{
+    legalCase: LegalCase;
+    targetStage: string;
+    suggestedDate?: string | null;
+  } | null>(null);
 
   // (DJEN movido para /atendimento/djen)
 
@@ -2031,8 +2815,10 @@ function ProcessosPageContent() {
       const archivedParam = view === 'archived' ? 'true' : 'false';
       const res = await api.get(`/legal-cases?archived=${archivedParam}&inTracking=true`);
       setCases(res.data || []);
+      setFetchError(false);
     } catch (e: any) {
       console.warn('Erro ao buscar processos', e);
+      if (!silent) setFetchError(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -2047,13 +2833,49 @@ function ProcessosPageContent() {
     return () => clearInterval(interval);
   }, [router, fetchCases]);
 
-  const moveCase = async (caseId: string, newTrackingStage: string) => {
+  // Abre painel automaticamente quando redirecionado do DJEN com ?openCase=ID
+  useEffect(() => {
+    const openCaseId = searchParams.get('openCase');
+    if (!openCaseId || cases.length === 0) return;
+    const target = cases.find(c => c.id === openCaseId);
+    if (target) {
+      setSelectedCase(target);
+      // Remove o param da URL sem recarregar a página
+      router.replace('/atendimento/processos', { scroll: false });
+    }
+  }, [searchParams, cases, router]);
+
+  const executeMoveCase = async (caseId: string, newTrackingStage: string) => {
     setCases(prev => prev.map(c => c.id === caseId ? { ...c, tracking_stage: newTrackingStage } : c));
     try {
       await api.patch(`/legal-cases/${caseId}/tracking-stage`, { trackingStage: newTrackingStage });
     } catch {
       fetchCases(true);
     }
+  };
+
+  const moveCase = async (caseId: string, newTrackingStage: string) => {
+    // INSTRUCAO exige audiência cadastrada no calendário
+    if (newTrackingStage === 'INSTRUCAO') {
+      const lc = cases.find(c => c.id === caseId);
+      // Verificar se já existe audiência para o processo
+      let hasAudiencia = false;
+      let suggestedDate: string | null = null;
+      try {
+        const res = await api.get('/calendar/events', {
+          params: { type: 'AUDIENCIA', legalCaseId: caseId, showAll: 'true' },
+        });
+        const events: any[] = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+        hasAudiencia = events.length > 0;
+        if (hasAudiencia && events[0]?.start_at) suggestedDate = events[0].start_at;
+      } catch { /* se falhar, permite mover */ hasAudiencia = true; }
+
+      if (!hasAudiencia && lc) {
+        setPendingMoveToInstrucao({ legalCase: lc, targetStage: newTrackingStage, suggestedDate });
+        return; // bloqueia — aguarda modal
+      }
+    }
+    await executeMoveCase(caseId, newTrackingStage);
   };
 
   // Filters
@@ -2077,12 +2899,22 @@ function ProcessosPageContent() {
     filteredCases
       .filter(c => (c.tracking_stage || 'DISTRIBUIDO') === stageId)
       .sort((a, b) => {
-        // Sort: URGENTE first, then by days in stage desc
+        // URGENTE sempre primeiro
         const PORD = { URGENTE: 0, NORMAL: 1, BAIXA: 2 };
         const pa = PORD[a.priority as keyof typeof PORD] ?? 1;
         const pb = PORD[b.priority as keyof typeof PORD] ?? 1;
         if (pa !== pb) return pa - pb;
-        return daysInStage(b.stage_changed_at) - daysInStage(a.stage_changed_at);
+        // Dentro da mesma prioridade: evento mais próximo primeiro
+        const now = Date.now();
+        const aEvent = a.calendar_events?.find(e => new Date(e.start_at).getTime() >= now - 3600000);
+        const bEvent = b.calendar_events?.find(e => new Date(e.start_at).getTime() >= now - 3600000);
+        if (aEvent && bEvent) return new Date(aEvent.start_at).getTime() - new Date(bEvent.start_at).getTime();
+        if (aEvent) return -1;
+        if (bEvent) return 1;
+        // Sem eventos: mais antigo na etapa primeiro
+        const ta = a.stage_changed_at ? new Date(a.stage_changed_at).getTime() : now;
+        const tb = b.stage_changed_at ? new Date(b.stage_changed_at).getTime() : now;
+        return ta - tb;
       });
 
   const urgentCount = cases.filter(c => c.priority === 'URGENTE').length;
@@ -2107,6 +2939,15 @@ function ProcessosPageContent() {
               {filteredCases.length} processo{filteredCases.length !== 1 ? 's' : ''}{' '}
               {searchQuery || areaFilter || priorityFilter ? 'filtrados' : 'em acompanhamento'}
             </p>
+            {currentUserIsAdmin && pendingClosure.length > 0 && (
+              <div className="mt-1.5 flex items-center gap-3 px-3 py-2 rounded-xl border border-amber-500/30 bg-amber-500/5">
+                <AlertTriangle size={13} className="text-amber-500 shrink-0" />
+                <p className="text-[11px] text-amber-400 font-semibold flex-1">
+                  {pendingClosure.length} processo{pendingClosure.length > 1 ? 's' : ''} aguardando arquivamento
+                  {' '}— {pendingClosure.map((c: any) => c.lead?.name || c.case_number || '').filter(Boolean).join(', ')}
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
@@ -2224,7 +3065,18 @@ function ProcessosPageContent() {
           </div>
         </header>
 
-        {loading ? (
+        {fetchError ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-6">
+            <p className="text-sm text-destructive font-medium">Erro ao carregar processos.</p>
+            <p className="text-xs text-muted-foreground">Verifique sua conexão ou tente novamente.</p>
+            <button
+              onClick={() => fetchCases()}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-border hover:bg-accent transition-colors"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        ) : loading ? (
           <div className="flex-1 overflow-y-auto p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {[...Array(6)].map((_, i) => (
@@ -2324,6 +3176,7 @@ function ProcessosPageContent() {
                         }}
                         onDrop={() => {
                           if (draggingId) moveCase(draggingId, stage.id);
+                          setDraggingId(null);
                           setDragOverStage(null);
                         }}
                       >
@@ -2382,6 +3235,25 @@ function ProcessosPageContent() {
         )}
       </main>
 
+      {/* Modal: Agendar Audiência (bloqueio ao mover para INSTRUCAO) */}
+      {pendingMoveToInstrucao && (
+        <AgendarAudienciaModal
+          legalCase={pendingMoveToInstrucao.legalCase}
+          suggestedDate={pendingMoveToInstrucao.suggestedDate}
+          onScheduled={() => {
+            const { legalCase: lc, targetStage } = pendingMoveToInstrucao;
+            setPendingMoveToInstrucao(null);
+            executeMoveCase(lc.id, targetStage);
+          }}
+          onSkip={() => {
+            const { legalCase: lc, targetStage } = pendingMoveToInstrucao;
+            setPendingMoveToInstrucao(null);
+            executeMoveCase(lc.id, targetStage);
+          }}
+          onCancel={() => setPendingMoveToInstrucao(null)}
+        />
+      )}
+
       {/* Modal Cadastrar Processo Existente */}
       {showCadastrarModal && (
         <CadastrarProcessoModal
@@ -2396,7 +3268,36 @@ function ProcessosPageContent() {
           legalCase={selectedCase}
           onClose={() => setSelectedCase(null)}
           onRefresh={() => { fetchCases(true); setSelectedCase(null); }}
+          onOpenClientPanel={(leadId) => setClientPanelLeadId(leadId)}
         />
+      )}
+
+      {/* Painel do Cliente — sobreposto ao painel de processo (zBase=200) */}
+      {clientPanelLeadId && (
+        <ClientPanel
+          leadId={clientPanelLeadId}
+          onClose={() => setClientPanelLeadId(null)}
+          onLightbox={(url) => setLightboxUrl(url)}
+          isAdmin={currentUserIsAdmin}
+          zBase={200}
+        />
+      )}
+
+      {/* Lightbox */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 bg-black/90 flex items-center justify-center"
+          style={{ zIndex: 300 }}
+          onClick={() => setLightboxUrl(null)}
+        >
+          <img src={lightboxUrl} alt="" className="max-w-[90vw] max-h-[90vh] rounded-xl shadow-2xl" />
+          <button
+            onClick={() => setLightboxUrl(null)}
+            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+          >
+            <X size={20} />
+          </button>
+        </div>
       )}
     </div>
   );

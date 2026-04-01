@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter, usePathname } from 'next/navigation';
-import { LogOut, Users, Briefcase, Settings, Palette, Check, MessageSquare, Megaphone, FileEdit, BookOpen, Calendar, LayoutDashboard, FileText, CheckSquare, Bot, Gavel } from 'lucide-react';
+import { LogOut, Users, Briefcase, Settings, Palette, Check, MessageSquare, Megaphone, FileEdit, BookOpen, Calendar, LayoutDashboard, FileText, Bot, Gavel } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { API_BASE_URL } from '@/lib/api';
 import { NotificationCenter } from '@/app/atendimento/components/NotificationCenter';
@@ -164,8 +164,7 @@ export function Sidebar() {
     { label: 'Inbox (WhatsApp)', href: '/atendimento', icon: <MessageSquare size={22} strokeWidth={2} />, match: (p: string) => p === '/atendimento' || p.startsWith('/atendimento/chat'), badge: unreadTotal, show: true },
     { label: 'Leads & CRM', href: '/atendimento/crm', icon: <Briefcase size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/crm'), show: true },
     { label: 'Contatos', href: '/atendimento/contacts', icon: <Users size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/contacts'), show: true },
-    { label: 'Tarefas', href: '/atendimento/tasks', icon: <CheckSquare size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/tasks'), badge: overdueCount, show: true },
-    { label: 'Agenda', href: '/atendimento/agenda', icon: <Calendar size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/agenda'), show: true },
+    { label: 'Agenda & Tarefas', href: '/atendimento/agenda', icon: <Calendar size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/agenda') || p.startsWith('/atendimento/tasks'), badge: overdueCount, show: true },
     { label: 'Follow-up IA', href: '/atendimento/followup', icon: <Bot size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/followup'), show: perms.isAdmin || perms.isAdvogado || perms.isOperador },
     { label: 'Triagem e Peticionamento', href: '/atendimento/advogado', icon: <FileEdit size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/advogado'), show: perms.canViewAdvogado },
     { label: 'Processos', href: '/atendimento/processos', icon: <BookOpen size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/processos'), show: perms.canViewLegalCases },

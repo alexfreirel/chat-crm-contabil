@@ -27,9 +27,11 @@ export class ConversationsService {
       where.status = { notIn: ['FECHADO', 'ADIADO'] };
     }
 
-    // Tenant isolation
+    // Tenant isolation estrito: todos os registros históricos foram migrados para o
+    // tenant padrão via prisma/migrate-tenant-null.ts em 2026-03-31. Não há mais
+    // registros com tenant_id = null que pertençam a tenants reais.
     if (tenantId) {
-      where.OR = [{ tenant_id: tenantId }, { tenant_id: null }];
+      where.tenant_id = tenantId;
     }
 
     // Carrega dados do usuário para aplicar regras de acesso
@@ -163,6 +165,7 @@ export class ConversationsService {
         dueAt: (c as any).tasks[0].due_at?.toISOString() || null,
         status: (c as any).tasks[0].status,
         assignedUserId: (c as any).tasks[0].assigned_user_id || null,
+        postponeCount: (c as any).tasks[0].postpone_count || 0,
       } : null,
     }));
 
@@ -255,6 +258,21 @@ export class ConversationsService {
         }
       } catch (err: any) {
         this.logger.warn(`[Assign] Falha ao enviar notificação WhatsApp: ${err.message}`);
+      }
+    }
+
+    // Reatribui todos os eventos da conversa que ainda não foram concluídos/cancelados
+    if (lawyerId) {
+      try {
+        await (this.prisma as any).calendarEvent.updateMany({
+          where: {
+            conversation_id: id,
+            status: { notIn: ['CONCLUIDO', 'CANCELADO'] },
+          },
+          data: { assigned_user_id: lawyerId },
+        });
+      } catch (err: any) {
+        this.logger.warn(`[Assign] Falha ao reatribuir eventos do calendário: ${err.message}`);
       }
     }
 

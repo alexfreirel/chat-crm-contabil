@@ -96,6 +96,12 @@ export class LeadsService {
           assigned_lawyer: { select: { id: true, name: true } },
         },
       },
+      calendar_events: {
+        where: { start_at: { gte: new Date() } },
+        orderBy: { start_at: 'asc' as const },
+        take: 3,
+        select: { id: true, type: true, title: true, start_at: true },
+      },
     };
 
     if (page && limit) {
@@ -158,12 +164,29 @@ export class LeadsService {
 
   async upsert(data: Prisma.LeadCreateInput): Promise<Lead> {
     const phone = to12Digits(data.phone);
-    // No UPDATE nunca sobrescreve nome nem stage:
-    // - nome: pushName do WhatsApp é placeholder; o real é capturado pela IA.
+    // No UPDATE nunca sobrescreve nome, stage nem foto com valores piores:
+    // - nome: só atualiza se o lead ainda não tem nome (null/vazio) E veio um nome no payload.
+    //   Evita sobrescrever o nome real do cliente com o pushName do escritório.
     // - stage: webhook sempre envia 'NOVO', mas o stage é gerenciado pela IA.
-    const { phone: _phone, name: _name, stage: _stage, ...updateData } = data as any;
+    // - profile_picture_url: só atualiza se o lead não tem foto OU se chegou uma URL válida.
+    const { phone: _phone, name: incomingName, stage: _stage, profile_picture_url: incomingPhoto, ...updateData } = data as any;
 
     this.logger.debug(`Upsert lead: raw=${data.phone} → stored=${phone}`);
+
+    // Tenta atualizar o nome apenas se o lead existente não tiver nome
+    if (incomingName) {
+      await this.prisma.lead.updateMany({
+        where: { phone, name: null },
+        data: { name: incomingName },
+      });
+    }
+
+    // profile_picture_url: só incluir no update quando vier URL válida.
+    // URLs do WhatsApp expiram (~24-48h) — URL nova é sempre melhor que a guardada.
+    // Nunca limpar foto existente com null (se webhook não enviou foto, não toca no campo).
+    if (incomingPhoto) {
+      updateData.profile_picture_url = incomingPhoto;
+    }
 
     return this.prisma.lead.upsert({
       where: { phone },
@@ -262,6 +285,11 @@ export class LeadsService {
         loss_reason: lossReason ?? null,
       },
     }).catch(err => this.logger.warn(`Failed to record stage history for lead ${id}: ${err}`));
+
+    // Salva avanço de etapa na memória do lead (contexto para IA)
+    this.appendLeadStageToMemory(id, current?.stage ?? null, stage, lossReason ?? null).catch(err =>
+      this.logger.warn(`[MEMORY] Falha ao registrar etapa CRM na memória do lead ${id}: ${err}`),
+    );
 
     // Broadcast: notificar outros clientes sobre mudanca de stage do lead
     this.chatGateway.emitConversationsUpdate(tenantId ?? null);
@@ -419,7 +447,7 @@ export class LeadsService {
       }
     }
 
-    const [stageHistory, notes] = await Promise.all([
+    const [stageHistory, notes, memory] = await Promise.all([
       this.prisma.leadStageHistory.findMany({
         where: { lead_id: leadId },
         orderBy: { created_at: 'desc' },
@@ -432,11 +460,15 @@ export class LeadsService {
         take: 100,
         include: { user: { select: { id: true, name: true } } },
       }),
+      this.prisma.aiMemory.findUnique({ where: { lead_id: leadId } }),
     ]);
 
-    const items = [
+    let facts: any = {};
+    try { facts = memory?.facts_json ? (typeof memory.facts_json === 'string' ? JSON.parse(memory.facts_json as string) : memory.facts_json) : {}; } catch { facts = {}; }
+
+    const items: any[] = [
       ...stageHistory.map(h => ({
-        type: 'stage_change' as const,
+        type: 'stage_change',
         id: h.id,
         from_stage: h.from_stage,
         to_stage: h.to_stage,
@@ -445,11 +477,41 @@ export class LeadsService {
         created_at: h.created_at,
       })),
       ...notes.map(n => ({
-        type: 'note' as const,
+        type: 'note',
         id: n.id,
         text: n.text,
         author: (n as any).user ?? null,
         created_at: n.created_at,
+      })),
+      // Etapas do processo judicial (de AiMemory)
+      ...(facts.case_timeline || []).map((e: any, i: number) => ({
+        type: 'case_stage',
+        id: `case_${i}`,
+        from_stage: e.from,
+        to_stage: e.to,
+        case_number: e.case_number,
+        legal_area: e.legal_area,
+        created_at: new Date(e.date + 'T12:00:00Z'),
+      })),
+      // Petições aprovadas/protocoladas (de AiMemory)
+      ...(facts.petitions || []).map((p: any, i: number) => ({
+        type: 'petition',
+        id: `petition_${i}`,
+        petition_type: p.type,
+        title: p.title,
+        status: p.status,
+        case_number: p.case_number,
+        created_at: new Date(p.date + 'T12:00:00Z'),
+      })),
+      // Publicações DJEN analisadas (de AiMemory)
+      ...(facts.djen_publications || []).map((d: any, i: number) => ({
+        type: 'djen',
+        id: `djen_${i}`,
+        djen_tipo: d.tipo,
+        djen_assunto: d.assunto,
+        resumo: d.resumo,
+        urgencia: d.urgencia,
+        created_at: new Date(d.date + 'T12:00:00Z'),
       })),
     ];
 
@@ -558,5 +620,42 @@ export class LeadsService {
     });
 
     return [header.join(','), ...rows].join('\n');
+  }
+
+  // ─── Memória: registra avanço de etapa CRM ────────────────────────────────
+
+  private async appendLeadStageToMemory(leadId: string, fromStage: string | null, toStage: string, lossReason: string | null): Promise<void> {
+    const STAGE_LABELS: Record<string, string> = {
+      NOVO: 'Novo', INICIAL: 'Inicial', QUALIFICANDO: 'Qualificando',
+      AGUARDANDO_FORM: 'Aguardando Formulário', REUNIAO_AGENDADA: 'Reunião Agendada',
+      AGUARDANDO_DOCS: 'Aguardando Documentos', AGUARDANDO_PROC: 'Aguardando Processo',
+      FINALIZADO: 'Finalizado', PERDIDO: 'Perdido',
+    };
+    const today = new Date().toISOString().slice(0, 10);
+    const entry = {
+      from: fromStage, to: toStage, date: today,
+      ...(lossReason ? { loss_reason: lossReason } : {}),
+    };
+    const existing = await this.prisma.aiMemory.findUnique({ where: { lead_id: leadId } });
+    let facts: any = {};
+    try { facts = existing?.facts_json ? (typeof existing.facts_json === 'string' ? JSON.parse(existing.facts_json as string) : existing.facts_json) : {}; } catch { facts = {}; }
+    const timeline: any[] = facts.crm_timeline || [];
+    timeline.push(entry);
+    if (timeline.length > 30) timeline.splice(0, timeline.length - 30);
+    facts.crm_timeline = timeline;
+
+    const fromLabel = STAGE_LABELS[fromStage ?? ''] || fromStage || 'início';
+    const toLabel = STAGE_LABELS[toStage] || toStage;
+    const summaryLine = `[CRM ${today}] ${fromLabel} → ${toLabel}${lossReason ? ` (Motivo: ${lossReason})` : ''}`;
+    const newSummary = (summaryLine + (existing?.summary ? '\n' + existing.summary : '')).slice(0, 2000);
+
+    if (existing) {
+      await this.prisma.aiMemory.update({
+        where: { lead_id: leadId },
+        data: { facts_json: facts, summary: newSummary, last_updated_at: new Date(), version: { increment: 1 } },
+      });
+    } else {
+      await this.prisma.aiMemory.create({ data: { lead_id: leadId, summary: newSummary, facts_json: facts } });
+    }
   }
 }

@@ -1026,6 +1026,27 @@ export class AiProcessor extends WorkerHost {
         if (factsJson?.next_actions?.length)
           parts.push(`🎯 Próximas ações: ${factsJson.next_actions.join('; ')}`);
 
+        // Histórico de etapas CRM (kanban de leads)
+        if (factsJson?.crm_timeline?.length) {
+          const entries = (factsJson.crm_timeline as any[]).slice(-10);
+          parts.push(`🏷️ Jornada no CRM:\n${entries.map((e: any) => `  - ${e.date}: ${e.from || 'início'} → ${e.to}${e.loss_reason ? ` (${e.loss_reason})` : ''}`).join('\n')}`);
+        }
+        // Histórico de etapas do processo judicial
+        if (factsJson?.case_timeline?.length) {
+          const entries = (factsJson.case_timeline as any[]).slice(-10);
+          parts.push(`⚖️ Histórico do Processo:\n${entries.map((e: any) => `  - ${e.date}: ${e.from || 'início'} → ${e.to}${e.case_number ? ` (${e.case_number})` : ''}`).join('\n')}`);
+        }
+        // Petições protocoladas/aprovadas
+        if (factsJson?.petitions?.length) {
+          const pItems = (factsJson.petitions as any[]).slice(-5);
+          parts.push(`📄 Petições: ${pItems.map((p: any) => `${p.type}(${p.status})${p.date ? ' em '+p.date : ''}`).join('; ')}`);
+        }
+        // Publicações DJEN analisadas
+        if (factsJson?.djen_publications?.length) {
+          const dItems = (factsJson.djen_publications as any[]).slice(0, 5);
+          parts.push(`📰 DJEN (${dItems.length} pub.):\n${dItems.map((d: any) => `  - ${d.date}: ${d.tipo}${d.assunto ? ' — '+d.assunto : ''}. ${d.resumo || ''}`).join('\n')}`);
+        }
+
         if (parts.length) leadMemory = parts.join('\n');
       }
 
@@ -1170,6 +1191,31 @@ export class AiProcessor extends WorkerHost {
         }
       }
 
+      // ── Reminder context — injeta aviso se cliente está respondendo a um lembrete recente ──
+      let reminderContextBlock = '';
+      const reminderCtx = (convo as any).reminder_context as any;
+      if (reminderCtx && reminderCtx.sent_at) {
+        const sentAt = new Date(reminderCtx.sent_at);
+        const hoursAgo = Math.round((Date.now() - sentAt.getTime()) / 3_600_000);
+        if (hoursAgo < 48) {
+          const quando = hoursAgo === 0 ? 'há menos de 1 hora' : `há ${hoursAgo} hora(s)`;
+          reminderContextBlock =
+            `\n═══════════════════════════════════════════════════\n` +
+            `⚠️ CONTEXTO — LEMBRETE ENVIADO AO CLIENTE (${quando}):\n` +
+            `Tipo: ${reminderCtx.type || ''}\n` +
+            `Evento: ${reminderCtx.event_title || ''}\n` +
+            `Data/Hora: ${reminderCtx.event_date || ''}\n` +
+            (reminderCtx.location ? `Local: ${reminderCtx.location}\n` : '') +
+            `\nMensagem que foi enviada ao cliente:\n"${(reminderCtx.message_sent || '').slice(0, 500)}"\n` +
+            `\nINSTRUÇÕES IMPORTANTES:\n` +
+            `- Se o cliente está respondendo agora, PROVAVELMENTE é sobre este lembrete.\n` +
+            `- Você JÁ SABE todos os detalhes da audiência — NÃO pergunte data, local ou horário.\n` +
+            `- Responda dúvidas (documentos a levar, como se preparar, o que esperar etc.) com naturalidade.\n` +
+            `- NÃO mencione que foi você quem enviou o lembrete — aja como atendente humano normal.\n` +
+            `═══════════════════════════════════════════════════\n`;
+        }
+      }
+
       const vars: Record<string, string> = {
         lead_name: convo.lead.name || 'Desconhecido',
         lead_phone: convo.lead.phone || '',
@@ -1190,6 +1236,7 @@ export class AiProcessor extends WorkerHost {
         }),
         ficha_status: fichaStatus,
         available_slots: availableSlots,
+        reminder_context: reminderContextBlock,
       };
 
       // Cabeçalho fixo de capacidades — injetado antes de qualquer skill prompt
@@ -1209,7 +1256,7 @@ Use essa data para referências temporais e para saber os valores vigentes (ex: 
 MEMÓRIA DO LEAD (tudo que já foi coletado sobre este cliente):
 {{lead_memory}}
 ═══════════════════════════════════════════════════
-
+{{reminder_context}}
 REGRA CRÍTICA — PROIBIDO REPETIR PERGUNTAS:
 - O histórico COMPLETO da conversa está nos turns acima (user/assistant). LEIA TUDO antes de responder.
 - A MEMÓRIA DO LEAD acima contém TODOS os fatos já extraídos de conversas anteriores.

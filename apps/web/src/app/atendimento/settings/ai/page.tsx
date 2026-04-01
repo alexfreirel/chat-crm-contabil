@@ -112,6 +112,9 @@ export default function AiSettingsPage() {
   const [adminKey, setAdminKey] = useState('');
   const [defaultModel, setDefaultModel] = useState('gpt-4o-mini');
   const [djenModel, setDjenModel] = useState('gpt-4o-mini');
+  const [djenPrompt, setDjenPrompt] = useState('');
+  const [showDjenPrompt, setShowDjenPrompt] = useState(false);
+  const [adminBotEnabled, setAdminBotEnabled] = useState(true);
   const [cooldownSeconds, setCooldownSeconds] = useState(8);
   const [isConfigured, setIsConfigured] = useState(false);
   const [isAdminKeyConfigured, setIsAdminKeyConfigured] = useState(false);
@@ -160,6 +163,8 @@ export default function AiSettingsPage() {
       setIsAnthropicKeyConfigured(configRes.data.isAnthropicKeyConfigured ?? false);
       setDefaultModel(configRes.data.defaultModel || 'gpt-4o-mini');
       setDjenModel(configRes.data.djenModel || 'gpt-4o-mini');
+      setDjenPrompt(configRes.data.djenPrompt || '');
+      setAdminBotEnabled(configRes.data.adminBotEnabled ?? true);
       setCooldownSeconds(configRes.data.cooldownSeconds ?? 8);
       setSkills(skillsRes.data);
       setTtsEnabled(ttsRes.data.enabled ?? false);
@@ -178,7 +183,7 @@ export default function AiSettingsPage() {
   const handleSaveConfig = async () => {
     setSavingConfig(true);
     try {
-      const payload: any = { defaultModel, djenModel, cooldownSeconds };
+      const payload: any = { defaultModel, djenModel, djenPrompt, adminBotEnabled, cooldownSeconds };
       if (apiKey.trim())       payload.apiKey         = apiKey.trim();
       if (adminKey.trim())     payload.adminKey       = adminKey.trim();
       if (anthropicKey.trim()) payload.anthropicApiKey = anthropicKey.trim();
@@ -417,6 +422,64 @@ export default function AiSettingsPage() {
                   Modelo usado pelo botão <strong>Analisar IA</strong> na página de publicações DJEN.
                   Modelos Anthropic exigem a API Key Anthropic configurada abaixo.
                 </p>
+              </div>
+
+              {/* Prompt DJEN */}
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => setShowDjenPrompt((v) => !v)}
+                  className="flex items-center gap-2 text-xs font-bold text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors w-full text-left"
+                >
+                  <span>⚖️</span> Prompt de análise DJEN
+                  <span className="ml-auto text-[10px] font-normal text-primary">
+                    {showDjenPrompt ? '▲ fechar' : '▼ editar'}
+                  </span>
+                </button>
+                {showDjenPrompt && (
+                  <div className="space-y-1.5">
+                    <textarea
+                      value={djenPrompt}
+                      onChange={(e) => setDjenPrompt(e.target.value)}
+                      rows={14}
+                      placeholder="Deixe vazio para usar o prompt padrão do sistema."
+                      className="w-full bg-muted/50 border border-border rounded-xl px-3 py-2.5 text-xs font-mono outline-none focus:border-primary/50 transition-all resize-y"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Prompt do sistema enviado à IA ao analisar publicações DJEN. Deixe vazio para usar o prompt padrão.<br />
+                      <strong>Atenção:</strong> o retorno deve ser sempre um JSON com os campos obrigatórios (resumo, urgencia, event_type, data_audiencia, data_prazo, etc.).
+                    </p>
+                    {djenPrompt && (
+                      <button
+                        type="button"
+                        onClick={() => setDjenPrompt('')}
+                        className="text-[11px] text-destructive hover:underline"
+                      >
+                        Restaurar prompt padrão
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Admin Command Bot */}
+              <div className="flex items-center justify-between py-1">
+                <div className="space-y-0.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                    <span>🤖</span> Bot de Comando Admin (WhatsApp)
+                  </label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Permite controlar o CRM enviando mensagens para o número do escritório.
+                    {!adminBotEnabled && <span className="text-amber-500 font-semibold ml-1">Desativado — admins serão atendidos como clientes normais.</span>}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAdminBotEnabled((v) => !v)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${adminBotEnabled ? 'bg-primary' : 'bg-muted'}`}
+                >
+                  <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${adminBotEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
               </div>
 
               {/* Cooldown entre respostas da IA */}

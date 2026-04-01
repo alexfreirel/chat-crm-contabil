@@ -60,6 +60,7 @@ export class LegalCasesService {
     if (leadId) where.lead_id = leadId;
     if (caseNumber) where.case_number = { contains: caseNumber, mode: 'insensitive' };
 
+    const now = new Date();
     const includeOpts = {
       lead: {
         select: {
@@ -69,6 +70,28 @@ export class LegalCasesService {
           email: true,
           profile_picture_url: true,
           stage: true,
+        },
+      },
+      lawyer: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      // Audiências (próximas ou até 30 dias no passado)
+      calendar_events: {
+        where: {
+          type: 'AUDIENCIA',
+          start_at: { gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) },
+          status: { notIn: ['CANCELADO', 'CONCLUIDO'] },
+        },
+        orderBy: { start_at: 'asc' as const },
+        take: 5,
+        select: {
+          id: true,
+          start_at: true,
+          title: true,
+          location: true,
         },
       },
       _count: {
@@ -226,14 +249,67 @@ export class LegalCasesService {
       }
     }
 
+    // Ao arquivar: reverter lead para não-cliente (processo encerrado definitivamente)
+    const activeCases = await this.prisma.legalCase.count({
+      where: { lead_id: legalCase.lead_id, archived: false },
+    });
+
+    if (activeCases === 0 && legalCase.lead?.is_client) {
+      await this.prisma.lead.update({
+        where: { id: legalCase.lead_id },
+        data: {
+          is_client: false,
+          stage: 'ENCERRADO',
+          stage_entered_at: new Date(),
+          loss_reason: `Processo arquivado: ${reason}`,
+        },
+      });
+      this.logger.log(`[ARCHIVE] Lead ${legalCase.lead_id} marcado como encerrado`);
+    }
+
     return legalCase;
   }
 
   async unarchive(id: string, tenantId?: string) {
     await this.verifyTenantOwnership(id, tenantId);
-    return this.prisma.legalCase.update({
+    const legalCase = await this.prisma.legalCase.update({
       where: { id },
       data: { archived: false, archive_reason: null, stage: 'VIABILIDADE' },
+      include: { lead: { select: { id: true, is_client: true } } },
+    });
+
+    // ── Restaurar lead como cliente se teve um processo reativado ──
+    if (legalCase.lead && !legalCase.lead.is_client) {
+      await this.prisma.lead.update({
+        where: { id: legalCase.lead.id },
+        data: {
+          is_client: true,
+          became_client_at: new Date(),
+          stage: 'FINALIZADO',
+          stage_entered_at: new Date(),
+          loss_reason: null,
+        },
+      });
+      this.logger.log(`[UNARCHIVE] Lead ${legalCase.lead.id} restaurado como cliente`);
+    }
+
+    return legalCase;
+  }
+
+  async findPendingClosure(tenantId?: string) {
+    return this.prisma.legalCase.findMany({
+      where: {
+        tracking_stage: 'ENCERRADO',
+        archived: false,
+        in_tracking: true,
+        ...(tenantId ? { tenant_id: tenantId } : {}),
+      },
+      include: {
+        lead: { select: { id: true, name: true, phone: true, profile_picture_url: true } },
+        lawyer: { select: { id: true, name: true } },
+        _count: { select: { tasks: true, events: true } },
+      },
+      orderBy: { stage_changed_at: 'asc' },
     });
   }
 
@@ -379,6 +455,7 @@ export class LegalCasesService {
 
   async createDirect(data: {
     lawyer_id: string;
+    override_lawyer_id?: string; // ADMIN pode escolher outro advogado
     tenant_id?: string;
     case_number: string;
     legal_area?: string;
@@ -478,10 +555,13 @@ export class LegalCasesService {
       leadId = lead.id;
     }
 
+    // Se ADMIN passou override_lawyer_id, usa ele; caso contrário usa o usuário logado
+    const effectiveLawyerId = data.override_lawyer_id || data.lawyer_id;
+
     const legalCase = await this.prisma.legalCase.create({
       data: {
         lead_id: leadId,
-        lawyer_id: data.lawyer_id,
+        lawyer_id: effectiveLawyerId,
         tenant_id: data.tenant_id,
         case_number: data.case_number,
         legal_area: data.legal_area,
@@ -504,14 +584,59 @@ export class LegalCasesService {
       },
     });
 
+    // ── Promover lead para cliente (is_client = true) ──────────────
+    // Processo cadastrado diretamente = lead já é cliente ativo
+    await this.prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        is_client: true,
+        became_client_at: new Date(),
+        stage: 'FINALIZADO',
+        stage_entered_at: new Date(),
+        loss_reason: null,
+      },
+    });
+
     try {
-      this.chatGateway.emitNewLegalCase(data.lawyer_id, {
+      this.chatGateway.emitNewLegalCase(effectiveLawyerId, {
         caseId: legalCase.id,
         leadName: leadDisplayName,
       });
     } catch {}
 
     return legalCase;
+  }
+
+  // ─── REPARO: promove leads com processo ativo para is_client ────
+
+  async syncClientsFromActiveCases(tenantId?: string) {
+    // Busca todos os leads com pelo menos 1 processo ativo e is_client = false
+    const cases = await this.prisma.legalCase.findMany({
+      where: {
+        archived: false,
+        in_tracking: true,
+        ...(tenantId ? { tenant_id: tenantId } : {}),
+        lead: { is_client: false },
+      },
+      select: { lead_id: true },
+      distinct: ['lead_id'],
+    });
+
+    if (cases.length === 0) return { updated: 0 };
+
+    const leadIds = cases.map(c => c.lead_id);
+    const result = await this.prisma.lead.updateMany({
+      where: { id: { in: leadIds } },
+      data: {
+        is_client: true,
+        became_client_at: new Date(),
+        stage: 'FINALIZADO',
+        loss_reason: null,
+      },
+    });
+
+    this.logger.log(`[SYNC-CLIENTS] ${result.count} leads promovidos para cliente`);
+    return { updated: result.count, lead_ids: leadIds };
   }
 
   // ─── VINCULAR / CRIAR CLIENTE (LEAD) ──────────────────────────
@@ -627,10 +752,49 @@ export class LegalCasesService {
     const valid = TRACKING_STAGES.find(s => s.id === trackingStage);
     if (!valid) throw new BadRequestException(`Stage inválido: ${trackingStage}`);
 
-    return this.prisma.legalCase.update({
+    const current = await this.prisma.legalCase.findUnique({
+      where: { id },
+      select: { tracking_stage: true, lead_id: true, case_number: true, legal_area: true },
+    });
+
+    const result = await this.prisma.legalCase.update({
       where: { id },
       data: { tracking_stage: trackingStage, stage_changed_at: new Date() },
     });
+
+    if (current?.lead_id) {
+      this.appendCaseStageToMemory(current.lead_id, current.tracking_stage, trackingStage, valid.label, current.case_number, current.legal_area).catch(err =>
+        this.logger.warn(`[MEMORY] Falha ao registrar etapa do processo na memória: ${err}`),
+      );
+    }
+
+    return result;
+  }
+
+  private async appendCaseStageToMemory(leadId: string, fromStage: string | null, toStage: string, toLabel: string, caseNumber: string | null, legalArea: string | null): Promise<void> {
+    const today = new Date().toISOString().slice(0, 10);
+    const fromLabel = TRACKING_STAGES.find(s => s.id === fromStage)?.label || fromStage || 'início';
+    const entry = { from: fromStage, to: toStage, date: today, case_number: caseNumber, legal_area: legalArea };
+
+    const existing = await this.prisma.aiMemory.findUnique({ where: { lead_id: leadId } });
+    let facts: any = {};
+    try { facts = existing?.facts_json ? (typeof existing.facts_json === 'string' ? JSON.parse(existing.facts_json as string) : existing.facts_json) : {}; } catch { facts = {}; }
+    const timeline: any[] = facts.case_timeline || [];
+    timeline.push(entry);
+    if (timeline.length > 30) timeline.splice(0, timeline.length - 30);
+    facts.case_timeline = timeline;
+
+    const summaryLine = `[PROCESSO ${today}] ${fromLabel} → ${toLabel}${caseNumber ? ` (Proc. ${caseNumber})` : ''}`;
+    const newSummary = (summaryLine + (existing?.summary ? '\n' + existing.summary : '')).slice(0, 2000);
+
+    if (existing) {
+      await this.prisma.aiMemory.update({
+        where: { lead_id: leadId },
+        data: { facts_json: facts, summary: newSummary, last_updated_at: new Date(), version: { increment: 1 } },
+      });
+    } else {
+      await this.prisma.aiMemory.create({ data: { lead_id: leadId, summary: newSummary, facts_json: facts } });
+    }
   }
 
   // ─── WORKSPACE ──────────────────────────────────────────────────
@@ -727,6 +891,50 @@ export class LegalCasesService {
     ]);
 
     return { data, total, page, limit };
+  }
+
+  // ─── ADVOGADO RESPONSÁVEL ──────────────────────────────────────
+
+  async updateLawyer(id: string, lawyerId: string, tenantId?: string) {
+    await this.verifyTenantOwnership(id, tenantId);
+
+    const lawyer = await this.prisma.user.findUnique({
+      where: { id: lawyerId },
+      select: { id: true, name: true, role: true },
+    });
+    if (!lawyer) throw new BadRequestException('Advogado não encontrado.');
+    if (!['ADMIN', 'ADVOGADO'].includes(lawyer.role)) {
+      throw new BadRequestException('Usuário não tem perfil de advogado.');
+    }
+
+    const updated = await this.prisma.legalCase.update({
+      where: { id },
+      data: { lawyer_id: lawyerId },
+      include: {
+        lead: { select: { id: true, name: true, phone: true, email: true, profile_picture_url: true } },
+        lawyer: { select: { id: true, name: true } },
+        _count: { select: { tasks: true, events: true, djen_publications: true } },
+      },
+    });
+
+    // Reatribui todos os eventos do processo que ainda não foram concluídos/cancelados
+    await this.prisma.calendarEvent.updateMany({
+      where: {
+        legal_case_id: id,
+        status: { notIn: ['CONCLUIDO', 'CANCELADO'] },
+      },
+      data: { assigned_user_id: lawyerId },
+    });
+
+    try {
+      this.chatGateway.emitLegalCaseUpdate(lawyerId, {
+        caseId: id,
+        action: 'lawyer_changed',
+        lawyerName: lawyer.name,
+      });
+    } catch {}
+
+    return updated;
   }
 
   // ─── STAGES LIST ────────────────────────────────────────────────

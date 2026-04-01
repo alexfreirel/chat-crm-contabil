@@ -200,6 +200,8 @@ export class WhatsappService {
         url: config.webhookUrl,
         byEvents: false,
         base64: false,
+        retryDelay: 5000,
+        maxRetries: 5,
         events: [
           'APPLICATION_STARTUP',
           'QRCODE_UPDATED',
@@ -256,6 +258,10 @@ export class WhatsappService {
       url,
       enabled: true,
       webhook_by_events: false,
+      // Retry automático: tenta reenviar até 5 vezes com intervalo de 5s
+      // Garante entrega mesmo se o CRM estiver temporariamente indisponível
+      retryDelay: 5000,
+      maxRetries: 5,
       events: [
         'MESSAGES_UPSERT',
         'MESSAGES_UPDATE',
@@ -304,41 +310,86 @@ export class WhatsappService {
 
   async fetchProfilePicture(instanceName: string, number: string) {
     try {
+      // Evolution API aceita tanto "5511999..." quanto "5511999...@s.whatsapp.net"
+      const cleanNumber = number.replace(/@s\.whatsapp\.net$/, '');
       const data = await this.request(
         'POST',
-        `chat/fetchProfilePicture/${instanceName}`,
-        { number },
+        `chat/fetchProfilePictureUrl/${instanceName}`,
+        { number: cleanNumber },
       );
-      return data?.profilePictureUrl || data?.profile_picture || data?.data?.profile_picture || data?.url || null;
-    } catch (e) {
+      const url = data?.profilePictureUrl || data?.profile_picture || data?.data?.profile_picture || data?.url || null;
+      if (!url) {
+        this.logger.debug(`[fetchProfilePicture] Sem foto para ${cleanNumber} na instância ${instanceName}. Resposta: ${JSON.stringify(data)}`);
+      }
+      return url;
+    } catch (e: any) {
+      this.logger.debug(`[fetchProfilePicture] Erro ao buscar foto de ${number}: ${e?.message}`);
       return null;
     }
   }
 
   async fetchMessages(instanceName: string, remoteJid: string): Promise<any[]> {
+    // Evolution API v2.3+ retorna: { messages: { total, pages, currentPage, records: [...] } }
+    // Versões mais antigas retornam um array direto — tratamos os dois formatos.
+    let allMessages: any[] = [];
+
     try {
-      // Evolution Query<Message>: { where, sort, page, offset } — no "limit" field.
-      // The where clause maps directly to Prisma conditions on the stored message model.
-      const data = await this.request(
-        'POST',
-        `chat/findMessages/${instanceName}`,
-        { where: { key: { remoteJid } }, sort: 'asc' },
-      );
+      let currentPage = 1;
+      let totalPages = 1;
 
-      // API returns error object on failure (e.g. instance not found)
-      if ((data as any)?.error || (data as any)?.statusCode >= 400) {
-        this.logger.warn(`fetchMessages error for ${remoteJid}: ${JSON.stringify(data)}`);
-        return [];
-      }
+      do {
+        const data: any = await this.request(
+          'POST',
+          `chat/findMessages/${instanceName}`,
+          { where: { key: { remoteJid } }, page: currentPage },
+        );
 
-      const list = Array.isArray(data)
-        ? data
-        : (data as any)?.messages || (data as any)?.data || [];
-      this.logger.log(`fetchMessages ${instanceName}/${remoteJid}: ${list.length} mensagens`);
-      return list;
+        if (data?.error || data?.statusCode >= 400) {
+          this.logger.warn(`fetchMessages error for ${remoteJid}: ${JSON.stringify(data)}`);
+          break;
+        }
+
+        // Normaliza os dois formatos de resposta
+        let records: any[];
+        if (Array.isArray(data)) {
+          // Formato antigo: array direto
+          records = data;
+          totalPages = 1; // sem paginação neste formato
+        } else if (data?.messages?.records) {
+          // Formato v2.3+: { messages: { total, pages, currentPage, records } }
+          records = data.messages.records;
+          totalPages = data.messages.pages ?? 1;
+        } else if (Array.isArray(data?.messages)) {
+          // Formato intermediário: { messages: [...] }
+          records = data.messages;
+          totalPages = 1;
+        } else {
+          records = data?.data || [];
+          totalPages = 1;
+        }
+
+        if (records.length === 0) break;
+
+        allMessages = allMessages.concat(records);
+        this.logger.log(
+          `fetchMessages ${instanceName}/${remoteJid} page ${currentPage}/${totalPages}: ${records.length} msgs (total: ${allMessages.length})`,
+        );
+
+        currentPage++;
+      } while (currentPage <= totalPages);
+
+      // Ordena cronologicamente (mais antigo primeiro)
+      allMessages.sort((a, b) => {
+        const ta = Number(a.messageTimestamp ?? a.key?.timestamp ?? 0);
+        const tb = Number(b.messageTimestamp ?? b.key?.timestamp ?? 0);
+        return ta - tb;
+      });
+
+      this.logger.log(`fetchMessages ${instanceName}/${remoteJid}: ${allMessages.length} msgs totais`);
+      return allMessages;
     } catch (e) {
       this.logger.error(`Erro ao buscar mensagens para ${remoteJid}: ${e}`);
-      return [];
+      return allMessages;
     }
   }
 
@@ -376,8 +427,8 @@ export class WhatsappService {
           try {
             const moreData = await this.request(
               'POST',
-              `chat/findChats/${instanceName}?page=${page}&limit=${pageSize}`,
-              { where: {} },
+              `chat/findChats/${instanceName}`,
+              { where: {}, page, limit: pageSize },
             );
             const moreList = Array.isArray(moreData) ? moreData : (moreData as any)?.data || [];
             if (moreList.length === 0) break;

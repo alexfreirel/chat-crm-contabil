@@ -9,6 +9,7 @@ import {
 import { showSuccess } from '@/lib/toast';
 import { normalizeStage } from '@/lib/crmStages';
 import type { ConversationSummary } from '../types';
+import { ContactAvatar } from './ContactAvatar';
 
 // ─── Saved Filters Type ──────────────────────────────────────
 
@@ -535,17 +536,12 @@ export function InboxSidebar({
                           aria-label={`Selecionar ${conv.contactName || conv.contactPhone}`}
                         />
                       </div>
-                      <div
-                        className={`w-11 h-11 rounded-full bg-accent border border-border flex items-center justify-center overflow-hidden shadow-sm ${conv.profile_picture_url ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
-                        onClick={conv.profile_picture_url ? (e) => { e.stopPropagation(); onLightbox(conv.profile_picture_url!); } : undefined}
-                        title={conv.profile_picture_url ? 'Ver foto ampliada' : undefined}
-                      >
-                        {conv.profile_picture_url ? (
-                          <img src={conv.profile_picture_url} alt={conv.contactName} className="w-full h-full object-cover" loading="lazy" />
-                        ) : (
-                          <span className="text-foreground font-bold text-lg">{getInitial(conv.contactName)}</span>
-                        )}
-                      </div>
+                      <ContactAvatar
+                        src={conv.profile_picture_url}
+                        name={conv.contactName}
+                        sizeClass="w-11 h-11"
+                        onClick={(url) => { onLightbox(url); }}
+                      />
                       {(() => {
                         const stage = normalizeStage(conv.leadStage || '');
                         if (stage === 'PERDIDO' || stage === 'FINALIZADO' || !conv.leadStage) return null;
@@ -632,17 +628,22 @@ export function InboxSidebar({
                           )}
                         </div>
                       )}
-                      {conv.status === 'ADIADO' && conv.activeTask && (() => {
+                      {conv.activeTask && (() => {
                         const isOverdue = conv.activeTask.dueAt ? new Date(conv.activeTask.dueAt) < new Date() : false;
                         return (
                           <div className="flex items-center gap-1.5 mb-0.5">
-                            <Clock size={11} className={isOverdue ? 'text-red-400' : 'text-amber-400'} />
+                            <Clock size={11} className={isOverdue ? 'text-red-400 animate-pulse' : 'text-amber-400'} />
                             <span className={`text-[10px] font-medium truncate max-w-[120px] ${isOverdue ? 'text-red-400' : 'text-amber-400'}`}>
                               {conv.activeTask.title}
                             </span>
                             {conv.activeTask.dueAt && (
                               <span className={`text-[9px] font-bold whitespace-nowrap ${isOverdue ? 'text-red-500' : 'text-muted-foreground'}`}>
                                 {formatTaskDate(conv.activeTask.dueAt)}
+                              </span>
+                            )}
+                            {(conv.activeTask.postponeCount ?? 0) > 0 && (
+                              <span className="text-[9px] text-amber-500/70 font-semibold whitespace-nowrap">
+                                ×{conv.activeTask.postponeCount}
                               </span>
                             )}
                           </div>

@@ -34,6 +34,12 @@ interface CrmLead {
     assigned_user: { id: string; name: string } | null;
     assigned_lawyer: { id: string; name: string } | null;
   }>;
+  calendar_events?: Array<{
+    id: string;
+    type: string;
+    title: string;
+    start_at: string;
+  }>;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -103,6 +109,31 @@ function agingBorderClass(days: number, stage: string): string {
   if (days <= 2) return 'border-l-[3px] border-l-emerald-500/50';
   if (days <= 5) return 'border-l-[3px] border-l-yellow-500/60';
   return 'border-l-[3px] border-l-red-500/70';
+}
+
+const EVENT_TYPE_EMOJI: Record<string, string> = {
+  AUDIENCIA: '⚖️',
+  PRAZO: '⏰',
+  CONSULTA: '📞',
+  TAREFA: '✓',
+  OUTRO: '📅',
+};
+
+function eventDaysUntil(startAt: string): number {
+  return Math.floor((new Date(startAt).getTime() - Date.now()) / 86400000);
+}
+
+function eventStyle(daysUntil: number): string {
+  if (daysUntil <= 1) return 'text-red-400 bg-red-500/15 border-red-500/30';
+  if (daysUntil <= 3) return 'text-orange-400 bg-orange-500/15 border-orange-500/30';
+  if (daysUntil <= 7) return 'text-yellow-400 bg-yellow-500/15 border-yellow-500/30';
+  return 'text-blue-400 bg-blue-500/15 border-blue-500/30';
+}
+
+function eventDateLabel(daysUntil: number): string {
+  if (daysUntil === 0) return 'hoje';
+  if (daysUntil === 1) return 'amanhã';
+  return `em ${daysUntil}d`;
 }
 
 function getScoreFactors(lead: CrmLead): string[] {
@@ -178,6 +209,8 @@ function LeadCard({
   const score = computeLeadScore(lead);
   const isNew = (Date.now() - new Date(lead.created_at).getTime()) < 3_600_000;
   const agingBorder = agingBorderClass(days, normalizedStage);
+  const upcomingEvent = lead.calendar_events?.find(e => new Date(e.start_at).getTime() >= Date.now() - 3600000);
+  const upcomingDays = upcomingEvent ? eventDaysUntil(upcomingEvent.start_at) : null;
 
   // Próxima etapa lógica para o botão "Avançar"
   const stageOrder = CRM_STAGES.filter(s => s.id !== 'PERDIDO').map(s => s.id);
@@ -320,6 +353,15 @@ function LeadCard({
         ))}
       </div>
 
+      {/* Próximo evento */}
+      {upcomingEvent && upcomingDays !== null && (
+        <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-semibold mb-2 ${eventStyle(upcomingDays)}`}>
+          <span className="shrink-0">{EVENT_TYPE_EMOJI[upcomingEvent.type] ?? '📅'}</span>
+          <span className="truncate flex-1">{upcomingEvent.title}</span>
+          <span className="shrink-0 font-bold">{eventDateLabel(upcomingDays)}</span>
+        </div>
+      )}
+
       {/* Última mensagem */}
       {lastMsg?.text && (
         <p className="text-[11px] text-muted-foreground leading-snug mb-2 line-clamp-2 italic">
@@ -432,6 +474,30 @@ function LeadDetailPanel({
 
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [summarizing, setSummarizing] = useState(false);
+
+  const [timeline, setTimeline] = useState<any[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+
+  useEffect(() => {
+    setTimeline([]);
+    setTimelineOpen(false);
+  }, [lead.id]);
+
+  const loadTimeline = async () => {
+    if (timeline.length > 0) { setTimelineOpen(o => !o); return; }
+    setTimelineLoading(true);
+    setTimelineOpen(true);
+    try {
+      const res = await api.get<any[]>(`/leads/${lead.id}/timeline`);
+      setTimeline(res.data);
+    } catch {
+      showError('Não foi possível carregar o histórico.');
+      setTimelineOpen(false);
+    } finally {
+      setTimelineLoading(false);
+    }
+  };
 
   const handleSummarize = async () => {
     setSummarizing(true);
@@ -621,6 +687,84 @@ function LeadDetailPanel({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Histórico da Jornada */}
+          <div className="border-t border-border pt-3">
+            <button
+              onClick={loadTimeline}
+              className="flex items-center justify-between w-full text-[10px] font-bold text-muted-foreground uppercase tracking-widest hover:text-foreground transition-colors"
+            >
+              <span>Histórico da Jornada</span>
+              <ChevronDown size={13} className={`transition-transform ${timelineOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {timelineOpen && (
+              <div className="mt-3">
+                {timelineLoading ? (
+                  <p className="text-[11px] text-muted-foreground/50 italic">Carregando…</p>
+                ) : timeline.length === 0 ? (
+                  <p className="text-[11px] text-muted-foreground/50 italic">Nenhum histórico registrado ainda.</p>
+                ) : (
+                  <div className="relative">
+                    {/* vertical line */}
+                    <div className="absolute left-[11px] top-0 bottom-0 w-px bg-border" />
+                    <div className="space-y-3">
+                      {timeline.map((item, i) => {
+                        const date = new Date(item.created_at);
+                        const dateStr = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+
+                        let icon = '📌';
+                        let label = '';
+                        let sub = '';
+                        let iconBg = 'bg-accent';
+
+                        if (item.type === 'stage_change') {
+                          icon = '🏷️';
+                          iconBg = 'bg-blue-500/15';
+                          label = item.to_stage || '';
+                          sub = item.actor?.name ? `por ${item.actor.name}` : '';
+                        } else if (item.type === 'case_stage') {
+                          icon = '⚖️';
+                          iconBg = 'bg-violet-500/15';
+                          label = item.to_stage || item.from_stage || '';
+                          sub = item.case_number ? `processo #${item.case_number}` : item.legal_area || '';
+                        } else if (item.type === 'petition') {
+                          icon = '📄';
+                          iconBg = 'bg-emerald-500/15';
+                          label = item.title || item.petition_type || '';
+                          sub = item.status || '';
+                        } else if (item.type === 'djen') {
+                          icon = '📰';
+                          iconBg = 'bg-orange-500/15';
+                          label = item.djen_assunto || item.djen_tipo || 'Publicação DJEN';
+                          sub = item.urgencia ? `urgência: ${item.urgencia}` : '';
+                        } else if (item.type === 'note') {
+                          icon = '📝';
+                          iconBg = 'bg-gray-500/15';
+                          const noteText = item.text || '';
+                          label = noteText.slice(0, 60) + (noteText.length > 60 ? '…' : '');
+                          sub = item.author?.name || '';
+                        }
+
+                        return (
+                          <div key={item.id || i} className="flex items-start gap-2.5 pl-0.5">
+                            <div className={`w-[22px] h-[22px] rounded-full flex items-center justify-center shrink-0 z-10 border border-border ${iconBg} text-[11px]`}>
+                              {icon}
+                            </div>
+                            <div className="flex-1 min-w-0 pt-0.5">
+                              <p className="text-[11px] text-foreground/90 font-medium leading-snug truncate">{label}</p>
+                              {sub && <p className="text-[10px] text-muted-foreground/60 leading-snug truncate">{sub}</p>}
+                            </div>
+                            <span className="text-[10px] text-muted-foreground/40 shrink-0 pt-0.5">{dateStr}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Datas */}
@@ -1334,9 +1478,17 @@ export default function CrmPage() {
       .filter(l => normalizeStage(l.stage) === stageId)
       .sort((a, b) => {
         if (sortBy === 'score') return computeLeadScore(b) - computeLeadScore(a);
-        const ta = a.conversations?.[0]?.last_message_at ? new Date(a.conversations[0].last_message_at).getTime() : 0;
-        const tb = b.conversations?.[0]?.last_message_at ? new Date(b.conversations[0].last_message_at).getTime() : 0;
-        return tb - ta;
+        // Ordenação por evento: evento mais próximo primeiro, depois mais antigo na etapa
+        const now = Date.now();
+        const aEvent = a.calendar_events?.find(e => new Date(e.start_at).getTime() >= now - 3600000);
+        const bEvent = b.calendar_events?.find(e => new Date(e.start_at).getTime() >= now - 3600000);
+        if (aEvent && bEvent) return new Date(aEvent.start_at).getTime() - new Date(bEvent.start_at).getTime();
+        if (aEvent) return -1;
+        if (bEvent) return 1;
+        // Sem eventos: mais antigo na etapa primeiro
+        const ta = a.stage_entered_at ? new Date(a.stage_entered_at).getTime() : now;
+        const tb = b.stage_entered_at ? new Date(b.stage_entered_at).getTime() : now;
+        return ta - tb;
       });
 
   return (

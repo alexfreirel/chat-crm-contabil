@@ -71,7 +71,7 @@ export default function PortalPage() {
 
           {/* Title */}
           <h1 className="font-[family-name:var(--font-playfair)] text-3xl sm:text-4xl font-bold text-white leading-tight">
-            Administre sua empresa<br />
+            Acompanhe seu processo<br />
             <span className="text-[#A89048]">com quem você confia</span>
           </h1>
 

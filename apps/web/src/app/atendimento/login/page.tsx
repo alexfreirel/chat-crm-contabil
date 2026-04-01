@@ -305,20 +305,6 @@ export default function LoginPage() {
                     </button>
                   </form>
 
-                  {/* Demo bypass */}
-                  <div className="mt-4 text-center">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        localStorage.setItem('token', 'mock-dev-token');
-                        router.push('/atendimento/dashboard');
-                      }}
-                      className="text-[12px] font-bold text-[#A89048]/80 hover:text-[#A89048] transition-colors underline decoration-[#A89048]/30"
-                    >
-                      Entrar em Modo de Demonstração (Bypass)
-                    </button>
-                  </div>
-
                   {/* DB status */}
                   <div className="flex items-center justify-center gap-2 pt-6 mt-6 border-t border-white/5">
                     <div className={`w-2.5 h-2.5 rounded-full transition-all duration-500 ${

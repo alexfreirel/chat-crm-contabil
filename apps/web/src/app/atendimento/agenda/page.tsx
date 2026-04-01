@@ -13,13 +13,15 @@ import {
   ChevronLeft, ChevronRight,
   Clock, MapPin, User, FileText, Gavel, AlertTriangle, CheckCircle2, Bell,
   Search, Download, Copy, Repeat, MessageSquare, Users, Send,
-  LayoutGrid, CalendarDays as CalendarViewIcon,
+  LayoutGrid, CalendarDays as CalendarViewIcon, CheckSquare, List,
+  BookOpen, ExternalLink,
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 import api, { API_BASE_URL } from '@/lib/api';
 import { showError, showSuccess } from '@/lib/toast';
 import { playNotificationSound } from '@/lib/notificationSounds';
 import { AvailabilityPicker } from '@/components/AvailabilityPicker';
+import { TasksPanel } from './TasksPanel';
 
 // ─── Tipos ────────────────────────────────────────────
 
@@ -43,7 +45,7 @@ interface CalendarEvent {
   assigned_user?: { id: string; name: string } | null;
   created_by?: { id: string; name: string } | null;
   lead?: { id: string; name: string | null; phone: string } | null;
-  legal_case?: { id: string; case_number: string | null; legal_area: string | null } | null;
+  legal_case?: { id: string; case_number: string | null; legal_area: string | null; lead?: { name: string | null } | null } | null;
   _count?: { comments: number };
 }
 
@@ -149,12 +151,13 @@ function getSocketPath(): string {
 }
 
 function toLocalDateTime(isoStr: string): string {
+  // App usa UTC "naive" — horários salvos como UTC = horário local de Maceió
   const d = new Date(isoStr);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const h = String(d.getHours()).padStart(2, '0');
-  const min = String(d.getMinutes()).padStart(2, '0');
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const h = String(d.getUTCHours()).padStart(2, '0');
+  const min = String(d.getUTCMinutes()).padStart(2, '0');
   return `${y}-${m}-${day} ${h}:${min}`;
 }
 
@@ -208,18 +211,24 @@ function temporalToLocalStr(dt: any): string {
 }
 
 function toISOFromLocal(localStr: string): string {
-  // "2026-03-07 14:00" → ISO string
-  return new Date(localStr.replace(' ', 'T')).toISOString();
+  // App usa UTC "naive": trata o horário digitado como UTC direto (= horário de Maceió)
+  // "2026-06-03 09:05" → "2026-06-03T09:05:00.000Z" (sem converter fuso)
+  const [datePart, timePart = '00:00'] = localStr.replace('T', ' ').split(' ');
+  const [y, mo, d] = datePart.split('-').map(Number);
+  const [h, mi] = timePart.split(':').map(Number);
+  return new Date(Date.UTC(y, mo - 1, d, h, mi, 0)).toISOString();
 }
 
 function formatDateInput(isoStr: string): string {
+  // Lê data em UTC (horário naive = horário local de Maceió)
   const d = new Date(isoStr);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
 function formatTimeInput(isoStr: string): string {
+  // Lê hora em UTC (horário naive = horário local de Maceió)
   const d = new Date(isoStr);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 
 // ─── Mini Calendário (sidebar) ────────────────────────
@@ -309,6 +318,20 @@ function MiniCalendar({ onDateSelect }: { onDateSelect: (dateStr: string) => voi
 
 export default function AgendaPage() {
   const router = useRouter();
+
+  // Lê o tab da URL no client side sem useSearchParams (evita prerender error do Next.js)
+  const [activeTab, setActiveTab] = useState<'calendar' | 'tasks'>('calendar');
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('tab') === 'tasks') setActiveTab('tasks');
+  }, []);
+
+  const switchTab = (tab: 'calendar' | 'tasks') => {
+    setActiveTab(tab);
+    const url = tab === 'calendar' ? '/atendimento/agenda' : '/atendimento/agenda?tab=tasks';
+    router.push(url, { scroll: false });
+  };
+
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<UserOption[]>([]);
@@ -594,20 +617,28 @@ export default function AgendaPage() {
           }
 
           // Converter strings para Temporal.ZonedDateTime (obrigatório no schedule-x v4)
+          // Usa forma de objeto (mais robusta que parsing de string) para evitar falhas silenciosas.
           let startSx: any = startLocal;
           let endSx: any = endLocal;
           if (T) {
-            try {
-              startSx = T.ZonedDateTime.from(`${startLocal.replace(' ', 'T')}:00[${tz}]`);
-              endSx   = T.ZonedDateTime.from(`${endLocal.replace(' ', 'T')}:00[${tz}]`);
-            } catch {
-              // fallback: manter string se Temporal falhar para este evento
-            }
+            const parseLocalToZDT = (local: string) => {
+              // local = "YYYY-MM-DD HH:mm"
+              const [datePart, timePart = '00:00'] = local.split(' ');
+              const [year, month, day] = datePart.split('-').map(Number);
+              const [hour, minute] = timePart.split(':').map(Number);
+              return T.ZonedDateTime.from({
+                year, month, day, hour, minute, second: 0,
+                timeZone: 'UTC',
+              });
+            };
+            try { startSx = parseLocalToZDT(startLocal); } catch { /* manter string */ }
+            try { endSx   = parseLocalToZDT(endLocal);   } catch { /* manter string */ }
           }
 
+          const caseTag = e.legal_case?.case_number ? ` [${e.legal_case.case_number}]` : '';
           return {
             id: e.id,
-            title: `${EVENT_TYPES.find(t => t.id === e.type)?.emoji || ''} ${userPrefix}${e.title}${e.status === 'ADIADO' ? ' ⏸️' : ''}${e.status === 'CANCELADO' ? ' ✖️' : ''}${(e as any).recurrence_rule || (e as any).parent_event_id ? ' 🔁' : ''}${e._count?.comments ? ` 💬${e._count.comments}` : ''}`,
+            title: `${EVENT_TYPES.find(t => t.id === e.type)?.emoji || ''} ${userPrefix}${e.title}${caseTag}${e.status === 'ADIADO' ? ' ⏸️' : ''}${e.status === 'CANCELADO' ? ' ✖️' : ''}${(e as any).recurrence_rule || (e as any).parent_event_id ? ' 🔁' : ''}${e._count?.comments ? ` 💬${e._count.comments}` : ''}`,
             start: startSx,
             end: endSx,
             calendarId: e.type,
@@ -621,7 +652,8 @@ export default function AgendaPage() {
   }, [events, filterTypes, eventsServicePlugin, showAllUsers, filterUserId]);
 
   // Carga inicial: schedule-x v4 não chama onRangeUpdate no mount.
-  // Calculamos o range da semana atual e buscamos os eventos imediatamente.
+  // Buscamos um range largo (semana atual ± 4 semanas = ~2 meses) para garantir
+  // que eventos próximos já apareçam no sidebar e no calendário sem precisar navegar.
   useEffect(() => {
     const now = new Date();
     const day = now.getDay(); // 0=Dom, 1=Seg … 6=Sab
@@ -629,12 +661,19 @@ export default function AgendaPage() {
     const monday = new Date(now);
     monday.setDate(now.getDate() + diffToMonday);
     monday.setHours(0, 0, 0, 0);
+    // Range inicial: semana atual + 4 semanas à frente (cobre eventos próximos no sidebar)
+    const rangeStart = new Date(monday);
+    rangeStart.setDate(monday.getDate() - 7); // 1 semana atrás
+    const rangeEnd = new Date(monday);
+    rangeEnd.setDate(monday.getDate() + 4 * 7); // 4 semanas à frente
+    rangeEnd.setHours(23, 59, 59, 999);
+    const start = rangeStart.toISOString();
+    const end = rangeEnd.toISOString();
+    // rangeRef aponta para a semana atual (para refetch correto ao mudar filtros)
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
     sunday.setHours(23, 59, 59, 999);
-    const start = monday.toISOString();
-    const end = sunday.toISOString();
-    rangeRef.current = { start, end };
+    rangeRef.current = { start: monday.toISOString(), end: sunday.toISOString() };
     fetchEvents(start, end);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // apenas no mount — onRangeUpdate atualiza o range nas navegações
@@ -944,8 +983,58 @@ export default function AgendaPage() {
 
   // ─── Render ─────────────────────────────────────────
 
+  // ── Aba "Tarefas": renderiza o painel de tarefas sem o layout do calendário
+  if (activeTab === 'tasks') {
+    return (
+      <div className="flex flex-col h-full bg-background overflow-hidden">
+        {/* Barra de abas */}
+        <div className="shrink-0 flex items-center gap-1 px-4 pt-3 pb-0 border-b border-border bg-card/30">
+          <button
+            onClick={() => switchTab('calendar')}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-t-lg text-sm font-medium transition-colors text-muted-foreground hover:text-foreground hover:bg-accent/60"
+          >
+            <CalendarViewIcon size={14} />
+            Calendário
+          </button>
+          <button
+            onClick={() => switchTab('tasks')}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-t-lg text-sm font-medium transition-colors border-b-2 border-primary text-primary"
+          >
+            <CheckSquare size={14} />
+            Tarefas
+          </button>
+        </div>
+        {/* Conteúdo da aba */}
+        <div className="flex-1 overflow-hidden">
+          <TasksPanel />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-full bg-background overflow-hidden">
+    <div className="flex flex-col h-full bg-background overflow-hidden">
+
+      {/* Barra de abas */}
+      <div className="shrink-0 flex items-center gap-1 px-4 pt-3 pb-0 border-b border-border bg-card/30">
+        <button
+          onClick={() => switchTab('calendar')}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-t-lg text-sm font-medium transition-colors border-b-2 border-primary text-primary"
+        >
+          <CalendarViewIcon size={14} />
+          Calendário
+        </button>
+        <button
+          onClick={() => switchTab('tasks')}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-t-lg text-sm font-medium transition-colors text-muted-foreground hover:text-foreground hover:bg-accent/60"
+        >
+          <CheckSquare size={14} />
+          Tarefas
+        </button>
+      </div>
+
+      {/* Conteúdo do Calendário */}
+      <div className="flex flex-1 overflow-hidden">
 
       {/* ═══ Sidebar estilo Google Calendar ═══ */}
       <aside className="hidden md:flex flex-col w-60 shrink-0 border-r border-border bg-card/30 overflow-y-auto custom-scrollbar">
@@ -961,19 +1050,6 @@ export default function AgendaPage() {
           <span className="text-[11px] text-muted-foreground">
             {events.length} evento{events.length !== 1 ? 's' : ''}
           </span>
-        </div>
-
-        {/* Botão + Criar */}
-        <div className="px-3 mb-3">
-          <button
-            onClick={() => openCreateModal()}
-            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-card border border-border shadow-sm hover:shadow-md text-sm font-semibold text-foreground hover:bg-accent transition-all"
-          >
-            <span className="w-7 h-7 rounded-full bg-primary flex items-center justify-center shrink-0 shadow-sm">
-              <Plus size={16} className="text-primary-foreground" />
-            </span>
-            Criar evento
-          </button>
         </div>
 
         {/* Mini Calendário */}
@@ -1083,16 +1159,25 @@ export default function AgendaPage() {
                     <div className="flex items-center gap-1.5 mb-0.5">
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ background: typeColor }} />
                       <span className={`text-[10px] ${isOverdue ? 'text-red-400 font-semibold' : 'text-muted-foreground'}`}>
-                        {isOverdue ? '⚠️ ' : ''}{d.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' })}
+                        {isOverdue ? '⚠️ ' : ''}{d.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })}
                         {' · '}
-                        {d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        {d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })}
                       </span>
                     </div>
                     <p className={`text-xs font-semibold truncate ${ev.status === 'ADIADO' ? 'text-amber-400/70 line-through' : 'text-foreground'}`}>
                       {ev.status === 'ADIADO' ? '⏸️ ' : ''}{ev.title}
                     </p>
                     {ev.lead && (
-                      <p className="text-[10px] text-muted-foreground truncate mt-0.5">{ev.lead.name || ev.lead.phone}</p>
+                      <p className="text-[10px] text-muted-foreground truncate mt-0.5">👤 {ev.lead.name || ev.lead.phone}</p>
+                    )}
+                    {ev.legal_case && (
+                      <p className="text-[10px] text-primary/70 font-semibold truncate mt-0.5">
+                        📂 {ev.legal_case.case_number ?? 'Processo vinculado'}
+                        {ev.legal_case.legal_area ? ` · ${ev.legal_case.legal_area}` : ''}
+                      </p>
+                    )}
+                    {ev.legal_case?.lead?.name && (
+                      <p className="text-[10px] text-muted-foreground truncate">👤 {ev.legal_case.lead.name}</p>
                     )}
                     {ev.location && (
                       <p className="text-[10px] text-muted-foreground/70 truncate mt-0.5">📍 {ev.location}</p>
@@ -1157,7 +1242,7 @@ export default function AgendaPage() {
                       {EVENT_TYPES.find(t => t.id === ev.type)?.emoji} {ev.title}
                     </p>
                     <p className="text-[10px] text-muted-foreground">
-                      {new Date(ev.start_at).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {new Date(ev.start_at).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })}
                       {ev.assigned_user ? ` · ${ev.assigned_user.name}` : ''}
                     </p>
                   </button>
@@ -1309,7 +1394,7 @@ export default function AgendaPage() {
                             <div className="flex flex-wrap gap-x-2 text-[10px] text-muted-foreground mb-2">
                               <span className="flex items-center gap-0.5">
                                 <Clock size={9} />
-                                {new Date(ev.start_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                                {new Date(ev.start_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', timeZone: 'UTC' })}
                               </span>
                               {ev.assigned_user && <span>· {ev.assigned_user.name}</span>}
                               {ev.lead && <span>· {ev.lead.name || ev.lead.phone}</span>}
@@ -1384,10 +1469,19 @@ export default function AgendaPage() {
             <span className="text-xs font-bold text-foreground truncate">{hoverTooltip.event.title}</span>
           </div>
           <div className="space-y-0.5 text-[11px] text-muted-foreground">
-            <p>🕐 {new Date(hoverTooltip.event.start_at).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+            <p>🕐 {new Date(hoverTooltip.event.start_at).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })}</p>
             {hoverTooltip.event.location && <p>📍 {hoverTooltip.event.location}</p>}
             {hoverTooltip.event.lead && <p>👤 {hoverTooltip.event.lead.name || hoverTooltip.event.lead.phone}</p>}
             {hoverTooltip.event.assigned_user && <p>⚖️ {hoverTooltip.event.assigned_user.name}</p>}
+            {hoverTooltip.event.legal_case && (
+              <p className="text-primary/80 font-semibold truncate">
+                📂 {hoverTooltip.event.legal_case.case_number ?? 'Processo vinculado'}
+                {hoverTooltip.event.legal_case.legal_area ? ` · ${hoverTooltip.event.legal_case.legal_area}` : ''}
+              </p>
+            )}
+            {hoverTooltip.event.legal_case?.lead?.name && (
+              <p className="truncate">👤 {hoverTooltip.event.legal_case.lead.name}</p>
+            )}
             <p style={{ color: PRIORITY_COLORS[hoverTooltip.event.priority] }}>
               ● {PRIORITY_LABELS[hoverTooltip.event.priority] ?? hoverTooltip.event.priority}
             </p>
@@ -1411,9 +1505,9 @@ export default function AgendaPage() {
                 {EVENT_TYPES.find(t => t.id === reminderToast.type)?.emoji} {reminderToast.title}
               </p>
               <p className="text-[11px] text-muted-foreground">
-                {new Date(reminderToast.start_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                {new Date(reminderToast.start_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })}
                 {' - '}
-                {new Date(reminderToast.start_at).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}
+                {new Date(reminderToast.start_at).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', timeZone: 'UTC' })}
               </p>
             </div>
             <button onClick={() => setReminderToast(null)} className="p-1 text-muted-foreground hover:text-foreground">
@@ -1426,7 +1520,7 @@ export default function AgendaPage() {
       {/* ═══ Modal de Criacao/Edicao ═══ */}
       {showModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar">
             {/* Modal header */}
             {(() => {
               const canEdit = !editingEvent || currentUserRole === 'ADMIN'
@@ -1488,7 +1582,7 @@ export default function AgendaPage() {
                   </div>
                   {conflictWarning.map(c => (
                     <p key={c.id} className="text-xs text-amber-400 ml-5">
-                      {c.title} ({new Date(c.start_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} - {new Date(c.end_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })})
+                      {c.title} ({new Date(c.start_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })} - {new Date(c.end_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })})
                     </p>
                   ))}
                   <button
@@ -1496,6 +1590,33 @@ export default function AgendaPage() {
                     className="mt-2 ml-5 text-[11px] font-semibold text-amber-500 underline hover:text-amber-400"
                   >
                     Salvar mesmo assim
+                  </button>
+                </div>
+              )}
+
+              {/* ── Processo Vinculado ── */}
+              {editingEvent?.legal_case && (
+                <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-primary/25 bg-primary/5">
+                  <BookOpen size={14} className="text-primary shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-primary/70 mb-0.5">Processo vinculado</p>
+                    <p className="text-xs font-semibold text-foreground truncate">
+                      {editingEvent.legal_case.case_number ?? 'Nº não informado'}
+                    </p>
+                    {editingEvent.legal_case.lead?.name && (
+                      <p className="text-[11px] text-foreground/80 truncate">👤 {editingEvent.legal_case.lead.name}</p>
+                    )}
+                    {editingEvent.legal_case.legal_area && (
+                      <p className="text-[10px] text-muted-foreground">{editingEvent.legal_case.legal_area}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setShowModal(false); router.push(`/atendimento/workspace/${editingEvent.legal_case!.id}`); }}
+                    className="shrink-0 p-1.5 rounded-lg text-primary/60 hover:text-primary hover:bg-primary/10 transition-colors"
+                    title="Abrir processo"
+                  >
+                    <ExternalLink size={14} />
                   </button>
                 </div>
               )}
@@ -1790,8 +1911,8 @@ export default function AgendaPage() {
                 </div>
               )}
 
-            {/* Modal footer */}
-            <div className="flex items-center justify-between px-5 py-4 border-t border-border">
+            {/* Modal footer — sticky no rodapé do modal */}
+            <div className="sticky bottom-0 flex items-center justify-between px-5 py-4 border-t border-border bg-card rounded-b-2xl">
               <div className="flex items-center gap-1">
                 {editingEvent && canEdit && (
                   <>
@@ -1843,6 +1964,8 @@ export default function AgendaPage() {
           </div>
         </div>
       )}
+
+      </div>{/* fim flex-1 conteúdo calendário */}
     </div>
   );
 }

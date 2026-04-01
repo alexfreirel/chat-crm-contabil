@@ -14,6 +14,12 @@ export class DjenController {
     return this.djenService.syncForDate(date);
   }
 
+  /** Reconcilia publicações não vinculadas com processos já cadastrados */
+  @Post('reconcile')
+  reconcile() {
+    return this.djenService.reconcileUnlinkedPublications().then(count => ({ reconciled: count }));
+  }
+
   /** Marcar todas as não visualizadas como vistas — deve vir ANTES de :id */
   @Patch('mark-all-viewed')
   markAllViewed() {
@@ -64,8 +70,25 @@ export class DjenController {
 
   /** Criar processo a partir de uma publicação */
   @Post(':id/create-process')
-  createProcess(@Param('id') id: string, @Request() req: any) {
-    return this.djenService.createProcessFromPublication(id, req.user.id, req.user?.tenant_id);
+  createProcess(
+    @Param('id') id: string,
+    @Request() req: any,
+    @Body() body: { leadId?: string; leadName?: string; leadPhone?: string; trackingStage?: string; legalArea?: string; lawyerId?: string },
+  ) {
+    // ADMIN pode escolher outro advogado; demais usuários sempre recebem o processo
+    const isAdmin = req.user?.role === 'ADMIN';
+    const effectiveLawyerId = (isAdmin && body?.lawyerId) ? body.lawyerId : req.user.id;
+
+    return this.djenService.createProcessFromPublication(
+      id,
+      effectiveLawyerId,
+      req.user?.tenant_id,
+      body?.leadId,
+      body?.trackingStage,
+      body?.leadName,
+      body?.leadPhone,
+      body?.legalArea,
+    );
   }
 
   /** Análise por IA da publicação */

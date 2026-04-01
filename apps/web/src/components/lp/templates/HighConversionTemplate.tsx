@@ -513,6 +513,9 @@ export function HighConversionTemplate({
                     <ChevronRight className="ml-2 w-6 h-6" />
                   </span>
                 </Button>
+                <p className="text-[#FAFAFA]/50 text-xs font-medium text-center lg:text-left mt-1">
+                  Sem compromisso · Atendimento confidencial · Resposta em minutos
+                </p>
               </div>
             </div>
           </div>
