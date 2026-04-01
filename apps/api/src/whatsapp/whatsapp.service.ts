@@ -322,29 +322,52 @@ export class WhatsappService {
   }
 
   async fetchMessages(instanceName: string, remoteJid: string): Promise<any[]> {
-    try {
-      // Evolution Query<Message>: { where, sort, page, offset } — no "limit" field.
-      // The where clause maps directly to Prisma conditions on the stored message model.
-      const data = await this.request(
-        'POST',
-        `chat/findMessages/${instanceName}`,
-        { where: { key: { remoteJid } }, sort: 'asc' },
-      );
+    const PAGE_SIZE = 500; // Evolution API v2 aceita até ~1000 por página
+    const MAX_PAGES = 20;  // teto de segurança: até 10.000 mensagens por conversa
+    let allMessages: any[] = [];
 
-      // API returns error object on failure (e.g. instance not found)
-      if ((data as any)?.error || (data as any)?.statusCode >= 400) {
-        this.logger.warn(`fetchMessages error for ${remoteJid}: ${JSON.stringify(data)}`);
-        return [];
+    try {
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        const data = await this.request(
+          'POST',
+          `chat/findMessages/${instanceName}`,
+          {
+            where: { key: { remoteJid } },
+            limit: PAGE_SIZE,
+            page,
+            offset: (page - 1) * PAGE_SIZE,
+          },
+        );
+
+        if ((data as any)?.error || (data as any)?.statusCode >= 400) {
+          this.logger.warn(`fetchMessages error for ${remoteJid}: ${JSON.stringify(data)}`);
+          break;
+        }
+
+        const list: any[] = Array.isArray(data)
+          ? data
+          : (data as any)?.messages || (data as any)?.data || [];
+
+        if (list.length === 0) break;
+
+        allMessages = allMessages.concat(list);
+        this.logger.log(`fetchMessages ${instanceName}/${remoteJid} page ${page}: ${list.length} msgs (total: ${allMessages.length})`);
+
+        // Última página — menos registros que o tamanho da página
+        if (list.length < PAGE_SIZE) break;
       }
 
-      const list = Array.isArray(data)
-        ? data
-        : (data as any)?.messages || (data as any)?.data || [];
-      this.logger.log(`fetchMessages ${instanceName}/${remoteJid}: ${list.length} mensagens`);
-      return list;
+      // Ordena cronologicamente pelo timestamp (mais antigo primeiro)
+      allMessages.sort((a, b) => {
+        const ta = Number(a.messageTimestamp ?? a.key?.timestamp ?? 0);
+        const tb = Number(b.messageTimestamp ?? b.key?.timestamp ?? 0);
+        return ta - tb;
+      });
+
+      return allMessages;
     } catch (e) {
       this.logger.error(`Erro ao buscar mensagens para ${remoteJid}: ${e}`);
-      return [];
+      return allMessages; // retorna o que conseguiu antes do erro
     }
   }
 

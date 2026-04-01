@@ -114,16 +114,24 @@ export class MediaProcessor extends WorkerHost {
 
     const remoteJid = `${phone}@s.whatsapp.net`;
 
+    // Busca com paginação — Evolution API v2 tem limite padrão por página
+    const PAGE_SIZE = 500;
+    const MAX_PAGES = 20;
     let rawMessages: any[] = [];
     try {
-      const response = await axios.post(
-        `${apiUrl}/chat/findMessages/${instance_name}`,
-        { where: { key: { remoteJid } }, sort: 'asc' },
-        { headers: { apikey: apiKey } },
-      );
-      rawMessages = Array.isArray(response.data)
-        ? response.data
-        : response.data?.messages || response.data?.data || [];
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        const response = await axios.post(
+          `${apiUrl}/chat/findMessages/${instance_name}`,
+          { where: { key: { remoteJid } }, limit: PAGE_SIZE, page, offset: (page - 1) * PAGE_SIZE },
+          { headers: { apikey: apiKey } },
+        );
+        const list: any[] = Array.isArray(response.data)
+          ? response.data
+          : response.data?.messages || response.data?.data || [];
+        if (!list.length) break;
+        rawMessages = rawMessages.concat(list);
+        if (list.length < PAGE_SIZE) break;
+      }
     } catch (e: any) {
       this.logger.warn(`[RESYNC] Falha ao buscar mensagens para ${phone}: ${e.message}`);
       return { imported: 0 };
