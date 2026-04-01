@@ -14,6 +14,7 @@ import {
   Clock, MapPin, User, FileText, Gavel, AlertTriangle, CheckCircle2, Bell,
   Search, Download, Copy, Repeat, MessageSquare, Users, Send,
   LayoutGrid, CalendarDays as CalendarViewIcon, CheckSquare, List,
+  BookOpen, ExternalLink,
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 import api, { API_BASE_URL } from '@/lib/api';
@@ -634,9 +635,10 @@ export default function AgendaPage() {
             try { endSx   = parseLocalToZDT(endLocal);   } catch { /* manter string */ }
           }
 
+          const caseTag = e.legal_case?.case_number ? ` [${e.legal_case.case_number}]` : '';
           return {
             id: e.id,
-            title: `${EVENT_TYPES.find(t => t.id === e.type)?.emoji || ''} ${userPrefix}${e.title}${e.status === 'ADIADO' ? ' ⏸️' : ''}${e.status === 'CANCELADO' ? ' ✖️' : ''}${(e as any).recurrence_rule || (e as any).parent_event_id ? ' 🔁' : ''}${e._count?.comments ? ` 💬${e._count.comments}` : ''}`,
+            title: `${EVENT_TYPES.find(t => t.id === e.type)?.emoji || ''} ${userPrefix}${e.title}${caseTag}${e.status === 'ADIADO' ? ' ⏸️' : ''}${e.status === 'CANCELADO' ? ' ✖️' : ''}${(e as any).recurrence_rule || (e as any).parent_event_id ? ' 🔁' : ''}${e._count?.comments ? ` 💬${e._count.comments}` : ''}`,
             start: startSx,
             end: endSx,
             calendarId: e.type,
@@ -1166,7 +1168,13 @@ export default function AgendaPage() {
                       {ev.status === 'ADIADO' ? '⏸️ ' : ''}{ev.title}
                     </p>
                     {ev.lead && (
-                      <p className="text-[10px] text-muted-foreground truncate mt-0.5">{ev.lead.name || ev.lead.phone}</p>
+                      <p className="text-[10px] text-muted-foreground truncate mt-0.5">👤 {ev.lead.name || ev.lead.phone}</p>
+                    )}
+                    {ev.legal_case && (
+                      <p className="text-[10px] text-primary/70 font-semibold truncate mt-0.5">
+                        📂 {ev.legal_case.case_number ?? 'Processo vinculado'}
+                        {ev.legal_case.legal_area ? ` · ${ev.legal_case.legal_area}` : ''}
+                      </p>
                     )}
                     {ev.location && (
                       <p className="text-[10px] text-muted-foreground/70 truncate mt-0.5">📍 {ev.location}</p>
@@ -1462,6 +1470,12 @@ export default function AgendaPage() {
             {hoverTooltip.event.location && <p>📍 {hoverTooltip.event.location}</p>}
             {hoverTooltip.event.lead && <p>👤 {hoverTooltip.event.lead.name || hoverTooltip.event.lead.phone}</p>}
             {hoverTooltip.event.assigned_user && <p>⚖️ {hoverTooltip.event.assigned_user.name}</p>}
+            {hoverTooltip.event.legal_case && (
+              <p className="text-primary/80 font-semibold truncate">
+                📂 {hoverTooltip.event.legal_case.case_number ?? 'Processo vinculado'}
+                {hoverTooltip.event.legal_case.legal_area ? ` · ${hoverTooltip.event.legal_case.legal_area}` : ''}
+              </p>
+            )}
             <p style={{ color: PRIORITY_COLORS[hoverTooltip.event.priority] }}>
               ● {PRIORITY_LABELS[hoverTooltip.event.priority] ?? hoverTooltip.event.priority}
             </p>
@@ -1570,6 +1584,30 @@ export default function AgendaPage() {
                     className="mt-2 ml-5 text-[11px] font-semibold text-amber-500 underline hover:text-amber-400"
                   >
                     Salvar mesmo assim
+                  </button>
+                </div>
+              )}
+
+              {/* ── Processo Vinculado ── */}
+              {editingEvent?.legal_case && (
+                <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-primary/25 bg-primary/5">
+                  <BookOpen size={14} className="text-primary shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-primary/70 mb-0.5">Processo vinculado</p>
+                    <p className="text-xs font-semibold text-foreground truncate">
+                      {editingEvent.legal_case.case_number ?? 'Nº não informado'}
+                    </p>
+                    {editingEvent.legal_case.legal_area && (
+                      <p className="text-[10px] text-muted-foreground">{editingEvent.legal_case.legal_area}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setShowModal(false); router.push(`/atendimento/workspace/${editingEvent.legal_case!.id}`); }}
+                    className="shrink-0 p-1.5 rounded-lg text-primary/60 hover:text-primary hover:bg-primary/10 transition-colors"
+                    title="Abrir processo"
+                  >
+                    <ExternalLink size={14} />
                   </button>
                 </div>
               )}
