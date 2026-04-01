@@ -158,11 +158,12 @@ export class LeadsService {
 
   async upsert(data: Prisma.LeadCreateInput): Promise<Lead> {
     const phone = to12Digits(data.phone);
-    // No UPDATE nunca sobrescreve nome nem stage:
+    // No UPDATE nunca sobrescreve nome, stage nem foto com valores piores:
     // - nome: só atualiza se o lead ainda não tem nome (null/vazio) E veio um nome no payload.
     //   Evita sobrescrever o nome real do cliente com o pushName do escritório.
     // - stage: webhook sempre envia 'NOVO', mas o stage é gerenciado pela IA.
-    const { phone: _phone, name: incomingName, stage: _stage, ...updateData } = data as any;
+    // - profile_picture_url: só atualiza se o lead não tem foto OU se chegou uma URL válida.
+    const { phone: _phone, name: incomingName, stage: _stage, profile_picture_url: incomingPhoto, ...updateData } = data as any;
 
     this.logger.debug(`Upsert lead: raw=${data.phone} → stored=${phone}`);
 
@@ -172,6 +173,13 @@ export class LeadsService {
         where: { phone, name: null },
         data: { name: incomingName },
       });
+    }
+
+    // profile_picture_url: só incluir no update quando vier URL válida.
+    // URLs do WhatsApp expiram (~24-48h) — URL nova é sempre melhor que a guardada.
+    // Nunca limpar foto existente com null (se webhook não enviou foto, não toca no campo).
+    if (incomingPhoto) {
+      updateData.profile_picture_url = incomingPhoto;
     }
 
     return this.prisma.lead.upsert({

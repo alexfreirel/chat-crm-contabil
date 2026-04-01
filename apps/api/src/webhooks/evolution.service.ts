@@ -585,9 +585,13 @@ export class EvolutionService {
       if (!pushName && !existingLead) continue; // No name, no existing lead → skip
       const nameToSet = existingLead?.name ? null : pushName;
 
+      // profilePicUrl vem no payload chats.upsert — aproveitamos para manter a foto fresca
+      const profilePicUrl = (data.profilePicUrl as string) || null;
+
       const lead = await this.leadsService.upsert({
         phone,
         name: nameToSet,
+        ...(profilePicUrl ? { profile_picture_url: profilePicUrl } : {}),
         origin: 'whatsapp',
         tenant: inbox?.tenant_id ? { connect: { id: inbox.tenant_id } } : undefined,
       });
@@ -795,13 +799,20 @@ export class EvolutionService {
       if (!existingContact && !name) continue; // No name, no existing lead → skip
       const contactNameToSet = existingContact?.name ? null : name;
 
+      // contacts.upsert não envia profilePicUrl no payload — buscar separadamente se o lead não tiver foto
+      let contactPhoto: string | null = null;
+      if (instanceName && (!existingContact || !existingContact.profile_picture_url)) {
+        contactPhoto = await this.whatsappService.fetchProfilePicture(instanceName, phone).catch(() => null);
+      }
+
       await this.leadsService.upsert({
         phone,
         name: contactNameToSet,
+        ...(contactPhoto ? { profile_picture_url: contactPhoto } : {}),
         origin: 'whatsapp',
       });
 
-      this.logger.log(`Contato sincronizado via webhook: ${phone} (${contactNameToSet ?? 'nome preservado'})`);
+      this.logger.log(`Contato sincronizado via webhook: ${phone} (${contactNameToSet ?? 'nome preservado'})${contactPhoto ? ' + foto' : ''}`);
     }
   }
 
@@ -867,11 +878,11 @@ export class EvolutionService {
         updates.name = newName;
       }
 
-      // Buscar nova foto de perfil
+      // Buscar nova foto de perfil — URLs do WhatsApp expiram, sempre atualizar com URL fresca
       if (instanceName) {
         try {
           const newPic = await this.whatsappService.fetchProfilePicture(instanceName, phone);
-          if (newPic && newPic !== lead.profile_picture_url) {
+          if (newPic) {
             updates.profile_picture_url = newPic;
           }
         } catch {
