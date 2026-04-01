@@ -774,6 +774,7 @@ export class EvolutionService {
 
   async handleContactsUpsert(payload: EvolutionWebhookPayload) {
     this.logger.debug(`Recebendo webhook de contatos: ${summarizePayload(payload)}`);
+    const instanceName = payload?.instance || payload?.instanceId;
     const contacts = Array.isArray(payload?.data)
       ? (payload.data as any[])
       : [payload?.data as any];
