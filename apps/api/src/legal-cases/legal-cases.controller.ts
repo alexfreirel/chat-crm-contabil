@@ -237,4 +237,11 @@ export class LegalCasesController {
   deleteEvent(@Param('eventId') eventId: string, @Request() req: any) {
     return this.service.deleteEvent(eventId, req.user?.tenant_id);
   }
+
+  /** Corrige leads com processo ativo que não estão marcados como cliente */
+  @Post('admin/sync-clients')
+  @Roles('ADMIN')
+  syncClients(@Request() req: any) {
+    return this.service.syncClientsFromActiveCases(req.user?.tenant_id);
+  }
 }

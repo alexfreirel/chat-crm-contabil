@@ -569,6 +569,19 @@ export class LegalCasesService {
       },
     });
 
+    // ── Promover lead para cliente (is_client = true) ──────────────
+    // Processo cadastrado diretamente = lead já é cliente ativo
+    await this.prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        is_client: true,
+        became_client_at: new Date(),
+        stage: 'FINALIZADO',
+        stage_entered_at: new Date(),
+        loss_reason: null,
+      },
+    });
+
     try {
       this.chatGateway.emitNewLegalCase(effectiveLawyerId, {
         caseId: legalCase.id,
@@ -577,6 +590,38 @@ export class LegalCasesService {
     } catch {}
 
     return legalCase;
+  }
+
+  // ─── REPARO: promove leads com processo ativo para is_client ────
+
+  async syncClientsFromActiveCases(tenantId?: string) {
+    // Busca todos os leads com pelo menos 1 processo ativo e is_client = false
+    const cases = await this.prisma.legalCase.findMany({
+      where: {
+        archived: false,
+        in_tracking: true,
+        ...(tenantId ? { tenant_id: tenantId } : {}),
+        lead: { is_client: false },
+      },
+      select: { lead_id: true },
+      distinct: ['lead_id'],
+    });
+
+    if (cases.length === 0) return { updated: 0 };
+
+    const leadIds = cases.map(c => c.lead_id);
+    const result = await this.prisma.lead.updateMany({
+      where: { id: { in: leadIds } },
+      data: {
+        is_client: true,
+        became_client_at: new Date(),
+        stage: 'FINALIZADO',
+        loss_reason: null,
+      },
+    });
+
+    this.logger.log(`[SYNC-CLIENTS] ${result.count} leads promovidos para cliente`);
+    return { updated: result.count, lead_ids: leadIds };
   }
 
   // ─── VINCULAR / CRIAR CLIENTE (LEAD) ──────────────────────────
