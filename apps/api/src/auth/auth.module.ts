@@ -35,10 +35,14 @@ function getJwtSecret(): string {
     UsersModule,
     PassportModule,
     JwtModule.registerAsync({
-      useFactory: () => ({
-        secret: getJwtSecret(),
-        signOptions: { expiresIn: (process.env.JWT_EXPIRES_IN || '8h') as any },
-      }),
+      useFactory: () => {
+        const expiresIn = process.env.JWT_EXPIRES_IN || '30d';
+        jwtLogger.log(`JWT_EXPIRES_IN = ${expiresIn}`);
+        return {
+          secret: getJwtSecret(),
+          signOptions: { expiresIn: expiresIn as any },
+        };
+      },
     }),
   ],
   providers: [AuthService, JwtStrategy],
