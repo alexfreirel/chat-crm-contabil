@@ -27,11 +27,11 @@ export class ConversationsService {
       where.status = { notIn: ['FECHADO', 'ADIADO'] };
     }
 
-    // Tenant isolation: inclui conversas do tenant E conversas sem tenant (tenant_id = null).
-    // Conversas sem tenant existem porque foram criadas antes do sistema de tenants e pertencem
-    // ao tenant padrão. Alterar para filtragem estrita só é seguro após migrar todos os dados.
+    // Tenant isolation estrito: todos os registros históricos foram migrados para o
+    // tenant padrão via prisma/migrate-tenant-null.ts em 2026-03-31. Não há mais
+    // registros com tenant_id = null que pertençam a tenants reais.
     if (tenantId) {
-      where.OR = [{ tenant_id: tenantId }, { tenant_id: null }];
+      where.tenant_id = tenantId;
     }
 
     // Carrega dados do usuário para aplicar regras de acesso
