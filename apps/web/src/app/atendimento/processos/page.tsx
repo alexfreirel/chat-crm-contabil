@@ -1671,25 +1671,24 @@ function ProcessoDetailPanel({
                                 {analysis.tarefa_titulo && !djenTaskCreated[pub.id] && (() => {
                                   const preview = djenEventPreview[pub.id];
                                   const eventTypeLabels: Record<string, string> = { AUDIENCIA: '⚖️ Audiência', PRAZO: '🕐 Prazo', TAREFA: '✅ Tarefa' };
-                                  // Calcula data sugerida pela IA
-                                  const suggestedDate = (() => {
-                                    if (analysis.event_type === 'AUDIENCIA' && analysis.data_audiencia) {
-                                      const d = new Date(analysis.data_audiencia);
-                                      return isNaN(d.getTime()) ? null : d;
-                                    }
-                                    if (analysis.event_type === 'PRAZO' && analysis.data_prazo) {
-                                      const d = new Date(analysis.data_prazo);
-                                      return isNaN(d.getTime()) ? null : d;
-                                    }
-                                    // fallback: data da publicação + prazo_dias úteis
+                                  // Calcula data/hora sugerida pela IA
+                                  // IMPORTANTE: extraímos data e hora diretamente da string ISO da IA,
+                                  // sem criar objetos Date — assim evitamos conversão de fuso (UTC-3 do browser).
+                                  const pad = (n: number) => String(n).padStart(2, '0');
+                                  const isoFromAi = (() => {
+                                    if (analysis.event_type === 'AUDIENCIA' && analysis.data_audiencia) return analysis.data_audiencia;
+                                    if (analysis.event_type === 'PRAZO' && analysis.data_prazo) return analysis.data_prazo;
+                                    return null;
+                                  })();
+                                  const defaultDate = (() => {
+                                    if (isoFromAi) return isoFromAi.slice(0, 10); // "YYYY-MM-DD"
+                                    // fallback: data da publicação + prazo_dias úteis (usa UTC pois pub.data_disponibilizacao é ISO)
                                     const base = new Date(pub.data_disponibilizacao);
                                     let days = analysis.prazo_dias > 0 ? analysis.prazo_dias : 0;
                                     while (days > 0) { base.setUTCDate(base.getUTCDate() + 1); if (base.getUTCDay() !== 0 && base.getUTCDay() !== 6) days--; }
-                                    return base;
+                                    return `${base.getUTCFullYear()}-${pad(base.getUTCMonth()+1)}-${pad(base.getUTCDate())}`;
                                   })();
-                                  const pad = (n: number) => String(n).padStart(2, '0');
-                                  const defaultDate = suggestedDate ? `${suggestedDate.getFullYear()}-${pad(suggestedDate.getMonth()+1)}-${pad(suggestedDate.getDate())}` : '';
-                                  const defaultTime = suggestedDate ? `${pad(suggestedDate.getHours())}:${pad(suggestedDate.getMinutes())}` : '09:00';
+                                  const defaultTime = isoFromAi ? isoFromAi.slice(11, 16) || '09:00' : '09:00';
                                   const defaultPriority = analysis.urgencia === 'URGENTE' ? 'ALTA' : analysis.urgencia === 'BAIXA' ? 'BAIXA' : 'NORMAL';
                                   return (
                                     <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-2.5 space-y-2">
@@ -1781,7 +1780,7 @@ function ProcessoDetailPanel({
                                                 try {
                                                   const [y, m, d] = preview.date.split('-').map(Number);
                                                   const [h, mi] = preview.time.split(':').map(Number);
-                                                  const start = new Date(y, m-1, d, h, mi, 0);
+                                                  const start = new Date(Date.UTC(y, m-1, d, h, mi, 0));
                                                   const dur = preview.type === 'AUDIENCIA' ? 60 : 30;
                                                   await api.post('/calendar/events', {
                                                     type: preview.type,
