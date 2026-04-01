@@ -651,6 +651,8 @@ function ProcessoDetailPanel({
   const [expandedDjen, setExpandedDjen] = useState<string | null>(null);
   const [analyzingDjen, setAnalyzingDjen] = useState<string | null>(null);
   const [djenAnalyses, setDjenAnalyses] = useState<Record<string, AiAnalysis>>({});
+  const [djenTaskCreated, setDjenTaskCreated] = useState<Record<string, boolean>>({});
+  const [creatingDjenTask, setCreatingDjenTask] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async () => {
     setLoadingTasks(true);
@@ -1593,6 +1595,46 @@ function ProcessoDetailPanel({
                                   <div className="bg-card border border-border rounded-lg p-2.5">
                                     <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Orientações</p>
                                     <p className="text-[11px] text-foreground/80 leading-relaxed">{analysis.orientacoes}</p>
+                                  </div>
+                                )}
+                                {/* Criar Tarefa sugerida */}
+                                {analysis.tarefa_titulo && (
+                                  <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-2.5 space-y-1">
+                                    <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Tarefa sugerida</p>
+                                    <p className="text-[11px] font-semibold text-foreground">{analysis.tarefa_titulo}</p>
+                                    {analysis.tarefa_descricao && (
+                                      <p className="text-[10px] text-muted-foreground">{analysis.tarefa_descricao}</p>
+                                    )}
+                                    <button
+                                      disabled={!!djenTaskCreated[pub.id] || creatingDjenTask === pub.id}
+                                      onClick={async () => {
+                                        setCreatingDjenTask(pub.id);
+                                        try {
+                                          const due = new Date();
+                                          if (analysis.prazo_dias > 0) due.setDate(due.getDate() + analysis.prazo_dias);
+                                          await api.post('/calendar/events', {
+                                            type: 'TAREFA',
+                                            title: analysis.tarefa_titulo,
+                                            description: analysis.tarefa_descricao || undefined,
+                                            legal_case_id: legalCase.id,
+                                            start_at: due.toISOString(),
+                                            end_at: new Date(due.getTime() + 30 * 60000).toISOString(),
+                                            priority: analysis.urgencia === 'URGENTE' ? 'ALTA' : analysis.urgencia === 'BAIXA' ? 'BAIXA' : 'NORMAL',
+                                          });
+                                          setDjenTaskCreated(prev => ({ ...prev, [pub.id]: true }));
+                                          fetchTasks();
+                                        } catch {} finally { setCreatingDjenTask(null); }
+                                      }}
+                                      className="mt-1 w-full flex items-center justify-center gap-1.5 text-[11px] font-semibold py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/15 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      {creatingDjenTask === pub.id ? (
+                                        <><Loader2 size={11} className="animate-spin" /> Criando…</>
+                                      ) : djenTaskCreated[pub.id] ? (
+                                        <><CheckCircle2 size={11} /> Tarefa criada</>
+                                      ) : (
+                                        <><Plus size={11} /> Criar Tarefa</>
+                                      )}
+                                    </button>
                                   </div>
                                 )}
                               </div>
