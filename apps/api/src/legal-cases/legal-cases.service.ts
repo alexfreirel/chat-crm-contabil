@@ -752,10 +752,49 @@ export class LegalCasesService {
     const valid = TRACKING_STAGES.find(s => s.id === trackingStage);
     if (!valid) throw new BadRequestException(`Stage inválido: ${trackingStage}`);
 
-    return this.prisma.legalCase.update({
+    const current = await this.prisma.legalCase.findUnique({
+      where: { id },
+      select: { tracking_stage: true, lead_id: true, case_number: true, legal_area: true },
+    });
+
+    const result = await this.prisma.legalCase.update({
       where: { id },
       data: { tracking_stage: trackingStage, stage_changed_at: new Date() },
     });
+
+    if (current?.lead_id) {
+      this.appendCaseStageToMemory(current.lead_id, current.tracking_stage, trackingStage, valid.label, current.case_number, current.legal_area).catch(err =>
+        this.logger.warn(`[MEMORY] Falha ao registrar etapa do processo na memória: ${err}`),
+      );
+    }
+
+    return result;
+  }
+
+  private async appendCaseStageToMemory(leadId: string, fromStage: string | null, toStage: string, toLabel: string, caseNumber: string | null, legalArea: string | null): Promise<void> {
+    const today = new Date().toISOString().slice(0, 10);
+    const fromLabel = TRACKING_STAGES.find(s => s.id === fromStage)?.label || fromStage || 'início';
+    const entry = { from: fromStage, to: toStage, date: today, case_number: caseNumber, legal_area: legalArea };
+
+    const existing = await this.prisma.aiMemory.findUnique({ where: { lead_id: leadId } });
+    let facts: any = {};
+    try { facts = existing?.facts_json ? (typeof existing.facts_json === 'string' ? JSON.parse(existing.facts_json as string) : existing.facts_json) : {}; } catch { facts = {}; }
+    const timeline: any[] = facts.case_timeline || [];
+    timeline.push(entry);
+    if (timeline.length > 30) timeline.splice(0, timeline.length - 30);
+    facts.case_timeline = timeline;
+
+    const summaryLine = `[PROCESSO ${today}] ${fromLabel} → ${toLabel}${caseNumber ? ` (Proc. ${caseNumber})` : ''}`;
+    const newSummary = (summaryLine + (existing?.summary ? '\n' + existing.summary : '')).slice(0, 2000);
+
+    if (existing) {
+      await this.prisma.aiMemory.update({
+        where: { lead_id: leadId },
+        data: { facts_json: facts, summary: newSummary, last_updated_at: new Date(), version: { increment: 1 } },
+      });
+    } else {
+      await this.prisma.aiMemory.create({ data: { lead_id: leadId, summary: newSummary, facts_json: facts } });
+    }
   }
 
   // ─── WORKSPACE ──────────────────────────────────────────────────

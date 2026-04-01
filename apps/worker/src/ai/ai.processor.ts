@@ -1026,6 +1026,27 @@ export class AiProcessor extends WorkerHost {
         if (factsJson?.next_actions?.length)
           parts.push(`🎯 Próximas ações: ${factsJson.next_actions.join('; ')}`);
 
+        // Histórico de etapas CRM (kanban de leads)
+        if (factsJson?.crm_timeline?.length) {
+          const entries = (factsJson.crm_timeline as any[]).slice(-10);
+          parts.push(`🏷️ Jornada no CRM:\n${entries.map((e: any) => `  - ${e.date}: ${e.from || 'início'} → ${e.to}${e.loss_reason ? ` (${e.loss_reason})` : ''}`).join('\n')}`);
+        }
+        // Histórico de etapas do processo judicial
+        if (factsJson?.case_timeline?.length) {
+          const entries = (factsJson.case_timeline as any[]).slice(-10);
+          parts.push(`⚖️ Histórico do Processo:\n${entries.map((e: any) => `  - ${e.date}: ${e.from || 'início'} → ${e.to}${e.case_number ? ` (${e.case_number})` : ''}`).join('\n')}`);
+        }
+        // Petições protocoladas/aprovadas
+        if (factsJson?.petitions?.length) {
+          const pItems = (factsJson.petitions as any[]).slice(-5);
+          parts.push(`📄 Petições: ${pItems.map((p: any) => `${p.type}(${p.status})${p.date ? ' em '+p.date : ''}`).join('; ')}`);
+        }
+        // Publicações DJEN analisadas
+        if (factsJson?.djen_publications?.length) {
+          const dItems = (factsJson.djen_publications as any[]).slice(0, 5);
+          parts.push(`📰 DJEN (${dItems.length} pub.):\n${dItems.map((d: any) => `  - ${d.date}: ${d.tipo}${d.assunto ? ' — '+d.assunto : ''}. ${d.resumo || ''}`).join('\n')}`);
+        }
+
         if (parts.length) leadMemory = parts.join('\n');
       }
 

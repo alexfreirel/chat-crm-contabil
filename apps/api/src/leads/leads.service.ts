@@ -286,6 +286,11 @@ export class LeadsService {
       },
     }).catch(err => this.logger.warn(`Failed to record stage history for lead ${id}: ${err}`));
 
+    // Salva avanço de etapa na memória do lead (contexto para IA)
+    this.appendLeadStageToMemory(id, current?.stage ?? null, stage, lossReason ?? null).catch(err =>
+      this.logger.warn(`[MEMORY] Falha ao registrar etapa CRM na memória do lead ${id}: ${err}`),
+    );
+
     // Broadcast: notificar outros clientes sobre mudanca de stage do lead
     this.chatGateway.emitConversationsUpdate(tenantId ?? null);
 
@@ -581,5 +586,42 @@ export class LeadsService {
     });
 
     return [header.join(','), ...rows].join('\n');
+  }
+
+  // ─── Memória: registra avanço de etapa CRM ────────────────────────────────
+
+  private async appendLeadStageToMemory(leadId: string, fromStage: string | null, toStage: string, lossReason: string | null): Promise<void> {
+    const STAGE_LABELS: Record<string, string> = {
+      NOVO: 'Novo', INICIAL: 'Inicial', QUALIFICANDO: 'Qualificando',
+      AGUARDANDO_FORM: 'Aguardando Formulário', REUNIAO_AGENDADA: 'Reunião Agendada',
+      AGUARDANDO_DOCS: 'Aguardando Documentos', AGUARDANDO_PROC: 'Aguardando Processo',
+      FINALIZADO: 'Finalizado', PERDIDO: 'Perdido',
+    };
+    const today = new Date().toISOString().slice(0, 10);
+    const entry = {
+      from: fromStage, to: toStage, date: today,
+      ...(lossReason ? { loss_reason: lossReason } : {}),
+    };
+    const existing = await this.prisma.aiMemory.findUnique({ where: { lead_id: leadId } });
+    let facts: any = {};
+    try { facts = existing?.facts_json ? (typeof existing.facts_json === 'string' ? JSON.parse(existing.facts_json as string) : existing.facts_json) : {}; } catch { facts = {}; }
+    const timeline: any[] = facts.crm_timeline || [];
+    timeline.push(entry);
+    if (timeline.length > 30) timeline.splice(0, timeline.length - 30);
+    facts.crm_timeline = timeline;
+
+    const fromLabel = STAGE_LABELS[fromStage ?? ''] || fromStage || 'início';
+    const toLabel = STAGE_LABELS[toStage] || toStage;
+    const summaryLine = `[CRM ${today}] ${fromLabel} → ${toLabel}${lossReason ? ` (Motivo: ${lossReason})` : ''}`;
+    const newSummary = (summaryLine + (existing?.summary ? '\n' + existing.summary : '')).slice(0, 2000);
+
+    if (existing) {
+      await this.prisma.aiMemory.update({
+        where: { lead_id: leadId },
+        data: { facts_json: facts, summary: newSummary, last_updated_at: new Date(), version: { increment: 1 } },
+      });
+    } else {
+      await this.prisma.aiMemory.create({ data: { lead_id: leadId, summary: newSummary, facts_json: facts } });
+    }
   }
 }
