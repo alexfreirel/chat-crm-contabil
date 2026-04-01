@@ -34,6 +34,7 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
   const [showThemes, setShowThemes] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const [unreadTotal, setUnreadTotal] = useState(0);
+  const [overdueCount, setOverdueCount] = useState(0);
 
   // ─── Auth check ───────────────────────────────────────────
   useEffect(() => {
@@ -87,6 +88,33 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
     return () => window.removeEventListener('unread_count_update', handler);
   }, []);
 
+  // Overdue tasks badge (mobile — atualiza a cada 5min)
+  useEffect(() => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005';
+    const fetchOverdue = async () => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      if (!token) return;
+      try {
+        const res = await fetch(`${apiUrl}/tasks?limit=500`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const tasks: any[] = data?.data || data || [];
+        const now = new Date();
+        const count = tasks.filter((t: any) =>
+          t.due_at && new Date(t.due_at) < now &&
+          (t.status === 'A_FAZER' || t.status === 'EM_PROGRESSO')
+        ).length;
+        setOverdueCount(count);
+      } catch { /* silencioso */ }
+    };
+    fetchOverdue();
+    const interval = setInterval(fetchOverdue, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Click outside to close more menu
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -121,7 +149,7 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
 
   const allMoreItems = [
     { label: 'Dashboard', href: '/atendimento/dashboard', icon: LayoutDashboard, match: (p: string) => p.startsWith('/atendimento/dashboard'), show: perms.canViewDashboard },
-    { label: 'Agenda', href: '/atendimento/agenda', icon: Calendar, match: (p: string) => p.startsWith('/atendimento/agenda'), show: true },
+    { label: 'Agenda & Tarefas', href: '/atendimento/agenda', icon: Calendar, match: (p: string) => p.startsWith('/atendimento/agenda') || p.startsWith('/atendimento/tasks'), badge: overdueCount, show: true },
     { label: 'Triagem e Peticionamento', href: '/atendimento/advogado', icon: FileEdit, match: (p: string) => p.startsWith('/atendimento/advogado'), show: perms.canViewAdvogado },
     { label: 'Processos', href: '/atendimento/processos', icon: BookOpen, match: (p: string) => p.startsWith('/atendimento/processos'), show: perms.canViewLegalCases },
     { label: 'DJEN', href: '/atendimento/djen', icon: Gavel, match: (p: string) => p.startsWith('/atendimento/djen'), show: perms.canViewDjen },
@@ -171,6 +199,7 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
                 {moreItems.map(item => {
                   const Icon = item.icon;
                   const active = item.match(pathname);
+                  const badge = (item as any).badge;
                   return (
                     <button
                       key={item.href}
@@ -181,6 +210,11 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
                     >
                       <Icon size={20} strokeWidth={2} />
                       {item.label}
+                      {badge > 0 && (
+                        <span className="ml-auto text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
+                          {badge > 99 ? '99+' : badge}
+                        </span>
+                      )}
                     </button>
                   );
                 })}

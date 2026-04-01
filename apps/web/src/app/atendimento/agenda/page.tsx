@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useNextCalendarApp, ScheduleXCalendar } from '@schedule-x/react';
 import { createViewDay, createViewWeek, createViewMonthGrid } from '@schedule-x/calendar';
 import { createEventsServicePlugin } from '@schedule-x/events-service';
@@ -13,13 +13,14 @@ import {
   ChevronLeft, ChevronRight,
   Clock, MapPin, User, FileText, Gavel, AlertTriangle, CheckCircle2, Bell,
   Search, Download, Copy, Repeat, MessageSquare, Users, Send,
-  LayoutGrid, CalendarDays as CalendarViewIcon,
+  LayoutGrid, CalendarDays as CalendarViewIcon, CheckSquare, List,
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 import api, { API_BASE_URL } from '@/lib/api';
 import { showError, showSuccess } from '@/lib/toast';
 import { playNotificationSound } from '@/lib/notificationSounds';
 import { AvailabilityPicker } from '@/components/AvailabilityPicker';
+import { TasksPanel } from './TasksPanel';
 
 // ─── Tipos ────────────────────────────────────────────
 
@@ -316,6 +317,9 @@ function MiniCalendar({ onDateSelect }: { onDateSelect: (dateStr: string) => voi
 
 export default function AgendaPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const activeTab = (searchParams.get('tab') as 'calendar' | 'tasks') || 'calendar';
+
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<UserOption[]>([]);
@@ -951,8 +955,58 @@ export default function AgendaPage() {
 
   // ─── Render ─────────────────────────────────────────
 
+  // ── Aba "Tarefas": renderiza o painel de tarefas sem o layout do calendário
+  if (activeTab === 'tasks') {
+    return (
+      <div className="flex flex-col h-full bg-background overflow-hidden">
+        {/* Barra de abas */}
+        <div className="shrink-0 flex items-center gap-1 px-4 pt-3 pb-0 border-b border-border bg-card/30">
+          <button
+            onClick={() => router.push('/atendimento/agenda')}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-t-lg text-sm font-medium transition-colors text-muted-foreground hover:text-foreground hover:bg-accent/60"
+          >
+            <CalendarViewIcon size={14} />
+            Calendário
+          </button>
+          <button
+            onClick={() => router.push('/atendimento/agenda?tab=tasks')}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-t-lg text-sm font-medium transition-colors border-b-2 border-primary text-primary"
+          >
+            <CheckSquare size={14} />
+            Tarefas
+          </button>
+        </div>
+        {/* Conteúdo da aba */}
+        <div className="flex-1 overflow-hidden">
+          <TasksPanel />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-full bg-background overflow-hidden">
+    <div className="flex flex-col h-full bg-background overflow-hidden">
+
+      {/* Barra de abas */}
+      <div className="shrink-0 flex items-center gap-1 px-4 pt-3 pb-0 border-b border-border bg-card/30">
+        <button
+          onClick={() => router.push('/atendimento/agenda')}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-t-lg text-sm font-medium transition-colors border-b-2 border-primary text-primary"
+        >
+          <CalendarViewIcon size={14} />
+          Calendário
+        </button>
+        <button
+          onClick={() => router.push('/atendimento/agenda?tab=tasks')}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-t-lg text-sm font-medium transition-colors text-muted-foreground hover:text-foreground hover:bg-accent/60"
+        >
+          <CheckSquare size={14} />
+          Tarefas
+        </button>
+      </div>
+
+      {/* Conteúdo do Calendário */}
+      <div className="flex flex-1 overflow-hidden">
 
       {/* ═══ Sidebar estilo Google Calendar ═══ */}
       <aside className="hidden md:flex flex-col w-60 shrink-0 border-r border-border bg-card/30 overflow-y-auto custom-scrollbar">
@@ -1850,6 +1904,8 @@ export default function AgendaPage() {
           </div>
         </div>
       )}
+
+      </div>{/* fim flex-1 conteúdo calendário */}
     </div>
   );
 }
