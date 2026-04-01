@@ -45,7 +45,7 @@ interface CalendarEvent {
   assigned_user?: { id: string; name: string } | null;
   created_by?: { id: string; name: string } | null;
   lead?: { id: string; name: string | null; phone: string } | null;
-  legal_case?: { id: string; case_number: string | null; legal_area: string | null } | null;
+  legal_case?: { id: string; case_number: string | null; legal_area: string | null; lead?: { name: string | null } | null } | null;
   _count?: { comments: number };
 }
 
@@ -1176,6 +1176,9 @@ export default function AgendaPage() {
                         {ev.legal_case.legal_area ? ` · ${ev.legal_case.legal_area}` : ''}
                       </p>
                     )}
+                    {ev.legal_case?.lead?.name && (
+                      <p className="text-[10px] text-muted-foreground truncate">👤 {ev.legal_case.lead.name}</p>
+                    )}
                     {ev.location && (
                       <p className="text-[10px] text-muted-foreground/70 truncate mt-0.5">📍 {ev.location}</p>
                     )}
@@ -1476,6 +1479,9 @@ export default function AgendaPage() {
                 {hoverTooltip.event.legal_case.legal_area ? ` · ${hoverTooltip.event.legal_case.legal_area}` : ''}
               </p>
             )}
+            {hoverTooltip.event.legal_case?.lead?.name && (
+              <p className="truncate">👤 {hoverTooltip.event.legal_case.lead.name}</p>
+            )}
             <p style={{ color: PRIORITY_COLORS[hoverTooltip.event.priority] }}>
               ● {PRIORITY_LABELS[hoverTooltip.event.priority] ?? hoverTooltip.event.priority}
             </p>
@@ -1597,6 +1603,9 @@ export default function AgendaPage() {
                     <p className="text-xs font-semibold text-foreground truncate">
                       {editingEvent.legal_case.case_number ?? 'Nº não informado'}
                     </p>
+                    {editingEvent.legal_case.lead?.name && (
+                      <p className="text-[11px] text-foreground/80 truncate">👤 {editingEvent.legal_case.lead.name}</p>
+                    )}
                     {editingEvent.legal_case.legal_area && (
                       <p className="text-[10px] text-muted-foreground">{editingEvent.legal_case.legal_area}</p>
                     )}
