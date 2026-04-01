@@ -945,11 +945,20 @@ export default function Dashboard() {
               if (prev.some(m => m.id === msg.id)) return prev;
               // Dedup: já existe pelo external_message_id
               if (msg.external_message_id && prev.some(m => m.external_message_id === msg.external_message_id)) return prev;
-              // Se é outgoing, substituir msg otimista correspondente (optimistic UI)
+              // Se é outgoing, substituir a msg otimista com texto mais próximo (optimistic UI)
+              // Usa o texto para corresponder corretamente quando há múltiplas msgs otimistas
               if (msg.direction === 'out') {
-                const optimisticIdx = prev.findIndex(m => typeof m.id === 'string' && m.id.startsWith('optimistic_'));
+                const optimisticIdx = prev.findIndex(
+                  m => typeof m.id === 'string' && m.id.startsWith('optimistic_') &&
+                       (m.text === msg.text || !msg.text)
+                );
                 if (optimisticIdx >= 0) {
                   return prev.map((m, i) => i === optimisticIdx ? msg : m);
+                }
+                // Fallback: substitui a primeira otimista sem correspondência de texto
+                const fallbackIdx = prev.findIndex(m => typeof m.id === 'string' && m.id.startsWith('optimistic_'));
+                if (fallbackIdx >= 0) {
+                  return prev.map((m, i) => i === fallbackIdx ? msg : m);
                 }
               }
               return [...prev, msg];
@@ -2111,6 +2120,21 @@ export default function Dashboard() {
               onSetClientPanelLeadId={setClientPanelLeadId}
               onLightbox={setLightbox}
               onCreateTask={openTaskModal}
+              onSyncHistory={async () => {
+                if (!selectedId) return;
+                try {
+                  const res = await api.post(`/messages/conversation/${selectedId}/sync-history`);
+                  const { imported } = res.data;
+                  if (imported > 0) {
+                    setMsgRefreshKey(k => k + 1);
+                    showSuccess(`${imported} mensagem(ns) sincronizada(s) com o WhatsApp`);
+                  } else {
+                    showSuccess('Histórico já está sincronizado');
+                  }
+                } catch {
+                  showError('Falha ao sincronizar histórico');
+                }
+              }}
               contactPresence={contactPresence}
               activeTask={selected?.activeTask}
               onCompleteTask={handleCompleteTask}

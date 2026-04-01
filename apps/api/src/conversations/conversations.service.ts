@@ -27,9 +27,10 @@ export class ConversationsService {
       where.status = { notIn: ['FECHADO', 'ADIADO'] };
     }
 
-    // Tenant isolation
+    // Tenant isolation: filtra estritamente pelo tenant — não expõe conversas sem tenant
+    // para outros tenants (possível vazamento em ambiente multi-tenant).
     if (tenantId) {
-      where.OR = [{ tenant_id: tenantId }, { tenant_id: null }];
+      where.tenant_id = tenantId;
     }
 
     // Carrega dados do usuário para aplicar regras de acesso

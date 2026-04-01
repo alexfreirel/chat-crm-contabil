@@ -297,6 +297,35 @@ export class EvolutionService {
         continue;
       }
 
+      // Para mensagens enviadas (fromMe=true / send.message echo), verifica se existe uma
+      // mensagem "pendente" na mesma conversa com o mesmo texto salva em menos de 2 minutos.
+      // Isso ocorre quando o CRM salva a mensagem com external_message_id temporário (out_xxx)
+      // porque a Evolution API retornou erro na chamada mas a mensagem foi enviada mesmo assim.
+      // Nesse caso, atualiza o external_message_id em vez de criar duplicata.
+      if (isFromMe && messageContent) {
+        const since = new Date(Date.now() - 2 * 60 * 1000); // janela de 2 minutos
+        const pendingMsg = await this.prisma.message.findFirst({
+          where: {
+            conversation_id: conv.id,
+            direction: 'out',
+            text: messageContent,
+            created_at: { gte: since },
+            external_message_id: { startsWith: 'out_' },
+          },
+          include: { media: true, skill: { select: { id: true, name: true, area: true } } },
+        });
+        if (pendingMsg) {
+          const updated = await this.prisma.message.update({
+            where: { id: pendingMsg.id },
+            data: { external_message_id: externalMessageId, status: 'enviado' },
+            include: { media: true, skill: { select: { id: true, name: true, area: true } } },
+          });
+          this.chatGateway.emitMessageUpdate(conv.id, updated);
+          this.logger.log(`[DEDUP] Msg pendente ${pendingMsg.id} vinculada ao ID real ${externalMessageId}`);
+          continue;
+        }
+      }
+
       let msgType = 'text';
       if (
         [

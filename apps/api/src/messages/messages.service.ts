@@ -155,6 +155,8 @@ export class MessagesService {
         where: { id: conversationId },
         data: { last_message_at: new Date() },
       });
+      // Notifica o frontend para recarregar as mensagens da conversa
+      this.chatGateway.emitConversationsUpdate(null);
     }
 
     return { imported, total: rawMessages.length };

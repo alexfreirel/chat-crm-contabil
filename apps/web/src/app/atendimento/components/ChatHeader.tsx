@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Bot, BotOff, UserCheck, CornerDownLeft, Inbox, Eye, ClipboardList, ArrowLeft, ChevronDown, ChevronRight, MoreVertical, Clock, Copy, Check, Tag, Plus, X as XIcon } from 'lucide-react';
+import { Bot, BotOff, UserCheck, CornerDownLeft, Inbox, Eye, ClipboardList, ArrowLeft, ChevronDown, ChevronRight, MoreVertical, Clock, Copy, Check, Tag, Plus, X as XIcon, RefreshCw } from 'lucide-react';
 import { CRM_STAGES, findStage, normalizeStage } from '@/lib/crmStages';
 import type { ConversationSummary, ActiveTask } from '../types';
 
@@ -65,6 +65,7 @@ export interface ChatHeaderProps {
   onSetClientPanelLeadId: (id: string | null) => void;
   onLightbox: (url: string) => void;
   onCreateTask: () => void;
+  onSyncHistory?: () => void;
   contactPresence?: string;
   // Task management (ADIADO)
   activeTask?: ActiveTask | null;
@@ -110,6 +111,7 @@ export function ChatHeader({
   onSetClientPanelLeadId,
   onLightbox,
   onCreateTask,
+  onSyncHistory,
   contactPresence,
   activeTask,
   onCompleteTask,
@@ -434,6 +436,15 @@ export function ChatHeader({
             >
               <Clock size={16} />
               Adiar
+            </button>
+          )}
+          {isRealConvo && onSyncHistory && (
+            <button
+              onClick={onSyncHistory}
+              title="Sincronizar histórico de mensagens com WhatsApp"
+              className="p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded-xl transition-colors"
+            >
+              <RefreshCw size={16} />
             </button>
           )}
         </div>
