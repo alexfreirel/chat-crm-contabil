@@ -669,10 +669,11 @@ function ProcessoDetailPanel({
 
   const fetchInterns = useCallback(async () => {
     try {
-      const res = await api.get(`/users/${legalCase.lawyer_id}/interns`);
-      setInterns(res.data || []);
+      const res = await api.get('/users?limit=100');
+      const data = res.data?.data || res.data?.users || res.data || [];
+      setInterns(data.filter((u: any) => u.role));
     } catch {}
-  }, [legalCase.lawyer_id]);
+  }, []);
 
   const fetchDjen = useCallback(async () => {
     setLoadingDjen(true);
