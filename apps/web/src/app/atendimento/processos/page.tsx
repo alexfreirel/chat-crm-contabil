@@ -14,6 +14,7 @@ import api from '@/lib/api';
 import { TRACKING_STAGES, findTrackingStage } from '@/lib/legalStages';
 import { useRole } from '@/lib/useRole';
 import { ClientPanel } from '@/components/ClientPanel';
+import { EventModal } from '@/components/EventModal';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -621,11 +622,7 @@ function ProcessoDetailPanel({
   // Tasks
   const [tasks, setTasks] = useState<CaseTask[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
-  const [showNewTask, setShowNewTask] = useState(false);
-  const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskDesc, setNewTaskDesc] = useState('');
-  const [newTaskAssignee, setNewTaskAssignee] = useState('');
-  const [newTaskDue, setNewTaskDue] = useState('');
+  const [showEventModal, setShowEventModal] = useState(false);
   const [interns, setInterns] = useState<Intern[]>([]);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<string | null>(null);
@@ -815,27 +812,6 @@ function ProcessoDetailPanel({
       await api.patch(`/legal-cases/${legalCase.id}/unarchive`);
       onRefresh();
       onClose();
-    } catch {}
-  };
-
-  const handleCreateTask = async () => {
-    if (!newTaskTitle.trim()) return;
-    const startAt = newTaskDue ? new Date(newTaskDue).toISOString() : new Date().toISOString();
-    const endAt = new Date(new Date(startAt).getTime() + 30 * 60000).toISOString();
-    try {
-      await api.post('/calendar/events', {
-        type: 'TAREFA',
-        title: newTaskTitle,
-        description: newTaskDesc || undefined,
-        legal_case_id: legalCase.id,
-        assigned_user_id: newTaskAssignee || undefined,
-        start_at: startAt,
-        end_at: endAt,
-        priority: 'NORMAL',
-      });
-      setNewTaskTitle(''); setNewTaskDesc(''); setNewTaskAssignee(''); setNewTaskDue('');
-      setShowNewTask(false);
-      fetchTasks();
     } catch {}
   };
 
@@ -1757,48 +1733,19 @@ function ProcessoDetailPanel({
             <div className="p-5 space-y-3">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider">Eventos</h3>
-                <button onClick={() => setShowNewTask(!showNewTask)} className="text-[11px] font-semibold text-primary hover:text-primary/80 flex items-center gap-1">
+                <button onClick={() => setShowEventModal(true)} className="text-[11px] font-semibold text-primary hover:text-primary/80 flex items-center gap-1">
                   <Plus size={12} /> Novo Evento
                 </button>
               </div>
 
-              {showNewTask && (
-                <div className="p-4 bg-accent/30 border border-border rounded-xl space-y-3">
-                  <input
-                    type="text"
-                    value={newTaskTitle}
-                    onChange={e => setNewTaskTitle(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40"
-                    placeholder="Título do evento"
-                  />
-                  <textarea
-                    value={newTaskDesc}
-                    onChange={e => setNewTaskDesc(e.target.value)}
-                    rows={2}
-                    className="w-full px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none resize-none"
-                    placeholder="Descrição (opcional)"
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <select
-                      value={newTaskAssignee}
-                      onChange={e => setNewTaskAssignee(e.target.value)}
-                      className="px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none"
-                    >
-                      <option value="">Atribuir a...</option>
-                      {interns.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-                    </select>
-                    <input
-                      type="date"
-                      value={newTaskDue}
-                      onChange={e => setNewTaskDue(e.target.value)}
-                      className="px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={handleCreateTask} className="flex-1 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:opacity-90">Criar</button>
-                    <button onClick={() => setShowNewTask(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg">Cancelar</button>
-                  </div>
-                </div>
+              {showEventModal && (
+                <EventModal
+                  caseId={legalCase.id}
+                  lawyerId={legalCase.lawyer_id}
+                  users={interns}
+                  onClose={() => setShowEventModal(false)}
+                  onCreated={fetchTasks}
+                />
               )}
 
               {loadingTasks ? (
