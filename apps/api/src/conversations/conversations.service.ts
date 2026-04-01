@@ -27,10 +27,11 @@ export class ConversationsService {
       where.status = { notIn: ['FECHADO', 'ADIADO'] };
     }
 
-    // Tenant isolation: filtra estritamente pelo tenant — não expõe conversas sem tenant
-    // para outros tenants (possível vazamento em ambiente multi-tenant).
+    // Tenant isolation: inclui conversas do tenant E conversas sem tenant (tenant_id = null).
+    // Conversas sem tenant existem porque foram criadas antes do sistema de tenants e pertencem
+    // ao tenant padrão. Alterar para filtragem estrita só é seguro após migrar todos os dados.
     if (tenantId) {
-      where.tenant_id = tenantId;
+      where.OR = [{ tenant_id: tenantId }, { tenant_id: null }];
     }
 
     // Carrega dados do usuário para aplicar regras de acesso
