@@ -15,13 +15,13 @@ async function main() {
     },
   });
 
-  const passwordHash = await argon2.hash('admin123');
-  
+  const passwordHash = await argon2.hash('Lustosa080686');
+
   const admin = await prisma.user.upsert({
-    where: { email: 'admin@lexcrm.com.br' },
-    update: {},
+    where: { email: 'lustosa.lima@outlook.com' },
+    update: { password_hash: passwordHash },
     create: {
-      email: 'admin@lexcrm.com.br',
+      email: 'lustosa.lima@outlook.com',
       name: 'Admin Master',
       role: 'ADMIN',
       password_hash: passwordHash,
@@ -30,7 +30,7 @@ async function main() {
   });
 
   console.log('Seed completo ✅');
-  console.log('Usuário: admin@lexcrm.com.br | Senha: admin123');
+  console.log('Usuário: lustosa.lima@outlook.com | Senha: Lustosa080686');
 }
 
 main()
