@@ -1035,19 +1035,6 @@ export default function AgendaPage() {
           </span>
         </div>
 
-        {/* Botão + Criar */}
-        <div className="px-3 mb-3">
-          <button
-            onClick={() => openCreateModal()}
-            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-card border border-border shadow-sm hover:shadow-md text-sm font-semibold text-foreground hover:bg-accent transition-all"
-          >
-            <span className="w-7 h-7 rounded-full bg-primary flex items-center justify-center shrink-0 shadow-sm">
-              <Plus size={16} className="text-primary-foreground" />
-            </span>
-            Criar evento
-          </button>
-        </div>
-
         {/* Mini Calendário */}
         <div className="px-2 mb-2">
           <MiniCalendar
