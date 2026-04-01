@@ -109,15 +109,14 @@ function EventModal({
   const now = new Date();
   const padded = (n: number) => String(n).padStart(2, '0');
   const todayLocal = `${now.getUTCFullYear()}-${padded(now.getUTCMonth() + 1)}-${padded(now.getUTCDate())}`;
-  const timeNow = `${padded(now.getUTCHours())}:${padded(now.getUTCMinutes())}`;
-  const timeEnd = `${padded(Math.min(now.getUTCHours() + 1, 23))}:${padded(now.getUTCMinutes())}`;
 
   const [type, setType] = useState<string>('TAREFA');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(todayLocal);
-  const [startTime, setStartTime] = useState(timeNow);
-  const [endTime, setEndTime] = useState(timeEnd);
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [timeError, setTimeError] = useState(false);
   const [allDay, setAllDay] = useState(false);
   const [location, setLocation] = useState('');
   const [priority, setPriority] = useState('NORMAL');
@@ -138,6 +137,11 @@ function EventModal({
 
   const handleSave = async () => {
     if (!title.trim() || !date) return;
+    if (!allDay && (!startTime || !endTime)) {
+      setTimeError(true);
+      return;
+    }
+    setTimeError(false);
     setSaving(true);
     try {
       const startISO = allDay
@@ -249,12 +253,14 @@ function EventModal({
             {/* Data e horário */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-muted-foreground">Data e Horário *</label>
+                <label className={`text-xs font-semibold ${timeError && !allDay ? 'text-red-400' : 'text-muted-foreground'}`}>
+                  Data e Horário *
+                </label>
                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                   <input
                     type="checkbox"
                     checked={allDay}
-                    onChange={e => setAllDay(e.target.checked)}
+                    onChange={e => { setAllDay(e.target.checked); setTimeError(false); }}
                     className="w-3.5 h-3.5 rounded"
                   />
                   Dia inteiro
@@ -272,19 +278,24 @@ function EventModal({
                     <input
                       type="time"
                       value={startTime}
-                      onChange={e => setStartTime(e.target.value)}
-                      className="w-28 px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/25"
+                      onChange={e => { setStartTime(e.target.value); if (e.target.value) setTimeError(false); }}
+                      className={`w-28 px-3 py-2 rounded-xl border bg-background text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/25 ${timeError && !startTime ? 'border-red-400 ring-2 ring-red-400/25' : 'border-border'}`}
                     />
                     <span className="flex items-center text-muted-foreground text-xs">até</span>
                     <input
                       type="time"
                       value={endTime}
-                      onChange={e => setEndTime(e.target.value)}
-                      className="w-28 px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/25"
+                      onChange={e => { setEndTime(e.target.value); if (e.target.value) setTimeError(false); }}
+                      className={`w-28 px-3 py-2 rounded-xl border bg-background text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/25 ${timeError && !endTime ? 'border-red-400 ring-2 ring-red-400/25' : 'border-border'}`}
                     />
                   </>
                 )}
               </div>
+              {timeError && !allDay && (
+                <p className="text-xs text-red-400 flex items-center gap-1">
+                  <AlertTriangle size={11} /> Horário de início e fim são obrigatórios
+                </p>
+              )}
             </div>
 
             {/* Localização (visível para Audiência) */}

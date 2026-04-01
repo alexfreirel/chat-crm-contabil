@@ -616,15 +616,22 @@ export default function AgendaPage() {
           }
 
           // Converter strings para Temporal.ZonedDateTime (obrigatório no schedule-x v4)
+          // Usa forma de objeto (mais robusta que parsing de string) para evitar falhas silenciosas.
           let startSx: any = startLocal;
           let endSx: any = endLocal;
           if (T) {
-            try {
-              startSx = T.ZonedDateTime.from(`${startLocal.replace(' ', 'T')}:00[${tz}]`);
-              endSx   = T.ZonedDateTime.from(`${endLocal.replace(' ', 'T')}:00[${tz}]`);
-            } catch {
-              // fallback: manter string se Temporal falhar para este evento
-            }
+            const parseLocalToZDT = (local: string) => {
+              // local = "YYYY-MM-DD HH:mm"
+              const [datePart, timePart = '00:00'] = local.split(' ');
+              const [year, month, day] = datePart.split('-').map(Number);
+              const [hour, minute] = timePart.split(':').map(Number);
+              return T.ZonedDateTime.from({
+                year, month, day, hour, minute, second: 0,
+                timeZone: tz,
+              });
+            };
+            try { startSx = parseLocalToZDT(startLocal); } catch { /* manter string */ }
+            try { endSx   = parseLocalToZDT(endLocal);   } catch { /* manter string */ }
           }
 
           return {
@@ -643,7 +650,8 @@ export default function AgendaPage() {
   }, [events, filterTypes, eventsServicePlugin, showAllUsers, filterUserId]);
 
   // Carga inicial: schedule-x v4 não chama onRangeUpdate no mount.
-  // Calculamos o range da semana atual e buscamos os eventos imediatamente.
+  // Buscamos um range largo (semana atual ± 4 semanas = ~2 meses) para garantir
+  // que eventos próximos já apareçam no sidebar e no calendário sem precisar navegar.
   useEffect(() => {
     const now = new Date();
     const day = now.getDay(); // 0=Dom, 1=Seg … 6=Sab
@@ -651,12 +659,19 @@ export default function AgendaPage() {
     const monday = new Date(now);
     monday.setDate(now.getDate() + diffToMonday);
     monday.setHours(0, 0, 0, 0);
+    // Range inicial: semana atual + 4 semanas à frente (cobre eventos próximos no sidebar)
+    const rangeStart = new Date(monday);
+    rangeStart.setDate(monday.getDate() - 7); // 1 semana atrás
+    const rangeEnd = new Date(monday);
+    rangeEnd.setDate(monday.getDate() + 4 * 7); // 4 semanas à frente
+    rangeEnd.setHours(23, 59, 59, 999);
+    const start = rangeStart.toISOString();
+    const end = rangeEnd.toISOString();
+    // rangeRef aponta para a semana atual (para refetch correto ao mudar filtros)
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
     sunday.setHours(23, 59, 59, 999);
-    const start = monday.toISOString();
-    const end = sunday.toISOString();
-    rangeRef.current = { start, end };
+    rangeRef.current = { start: monday.toISOString(), end: sunday.toISOString() };
     fetchEvents(start, end);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // apenas no mount — onRangeUpdate atualiza o range nas navegações
