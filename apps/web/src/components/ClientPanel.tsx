@@ -1131,7 +1131,7 @@ export function ClientPanel({
                 // Se não tem conversa, criar uma
                 if (!convId && lead.phone) {
                   try {
-                    const res = await api.post('/conversations', { leadId: lead.id });
+                    const res = await api.post('/conversations', { lead_id: lead.id, channel: 'whatsapp', instance_name: 'whatsapp' });
                     convId = res.data?.id;
                   } catch {
                     // Fallback: tenta buscar conversa existente
@@ -1142,9 +1142,13 @@ export function ClientPanel({
                     } catch {}
                   }
                 }
-                if (convId) sessionStorage.setItem('crm_open_conv', convId);
-                router.push('/atendimento');
-                onClose();
+                if (convId) {
+                  sessionStorage.setItem('crm_open_conv', convId);
+                  router.push('/atendimento');
+                  onClose();
+                } else {
+                  showError('Nao foi possivel abrir o chat. Verifique se o contato tem telefone valido.');
+                }
               }}
             >
               <MessageSquare size={15} />
