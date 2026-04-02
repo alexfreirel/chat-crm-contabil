@@ -771,16 +771,40 @@ export class PaymentGatewayService {
         `_André Lustosa Advogados_`
       );
 
-    // Buscar conversa ativa para enviar na instância correta
-    const lastConvo = await this.prisma.conversation.findFirst({
+    // Garantir que o telefone do lead está normalizado com 55
+    let clientPhone = lead.phone.replace(/\D/g, '');
+    if (clientPhone.length <= 11) clientPhone = '55' + clientPhone;
+
+    // Atualizar telefone do lead para o formato correto (evita duplicatas)
+    if (lead.phone !== clientPhone) {
+      await this.prisma.lead.update({ where: { id: lead.id }, data: { phone: clientPhone } }).catch(() => {});
+    }
+
+    // Buscar ou criar conversa para o lead
+    let lastConvo = await this.prisma.conversation.findFirst({
       where: { lead_id: lead.id, status: { not: 'ENCERRADO' } },
       orderBy: { last_message_at: 'desc' },
       select: { id: true, instance_name: true },
     }).catch(() => null);
 
-    let clientPhone = lead.phone.replace(/\D/g, '');
-    // Garantir código do país (55 para Brasil)
-    if (clientPhone.length <= 11) clientPhone = '55' + clientPhone;
+    if (!lastConvo) {
+      // Criar conversa para que a mensagem fique visível no chat
+      try {
+        const newConvo = await this.prisma.conversation.create({
+          data: {
+            lead_id: lead.id,
+            channel: 'WHATSAPP',
+            status: 'ABERTO',
+            instance_name: 'whatsapp',
+            last_message_at: new Date(),
+          },
+        });
+        lastConvo = { id: newConvo.id, instance_name: 'whatsapp' };
+        this.logger.log(`[WEBHOOK] Conversa criada para lead ${lead.id}: ${newConvo.id}`);
+      } catch (e: any) {
+        this.logger.warn(`[WEBHOOK] Falha ao criar conversa: ${e.message}`);
+      }
+    }
     try {
       const sendResult = await this.whatsapp.sendText(
         clientPhone,
