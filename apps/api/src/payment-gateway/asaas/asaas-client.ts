@@ -152,6 +152,10 @@ export class AsaasClient {
     return this.request<any>('PUT', `/payments/${chargeId}`, data);
   }
 
+  async getBalance(): Promise<any> {
+    return this.request<any>('GET', '/finance/balance');
+  }
+
   async receiveInCash(chargeId: string, paymentDate: string, value: number): Promise<any> {
     return this.request<any>('POST', `/payments/${chargeId}/receiveInCash`, {
       paymentDate,

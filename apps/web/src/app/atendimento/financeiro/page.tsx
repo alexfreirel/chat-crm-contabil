@@ -419,16 +419,21 @@ export default function FinanceiroPage() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('Resumo');
   const [period, setPeriod] = useState('mes');
+  const [asaasBalance, setAsaasBalance] = useState<number | null>(null);
 
   const [summary, setSummary] = useState<FinancialSummary | null>(null);
   const [receitas, setReceitas] = useState<Transaction[]>([]);
   const [despesas, setDespesas] = useState<Transaction[]>([]);
   const [overdue, setOverdue] = useState<Transaction[]>([]);
 
-  /* ─── Auth guard ─── */
+  /* ─── Auth guard + saldo Asaas ─── */
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) { router.push('/atendimento/login'); return; }
+    // Buscar saldo do Asaas
+    api.get('/payment-gateway/balance')
+      .then(r => setAsaasBalance(r.data?.balance ?? r.data?.value ?? null))
+      .catch(() => {});
   }, [router]);
 
   /* ─── Fetch data ─── */
@@ -525,6 +530,16 @@ export default function FinanceiroPage() {
               <p className="text-xs text-muted-foreground">Gestao de receitas, despesas e inadimplencia</p>
             </div>
           </div>
+
+          {/* Saldo Asaas */}
+          {asaasBalance !== null && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-card border border-border rounded-xl">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Saldo Asaas</span>
+              <span className={`text-base font-bold ${asaasBalance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(asaasBalance)}
+              </span>
+            </div>
+          )}
 
           {/* Period Selector */}
           <div className="flex items-center gap-1 bg-card border border-border rounded-xl p-1">

@@ -27,6 +27,11 @@ export class PaymentGatewayController {
 
   // ─── ROTAS FIXAS PRIMEIRO (antes de :param) ─────────────
 
+  @Get('balance')
+  async getBalance() {
+    return this.asaasClient.getBalance();
+  }
+
   @Get('settings')
   async getSettings(@Req() req: any) {
     const tenantId = req.user?.tenantId;
