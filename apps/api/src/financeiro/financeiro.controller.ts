@@ -11,6 +11,7 @@ import {
   Request,
 } from '@nestjs/common';
 import { FinanceiroService } from './financeiro.service';
+import { TaxService } from './tax.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   CreateTransactionDto,
@@ -22,7 +23,10 @@ import {
 @UseGuards(JwtAuthGuard)
 @Controller('financeiro')
 export class FinanceiroController {
-  constructor(private readonly service: FinanceiroService) {}
+  constructor(
+    private readonly service: FinanceiroService,
+    private readonly taxService: TaxService,
+  ) {}
 
   // ─── Transactions ──────────────────────────────────────
 
@@ -139,5 +143,50 @@ export class FinanceiroController {
     @Request() req: any,
   ) {
     return this.service.deleteCategory(id, req.user.tenant_id);
+  }
+
+  // ─── Tax / Impostos ────────────────────────────────────────
+
+  @Get('tax/annual')
+  getAnnualTax(
+    @Query('year') year: string,
+    @Query('lawyerId') lawyerId: string | undefined,
+    @Request() req: any,
+  ) {
+    const y = parseInt(year) || new Date().getUTCFullYear();
+    const lid = lawyerId || req.user.id;
+    return this.taxService.getAnnualSummary(lid, y, req.user.tenant_id);
+  }
+
+  @Post('tax/recalculate')
+  recalculateTax(
+    @Body() body: { year?: number; lawyerId?: string },
+    @Request() req: any,
+  ) {
+    const y = body.year || new Date().getUTCFullYear();
+    const lid = body.lawyerId || req.user.id;
+    return this.taxService.recalculateYear(lid, y, req.user.tenant_id);
+  }
+
+  @Patch('tax/darf-paid')
+  markDarfPaid(
+    @Body() body: { year: number; month: number; lawyerId?: string },
+    @Request() req: any,
+  ) {
+    const lid = body.lawyerId || req.user.id;
+    return this.taxService.markDarfPaid(lid, body.year, body.month, req.user.tenant_id);
+  }
+
+  @Get('tax/client-breakdown')
+  getClientBreakdown(
+    @Query('year') year: string,
+    @Query('month') month: string,
+    @Query('lawyerId') lawyerId: string | undefined,
+    @Request() req: any,
+  ) {
+    const y = parseInt(year) || new Date().getUTCFullYear();
+    const m = parseInt(month) || new Date().getUTCMonth() + 1;
+    const lid = lawyerId || req.user.id;
+    return this.taxService.getClientBreakdown(lid, y, m, req.user.tenant_id);
   }
 }
