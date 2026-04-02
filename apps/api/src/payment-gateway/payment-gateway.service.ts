@@ -678,7 +678,7 @@ export class PaymentGatewayService {
           name: cust.name,
           cpfCnpj: cust.cpfCnpj,
           email: cust.email,
-          phone: phone || null,
+          phone: rawPhone || null,
         });
       }
     }
