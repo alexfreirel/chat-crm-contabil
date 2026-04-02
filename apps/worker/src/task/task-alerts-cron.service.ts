@@ -26,7 +26,8 @@ export class TaskAlertsCronService {
       const now = new Date();
       const thirtyMinFromNow = new Date(now.getTime() + 30 * 60 * 1000);
 
-      const dueSoon = await this.prisma.task.findMany({
+      // 1. Tasks com due_at
+      const tasksDueSoon = await this.prisma.task.findMany({
         where: {
           status: { in: ['A_FAZER', 'EM_PROGRESSO'] },
           due_at: { gte: now, lte: thirtyMinFromNow },
@@ -38,19 +39,38 @@ export class TaskAlertsCronService {
         },
       });
 
+      // 2. CalendarEvents (TAREFA/PRAZO) com start_at
+      const eventsDueSoon = await this.prisma.calendarEvent.findMany({
+        where: {
+          type: { in: ['TAREFA', 'PRAZO'] },
+          status: { in: ['AGENDADO', 'CONFIRMADO'] },
+          start_at: { gte: now, lte: thirtyMinFromNow },
+        },
+        include: {
+          assigned_user: { select: { id: true, name: true, phone: true } },
+          lead: { select: { name: true } },
+          legal_case: { select: { case_number: true } },
+        },
+      });
+
+      // Unificar em lista comum
+      const dueSoon: Array<{ id: string; title: string; dueAt: Date; user: any; lead: any; legalCase: any }> = [
+        ...tasksDueSoon.map(t => ({ id: t.id, title: t.title, dueAt: t.due_at!, user: t.assigned_user, lead: t.lead, legalCase: t.legal_case })),
+        ...eventsDueSoon.map(e => ({ id: e.id, title: e.title, dueAt: e.start_at, user: e.assigned_user, lead: e.lead, legalCase: e.legal_case })),
+      ];
+
       if (dueSoon.length === 0) return;
 
-      this.logger.log(`[TASK-ALERTS] ${dueSoon.length} tarefa(s) vencendo nos próximos 30 min`);
+      this.logger.log(`[TASK-ALERTS] ${dueSoon.length} tarefa(s)/evento(s) vencendo em 30 min`);
 
       for (const task of dueSoon) {
-        if (!task.assigned_user?.phone) continue;
+        if (!task.user?.phone) continue;
 
-        // Anti-spam: verificar se já notificou nas últimas 2h
         const alreadySent = await this.wasAlertSentRecently(task.id, 'TASK_DUE_SOON', 2);
         if (alreadySent) continue;
 
-        const dueTime = task.due_at!.toLocaleTimeString('pt-BR', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
-        const firstName = task.assigned_user.name.split(' ')[0];
+        const dueTime = task.dueAt.toLocaleTimeString('pt-BR', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
+        const firstName = task.user.name.split(' ')[0];
 
         const msg =
           `⏰ *Tarefa vencendo em breve!*\n\n` +
@@ -58,13 +78,13 @@ export class TaskAlertsCronService {
           `📋 *${task.title}*\n` +
           `⏰ Vence às *${dueTime}*\n` +
           (task.lead?.name ? `👤 Cliente: ${task.lead.name}\n` : '') +
-          (task.legal_case?.case_number ? `📁 Processo: ${task.legal_case.case_number}\n` : '') +
+          (task.legalCase?.case_number ? `📁 Processo: ${task.legalCase.case_number}\n` : '') +
           `\nAcesse o sistema para atualizar o status.\n\n` +
           `_Alerta automático do CRM Jurídico_`;
 
-        await this.sendWhatsApp(task.assigned_user.phone, msg);
-        await this.logAlert(task.id, 'TASK_DUE_SOON', task.assigned_user.id);
-        this.logger.log(`[TASK-ALERTS] Lembrete enviado para ${task.assigned_user.name} — tarefa: ${task.title}`);
+        await this.sendWhatsApp(task.user.phone, msg);
+        await this.logAlert(task.id, 'TASK_DUE_SOON', task.user.id);
+        this.logger.log(`[TASK-ALERTS] Lembrete enviado para ${task.user.name} — tarefa: ${task.title}`);
       }
     } catch (e: any) {
       this.logger.error(`[TASK-ALERTS] Erro no check due soon: ${e.message}`);
@@ -78,7 +98,8 @@ export class TaskAlertsCronService {
     try {
       const now = new Date();
 
-      const overdue = await this.prisma.task.findMany({
+      // 1. Tasks vencidas
+      const overdueTasks = await this.prisma.task.findMany({
         where: {
           status: { in: ['A_FAZER', 'EM_PROGRESSO'] },
           due_at: { lt: now },
@@ -89,33 +110,54 @@ export class TaskAlertsCronService {
           legal_case: { select: { case_number: true } },
         },
         orderBy: { due_at: 'asc' },
-        take: 50,
+        take: 30,
       });
+
+      // 2. CalendarEvents vencidos
+      const overdueEvents = await this.prisma.calendarEvent.findMany({
+        where: {
+          type: { in: ['TAREFA', 'PRAZO'] },
+          status: { in: ['AGENDADO', 'CONFIRMADO'] },
+          start_at: { lt: now },
+        },
+        include: {
+          assigned_user: { select: { id: true, name: true, phone: true } },
+          lead: { select: { name: true } },
+          legal_case: { select: { case_number: true } },
+        },
+        orderBy: { start_at: 'asc' },
+        take: 30,
+      });
+
+      // Unificar
+      const overdue: Array<{ id: string; title: string; dueAt: Date; user: any }> = [
+        ...overdueTasks.map(t => ({ id: t.id, title: t.title, dueAt: t.due_at!, user: t.assigned_user })),
+        ...overdueEvents.map(e => ({ id: e.id, title: e.title, dueAt: e.start_at, user: e.assigned_user })),
+      ];
 
       if (overdue.length === 0) return;
 
-      this.logger.log(`[TASK-ALERTS] ${overdue.length} tarefa(s) vencida(s)`);
+      this.logger.log(`[TASK-ALERTS] ${overdue.length} tarefa(s)/evento(s) vencida(s)`);
 
-      // Agrupar por usuário responsável
-      const byUser = new Map<string, { user: any; tasks: typeof overdue }>();
-      for (const task of overdue) {
-        const userId = task.assigned_user?.id;
-        if (!userId || !task.assigned_user?.phone) continue;
-        if (!byUser.has(userId)) byUser.set(userId, { user: task.assigned_user, tasks: [] });
-        byUser.get(userId)!.tasks.push(task);
+      // Agrupar por usuário
+      const byUser = new Map<string, { user: any; items: typeof overdue }>();
+      for (const item of overdue) {
+        const userId = item.user?.id;
+        if (!userId || !item.user?.phone) continue;
+        if (!byUser.has(userId)) byUser.set(userId, { user: item.user, items: [] });
+        byUser.get(userId)!.items.push(item);
       }
 
       for (const [userId, group] of byUser.entries()) {
-        // Anti-spam: máximo 1 alerta overdue por usuário a cada 6h
         const alreadySent = await this.wasAlertSentRecently(userId, 'TASK_OVERDUE_BATCH', 6);
         if (alreadySent) continue;
 
-        const { user, tasks } = group;
+        const { user, items } = group;
         const firstName = user.name.split(' ')[0];
-        const count = tasks.length;
+        const count = items.length;
 
-        const taskList = tasks.slice(0, 5).map((t, i) => {
-          const hoursAgo = Math.round((now.getTime() - new Date(t.due_at!).getTime()) / 3600000);
+        const taskList = items.slice(0, 5).map((t, i) => {
+          const hoursAgo = Math.round((now.getTime() - t.dueAt.getTime()) / 3600000);
           return `${i + 1}. *${t.title}* (${hoursAgo > 24 ? `${Math.round(hoursAgo / 24)}d` : `${hoursAgo}h`} atraso)`;
         }).join('\n');
 
