@@ -19,6 +19,9 @@ if [ "$RUN_MIGRATIONS" = "true" ]; then
     sleep 3
   done
 
+  echo "[entrypoint] Executando seed (criando admin se necessário)..."
+  npx prisma db seed 2>&1 || echo "[entrypoint] Seed falhou ou foi ignorado — continuando."
+
   cd /app/apps/${APP}
 fi
 
