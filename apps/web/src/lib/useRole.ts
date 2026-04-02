@@ -17,6 +17,7 @@ export interface RoleInfo {
   canViewDashboard: boolean;     // dashboard
   canViewAnalytics: boolean;     // analytics/marketing
   canViewDjen: boolean;          // publicações DJEN
+  canViewFinanceiro: boolean;    // módulo financeiro
   canViewAdvogado: boolean;      // triagem e peticionamento
 }
 
@@ -62,6 +63,7 @@ function buildInfo(role: string | null, userId: string | null): RoleInfo {
     canViewDashboard: is(['ADMIN', 'ADVOGADO']),
     canViewAnalytics: is(['ADMIN', 'ADVOGADO']),
     canViewDjen: is(['ADMIN', 'ADVOGADO', 'ESTAGIARIO']),
+    canViewFinanceiro: is(['ADMIN', 'ADVOGADO']),
     canViewAdvogado: is(['ADMIN', 'ADVOGADO', 'ESTAGIARIO']),
   };
 }

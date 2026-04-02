@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter, usePathname } from 'next/navigation';
-import { LogOut, Users, Briefcase, Settings, Palette, Check, MessageSquare, Megaphone, FileEdit, BookOpen, Calendar, LayoutDashboard, FileText, Bot, Gavel } from 'lucide-react';
+import { LogOut, Users, Briefcase, Settings, Palette, Check, MessageSquare, Megaphone, FileEdit, BookOpen, Calendar, LayoutDashboard, FileText, Bot, Gavel, DollarSign } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { API_BASE_URL } from '@/lib/api';
 import { NotificationCenter } from '@/app/atendimento/components/NotificationCenter';
@@ -169,6 +169,7 @@ export function Sidebar() {
     { label: 'Triagem e Peticionamento', href: '/atendimento/advogado', icon: <FileEdit size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/advogado'), show: perms.canViewAdvogado },
     { label: 'Processos', href: '/atendimento/processos', icon: <BookOpen size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/processos'), show: perms.canViewLegalCases },
     { label: 'DJEN — Publicações', href: '/atendimento/djen', icon: <Gavel size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/djen'), badge: djenUnread, show: perms.canViewDjen },
+    { label: 'Financeiro', href: '/atendimento/financeiro', icon: <DollarSign size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/financeiro'), show: perms.canViewFinanceiro },
     { label: 'Analytics', href: '/atendimento/marketing/analytics', icon: <Megaphone size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/marketing'), show: perms.canViewAnalytics },
     { label: 'Configurações', href: '/atendimento/settings', icon: <Settings size={22} strokeWidth={2} />, match: (p: string) => p.startsWith('/atendimento/settings'), show: perms.canManageSettings },
   ];
