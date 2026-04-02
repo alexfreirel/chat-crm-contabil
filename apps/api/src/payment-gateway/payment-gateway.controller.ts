@@ -155,6 +155,15 @@ export class PaymentGatewayController {
     return this.asaasClient.updateCharge(chargeId, body);
   }
 
+  /** Confirmar recebimento em dinheiro */
+  @Post('charges/asaas/:chargeId/receive-in-cash')
+  async receiveInCash(@Param('chargeId') chargeId: string) {
+    this.logger.log(`[POST /charges/asaas/${chargeId}/receive-in-cash] Confirmando pagamento em dinheiro`);
+    const result = await this.asaasClient.receiveInCash(chargeId);
+    // Notificar cliente via webhook (o Asaas vai enviar PAYMENT_RECEIVED automaticamente)
+    return result;
+  }
+
   /** Excluir cobrança no Asaas */
   @Delete('charges/asaas/:chargeId')
   async deleteAsaasCharge(@Param('chargeId') chargeId: string) {

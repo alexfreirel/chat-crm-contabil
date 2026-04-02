@@ -793,6 +793,7 @@ function CobrancasAsaasTab() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmingCashId, setConfirmingCashId] = useState<string | null>(null);
   const [detailCharge, setDetailCharge] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [editingCharge, setEditingCharge] = useState<any>(null);
@@ -869,6 +870,20 @@ function CobrancasAsaasTab() {
       showError(e?.response?.data?.message || 'Erro ao atualizar');
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  const handleReceiveInCash = async (chargeId: string) => {
+    if (!confirm('Confirmar recebimento em dinheiro? O cliente sera notificado via WhatsApp.')) return;
+    setConfirmingCashId(chargeId);
+    try {
+      await api.post(`/payment-gateway/charges/asaas/${chargeId}/receive-in-cash`);
+      showSuccess('Pagamento confirmado em dinheiro!');
+      await fetchCharges();
+    } catch (e: any) {
+      showError(e?.response?.data?.message || 'Erro ao confirmar');
+    } finally {
+      setConfirmingCashId(null);
     }
   };
 
@@ -1279,11 +1294,20 @@ function CobrancasAsaasTab() {
                           {c.status !== 'RECEIVED' && c.status !== 'CONFIRMED' && c.status !== 'RECEIVED_IN_CASH' && (
                             <>
                               <button
+                                onClick={() => handleReceiveInCash(c.id)}
+                                disabled={confirmingCashId === c.id}
+                                className="px-2 py-1 text-[10px] font-semibold text-emerald-400 border border-emerald-400/20 rounded-md hover:bg-emerald-400/10 transition-colors disabled:opacity-50 inline-flex items-center gap-1"
+                                title="Confirmar pagamento em dinheiro"
+                              >
+                                {confirmingCashId === c.id ? <Loader2 size={10} className="animate-spin" /> : <DollarSign size={10} />}
+                                Recebido
+                              </button>
+                              <button
                                 onClick={() => openEdit(c)}
                                 className="px-2 py-1 text-[10px] font-semibold text-primary border border-primary/20 rounded-md hover:bg-primary/10 transition-colors inline-flex items-center gap-1"
                                 title="Editar cobranca"
                               >
-                                <Pencil size={10} /> Editar
+                                <Pencil size={10} />
                               </button>
                               <button
                                 onClick={() => handleDeleteCharge(c.id)}

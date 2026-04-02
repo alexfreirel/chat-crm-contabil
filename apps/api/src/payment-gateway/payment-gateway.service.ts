@@ -432,6 +432,15 @@ export class PaymentGatewayService {
       }
     }
 
+    // Se pagamento RECEIVED ou CONFIRMED, notificar cliente via WhatsApp
+    if (mappedStatus === 'RECEIVED' || mappedStatus === 'CONFIRMED') {
+      try {
+        await this.notifyClientPaymentReceived(paymentData, charge);
+      } catch (e: any) {
+        this.logger.warn(`[WEBHOOK] Falha ao notificar cliente sobre pagamento: ${e.message}`);
+      }
+    }
+
     // Se cobrança DELETADA ou REFUNDED, notificar cliente via WhatsApp
     if (mappedStatus === 'DELETED' || mappedStatus === 'REFUNDED') {
       try {
@@ -735,6 +744,60 @@ export class PaymentGatewayService {
       },
       orderBy: { last_synced_at: 'desc' },
     });
+  }
+
+  /**
+   * Notifica o cliente via WhatsApp quando um pagamento é confirmado.
+   */
+  private async notifyClientPaymentReceived(paymentData: any, charge: any) {
+    const customerId = paymentData.customer;
+    if (!customerId) return;
+
+    const gatewayCustomer = await this.prisma.paymentGatewayCustomer.findFirst({
+      where: { external_id: customerId, gateway: 'ASAAS' },
+      include: { lead: { select: { id: true, name: true, phone: true } } },
+    });
+
+    if (!gatewayCustomer?.lead?.phone) return;
+
+    const lead = gatewayCustomer.lead;
+    const firstName = (lead.name || 'Cliente').split(' ')[0];
+    const valor = Number(paymentData.value || charge?.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const descricao = paymentData.description || '';
+
+    const msg =
+      `✅ *Pagamento Confirmado!*\n\n` +
+      `Olá, ${firstName}!\n\n` +
+      `Confirmamos o recebimento do pagamento no valor de *${valor}*${descricao ? ` (${descricao})` : ''}.\n\n` +
+      `Agradecemos pela pontualidade! Qualquer dúvida, estamos à disposição.\n\n` +
+      `_André Lustosa Advogados_`;
+
+    let clientPhone = lead.phone.replace(/\D/g, '');
+    if (clientPhone.length <= 11) clientPhone = '55' + clientPhone;
+    if (clientPhone.length === 13 && clientPhone.startsWith('55') && clientPhone[4] === '9') {
+      clientPhone = clientPhone.slice(0, 4) + clientPhone.slice(5);
+    }
+
+    const lastConvo = await this.prisma.conversation.findFirst({
+      where: { lead_id: lead.id, status: { not: 'ENCERRADO' } },
+      orderBy: { last_message_at: 'desc' },
+      select: { id: true, instance_name: true },
+    }).catch(() => null);
+
+    try {
+      const sendResult = await this.whatsapp.sendText(clientPhone, msg, lastConvo?.instance_name ?? undefined);
+      this.logger.log(`[WEBHOOK] Confirmação de pagamento enviada para ${clientPhone}`);
+
+      if (lastConvo) {
+        const evolutionMsgId = sendResult?.data?.key?.id || `sys_payment_${Date.now()}`;
+        await this.prisma.message.create({
+          data: { conversation_id: lastConvo.id, direction: 'out', type: 'text', text: msg, external_message_id: evolutionMsgId, status: 'enviado' },
+        });
+        await this.prisma.conversation.update({ where: { id: lastConvo.id }, data: { last_message_at: new Date() } });
+      }
+    } catch (e: any) {
+      this.logger.warn(`[WEBHOOK] Falha ao enviar confirmação para ${clientPhone}: ${e.message}`);
+    }
   }
 
   /**
