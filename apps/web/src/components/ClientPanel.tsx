@@ -1126,8 +1126,22 @@ export function ClientPanel({
           <div className="px-6 py-4 border-t border-border shrink-0 space-y-2">
             <button
               className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-[13px] font-semibold flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors shadow-sm"
-              onClick={() => {
-                const convId = resolvedConvId || lead.conversations?.[0]?.id;
+              onClick={async () => {
+                let convId = resolvedConvId || lead.conversations?.[0]?.id;
+                // Se não tem conversa, criar uma
+                if (!convId && lead.phone) {
+                  try {
+                    const res = await api.post('/conversations', { leadId: lead.id });
+                    convId = res.data?.id;
+                  } catch {
+                    // Fallback: tenta buscar conversa existente
+                    try {
+                      const res = await api.get(`/conversations?leadId=${lead.id}&limit=1`);
+                      const convs = res.data?.data || res.data || [];
+                      if (convs.length > 0) convId = convs[0].id;
+                    } catch {}
+                  }
+                }
                 if (convId) sessionStorage.setItem('crm_open_conv', convId);
                 router.push('/atendimento');
                 onClose();
