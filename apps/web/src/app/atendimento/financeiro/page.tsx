@@ -637,6 +637,59 @@ export default function FinanceiroPage() {
               />
             </div>
 
+            {/* Info do advogado filtrado */}
+            {effectiveLawyerId && (
+              <div className="bg-card border border-primary/20 rounded-xl p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center text-primary text-lg font-bold">
+                  {lawyers.find(l => l.id === effectiveLawyerId)?.name?.[0] || userId?.[0]?.toUpperCase() || '?'}
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-foreground">
+                    {lawyers.find(l => l.id === effectiveLawyerId)?.name || 'Meus dados'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {receitas.length} receitas | {despesas.length} despesas | Saldo: {fmt(summary.balance)}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Proximos vencimentos (receitas pendentes) */}
+            {(() => {
+              const now = new Date();
+              const in30d = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+              const upcoming = receitas
+                .filter(r => r.status === 'PENDENTE' && r.due_date && new Date(r.due_date) >= now && new Date(r.due_date) <= in30d)
+                .sort((a, b) => new Date(a.due_date!).getTime() - new Date(b.due_date!).getTime())
+                .slice(0, 5);
+              if (upcoming.length === 0) return null;
+              return (
+                <div className="bg-card border border-border rounded-xl p-4">
+                  <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+                    <Clock size={14} className="text-amber-400" /> Proximos Vencimentos (30 dias)
+                  </h3>
+                  <div className="space-y-2">
+                    {upcoming.map(r => {
+                      const dt = new Date(r.due_date!);
+                      const days = Math.ceil((dt.getTime() - now.getTime()) / 86400000);
+                      return (
+                        <div key={r.id} className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`text-xs font-bold ${days <= 3 ? 'text-red-400' : days <= 7 ? 'text-amber-400' : 'text-muted-foreground'}`}>
+                              {days}d
+                            </span>
+                            <span className="text-foreground truncate max-w-[200px]">{r.description}</span>
+                            {r.lead?.name && <span className="text-xs text-muted-foreground">({r.lead.name})</span>}
+                          </div>
+                          <span className="font-bold text-amber-400 tabular-nums shrink-0">{fmt(r.amount)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Chart */}
             <MonthlyChart receitas={receitas} despesas={despesas} />
 
