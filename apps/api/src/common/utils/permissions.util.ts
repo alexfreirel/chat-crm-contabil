@@ -9,6 +9,7 @@ export const ROLES = {
   ADVOGADO: 'ADVOGADO',
   OPERADOR: 'OPERADOR',
   ESTAGIARIO: 'ESTAGIARIO',
+  FINANCEIRO: 'FINANCEIRO',
 } as const;
 
 export type AppRole = (typeof ROLES)[keyof typeof ROLES];
@@ -46,4 +47,9 @@ export function canManageSettings(role: string): boolean {
 /** Verifica se pode gerenciar usuários */
 export function canManageUsers(role: string): boolean {
   return role === ROLES.ADMIN;
+}
+
+/** Verifica se pode visualizar o módulo financeiro */
+export function canViewFinanceiro(role: string): boolean {
+  return ([ROLES.ADMIN, ROLES.FINANCEIRO] as string[]).includes(role);
 }

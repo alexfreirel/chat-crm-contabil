@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 
-export type AppRole = 'ADMIN' | 'ADVOGADO' | 'OPERADOR' | 'ESTAGIARIO';
+export type AppRole = 'ADMIN' | 'ADVOGADO' | 'OPERADOR' | 'ESTAGIARIO' | 'FINANCEIRO';
 
 export interface RoleInfo {
   role: AppRole | null;
@@ -11,6 +11,7 @@ export interface RoleInfo {
   isAdvogado: boolean;
   isOperador: boolean;
   isEstagiario: boolean;
+  isFinanceiro: boolean;
   canManageLegalCases: boolean;  // criar, editar, arquivar processos
   canViewLegalCases: boolean;    // visualizar processos
   canManageSettings: boolean;    // configurações do sistema
@@ -57,13 +58,14 @@ function buildInfo(role: string | null, userId: string | null): RoleInfo {
     isAdvogado: r === 'ADVOGADO',
     isOperador: r === 'OPERADOR',
     isEstagiario: r === 'ESTAGIARIO',
+    isFinanceiro: r === 'FINANCEIRO',
     canManageLegalCases: is(['ADMIN', 'ADVOGADO']),
     canViewLegalCases: is(['ADMIN', 'ADVOGADO', 'ESTAGIARIO']),
     canManageSettings: r === 'ADMIN',
     canViewDashboard: is(['ADMIN', 'ADVOGADO']),
     canViewAnalytics: is(['ADMIN', 'ADVOGADO']),
     canViewDjen: is(['ADMIN', 'ADVOGADO', 'ESTAGIARIO']),
-    canViewFinanceiro: is(['ADMIN', 'ADVOGADO']),
+    canViewFinanceiro: is(['ADMIN', 'FINANCEIRO']),
     canViewAdvogado: is(['ADMIN', 'ADVOGADO', 'ESTAGIARIO']),
   };
 }

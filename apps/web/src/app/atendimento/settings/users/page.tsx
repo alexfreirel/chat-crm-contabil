@@ -11,6 +11,9 @@ function roleBadge(role: string) {
   if (role === 'ADMIN') {
     return <span className="px-2 py-0.5 text-[10px] font-bold rounded-lg border bg-red-900/30 text-red-300 border-red-800/30">Administrador</span>;
   }
+  if (role === 'FINANCEIRO') {
+    return <span className="px-2 py-0.5 text-[10px] font-bold rounded-lg border bg-emerald-900/30 text-emerald-300 border-emerald-800/30">Financeiro</span>;
+  }
   return <span className="px-2 py-0.5 text-[10px] font-bold rounded-lg border bg-primary/10 text-primary border-primary/20">{role}</span>;
 }
 
@@ -393,6 +396,7 @@ export default function UsersSettingsPage() {
                   <option value="ADMIN" className="bg-card text-foreground">🛡️ Administrador</option>
                   <option value="Advogados" className="bg-card text-foreground">⚖️ Advogados</option>
                   <option value="Atendente Comercial" className="bg-card text-foreground">💼 Atendente Comercial</option>
+                  <option value="FINANCEIRO" className="bg-card text-foreground">💰 Financeiro</option>
                   <option value="Estagiário" className="bg-card text-foreground">🎓 Estagiário</option>
                   {(() => {
                     // normaliza para singular lowercase: "Estagiários" → "estagiário", "Advogados" → "advogado"
