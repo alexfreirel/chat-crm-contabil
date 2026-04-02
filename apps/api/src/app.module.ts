@@ -36,6 +36,7 @@ import { McpModule } from './mcp/mcp.module';
 import { AutomationsModule } from './automations/automations.module';
 import { FollowupModule } from './followup/followup.module';
 import { AdminBotModule } from './admin-bot/admin-bot.module';
+import { FinanceiroModule } from './financeiro/financeiro.module';
 
 import { HealthController } from './common/controllers/health.controller';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
@@ -95,6 +96,7 @@ import { RolesGuard } from './auth/guards/roles.guard';
     AutomationsModule,
     FollowupModule,
     AdminBotModule,
+    FinanceiroModule,
   ],
   controllers: [AppController, HealthController],
   providers: [

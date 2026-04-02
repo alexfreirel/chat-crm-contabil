@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { FinanceiroService } from '../financeiro/financeiro.service';
 
 const HONORARIO_TYPES = ['FIXO', 'EXITO', 'MISTO'] as const;
 const PAYMENT_STATUSES = ['PENDENTE', 'PAGO', 'ATRASADO'] as const;
@@ -13,7 +14,10 @@ const PAYMENT_STATUSES = ['PENDENTE', 'PAGO', 'ATRASADO'] as const;
 export class HonorariosService {
   private readonly logger = new Logger(HonorariosService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private financeiroService: FinanceiroService,
+  ) {}
 
   // ─── Helpers ────────────────────────────────────────────
 
@@ -86,6 +90,7 @@ export class HonorariosService {
     data: {
       type: string;
       total_value: number;
+      success_percentage?: number;
       installment_count?: number;
       contract_date?: string;
       notes?: string;
@@ -125,6 +130,7 @@ export class HonorariosService {
         tenant_id: lc.tenant_id,
         type: data.type,
         total_value: data.total_value,
+        success_percentage: data.success_percentage ?? null,
         installment_count: installmentCount,
         contract_date: data.contract_date ? new Date(data.contract_date) : null,
         notes: data.notes,
@@ -140,7 +146,7 @@ export class HonorariosService {
     });
 
     this.logger.log(
-      `Honorário criado: ${honorario.id} (${data.type}, R$ ${data.total_value}, ${installmentCount} parcelas)`,
+      `Honorário criado: ${honorario.id} (${data.type}, R$ ${data.total_value}, ${installmentCount} parcelas${data.success_percentage ? `, ${data.success_percentage}% êxito` : ''})`,
     );
 
     return honorario;
@@ -223,7 +229,7 @@ export class HonorariosService {
       throw new ForbiddenException('Acesso negado');
     }
 
-    return this.prisma.honorarioPayment.update({
+    const updated = await this.prisma.honorarioPayment.update({
       where: { id: paymentId },
       data: {
         status: 'PAGO',
@@ -231,6 +237,56 @@ export class HonorariosService {
         ...(data.payment_method && { payment_method: data.payment_method }),
       },
     });
+
+    // Auto-criar transação financeira (RECEITA) para o pagamento recebido
+    try {
+      await this.financeiroService.createFromHonorarioPayment(paymentId, tenantId);
+      this.logger.log(`[HONORARIO] Transação financeira criada para pagamento ${paymentId}`);
+    } catch (e: any) {
+      this.logger.warn(`[HONORARIO] Falha ao criar transação financeira: ${e.message}`);
+    }
+
+    return updated;
+  }
+
+  // ─── Recalcular honorários de êxito ────────────────────
+
+  /**
+   * Recalcula o valor dos honorários de êxito quando o valor da condenação é preenchido.
+   * Chamado quando o caso muda para EXECUCAO com sentence_value.
+   */
+  async recalculateExito(caseId: string) {
+    const legalCase = await this.prisma.legalCase.findUnique({
+      where: { id: caseId },
+      select: { sentence_value: true },
+    });
+    if (!legalCase?.sentence_value) return;
+
+    const sentenceValue = Number(legalCase.sentence_value);
+
+    // Busca honorários de êxito (EXITO ou MISTO) com percentual definido
+    const exitoHonorarios = await this.prisma.caseHonorario.findMany({
+      where: {
+        legal_case_id: caseId,
+        type: { in: ['EXITO', 'MISTO'] },
+        success_percentage: { not: null },
+        status: 'ATIVO',
+      },
+    });
+
+    for (const h of exitoHonorarios) {
+      const percentage = Number(h.success_percentage);
+      const calculatedValue = Math.round(sentenceValue * percentage) / 100;
+
+      await this.prisma.caseHonorario.update({
+        where: { id: h.id },
+        data: { calculated_value: calculatedValue },
+      });
+
+      this.logger.log(
+        `[HONORARIO] Êxito recalculado: ${h.id} | ${percentage}% de R$ ${sentenceValue} = R$ ${calculatedValue}`,
+      );
+    }
   }
 
   async deletePayment(paymentId: string, tenantId?: string) {
