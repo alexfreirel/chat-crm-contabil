@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, KeyboardEvent } from 'react';
-import { Search, User, Phone, Loader2, X, MessageSquare, Calendar, Brain, ChevronDown, ChevronUp, Mail, Pencil, Check, UserCheck, FolderOpen, FileText, Image as ImageIcon, Mic, Video, Download, Trash2, RotateCcw, AlertCircle, ClipboardList, StickyNote, Plus, Send, Scale, CheckSquare, ExternalLink, Clock, ArrowRight } from 'lucide-react';
+import { Search, User, Phone, Loader2, X, MessageSquare, Calendar, Brain, ChevronDown, ChevronUp, Mail, Pencil, Check, UserCheck, FolderOpen, FileText, Image as ImageIcon, Mic, Video, Download, Trash2, RotateCcw, AlertCircle, ClipboardList, StickyNote, Plus, Send, Scale, CheckSquare, ExternalLink, Clock, ArrowRight, DollarSign } from 'lucide-react';
 import FichaTrabalhista from '@/components/FichaTrabalhista';
 import { useRouter } from 'next/navigation';
 import api, { getMediaUrl } from '@/lib/api';
@@ -195,6 +195,11 @@ export function ClientPanel({
   const [savingTask, setSavingTask] = useState(false);
   const [agents, setAgents] = useState<AgentUser[]>([]);
 
+  // Resumo financeiro
+  const [financeOpen, setFinanceOpen] = useState(false);
+  const [financeSummary, setFinanceSummary] = useState<{ contracted: number; received: number; pending: number; overdue: number } | null>(null);
+  const [financeLoading, setFinanceLoading] = useState(false);
+
   // Notas internas
   const [notesOpen, setNotesOpen] = useState(false);
   const [notes, setNotes] = useState<LeadNote[]>([]);
@@ -286,6 +291,28 @@ export function ClientPanel({
       setTaskAssignedId('');
     } catch { /* silencioso */ } finally { setSavingTask(false); }
   };
+
+  // Buscar resumo financeiro quando seção abrir
+  useEffect(() => {
+    if (!financeOpen || !leadId || financeSummary) return;
+    setFinanceLoading(true);
+    api.get(`/financeiro/transactions`, { params: { leadId, limit: 200 } })
+      .then(r => {
+        const txs: any[] = r.data?.data || r.data || [];
+        const sum = { contracted: 0, received: 0, pending: 0, overdue: 0 };
+        txs.forEach((t: any) => {
+          if (t.type !== 'RECEITA') return;
+          const amt = parseFloat(t.amount) || 0;
+          if (t.status === 'PAGO') sum.received += amt;
+          else if (t.status === 'PENDENTE' && t.due_date && new Date(t.due_date) < new Date()) sum.overdue += amt;
+          else if (t.status === 'PENDENTE') sum.pending += amt;
+          sum.contracted += amt;
+        });
+        setFinanceSummary(sum);
+      })
+      .catch(() => setFinanceSummary({ contracted: 0, received: 0, pending: 0, overdue: 0 }))
+      .finally(() => setFinanceLoading(false));
+  }, [financeOpen, leadId, financeSummary]);
 
   // Buscar notas quando seção abrir
   useEffect(() => {
@@ -793,6 +820,56 @@ export function ClientPanel({
                 </div>
                 <Plus size={15} className="text-muted-foreground" />
               </button>
+            </div>
+
+            {/* Resumo Financeiro */}
+            <div className="border-t border-border">
+              <button
+                className="w-full px-6 py-4 flex items-center justify-between hover:bg-accent/30 transition-colors"
+                onClick={() => setFinanceOpen(!financeOpen)}
+              >
+                <div className="flex items-center gap-2.5">
+                  <DollarSign size={15} className="text-emerald-400" />
+                  <span className="text-[13px] font-bold text-foreground">Resumo Financeiro</span>
+                </div>
+                {financeOpen ? <ChevronUp size={15} className="text-muted-foreground" /> : <ChevronDown size={15} className="text-muted-foreground" />}
+              </button>
+              {financeOpen && (
+                <div className="px-6 pb-5">
+                  {financeLoading ? (
+                    <div className="text-center py-4"><Loader2 size={16} className="animate-spin text-muted-foreground mx-auto" /></div>
+                  ) : financeSummary ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2.5 text-center">
+                        <p className="text-[9px] text-blue-400 uppercase tracking-wider font-medium">Contratado</p>
+                        <p className="text-sm font-bold text-blue-400 mt-0.5">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(financeSummary.contracted)}
+                        </p>
+                      </div>
+                      <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2.5 text-center">
+                        <p className="text-[9px] text-emerald-400 uppercase tracking-wider font-medium">Recebido</p>
+                        <p className="text-sm font-bold text-emerald-400 mt-0.5">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(financeSummary.received)}
+                        </p>
+                      </div>
+                      <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5 text-center">
+                        <p className="text-[9px] text-amber-400 uppercase tracking-wider font-medium">Pendente</p>
+                        <p className="text-sm font-bold text-amber-400 mt-0.5">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(financeSummary.pending)}
+                        </p>
+                      </div>
+                      <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-2.5 text-center">
+                        <p className="text-[9px] text-red-400 uppercase tracking-wider font-medium">Atrasado</p>
+                        <p className="text-sm font-bold text-red-400 mt-0.5">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(financeSummary.overdue)}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground text-center py-2">Sem dados financeiros</p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Notas Internas */}

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Save, Loader2, Gavel, Scale, UserX, User, FileText, Brain, MapPin, Sparkles, RefreshCw } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Save, Loader2, Gavel, Scale, UserX, User, FileText, Brain, MapPin, Sparkles, RefreshCw, DollarSign } from 'lucide-react';
 import api from '@/lib/api';
 import { showError, showSuccess } from '@/lib/toast';
 
@@ -40,6 +40,28 @@ export default function TabResumo({
   const [saving, setSaving] = useState(false);
   const [briefing, setBriefing] = useState<string | null>(null);
   const [generatingBriefing, setGeneratingBriefing] = useState(false);
+
+  // Resumo financeiro do caso
+  const [caseFin, setCaseFin] = useState<{ honorarios: number; received: number; pending: number; overdue: number; expenses: number } | null>(null);
+  useEffect(() => {
+    api.get('/financeiro/transactions', { params: { legalCaseId: data.id, limit: 500 } })
+      .then(r => {
+        const txs: any[] = r.data?.data || r.data || [];
+        const s = { honorarios: 0, received: 0, pending: 0, overdue: 0, expenses: 0 };
+        txs.forEach((t: any) => {
+          const amt = parseFloat(t.amount) || 0;
+          if (t.type === 'DESPESA' && t.status !== 'CANCELADO') { s.expenses += amt; return; }
+          if (t.type === 'RECEITA') {
+            s.honorarios += amt;
+            if (t.status === 'PAGO') s.received += amt;
+            else if (t.status === 'PENDENTE' && t.due_date && new Date(t.due_date) < new Date()) s.overdue += amt;
+            else if (t.status === 'PENDENTE') s.pending += amt;
+          }
+        });
+        setCaseFin(s);
+      })
+      .catch(() => {});
+  }, [data.id]);
 
   const handleGenerateBriefing = async () => {
     setGeneratingBriefing(true);
@@ -186,6 +208,67 @@ export default function TabResumo({
           Salvar alterações
         </button>
       </div>
+
+      {/* Resumo Financeiro do Caso */}
+      {caseFin && (caseFin.honorarios > 0 || caseFin.expenses > 0) && (
+        <section>
+          <h2 className="text-base font-semibold text-base-content mb-4 flex items-center gap-2">
+            <DollarSign className="h-4 w-4 text-emerald-400" />
+            Resumo Financeiro
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-center">
+              <p className="text-[9px] text-blue-400 uppercase tracking-wider font-medium">Honorários</p>
+              <p className="text-sm font-bold text-blue-400 mt-0.5">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(caseFin.honorarios)}
+              </p>
+            </div>
+            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-center">
+              <p className="text-[9px] text-emerald-400 uppercase tracking-wider font-medium">Recebido</p>
+              <p className="text-sm font-bold text-emerald-400 mt-0.5">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(caseFin.received)}
+              </p>
+            </div>
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-center">
+              <p className="text-[9px] text-amber-400 uppercase tracking-wider font-medium">Pendente</p>
+              <p className="text-sm font-bold text-amber-400 mt-0.5">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(caseFin.pending)}
+              </p>
+            </div>
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-center">
+              <p className="text-[9px] text-red-400 uppercase tracking-wider font-medium">Atrasado</p>
+              <p className="text-sm font-bold text-red-400 mt-0.5">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(caseFin.overdue)}
+              </p>
+            </div>
+            <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-3 text-center">
+              <p className="text-[9px] text-purple-400 uppercase tracking-wider font-medium">Despesas</p>
+              <p className="text-sm font-bold text-purple-400 mt-0.5">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(caseFin.expenses)}
+              </p>
+            </div>
+          </div>
+          {caseFin.honorarios > 0 && (
+            <div className="mt-3 bg-base-200/50 rounded-lg p-3">
+              <div className="flex justify-between text-xs text-base-content/60 mb-1">
+                <span>Lucro líquido estimado</span>
+                <span className={`font-bold ${(caseFin.received - caseFin.expenses) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(caseFin.received - caseFin.expenses)}
+                </span>
+              </div>
+              <div className="w-full bg-base-300 rounded-full h-1.5">
+                <div
+                  className="bg-emerald-500 h-1.5 rounded-full transition-all"
+                  style={{ width: `${Math.min(100, caseFin.honorarios > 0 ? (caseFin.received / caseFin.honorarios) * 100 : 0)}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-base-content/40 mt-1">
+                {caseFin.honorarios > 0 ? Math.round((caseFin.received / caseFin.honorarios) * 100) : 0}% recebido
+              </p>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Dados do Cliente */}
       <section>
