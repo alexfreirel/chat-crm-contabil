@@ -117,6 +117,13 @@ export class PaymentGatewayController {
 
   // ─── ROTAS COM PARÂMETROS (depois das fixas) ──────────────
 
+  /** Excluir cobrança no Asaas */
+  @Delete('charges/asaas/:chargeId')
+  async deleteAsaasCharge(@Param('chargeId') chargeId: string) {
+    this.logger.log(`[DELETE /charges/asaas/${chargeId}] Excluindo cobranca no Asaas`);
+    return this.asaasClient.deleteCharge(chargeId);
+  }
+
   /** Detalhes de uma cobrança por honorarioPaymentId */
   @Get('charges/:honorarioPaymentId')
   async getChargeDetails(

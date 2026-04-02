@@ -792,6 +792,7 @@ function CobrancasAsaasTab() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Filtros
   const [showFilters, setShowFilters] = useState(false);
@@ -827,6 +828,20 @@ function CobrancasAsaasTab() {
   }, [statusFilters, billingTypeFilter, dateFrom, dateTo]);
 
   useEffect(() => { fetchCharges(); }, [fetchCharges]);
+
+  const handleDeleteCharge = async (chargeId: string) => {
+    if (!confirm('Excluir esta cobranca no Asaas? Esta acao nao pode ser desfeita.')) return;
+    setDeletingId(chargeId);
+    try {
+      await api.delete(`/payment-gateway/charges/asaas/${chargeId}`);
+      showSuccess('Cobranca excluida!');
+      await fetchCharges();
+    } catch (e: any) {
+      showError(e?.response?.data?.message || 'Erro ao excluir');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const handleSync = async () => {
     setSyncing(true);
@@ -999,6 +1014,7 @@ function CobrancasAsaasTab() {
                   <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Forma de pagamento</th>
                   <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Vencimento</th>
                   <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Status</th>
+                  <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Acoes</th>
                 </tr>
               </thead>
               <tbody>
@@ -1033,6 +1049,19 @@ function CobrancasAsaasTab() {
                           <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
                           {st.label}
                         </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {c.status !== 'RECEIVED' && c.status !== 'CONFIRMED' && c.status !== 'RECEIVED_IN_CASH' && (
+                          <button
+                            onClick={() => handleDeleteCharge(c.id)}
+                            disabled={deletingId === c.id}
+                            className="px-2 py-1 text-[10px] font-semibold text-red-400 border border-red-400/20 rounded-md hover:bg-red-400/10 transition-colors disabled:opacity-50 inline-flex items-center gap-1"
+                            title="Excluir cobranca"
+                          >
+                            {deletingId === c.id ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
+                            Excluir
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
