@@ -37,14 +37,22 @@ export class PaymentGatewayController {
     @Query('status') status: string | undefined,
     @Query('offset') offset: string | undefined,
     @Query('limit') limit: string | undefined,
+    @Query('billingType') billingType: string | undefined,
+    @Query('dateGe') dateGe: string | undefined,
+    @Query('dateLe') dateLe: string | undefined,
   ) {
     this.logger.log('[GET /charges/asaas] Buscando cobranças direto do Asaas...');
     try {
-      const result = await this.asaasClient.listCharges({
-        status: status || undefined,
+      const params: any = {
         offset: offset ? parseInt(offset) : 0,
         limit: limit ? parseInt(limit) : 50,
-      });
+      };
+      if (status) params.status = status;
+      if (billingType) params.billingType = billingType;
+      if (dateGe) params['dueDate[ge]'] = dateGe;
+      if (dateLe) params['dueDate[le]'] = dateLe;
+
+      const result = await this.asaasClient.listCharges(params);
 
       // Enriquecer com nomes dos clientes (cache para não repetir chamadas)
       const customerCache = new Map<string, string>();

@@ -754,33 +754,46 @@ export default function FinanceiroPage() {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   Componente: Cobranças Asaas
+   Componente: Cobranças — Layout estilo Asaas
 ══════════════════════════════════════════════════════════════ */
 
-const CHARGE_STATUS_MAP: Record<string, { label: string; color: string }> = {
-  PENDING: { label: 'Pendente', color: 'text-amber-400 bg-amber-400/10 border-amber-400/20' },
-  RECEIVED: { label: 'Recebido', color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20' },
-  CONFIRMED: { label: 'Confirmado', color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20' },
-  OVERDUE: { label: 'Vencido', color: 'text-red-400 bg-red-400/10 border-red-400/20' },
-  REFUNDED: { label: 'Devolvido', color: 'text-purple-400 bg-purple-400/10 border-purple-400/20' },
-  DELETED: { label: 'Excluído', color: 'text-gray-400 bg-gray-400/10 border-gray-400/20' },
-  CANCELLED: { label: 'Cancelado', color: 'text-gray-400 bg-gray-400/10 border-gray-400/20' },
+const CHARGE_STATUS_MAP: Record<string, { label: string; color: string; dot: string }> = {
+  PENDING: { label: 'Aguardando pagamento', color: 'text-amber-400 bg-amber-400/10 border-amber-400/20', dot: 'bg-amber-400' },
+  RECEIVED: { label: 'Recebida', color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20', dot: 'bg-emerald-400' },
+  CONFIRMED: { label: 'Confirmada', color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20', dot: 'bg-emerald-400' },
+  OVERDUE: { label: 'Vencida', color: 'text-red-400 bg-red-400/10 border-red-400/20', dot: 'bg-red-400' },
+  REFUNDED: { label: 'Estornada', color: 'text-purple-400 bg-purple-400/10 border-purple-400/20', dot: 'bg-purple-400' },
+  DELETED: { label: 'Removida', color: 'text-gray-400 bg-gray-400/10 border-gray-400/20', dot: 'bg-gray-500' },
+  CANCELLED: { label: 'Cancelada', color: 'text-gray-400 bg-gray-400/10 border-gray-400/20', dot: 'bg-gray-500' },
 };
 
-const BILLING_TYPE_LABEL: Record<string, string> = {
-  PIX: 'PIX',
-  BOLETO: 'Boleto',
-  CREDIT_CARD: 'Cartao',
-  UNDEFINED: 'Indefinido',
+const BILLING_ICONS: Record<string, { icon: string; label: string }> = {
+  PIX: { icon: '⚡', label: 'Pix' },
+  BOLETO: { icon: '📄', label: 'Boleto Bancario' },
+  CREDIT_CARD: { icon: '💳', label: 'Cartao de Credito' },
+  UNDEFINED: { icon: '❓', label: 'Indefinido' },
 };
+
+const STATUS_FILTERS = [
+  { id: 'PENDING', label: 'Aguardando pagamento' },
+  { id: 'OVERDUE', label: 'Vencida' },
+  { id: 'RECEIVED', label: 'Recebida' },
+  { id: 'CONFIRMED', label: 'Confirmada' },
+  { id: 'REFUNDED', label: 'Estornada' },
+];
 
 function CobrancasAsaasTab() {
-  const [charges, setCharges] = useState<any[]>([]);
-  const [asaasCharges, setAsaasCharges] = useState<any>(null);
+  const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [view, setView] = useState<'local' | 'asaas'>('asaas');
-  const [statusFilter, setStatusFilter] = useState('');
+
+  // Filtros
+  const [showFilters, setShowFilters] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilters, setStatusFilters] = useState<Set<string>>(new Set());
+  const [billingTypeFilter, setBillingTypeFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   const fmt = (v: number | string) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
@@ -793,137 +806,241 @@ function CobrancasAsaasTab() {
     return `${String(dt.getUTCDate()).padStart(2, '0')}/${String(dt.getUTCMonth() + 1).padStart(2, '0')}/${dt.getUTCFullYear()}`;
   };
 
-  const fetchLocal = useCallback(async () => {
+  const fetchCharges = useCallback(async () => {
+    setLoading(true);
     try {
       const params: any = { limit: '100' };
-      if (statusFilter) params.status = statusFilter;
-      const res = await api.get('/payment-gateway/charges', { params });
-      setCharges(res.data || []);
-    } catch { setCharges([]); }
-  }, [statusFilter]);
-
-  const fetchAsaas = useCallback(async () => {
-    try {
-      const params: any = { limit: '50' };
-      if (statusFilter) params.status = statusFilter;
+      if (statusFilters.size === 1) params.status = Array.from(statusFilters)[0];
+      if (billingTypeFilter) params.billingType = billingTypeFilter;
+      if (dateFrom) params.dateGe = dateFrom;
+      if (dateTo) params.dateLe = dateTo;
       const res = await api.get('/payment-gateway/charges/asaas', { params });
-      setAsaasCharges(res.data);
-    } catch { setAsaasCharges(null); }
-  }, [statusFilter]);
+      setData(res.data);
+    } catch { setData(null); }
+    finally { setLoading(false); }
+  }, [statusFilters, billingTypeFilter, dateFrom, dateTo]);
 
-  useEffect(() => {
-    setLoading(true);
-    Promise.all([fetchLocal(), fetchAsaas()]).finally(() => setLoading(false));
-  }, [fetchLocal, fetchAsaas]);
+  useEffect(() => { fetchCharges(); }, [fetchCharges]);
 
   const handleSync = async () => {
     setSyncing(true);
     try {
       await api.post('/payment-gateway/charges/sync');
-      await Promise.all([fetchLocal(), fetchAsaas()]);
+      await fetchCharges();
       showSuccess('Cobrancas sincronizadas!');
-    } catch (e: any) {
-      showError(e?.response?.data?.message || 'Erro ao sincronizar');
-    } finally {
-      setSyncing(false);
-    }
+    } catch (e: any) { showError(e?.response?.data?.message || 'Erro'); }
+    finally { setSyncing(false); }
   };
 
-  const asaasList = asaasCharges?.data || asaasCharges || [];
-  const displayList = view === 'asaas' ? (Array.isArray(asaasList) ? asaasList : []) : charges;
+  const toggleStatus = (s: string) => {
+    setStatusFilters(prev => {
+      const next = new Set(prev);
+      next.has(s) ? next.delete(s) : next.add(s);
+      return next;
+    });
+  };
+
+  const clearFilters = () => {
+    setStatusFilters(new Set());
+    setBillingTypeFilter('');
+    setDateFrom('');
+    setDateTo('');
+    setSearchQuery('');
+  };
+
+  const hasActiveFilters = statusFilters.size > 0 || billingTypeFilter || dateFrom || dateTo;
+
+  // Dados + filtro client-side por nome
+  const rawList: any[] = data?.data || [];
+  const filteredList = searchQuery
+    ? rawList.filter(c => (c.customerName || c.customer || '').toLowerCase().includes(searchQuery.toLowerCase()))
+    : rawList;
+
+  // Multi-status filter client-side (API so aceita 1 status)
+  const displayList = statusFilters.size > 1
+    ? filteredList.filter(c => statusFilters.has(c.status))
+    : filteredList;
+
+  const totalValue = displayList.reduce((s, c) => s + Number(c.value || 0), 0);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
-          <CreditCard size={15} className="text-primary" />
-          Cobrancas Asaas
-        </h2>
-        <div className="flex items-center gap-2">
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            className="px-3 py-1.5 text-xs bg-background border border-border rounded-lg focus:outline-none"
-          >
-            <option value="">Todos os status</option>
-            <option value="PENDING">Pendente</option>
-            <option value="RECEIVED">Recebido</option>
-            <option value="CONFIRMED">Confirmado</option>
-            <option value="OVERDUE">Vencido</option>
-          </select>
-          <div className="flex rounded-lg border border-border overflow-hidden">
-            <button onClick={() => setView('asaas')} className={`px-3 py-1.5 text-xs font-medium transition-colors ${view === 'asaas' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent/30'}`}>
-              Asaas
-            </button>
-            <button onClick={() => setView('local')} className={`px-3 py-1.5 text-xs font-medium transition-colors ${view === 'local' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent/30'}`}>
-              Local
-            </button>
-          </div>
-          <button onClick={handleSync} disabled={syncing} className="px-3 py-1.5 text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 rounded-lg hover:bg-emerald-500/25 disabled:opacity-50 flex items-center gap-1.5 transition-colors">
-            {syncing ? <Loader2 size={12} className="animate-spin" /> : <ArrowUpDown size={12} />}
-            Sincronizar
-          </button>
+    <div className="space-y-3">
+      {/* ── Header: Busca + Filtros + Acoes ── */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {/* Busca */}
+        <div className="flex-1 min-w-[200px] relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Procurar por nome do cliente..."
+            className="w-full pl-9 pr-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
         </div>
+
+        {/* Botao Filtros */}
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className={`px-4 py-2 text-sm font-medium border rounded-lg flex items-center gap-2 transition-colors ${
+            hasActiveFilters
+              ? 'border-primary text-primary bg-primary/10'
+              : 'border-border text-muted-foreground hover:bg-accent/30'
+          }`}
+        >
+          <ChevronDown size={14} className={`transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+          Filtros
+          {hasActiveFilters && (
+            <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
+              {statusFilters.size + (billingTypeFilter ? 1 : 0) + (dateFrom || dateTo ? 1 : 0)}
+            </span>
+          )}
+        </button>
+
+        {/* Sincronizar */}
+        <button onClick={handleSync} disabled={syncing} className="px-4 py-2 text-sm font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 rounded-lg hover:bg-emerald-500/25 disabled:opacity-50 flex items-center gap-2 transition-colors">
+          {syncing ? <Loader2 size={14} className="animate-spin" /> : <ArrowUpDown size={14} />}
+          Sincronizar
+        </button>
       </div>
 
-      {loading ? (
-        <div className="text-center py-12"><Loader2 size={20} className="animate-spin text-muted-foreground mx-auto" /></div>
-      ) : displayList.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">
-          Nenhuma cobranca {view === 'asaas' ? 'encontrada no Asaas' : 'registrada localmente'}
-        </div>
-      ) : (
-        <div className="border border-border rounded-xl overflow-hidden">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-card border-b border-border text-muted-foreground">
-                <th className="px-3 py-2.5 text-left font-semibold">Cliente</th>
-                <th className="px-3 py-2.5 text-left font-semibold">Tipo</th>
-                <th className="px-3 py-2.5 text-left font-semibold">Valor</th>
-                <th className="px-3 py-2.5 text-left font-semibold">Vencimento</th>
-                <th className="px-3 py-2.5 text-left font-semibold">Status</th>
-                <th className="px-3 py-2.5 text-left font-semibold">ID</th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayList.map((c: any, i: number) => {
-                const isAsaas = view === 'asaas';
-                const status = c.status;
-                const statusInfo = CHARGE_STATUS_MAP[status] || { label: status, color: 'text-gray-400 bg-gray-400/10 border-gray-400/20' };
-                const billingType = isAsaas ? c.billingType : c.billing_type;
-                const value = isAsaas ? c.value : c.amount;
-                const dueDate = isAsaas ? c.dueDate : c.due_date;
-                const clientName = isAsaas
-                  ? (c.customerName || c.customer || '--')
-                  : ((c as any).honorario_payment?.honorario?.legal_case?.lead?.name || '--');
-                const chargeId = isAsaas ? c.id : c.external_id;
+      {/* ── Painel de Filtros (colapsavel) ── */}
+      {showFilters && (
+        <div className="bg-card border border-border rounded-xl p-4 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Periodo */}
+            <div>
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Periodo de vencimento</p>
+              <div className="flex items-center gap-2">
+                <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                  className="flex-1 px-3 py-1.5 text-xs bg-background border border-border rounded-lg focus:outline-none" />
+                <span className="text-xs text-muted-foreground">ate</span>
+                <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                  className="flex-1 px-3 py-1.5 text-xs bg-background border border-border rounded-lg focus:outline-none" />
+              </div>
+            </div>
 
-                return (
-                  <tr key={chargeId || i} className="border-b border-border/50 hover:bg-accent/20 transition-colors">
-                    <td className="px-3 py-2.5 font-medium text-foreground truncate max-w-[180px]">{clientName}</td>
-                    <td className="px-3 py-2.5">{BILLING_TYPE_LABEL[billingType] || billingType}</td>
-                    <td className="px-3 py-2.5 font-semibold text-foreground">{fmt(value || 0)}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{fmtDate(dueDate)}</td>
-                    <td className="px-3 py-2.5">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusInfo.color}`}>
-                        {statusInfo.label}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 font-mono text-[10px] text-muted-foreground truncate max-w-[120px]" title={chargeId}>
-                      {chargeId?.slice(-8) || '--'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+            {/* Tipo */}
+            <div>
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Forma de pagamento</p>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(BILLING_ICONS).filter(([k]) => k !== 'UNDEFINED').map(([key, { icon, label }]) => (
+                  <button
+                    key={key}
+                    onClick={() => setBillingTypeFilter(billingTypeFilter === key ? '' : key)}
+                    className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                      billingTypeFilter === key
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border text-muted-foreground hover:bg-accent/30'
+                    }`}
+                  >
+                    {icon} {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Status */}
+            <div>
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Status</p>
+              <div className="flex flex-wrap gap-2">
+                {STATUS_FILTERS.map(sf => (
+                  <button
+                    key={sf.id}
+                    onClick={() => toggleStatus(sf.id)}
+                    className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                      statusFilters.has(sf.id)
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border text-muted-foreground hover:bg-accent/30'
+                    }`}
+                  >
+                    {sf.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
+            <button onClick={clearFilters} className="px-4 py-1.5 text-xs font-medium text-muted-foreground border border-border rounded-lg hover:bg-accent/30 transition-colors">
+              Limpar
+            </button>
+            <button onClick={() => { fetchCharges(); setShowFilters(false); }} className="px-4 py-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-colors">
+              Aplicar
+            </button>
+          </div>
         </div>
       )}
 
-      {!loading && displayList.length > 0 && (
-        <p className="text-xs text-muted-foreground text-right">
-          {displayList.length} cobranca(s) — Total: {fmt(displayList.reduce((s: number, c: any) => s + Number(view === 'asaas' ? c.value : c.amount || 0), 0))}
-        </p>
+      {/* ── Tabela ── */}
+      {loading ? (
+        <div className="text-center py-16"><Loader2 size={24} className="animate-spin text-muted-foreground mx-auto" /></div>
+      ) : displayList.length === 0 ? (
+        <div className="text-center py-16 text-muted-foreground">
+          <CreditCard size={40} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm font-medium">Nenhuma cobranca encontrada</p>
+          <p className="text-xs mt-1">Ajuste os filtros ou crie uma nova cobranca</p>
+        </div>
+      ) : (
+        <>
+          <div className="border border-border rounded-xl overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-card/80 border-b border-border">
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Nome</th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Valor</th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Descricao</th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Forma de pagamento</th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Vencimento</th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayList.map((c: any, i: number) => {
+                  const st = CHARGE_STATUS_MAP[c.status] || { label: c.status, color: 'text-gray-400 bg-gray-400/10 border-gray-400/20', dot: 'bg-gray-500' };
+                  const bt = BILLING_ICONS[c.billingType] || BILLING_ICONS.UNDEFINED;
+                  return (
+                    <tr key={c.id || i} className="border-b border-border/40 hover:bg-accent/10 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center text-primary text-[10px] font-bold shrink-0">
+                            {(c.customerName || c.customer || '?')[0]?.toUpperCase()}
+                          </div>
+                          <span className="font-medium text-foreground truncate max-w-[180px]">
+                            {c.customerName || c.customer || '--'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 font-bold text-foreground">{fmt(c.value || 0)}</td>
+                      <td className="px-4 py-3 text-muted-foreground truncate max-w-[200px]" title={c.description}>
+                        {c.description || '--'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="flex items-center gap-1.5">
+                          <span>{bt.icon}</span>
+                          <span className="text-muted-foreground">{bt.label}</span>
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{fmtDate(c.dueDate)}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border ${st.color}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
+                          {st.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Rodape */}
+          <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+            <span>{displayList.length} cobranca(s) {data?.totalCount > displayList.length ? `de ${data.totalCount}` : ''}</span>
+            <span className="font-semibold text-foreground">Total: {fmt(totalValue)}</span>
+          </div>
+        </>
       )}
     </div>
   );
