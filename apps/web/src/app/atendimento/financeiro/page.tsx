@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import api from '@/lib/api';
 import { showError, showSuccess } from '@/lib/toast';
+import { useRole } from '@/lib/useRole';
 
 /* ──────────────────────────────────────────────────────────────
    Types
@@ -41,7 +42,7 @@ interface Transaction {
 /* ──────────────────────────────────────────────────────────────
    Constants
 ────────────────────────────────────────────────────────────── */
-const TABS = ['Resumo', 'Receitas', 'Despesas', 'Cobrancas', 'Clientes', 'Inadimplencia'] as const;
+const TABS = ['Resumo', 'Receitas', 'Despesas', 'Cobrancas', 'Processos', 'Clientes', 'Inadimplencia'] as const;
 type Tab = typeof TABS[number];
 
 const PERIODS = [
@@ -425,26 +426,34 @@ export default function FinanceiroPage() {
   const [receitas, setReceitas] = useState<Transaction[]>([]);
   const [despesas, setDespesas] = useState<Transaction[]>([]);
   const [overdue, setOverdue] = useState<Transaction[]>([]);
+  const [lawyers, setLawyers] = useState<{ id: string; name: string }[]>([]);
+  const [filterLawyerId, setFilterLawyerId] = useState('');
+  const { isAdmin, isFinanceiro, userId } = useRole();
 
-  /* ─── Auth guard + saldo Asaas ─── */
+  /* ─── Auth guard + saldo Asaas + advogados ─── */
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) { router.push('/atendimento/login'); return; }
-    // Buscar saldo do Asaas
-    api.get('/payment-gateway/balance')
-      .then(r => setAsaasBalance(r.data?.balance ?? r.data?.value ?? null))
-      .catch(() => {});
-  }, [router]);
+    api.get('/payment-gateway/balance').then(r => setAsaasBalance(r.data?.balance ?? r.data?.value ?? null)).catch(() => {});
+    // Lista de advogados (para filtro — só admin/financeiro)
+    if (isAdmin || isFinanceiro) {
+      api.get('/users/lawyers').then(r => setLawyers(r.data || [])).catch(() => {});
+    }
+  }, [router, isAdmin, isFinanceiro]);
 
   /* ─── Fetch data ─── */
+  // Advogado não-admin vê apenas seus dados
+  const effectiveLawyerId = (isAdmin || isFinanceiro) ? filterLawyerId : (userId || '');
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     const { startDate, endDate } = getPeriodRange(period);
+    const lawyerParam = effectiveLawyerId || undefined;
     try {
       const [sumRes, recRes, despRes] = await Promise.all([
-        api.get('/financeiro/summary', { params: { startDate, endDate } }),
-        api.get('/financeiro/transactions', { params: { type: 'RECEITA', startDate, endDate, limit: 100 } }),
-        api.get('/financeiro/transactions', { params: { type: 'DESPESA', startDate, endDate, limit: 100 } }),
+        api.get('/financeiro/summary', { params: { startDate, endDate, lawyerId: lawyerParam } }),
+        api.get('/financeiro/transactions', { params: { type: 'RECEITA', startDate, endDate, limit: 100, lawyerId: lawyerParam } }),
+        api.get('/financeiro/transactions', { params: { type: 'DESPESA', startDate, endDate, limit: 100, lawyerId: lawyerParam } }),
       ]);
       setSummary(sumRes.data);
 
@@ -464,7 +473,7 @@ export default function FinanceiroPage() {
     } finally {
       setLoading(false);
     }
-  }, [period]);
+  }, [period, effectiveLawyerId]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -477,6 +486,7 @@ export default function FinanceiroPage() {
     Receitas: TrendingUp,
     Despesas: TrendingDown,
     Cobrancas: CreditCard,
+    Processos: Receipt,
     Clientes: Users,
     Inadimplencia: AlertTriangle,
   };
@@ -530,6 +540,18 @@ export default function FinanceiroPage() {
               <p className="text-xs text-muted-foreground">Gestao de receitas, despesas e inadimplencia</p>
             </div>
           </div>
+
+          {/* Filtro por advogado (admin/financeiro) */}
+          {(isAdmin || isFinanceiro) && lawyers.length > 0 && (
+            <select
+              value={filterLawyerId}
+              onChange={e => setFilterLawyerId(e.target.value)}
+              className="px-3 py-2 text-xs bg-card border border-border rounded-xl focus:outline-none"
+            >
+              <option value="">Todos os advogados</option>
+              {lawyers.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          )}
 
           {/* Saldo Asaas */}
           {asaasBalance !== null && (
@@ -689,6 +711,9 @@ export default function FinanceiroPage() {
             <TransactionTable rows={despesas} onRefresh={fetchData} />
           </div>
         )}
+
+        {/* ─── TAB: Processos (financeiro por caso) ─── */}
+        {tab === 'Processos' && <ProcessosFinanceiroTab lawyerId={effectiveLawyerId} />}
 
         {/* ─── TAB: Cobrancas (Asaas) ─── */}
         {tab === 'Cobrancas' && <CobrancasAsaasTab />}
@@ -1885,6 +1910,168 @@ function ReceitasTab({ receitas, onRefresh }: { receitas: Transaction[]; onRefre
             <span className="font-semibold text-emerald-400">Total: {fmt(totalFiltered)}</span>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Componente: Processos com resumo financeiro
+══════════════════════════════════════════════════════════════ */
+
+function ProcessosFinanceiroTab({ lawyerId }: { lawyerId: string }) {
+  const router = useRouter();
+  const [cases, setCases] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQ, setSearchQ] = useState('');
+
+  const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+  useEffect(() => {
+    setLoading(true);
+    api.get('/legal-cases', { params: { inTracking: 'true', archived: 'false' } })
+      .then(r => setCases(r.data || []))
+      .catch(() => setCases([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = cases.filter(c => {
+    if (lawyerId && c.lawyer_id !== lawyerId) return false;
+    if (searchQ) {
+      const q = searchQ.toLowerCase();
+      return (c.lead?.name || '').toLowerCase().includes(q) || (c.case_number || '').toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  const casesWithFin = filtered.map(c => {
+    const fin = (c.honorarios || []).reduce((acc: any, h: any) => {
+      acc.contracted += parseFloat(h.total_value) || 0;
+      (h.payments || []).forEach((p: any) => {
+        const amt = parseFloat(p.amount) || 0;
+        if (p.status === 'PAGO') acc.received += amt;
+        else if (p.status === 'ATRASADO') acc.overdue += amt;
+        else acc.pending += amt;
+      });
+      return acc;
+    }, { contracted: 0, received: 0, pending: 0, overdue: 0 });
+    return { ...c, fin };
+  });
+
+  const totals = casesWithFin.reduce((acc, c) => ({
+    contracted: acc.contracted + c.fin.contracted, received: acc.received + c.fin.received,
+    pending: acc.pending + c.fin.pending, overdue: acc.overdue + c.fin.overdue,
+  }), { contracted: 0, received: 0, pending: 0, overdue: 0 });
+
+  const withHonorarios = casesWithFin.filter(c => c.fin.contracted > 0);
+  const withoutHonorarios = casesWithFin.filter(c => c.fin.contracted === 0);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input type="text" value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Buscar por cliente ou processo..."
+            className="pl-9 pr-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none w-60" />
+        </div>
+        <span className="text-xs text-muted-foreground">{filtered.length} processos | {withHonorarios.length} com honorarios</span>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-card border border-border rounded-xl p-3 text-center">
+          <p className="text-[10px] text-blue-400 uppercase tracking-wider font-medium">Contratado</p>
+          <p className="text-base font-bold text-blue-400">{fmt(totals.contracted)}</p>
+        </div>
+        <div className="bg-card border border-border rounded-xl p-3 text-center">
+          <p className="text-[10px] text-emerald-400 uppercase tracking-wider font-medium">Recebido</p>
+          <p className="text-base font-bold text-emerald-400">{fmt(totals.received)}</p>
+        </div>
+        <div className="bg-card border border-border rounded-xl p-3 text-center">
+          <p className="text-[10px] text-amber-400 uppercase tracking-wider font-medium">Pendente</p>
+          <p className="text-base font-bold text-amber-400">{fmt(totals.pending)}</p>
+        </div>
+        <div className="bg-card border border-border rounded-xl p-3 text-center">
+          <p className="text-[10px] text-red-400 uppercase tracking-wider font-medium">Atrasado</p>
+          <p className="text-base font-bold text-red-400">{fmt(totals.overdue)}</p>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-12"><Loader2 size={20} className="animate-spin text-muted-foreground mx-auto" /></div>
+      ) : withHonorarios.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <Receipt size={40} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm">Nenhum processo com honorarios cadastrados</p>
+        </div>
+      ) : (
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border bg-card/80">
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Cliente</th>
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Processo</th>
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Area</th>
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Advogado</th>
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Etapa</th>
+                <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Contratado</th>
+                <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Recebido</th>
+                <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Pendente</th>
+                <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Progresso</th>
+              </tr>
+            </thead>
+            <tbody>
+              {withHonorarios.map(c => {
+                const pct = c.fin.contracted > 0 ? Math.round((c.fin.received / c.fin.contracted) * 100) : 0;
+                return (
+                  <tr key={c.id} className="border-b border-border/40 hover:bg-accent/10 cursor-pointer" onClick={() => router.push(`/atendimento/processos?openCase=${c.id}`)}>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-primary/15 flex items-center justify-center text-primary text-[9px] font-bold">{(c.lead?.name || '?')[0]?.toUpperCase()}</div>
+                        <span className="font-medium text-foreground truncate max-w-[140px]">{c.lead?.name || '--'}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-[10px] text-muted-foreground">{c.case_number?.slice(-10) || '--'}</td>
+                    <td className="px-4 py-3"><span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-primary/10 text-primary">{c.legal_area || '--'}</span></td>
+                    <td className="px-4 py-3 text-muted-foreground truncate max-w-[100px]">{c.lawyer?.name?.split(' ')[0] || '--'}</td>
+                    <td className="px-4 py-3 text-[10px] font-semibold text-muted-foreground">{c.tracking_stage || c.stage}</td>
+                    <td className="px-4 py-3 text-right font-bold text-blue-400">{fmt(c.fin.contracted)}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-emerald-400">{fmt(c.fin.received)}</td>
+                    <td className="px-4 py-3 text-right">
+                      {c.fin.overdue > 0 ? <span className="font-semibold text-red-400">{fmt(c.fin.overdue)}</span>
+                        : c.fin.pending > 0 ? <span className="font-semibold text-amber-400">{fmt(c.fin.pending)}</span>
+                        : <span className="text-muted-foreground">--</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <div className="w-16 bg-base-300 rounded-full h-1.5">
+                          <div className={`h-1.5 rounded-full ${pct >= 100 ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(100,pct)}%` }} />
+                        </div>
+                        <span className="text-[9px] font-mono text-muted-foreground w-8 text-right">{pct}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {withoutHonorarios.length > 0 && (
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer hover:text-foreground py-2">
+            {withoutHonorarios.length} processo(s) sem honorarios cadastrados
+          </summary>
+          <div className="mt-2 space-y-1 pl-4">
+            {withoutHonorarios.slice(0, 10).map(c => (
+              <div key={c.id} className="flex items-center gap-2 cursor-pointer hover:text-foreground" onClick={() => router.push(`/atendimento/processos?openCase=${c.id}`)}>
+                <span className="truncate max-w-[200px]">{c.lead?.name || '--'}</span>
+                <span className="font-mono text-[10px]">{c.case_number || '--'}</span>
+                <span className="text-[10px]">{c.tracking_stage}</span>
+              </div>
+            ))}
+          </div>
+        </details>
       )}
     </div>
   );
