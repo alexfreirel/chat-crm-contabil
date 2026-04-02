@@ -50,6 +50,8 @@ export class AsaasClient {
       ? 'https://api-sandbox.asaas.com/v3'
       : 'https://api.asaas.com/v3';
 
+    this.logger.debug(`[ASAAS] Config: sandbox=${sandbox}, baseUrl=${baseUrl}, apiKey=${apiKey ? `${apiKey.slice(0, 10)}...` : 'NAO CONFIGURADA'}`);
+
     return { apiKey: apiKey || '', baseUrl, sandbox };
   }
 

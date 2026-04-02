@@ -45,6 +45,9 @@ export const SENSITIVE_KEYS = new Set([
   'EVOLUTION_GLOBAL_APIKEY',
   'SMTP_PASS',
   'GOOGLE_TTS_API_KEY',
+  'asaas_api_key',
+  'asaas_webhook_token',
+  'nfse_api_key',
 ]);
 
 export function isSensitiveKey(key: string): boolean {

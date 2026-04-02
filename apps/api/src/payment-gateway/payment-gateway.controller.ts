@@ -114,11 +114,19 @@ export class PaymentGatewayController {
     @Query('offset') offset: string | undefined,
     @Query('limit') limit: string | undefined,
   ) {
-    return this.asaasClient.listCharges({
-      status: status || undefined,
-      offset: offset ? parseInt(offset) : 0,
-      limit: limit ? parseInt(limit) : 50,
-    });
+    this.logger.log('[GET /charges/asaas] Buscando cobranças direto do Asaas...');
+    try {
+      const result = await this.asaasClient.listCharges({
+        status: status || undefined,
+        offset: offset ? parseInt(offset) : 0,
+        limit: limit ? parseInt(limit) : 50,
+      });
+      this.logger.log(`[GET /charges/asaas] Retornadas ${result?.totalCount ?? result?.data?.length ?? 0} cobranças`);
+      return result;
+    } catch (e: any) {
+      this.logger.error(`[GET /charges/asaas] Erro: ${e.message}`);
+      return { data: [], totalCount: 0, error: e.message };
+    }
   }
 
   /** Sincroniza cobranças do Asaas para o banco local */
