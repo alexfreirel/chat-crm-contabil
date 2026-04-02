@@ -4,7 +4,7 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatGateway } from '../gateway/chat.gateway';
 
-const EVENT_TYPES = ['CONSULTA', 'TAREFA', 'AUDIENCIA', 'PRAZO', 'OUTRO'] as const;
+const EVENT_TYPES = ['CONSULTA', 'TAREFA', 'AUDIENCIA', 'PERICIA', 'PRAZO', 'OUTRO'] as const;
 const EVENT_STATUSES = ['AGENDADO', 'CONFIRMADO', 'CONCLUIDO', 'CANCELADO', 'ADIADO'] as const;
 
 @Injectable()
@@ -213,8 +213,8 @@ export class CalendarService {
     // Enqueue WhatsApp + Email reminders
     await this.enqueueReminders(event.id, event.start_at, event.reminders || []);
 
-    // Notificação imediata ao cliente (1 min de delay) quando audiência é agendada
-    if (data.type === 'AUDIENCIA' && event.lead?.phone) {
+    // Notificação imediata ao cliente (1 min de delay) quando audiência ou perícia é agendada
+    if ((data.type === 'AUDIENCIA' || data.type === 'PERICIA') && event.lead?.phone) {
       try {
         await this.reminderQueue.add(
           'notify-hearing-scheduled',
@@ -342,8 +342,8 @@ export class CalendarService {
       this.logger.log(`Lembretes re-enfileirados para evento ${event.id} (start_at alterado)`);
     }
 
-    // Se é AUDIÊNCIA e data ou local mudaram → notificar cliente sobre a remarcação
-    const isAudiencia = (before?.type ?? event.type) === 'AUDIENCIA';
+    // Se é AUDIÊNCIA ou PERÍCIA e data ou local mudaram → notificar cliente sobre a remarcação
+    const isAudiencia = ['AUDIENCIA', 'PERICIA'].includes(before?.type ?? event.type);
     const dateChanged = data.start_at && new Date(data.start_at).getTime() !== before?.start_at?.getTime();
     const locationChanged = data.location !== undefined && data.location !== before?.location;
     if (isAudiencia && (dateChanged || locationChanged) && event.lead?.phone) {

@@ -506,7 +506,7 @@ export class CalendarReminderWorker extends WorkerHost {
             last_message_at: new Date(),
             ai_mode: true, // reativa IA para responder dúvidas do cliente
             reminder_context: {
-              type: 'AUDIENCIA_AGENDADA',
+              type: event.type === 'PERICIA' ? 'PERICIA_AGENDADA' : 'AUDIENCIA_AGENDADA',
               event_title: event.title,
               event_date: formatDateTime(event.start_at),
               event_date_iso: event.start_at.toISOString(),
@@ -525,13 +525,14 @@ export class CalendarReminderWorker extends WorkerHost {
 
   private templateHearingRescheduled(event: any, firstName: string): string {
     const dateStr = formatDateTime(event.start_at);
+    const isPericia = event.type === 'PERICIA';
     return (
-      `📅 *Audiência Remarcada*\n\n` +
+      `${isPericia ? '🔬' : '📅'} *${isPericia ? 'Perícia' : 'Audiência'} Remarcada*\n\n` +
       `Olá, ${firstName}!\n\n` +
-      `Informamos que sua audiência foi *remarcada* para uma nova data:\n\n` +
+      `Informamos que sua ${isPericia ? 'perícia' : 'audiência'} foi *remarcada* para uma nova data:\n\n` +
       `📅 *Nova Data/Hora:* ${dateStr}\n` +
       (event.location ? `📍 *Local:* ${event.location}\n` : '') +
-      `\nPor favor, anote a nova data. Chegue com *30 minutos de antecedência*.\n` +
+      `\nPor favor, anote a nova data.${isPericia ? ' Lembre-se de levar documentos pessoais e laudos médicos, se houver.' : ' Chegue com *30 minutos de antecedência*.'}\n` +
       `Qualquer dúvida, é só responder esta mensagem.\n\n` +
       `_André Lustosa Advogados_`
     );
@@ -539,13 +540,16 @@ export class CalendarReminderWorker extends WorkerHost {
 
   private templateHearingScheduled(event: any, firstName: string): string {
     const dateStr = formatDateTime(event.start_at);
+    const isPericia = event.type === 'PERICIA';
     return (
-      `⚖️ *Audiência Agendada*\n\n` +
+      `${isPericia ? '🔬' : '⚖️'} *${isPericia ? 'Perícia Agendada' : 'Audiência Agendada'}*\n\n` +
       `Olá, ${firstName}!\n\n` +
-      `Gostaríamos de informar que sua audiência foi agendada:\n\n` +
+      `Gostaríamos de informar que sua ${isPericia ? 'perícia' : 'audiência'} foi agendada:\n\n` +
       `📅 *Data/Hora:* ${dateStr}\n` +
       (event.location ? `📍 *Local:* ${event.location}\n` : '') +
-      `\nRecomendamos chegar com *30 minutos de antecedência*.\n` +
+      (isPericia
+        ? `\nLembre-se de levar documentos pessoais e laudos médicos, se houver. Chegue com *15 minutos de antecedência* e coopere plenamente com o perito.\n`
+        : `\nRecomendamos chegar com *30 minutos de antecedência*.\n`) +
       `Qualquer dúvida, estamos à disposição.\n\n` +
       `_André Lustosa Advogados_`
     );
@@ -556,9 +560,11 @@ export class CalendarReminderWorker extends WorkerHost {
     const model = aiConfig.defaultModel || 'gpt-4o-mini';
     const isAnthropic = model.startsWith('claude');
     const dateStr = formatDateTime(event.start_at);
+    const isPericia = event.type === 'PERICIA';
+    const tipoEvento = isPericia ? 'perícia' : 'audiência';
 
     const systemPrompt = `Você é o assistente do escritório de advocacia André Lustosa Advogados.
-Sua tarefa é enviar uma mensagem via WhatsApp informando ao cliente que sua audiência foi agendada.
+Sua tarefa é enviar uma mensagem via WhatsApp informando ao cliente que sua ${tipoEvento} foi ${isRescheduled ? 'remarcada' : 'agendada'}.
 
 REGRAS:
 - Escreva em português brasileiro natural e acolhedor
@@ -566,17 +572,18 @@ REGRAS:
 - Use formatação WhatsApp (*negrito*) com moderação
 - Personalize com base no histórico/contexto do caso quando relevante
 - NÃO invente informações — use apenas o contexto fornecido
-- Se o caso for trabalhista, reforce brevemente a importância da audiência
-- Oriente a chegar com 30 minutos de antecedência
+${isPericia
+  ? '- Para perícia: oriente a levar documentos pessoais e laudos médicos, se houver; chegar 15 min antes; cooperar plenamente com o perito'
+  : '- Se o caso for trabalhista, reforce brevemente a importância da audiência\n- Oriente a chegar com 30 minutos de antecedência'}
 - Deixe claro que pode tirar dúvidas respondendo esta mensagem
 - Limite: máximo 200 palavras
 - Finalize com "_André Lustosa Advogados_"`;
 
     const userPrompt = isRescheduled
-      ? `Crie uma mensagem informando ao cliente que a audiência foi *remarcada* para uma nova data.
+      ? `Crie uma mensagem informando ao cliente que a ${tipoEvento} foi *remarcada* para uma nova data.
 Deixe claro que é uma remarcação (não um novo agendamento).
 
-DADOS DA NOVA AUDIÊNCIA:
+DADOS DA NOVA ${tipoEvento.toUpperCase()}:
 Data/Hora: ${dateStr}
 ${event.location ? `Local: ${event.location}` : 'Local: a confirmar'}
 
@@ -586,9 +593,9 @@ ${context}
 Nome do cliente: "${firstName}"
 
 Gere APENAS a mensagem final para WhatsApp, sem explicações.`
-      : `Crie uma mensagem informando ao cliente que a audiência foi agendada.
+      : `Crie uma mensagem informando ao cliente que a ${tipoEvento} foi agendada.
 
-DADOS DA AUDIÊNCIA:
+DADOS DA ${tipoEvento.toUpperCase()}:
 Data/Hora: ${dateStr}
 ${event.location ? `Local: ${event.location}` : 'Local: a confirmar'}
 ${event.title ? `Título: ${event.title}` : ''}
