@@ -24,9 +24,11 @@ model Tenant {
   case_deadlines     CaseDeadline[]
   petitions          CasePetition[]
   legal_templates    LegalTemplate[]
-  case_honorarios    CaseHonorario[]
-  ai_chats           AiChat[]
-  followup_sequences FollowupSequence[]
+  case_honorarios        CaseHonorario[]
+  ai_chats               AiChat[]
+  followup_sequences     FollowupSequence[]
+  financial_transactions FinancialTransaction[]
+  financial_categories   FinancialCategory[]
 }
 
 model User {
@@ -65,6 +67,7 @@ model User {
   created_templates        LegalTemplate[]        @relation("TemplateCreator")
   ai_chats                 AiChat[]               @relation("AiChatOwner")
   cs_leads                 Lead[]                 @relation("CSManager")
+  financial_transactions   FinancialTransaction[] @relation("FinancialLawyer")
 }
 
 model Lead {
@@ -101,7 +104,8 @@ model Lead {
   notes                LeadNote[]
   stage_history        LeadStageHistory[]
   contract_signatures  ContractSignature[]
-  followup_enrollments FollowupEnrollment[]
+  followup_enrollments   FollowupEnrollment[]
+  financial_transactions FinancialTransaction[]
 
   @@index([tenant_id, phone])
   @@index([stage])
@@ -469,6 +473,9 @@ model LegalCase {
   court            String?
   action_type      String? // Tipo de ação (Reclamatória Trabalhista, Indenizatória, etc.)
   claim_value      Decimal? // Valor da causa
+  sentence_value   Decimal? // Valor da condenação (preenchido na EXECUCAO)
+  sentence_date    DateTime? // Data da sentença/acórdão
+  sentence_type    String? // PROCEDENTE, PARCIAL, IMPROCEDENTE, ACORDO
   opposing_party   String? // Parte contrária (nome)
   judge            String? // Juiz/Desembargador
   priority         String    @default("NORMAL") // URGENTE | NORMAL | BAIXA
@@ -487,7 +494,8 @@ model LegalCase {
   documents         CaseDocument[]
   deadlines         CaseDeadline[]
   petitions         CasePetition[]
-  honorarios        CaseHonorario[]
+  honorarios             CaseHonorario[]
+  financial_transactions FinancialTransaction[]
 
   @@index([lawyer_id, stage])
   @@index([lead_id])
@@ -944,16 +952,19 @@ model LegalTemplate {
 }
 
 model CaseHonorario {
-  id                String    @id @default(uuid())
-  tenant_id         String?
-  legal_case_id     String
-  type              String // FIXO, EXITO, MISTO
-  total_value       Decimal
-  installment_count Int       @default(1)
-  contract_date     DateTime?
-  notes             String?
-  created_at        DateTime  @default(now())
-  updated_at        DateTime  @updatedAt
+  id                   String    @id @default(uuid())
+  tenant_id            String?
+  legal_case_id        String
+  type                 String // FIXO, EXITO, MISTO
+  total_value          Decimal
+  success_percentage   Decimal? // Percentual de êxito (ex: 30.00 = 30%)
+  calculated_value     Decimal? // Auto-calculado: sentence_value × percentage / 100
+  status               String    @default("ATIVO") // ATIVO, FINALIZADO, CANCELADO
+  installment_count    Int       @default(1)
+  contract_date        DateTime?
+  notes                String?
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
 
   legal_case LegalCase          @relation(fields: [legal_case_id], references: [id], onDelete: Cascade)
   tenant     Tenant?            @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
@@ -974,7 +985,8 @@ model HonorarioPayment {
   notes          String?
   created_at     DateTime  @default(now())
 
-  honorario CaseHonorario @relation(fields: [honorario_id], references: [id], onDelete: Cascade)
+  honorario             CaseHonorario         @relation(fields: [honorario_id], references: [id], onDelete: Cascade)
+  financial_transaction FinancialTransaction?
 
   @@index([honorario_id, due_date])
   @@index([status])
@@ -1063,4 +1075,63 @@ model AutomationRule {
 
   @@index([tenant_id])
   @@index([trigger, enabled])
+}
+
+// ===============================================
+// Módulo Financeiro — Transações e Categorias
+// ===============================================
+
+model FinancialTransaction {
+  id                   String    @id @default(uuid())
+  tenant_id            String?
+  type                 String // RECEITA, DESPESA
+  category             String // HONORARIO, CONSULTA, CUSTAS_JUDICIAIS, PERICIA, DESLOCAMENTO, ESCRITORIO, OUTRO
+  description          String
+  amount               Decimal
+  date                 DateTime  @default(now()) // data da transação
+  due_date             DateTime? // vencimento (para receitas/despesas futuras)
+  paid_at              DateTime? // quando foi efetivamente pago/recebido
+  payment_method       String? // PIX, BOLETO, CARTAO, DINHEIRO, TRANSFERENCIA
+  status               String    @default("PENDENTE") // PENDENTE, PAGO, CANCELADO
+  reference_id         String? // ID externo (gateway, NFS-e, etc.)
+  notes                String?
+
+  // Vínculos opcionais
+  legal_case_id        String?
+  lead_id              String?
+  lawyer_id            String?
+  honorario_payment_id String?   @unique // 1:1 com HonorarioPayment
+
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
+
+  tenant            Tenant?           @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  legal_case        LegalCase?        @relation(fields: [legal_case_id], references: [id], onDelete: SetNull)
+  lead              Lead?             @relation(fields: [lead_id], references: [id], onDelete: SetNull)
+  lawyer            User?             @relation("FinancialLawyer", fields: [lawyer_id], references: [id], onDelete: SetNull)
+  honorario_payment HonorarioPayment? @relation(fields: [honorario_payment_id], references: [id], onDelete: SetNull)
+
+  @@index([tenant_id, date])
+  @@index([type, status])
+  @@index([legal_case_id])
+  @@index([lead_id])
+  @@index([lawyer_id])
+  @@index([category])
+  @@index([due_date, status])
+}
+
+model FinancialCategory {
+  id         String   @id @default(uuid())
+  tenant_id  String?
+  type       String // RECEITA, DESPESA
+  name       String
+  icon       String?
+  is_default Boolean  @default(false)
+  active     Boolean  @default(true)
+  created_at DateTime @default(now())
+
+  tenant Tenant? @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@unique([tenant_id, name, type])
+  @@index([tenant_id, type])
 }
