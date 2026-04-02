@@ -135,6 +135,12 @@ export class UpdateEventDto {
 
   @IsOptional() @IsString()
   appointment_type_id?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ReminderDto)
+  reminders?: ReminderDto[];
 }
 
 // ─── Appointment Types ────────────────────────────────
