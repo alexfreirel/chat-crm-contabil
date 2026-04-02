@@ -332,8 +332,18 @@ export class PaymentGatewayService {
 
     if (!charge) {
       this.logger.warn(
-        `[WEBHOOK] Cobranca nao encontrada para external_id: ${paymentData.id}`,
+        `[WEBHOOK] Cobranca nao encontrada localmente para external_id: ${paymentData.id} — processando evento mesmo assim`,
       );
+
+      // Mesmo sem registro local, notificar cliente se for DELETED/REFUNDED
+      const mappedStatusNoCharge = ASAAS_STATUS_MAP[paymentData.status] || paymentData.status;
+      if (mappedStatusNoCharge === 'DELETED' || mappedStatusNoCharge === 'REFUNDED' || event === 'PAYMENT_DELETED') {
+        try {
+          await this.notifyClientChargeDeleted(paymentData, { amount: paymentData.value }, mappedStatusNoCharge === 'REFUNDED' ? 'REFUNDED' : 'DELETED');
+        } catch (e: any) {
+          this.logger.warn(`[WEBHOOK] Falha ao notificar cliente (sem registro local): ${e.message}`);
+        }
+      }
       return;
     }
 
