@@ -597,7 +597,12 @@ export class DjenService {
       lead = realLead;
     } else {
       // Opção B: cadastrar novo cliente com nome + telefone
-      const phone = leadPhone!.trim();
+      let phone = leadPhone!.trim().replace(/\D/g, '');
+      // Normalizar: adicionar 55 se necessário, remover 9 extra
+      if (phone.length <= 11) phone = '55' + phone;
+      if (phone.length === 13 && phone.startsWith('55') && phone[4] === '9') {
+        phone = phone.slice(0, 4) + phone.slice(5);
+      }
       const name = leadName!.trim();
       // Verifica se já existe lead com esse telefone no mesmo tenant para evitar duplicatas
       const existingByPhone = await this.prisma.lead.findFirst({
