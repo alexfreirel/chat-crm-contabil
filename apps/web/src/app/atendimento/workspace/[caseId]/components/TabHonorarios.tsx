@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   DollarSign, Loader2, Plus, ChevronDown, ChevronUp,
-  Trash2, Check, Calendar,
+  Trash2, Check, Calendar, CreditCard, Copy, ExternalLink, QrCode,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { showError, showSuccess } from '@/lib/toast';
@@ -355,6 +355,29 @@ function HonorarioCard({
   const [markingId, setMarkingId] = useState<string | null>(null);
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
   const [showAddPayment, setShowAddPayment] = useState(false);
+  const [chargingId, setChargingId] = useState<string | null>(null);
+  const [chargeResult, setChargeResult] = useState<{ paymentId: string; type: string; pixCopyPaste?: string; pixQrCode?: string; boletoUrl?: string; invoiceUrl?: string } | null>(null);
+
+  const handleCreateCharge = async (paymentId: string, billingType: string) => {
+    setChargingId(paymentId);
+    try {
+      const res = await api.post('/payment-gateway/charges', { honorarioPaymentId: paymentId, billingType });
+      const charge = res.data;
+      setChargeResult({
+        paymentId,
+        type: billingType,
+        pixCopyPaste: charge.pix_copy_paste,
+        pixQrCode: charge.pix_qr_code,
+        boletoUrl: charge.boleto_url,
+        invoiceUrl: charge.invoice_url,
+      });
+      showSuccess(`Cobrança ${billingType} gerada!`);
+    } catch (e: any) {
+      showError(e?.response?.data?.message || 'Erro ao gerar cobrança');
+    } finally {
+      setChargingId(null);
+    }
+  };
 
   const paidCount = honorario.payments.filter(p => p.status === 'PAGO').length;
   const totalPayments = honorario.payments.length;
@@ -502,18 +525,30 @@ function HonorarioCard({
                       <td className="text-right">
                         <div className="flex items-center justify-end gap-1">
                           {p.status !== 'PAGO' && (
-                            <button
-                              onClick={() => handleMarkPaid(p.id)}
-                              disabled={markingId === p.id}
-                              className="btn btn-ghost btn-xs text-success"
-                              title="Marcar como pago"
-                            >
-                              {markingId === p.id ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <Check className="h-3 w-3" />
-                              )}
-                            </button>
+                            <>
+                              <div className="dropdown dropdown-end">
+                                <label tabIndex={0} className="btn btn-ghost btn-xs text-primary" title="Gerar cobrança">
+                                  {chargingId === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CreditCard className="h-3 w-3" />}
+                                </label>
+                                <ul tabIndex={0} className="dropdown-content z-[1] menu p-1 shadow-lg bg-base-200 rounded-lg w-32">
+                                  <li><button onClick={() => handleCreateCharge(p.id, 'PIX')} className="text-xs">PIX</button></li>
+                                  <li><button onClick={() => handleCreateCharge(p.id, 'BOLETO')} className="text-xs">Boleto</button></li>
+                                  <li><button onClick={() => handleCreateCharge(p.id, 'CREDIT_CARD')} className="text-xs">Cartão</button></li>
+                                </ul>
+                              </div>
+                              <button
+                                onClick={() => handleMarkPaid(p.id)}
+                                disabled={markingId === p.id}
+                                className="btn btn-ghost btn-xs text-success"
+                                title="Marcar como pago"
+                              >
+                                {markingId === p.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Check className="h-3 w-3" />
+                                )}
+                              </button>
+                            </>
                           )}
                           <button
                             onClick={() => handleDeletePayment(p.id)}
@@ -543,6 +578,52 @@ function HonorarioCard({
               onAdded={() => { setShowAddPayment(false); onRefresh(); }}
               onCancel={() => setShowAddPayment(false)}
             />
+          )}
+
+          {/* Charge result modal (inline) */}
+          {chargeResult && (
+            <div className="mx-3 mb-3 p-4 rounded-lg border-2 border-primary/30 bg-primary/5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold flex items-center gap-2">
+                  {chargeResult.type === 'PIX' ? <QrCode className="h-4 w-4 text-emerald-400" /> : <CreditCard className="h-4 w-4 text-blue-400" />}
+                  Cobrança {chargeResult.type} Gerada
+                </h4>
+                <button onClick={() => setChargeResult(null)} className="btn btn-ghost btn-xs">✕</button>
+              </div>
+
+              {chargeResult.pixCopyPaste && (
+                <div className="space-y-2">
+                  <p className="text-xs text-base-content/60">Código PIX Copia e Cola:</p>
+                  <div className="flex gap-2">
+                    <input
+                      readOnly
+                      value={chargeResult.pixCopyPaste}
+                      className="input input-bordered input-sm flex-1 font-mono text-xs"
+                    />
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(chargeResult.pixCopyPaste!); showSuccess('Copiado!'); }}
+                      className="btn btn-primary btn-sm gap-1"
+                    >
+                      <Copy className="h-3 w-3" /> Copiar
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {chargeResult.boletoUrl && (
+                <a href={chargeResult.boletoUrl} target="_blank" rel="noopener noreferrer"
+                  className="btn btn-primary btn-sm gap-1 w-full">
+                  <ExternalLink className="h-3 w-3" /> Abrir Boleto
+                </a>
+              )}
+
+              {chargeResult.invoiceUrl && (
+                <a href={chargeResult.invoiceUrl} target="_blank" rel="noopener noreferrer"
+                  className="btn btn-ghost btn-sm gap-1 w-full">
+                  <ExternalLink className="h-3 w-3" /> Ver Fatura
+                </a>
+              )}
+            </div>
           )}
 
           {/* Actions */}
