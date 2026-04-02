@@ -39,6 +39,10 @@ export class UpdateLeadDto {
   email?: string;
 
   @IsOptional()
+  @IsString()
+  cpf_cnpj?: string;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   tags?: string[];

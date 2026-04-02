@@ -122,6 +122,13 @@ function formatDateShort(iso: string) {
   return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
+function formatCpfCnpj(v: string): string {
+  const clean = v.replace(/\D/g, '');
+  if (clean.length === 11) return clean.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  if (clean.length === 14) return clean.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+  return v;
+}
+
 function InlineInput({ value, onSave, onCancel, placeholder }: { value: string; onSave: (v: string) => void; onCancel: () => void; placeholder?: string }) {
   const [val, setVal] = useState(value);
   const ref = useRef<HTMLInputElement>(null);
@@ -171,7 +178,7 @@ export function ClientPanel({
   const [loading, setLoading] = useState(true);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [resettingMemory, setResettingMemory] = useState(false);
-  const [editing, setEditing] = useState<'name' | 'email' | null>(null);
+  const [editing, setEditing] = useState<'name' | 'email' | 'cpf_cnpj' | null>(null);
   const [saving, setSaving] = useState(false);
   const [resolvedAgent, setResolvedAgent] = useState<{ id: string; name: string } | null>(null);
   const [resolvedConvId, setResolvedConvId] = useState<string | null>(null);
@@ -354,7 +361,7 @@ export function ClientPanel({
     setDocuments(prev => prev.filter(d => d.messageId !== messageId));
   };
 
-  const saveField = async (field: 'name' | 'email', value: string) => {
+  const saveField = async (field: 'name' | 'email' | 'cpf_cnpj', value: string) => {
     if (!lead) return;
     setSaving(true);
     try {
@@ -461,6 +468,19 @@ export function ClientPanel({
                         <>
                           <span className="truncate">{lead.email || <span className="italic opacity-50">Sem e-mail</span>}</span>
                           <button onClick={() => setEditing('email')} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground shrink-0">
+                            <Pencil size={11} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                    <div className="group flex items-center gap-2 text-[13px] text-muted-foreground min-w-0">
+                      <FileText size={13} className="shrink-0" />
+                      {editing === 'cpf_cnpj' ? (
+                        <InlineInput value={(lead as any).cpf_cnpj || ''} placeholder="000.000.000-00" onSave={v => saveField('cpf_cnpj', v.replace(/\D/g, ''))} onCancel={() => setEditing(null)} />
+                      ) : (
+                        <>
+                          <span className="truncate font-mono text-[12px]">{(lead as any).cpf_cnpj ? formatCpfCnpj((lead as any).cpf_cnpj) : <span className="italic opacity-50">Sem CPF/CNPJ</span>}</span>
+                          <button onClick={() => setEditing('cpf_cnpj')} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground shrink-0">
                             <Pencil size={11} />
                           </button>
                         </>
