@@ -408,7 +408,7 @@ function AgendarAudienciaModal({
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(suggestedDate ? suggestedDate.slice(0, 10) : '');
-  const [time, setTime] = useState(suggestedDate ? (suggestedDate.slice(11, 16) || '09:00') : '09:00');
+  const [time, setTime] = useState(suggestedDate ? (suggestedDate.slice(11, 16) || '07:00') : '07:00');
   const [title, setTitle] = useState('Audiência de Instrução e Julgamento');
   const [location, setLocation] = useState(legalCase.court || '');
   const [saving, setSaving] = useState(false);
@@ -419,9 +419,9 @@ function AgendarAudienciaModal({
     setSaving(true);
     setError(null);
     try {
-      const startAt = `${date}T${time || '09:00'}:00`;
-      const h = parseInt((time || '09:00').split(':')[0]);
-      const m = parseInt((time || '09:00').split(':')[1] || '0');
+      const startAt = `${date}T${time || '07:00'}:00`;
+      const h = parseInt((time || '07:00').split(':')[0]);
+      const m = parseInt((time || '07:00').split(':')[1] || '0');
       const endH = String(h + 1 < 24 ? h + 1 : h).padStart(2, '0');
       const endAt = `${date}T${endH}:${String(m).padStart(2, '0')}:00`;
 
@@ -587,7 +587,7 @@ function AgendarPericiaModal({
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(suggestedDate ? suggestedDate.slice(0, 10) : '');
-  const [time, setTime] = useState(suggestedDate ? (suggestedDate.slice(11, 16) || '09:00') : '09:00');
+  const [time, setTime] = useState(suggestedDate ? (suggestedDate.slice(11, 16) || '07:00') : '07:00');
   const [title, setTitle] = useState('Perícia Médica/Técnica');
   const [location, setLocation] = useState(legalCase.court || '');
   const [perito, setPerito] = useState('');
@@ -600,9 +600,9 @@ function AgendarPericiaModal({
     setSaving(true);
     setError(null);
     try {
-      const startAt = `${date}T${time || '09:00'}:00`;
-      const h = parseInt((time || '09:00').split(':')[0]);
-      const m = parseInt((time || '09:00').split(':')[1] || '0');
+      const startAt = `${date}T${time || '07:00'}:00`;
+      const h = parseInt((time || '07:00').split(':')[0]);
+      const m = parseInt((time || '07:00').split(':')[1] || '0');
       const endH = String(h + 2 < 24 ? h + 2 : h).padStart(2, '0');
       const endAt = `${date}T${endH}:${String(m).padStart(2, '0')}:00`;
       const description = [
@@ -850,7 +850,7 @@ function ProcessoDetailPanel({
   const [allUsers, setAllUsers] = useState<Intern[]>([]);      // todos os usuários do sistema
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<string | null>(null);
-  const [editTaskForm, setEditTaskForm] = useState({ title: '', description: '', date: '', assignee: '' });
+  const [editTaskForm, setEditTaskForm] = useState({ title: '', description: '', date: '', time: '', assignee: '' });
   const [savingTask, setSavingTask] = useState(false);
   const [comments, setComments] = useState<{ id: string; text: string; created_at: string; user: { id: string; name: string } }[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
@@ -1058,10 +1058,12 @@ function ProcessoDetailPanel({
 
   const openEditTask = (task: CaseTask) => {
     const dateVal = task.start_at ? task.start_at.slice(0, 10) : '';
+    const timeVal = task.start_at ? task.start_at.slice(11, 16) || '07:00' : '';
     setEditTaskForm({
       title: task.title,
       description: task.description || '',
       date: dateVal,
+      time: timeVal,
       assignee: task.assigned_user_id || '',
     });
     setEditingTask(task.id);
@@ -1072,7 +1074,9 @@ function ProcessoDetailPanel({
     if (!editTaskForm.title.trim()) return;
     setSavingTask(true);
     try {
-      const startAt = editTaskForm.date ? new Date(editTaskForm.date).toISOString() : undefined;
+      const startAt = editTaskForm.date
+        ? new Date(`${editTaskForm.date}T${editTaskForm.time || '07:00'}:00Z`).toISOString()
+        : undefined;
       await api.patch(`/calendar/events/${taskId}`, {
         title: editTaskForm.title.trim(),
         description: editTaskForm.description.trim() || null,
@@ -1910,7 +1914,7 @@ function ProcessoDetailPanel({
                                     while (days > 0) { base.setUTCDate(base.getUTCDate() + 1); if (base.getUTCDay() !== 0 && base.getUTCDay() !== 6) days--; }
                                     return `${base.getUTCFullYear()}-${pad(base.getUTCMonth()+1)}-${pad(base.getUTCDate())}`;
                                   })();
-                                  const defaultTime = isoFromAi ? isoFromAi.slice(11, 16) || '09:00' : '09:00';
+                                  const defaultTime = isoFromAi ? isoFromAi.slice(11, 16) || '07:00' : '07:00';
                                   const defaultPriority = analysis.urgencia === 'URGENTE' ? 'ALTA' : analysis.urgencia === 'BAIXA' ? 'BAIXA' : 'NORMAL';
                                   return (
                                     <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-2.5 space-y-2">
@@ -2244,7 +2248,7 @@ function ProcessoDetailPanel({
                             className="w-full px-3 py-2 text-[12px] bg-card border border-border rounded-lg focus:outline-none resize-none"
                             placeholder="Descrição (opcional)"
                           />
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-3 gap-2">
                             <select
                               value={editTaskForm.assignee}
                               onChange={e => setEditTaskForm(f => ({ ...f, assignee: e.target.value }))}
@@ -2257,6 +2261,12 @@ function ProcessoDetailPanel({
                               type="date"
                               value={editTaskForm.date}
                               onChange={e => setEditTaskForm(f => ({ ...f, date: e.target.value }))}
+                              className="px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none"
+                            />
+                            <input
+                              type="time"
+                              value={editTaskForm.time}
+                              onChange={e => setEditTaskForm(f => ({ ...f, time: e.target.value }))}
                               className="px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none"
                             />
                           </div>
