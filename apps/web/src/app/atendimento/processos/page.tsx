@@ -1890,12 +1890,14 @@ function ProcessoDetailPanel({
                                   // sem criar objetos Date — assim evitamos conversão de fuso (UTC-3 do browser).
                                   const pad = (n: number) => String(n).padStart(2, '0');
                                   const isoFromAi = (() => {
-                                    if (analysis.event_type === 'AUDIENCIA' && analysis.data_audiencia) return analysis.data_audiencia;
+                                    if ((analysis.event_type === 'AUDIENCIA' || analysis.event_type === 'PERICIA') && analysis.data_audiencia) return analysis.data_audiencia;
                                     if (analysis.event_type === 'PRAZO' && analysis.data_prazo) return analysis.data_prazo;
                                     return null;
                                   })();
                                   const defaultDate = (() => {
                                     if (isoFromAi) return isoFromAi.slice(0, 10); // "YYYY-MM-DD"
+                                    // Perícia sem data explícita: deixa em branco para o usuário preencher
+                                    if (analysis.event_type === 'PERICIA') return '';
                                     // fallback: data da publicação + prazo_dias úteis (usa UTC pois pub.data_disponibilizacao é ISO)
                                     const base = new Date(pub.data_disponibilizacao);
                                     let days = analysis.prazo_dias > 0 ? analysis.prazo_dias : 0;
