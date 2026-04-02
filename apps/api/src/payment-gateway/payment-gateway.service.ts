@@ -335,8 +335,10 @@ export class PaymentGatewayService {
         `[WEBHOOK] Cobranca nao encontrada localmente para external_id: ${paymentData.id} — processando evento mesmo assim`,
       );
 
-      // Mesmo sem registro local, notificar cliente se for DELETED/REFUNDED
+      // Mesmo sem registro local, notificar cliente
       const mappedStatusNoCharge = ASAAS_STATUS_MAP[paymentData.status] || paymentData.status;
+
+      // Notificar exclusão/estorno
       if (mappedStatusNoCharge === 'DELETED' || mappedStatusNoCharge === 'REFUNDED' || event === 'PAYMENT_DELETED') {
         try {
           await this.notifyClientChargeDeleted(paymentData, { amount: paymentData.value }, mappedStatusNoCharge === 'REFUNDED' ? 'REFUNDED' : 'DELETED');
@@ -344,6 +346,16 @@ export class PaymentGatewayService {
           this.logger.warn(`[WEBHOOK] Falha ao notificar cliente (sem registro local): ${e.message}`);
         }
       }
+
+      // Notificar pagamento confirmado
+      if (mappedStatusNoCharge === 'RECEIVED' || mappedStatusNoCharge === 'CONFIRMED' || event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_CONFIRMED') {
+        try {
+          await this.notifyClientPaymentReceived(paymentData, { amount: paymentData.value });
+        } catch (e: any) {
+          this.logger.warn(`[WEBHOOK] Falha ao notificar cliente sobre pagamento (sem registro local): ${e.message}`);
+        }
+      }
+
       return;
     }
 
