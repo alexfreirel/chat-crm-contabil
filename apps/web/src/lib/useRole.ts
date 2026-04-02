@@ -26,10 +26,19 @@ export function useRole(): RoleInfo {
     if (typeof window === 'undefined') return buildInfo(null, null);
     try {
       const token = localStorage.getItem('token');
-      if (!token) return buildInfo(null, null);
-      const payload = JSON.parse(atob(token.split('.')[1]));
+      if (!token) {
+        console.warn('[useRole] Sem token no localStorage — role=null');
+        return buildInfo(null, null);
+      }
+      // JWT base64url → base64 standard para atob()
+      const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(b64));
+      if (!payload?.role) {
+        console.warn('[useRole] Token decodificado mas sem role:', payload);
+      }
       return buildInfo(payload?.role ?? null, payload?.sub ?? null);
-    } catch {
+    } catch (e) {
+      console.error('[useRole] ERRO ao decodificar token:', e);
       return buildInfo(null, null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

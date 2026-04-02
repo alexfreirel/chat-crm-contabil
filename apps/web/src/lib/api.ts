@@ -7,9 +7,11 @@ const api = axios.create({
 // ─── Helpers de token ────────────────────────────────────────────────────────
 
 /** Decodifica o payload do JWT (sem verificar assinatura — só para leitura local) */
-function decodeTokenPayload(token: string): { exp?: number } | null {
+function decodeTokenPayload(token: string): { exp?: number; role?: string; sub?: string } | null {
   try {
-    return JSON.parse(atob(token.split('.')[1]));
+    // JWT usa base64url — converter para base64 standard para atob()
+    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(b64));
   } catch {
     return null;
   }
@@ -27,6 +29,20 @@ function triggerLogout(reason: 'expired' | 'unauthorized') {
   if (typeof window === 'undefined') return;
   if (_redirectingToLogin) return;
   _redirectingToLogin = true;
+  const stack = new Error().stack;
+  console.error(`[AUTH-LOGOUT] ❌ triggerLogout chamado: reason=${reason}`, { stack });
+  const token = localStorage.getItem('token');
+  if (token) {
+    const payload = decodeTokenPayload(token);
+    console.error(`[AUTH-LOGOUT] Token info:`, {
+      exists: true,
+      exp: payload?.exp ? new Date(payload.exp * 1000).toISOString() : 'N/A',
+      now: new Date().toISOString(),
+      isExpired: payload?.exp ? payload.exp * 1000 < Date.now() : 'unknown',
+    });
+  } else {
+    console.error(`[AUTH-LOGOUT] Token NÃO existe no localStorage`);
+  }
   localStorage.removeItem('token');
   window.dispatchEvent(new CustomEvent('auth:logout', { detail: { reason } }));
   setTimeout(() => { _redirectingToLogin = false; }, 10_000);
