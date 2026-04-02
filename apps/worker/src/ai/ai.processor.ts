@@ -1191,6 +1191,40 @@ export class AiProcessor extends WorkerHost {
         }
       }
 
+      // ── Próximos eventos do calendário do lead — perícias, audiências, prazos ──
+      let upcomingEventsBlock = '';
+      try {
+        const upcomingEvents = await this.prisma.calendarEvent.findMany({
+          where: {
+            lead_id: convo.lead_id,
+            start_at: { gte: new Date() },
+            status: { notIn: ['CANCELADO', 'CONCLUIDO'] },
+          },
+          orderBy: { start_at: 'asc' },
+          take: 5,
+          select: { type: true, title: true, start_at: true, location: true, description: true },
+        });
+        if (upcomingEvents.length > 0) {
+          const TYPE_LABEL: Record<string, string> = {
+            AUDIENCIA: '⚖️ Audiência', PERICIA: '🔬 Perícia', PRAZO: '⏰ Prazo',
+            CONSULTA: '📞 Consulta', TAREFA: '✅ Tarefa', OUTRO: '📅 Evento',
+          };
+          const lines = upcomingEvents.map(e => {
+            const dt = e.start_at;
+            const dateStr = `${String(dt.getUTCDate()).padStart(2,'0')}/${String(dt.getUTCMonth()+1).padStart(2,'0')}/${dt.getUTCFullYear()} ${String(dt.getUTCHours()).padStart(2,'0')}:${String(dt.getUTCMinutes()).padStart(2,'0')}`;
+            const label = TYPE_LABEL[e.type] || e.type;
+            return `- ${label}: ${e.title} | ${dateStr}${e.location ? ` | Local: ${e.location}` : ''}${e.description ? ` | ${e.description.slice(0,100)}` : ''}`;
+          });
+          upcomingEventsBlock =
+            `\n═══════════════════════════════════════════════════\n` +
+            `📅 PRÓXIMOS EVENTOS DO CLIENTE (use para responder dúvidas sobre data/horário):\n` +
+            lines.join('\n') + '\n' +
+            `═══════════════════════════════════════════════════\n`;
+        }
+      } catch (e: any) {
+        this.logger.warn(`[AI] Falha ao buscar próximos eventos: ${e.message}`);
+      }
+
       // ── Reminder context — injeta aviso se cliente está respondendo a um lembrete recente ──
       let reminderContextBlock = '';
       const reminderCtx = (convo as any).reminder_context as any;
@@ -1237,6 +1271,7 @@ export class AiProcessor extends WorkerHost {
         ficha_status: fichaStatus,
         available_slots: availableSlots,
         reminder_context: reminderContextBlock,
+        upcoming_events: upcomingEventsBlock,
       };
 
       // Cabeçalho fixo de capacidades — injetado antes de qualquer skill prompt
@@ -1257,6 +1292,7 @@ MEMÓRIA DO LEAD (tudo que já foi coletado sobre este cliente):
 {{lead_memory}}
 ═══════════════════════════════════════════════════
 {{reminder_context}}
+{{upcoming_events}}
 REGRA CRÍTICA — PROIBIDO REPETIR PERGUNTAS:
 - O histórico COMPLETO da conversa está nos turns acima (user/assistant). LEIA TUDO antes de responder.
 - A MEMÓRIA DO LEAD acima contém TODOS os fatos já extraídos de conversas anteriores.
