@@ -166,11 +166,12 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string; borderColo
 };
 
 const EVENT_TYPES = [
-  { id: 'PUBLICACAO', label: 'Publicação', color: '#3b82f6' },
-  { id: 'DESPACHO', label: 'Despacho', color: '#8b5cf6' },
-  { id: 'DECISAO', label: 'Decisão', color: '#ef4444' },
-  { id: 'AUDIENCIA', label: 'Audiência', color: '#f59e0b' },
-  { id: 'NOTA', label: 'Nota Interna', color: '#6b7280' },
+  { id: 'PUBLICACAO', label: 'Publicação',        color: '#3b82f6' },
+  { id: 'DESPACHO',   label: 'Despacho',          color: '#8b5cf6' },
+  { id: 'DECISAO',    label: 'Decisão',           color: '#ef4444' },
+  { id: 'AUDIENCIA',  label: 'Audiência',         color: '#f59e0b' },
+  { id: 'PERICIA',    label: 'Perícia',           color: '#0ea5e9' },
+  { id: 'NOTA',       label: 'Nota Interna',      color: '#6b7280' },
 ];
 
 const TASK_STATUSES = [
@@ -554,6 +555,219 @@ function AgendarAudienciaModal({
             className="flex items-center gap-1.5 text-[12px] font-bold px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-500/90 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {saving ? <Loader2 size={12} className="animate-spin" /> : <Calendar size={12} />}
+            {saving ? 'Agendando…' : 'Agendar e Mover'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AgendarPericiaModal ──────────────────────────────────────
+// Exibido quando o usuário move um card para PERICIA_AGENDADA.
+
+function AgendarPericiaModal({
+  legalCase,
+  suggestedDate,
+  onScheduled,
+  onSkip,
+  onCancel,
+}: {
+  legalCase: LegalCase;
+  suggestedDate?: string | null;
+  onScheduled: () => void;
+  onSkip: () => void;
+  onCancel: () => void;
+}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [date, setDate] = useState(suggestedDate ? suggestedDate.slice(0, 10) : '');
+  const [time, setTime] = useState(suggestedDate ? (suggestedDate.slice(11, 16) || '09:00') : '09:00');
+  const [title, setTitle] = useState('Perícia Médica/Técnica');
+  const [location, setLocation] = useState(legalCase.court || '');
+  const [perito, setPerito] = useState('');
+  const [obs, setObs] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    if (!date) { setError('Informe a data da perícia para continuar.'); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const startAt = `${date}T${time || '09:00'}:00`;
+      const h = parseInt((time || '09:00').split(':')[0]);
+      const m = parseInt((time || '09:00').split(':')[1] || '0');
+      const endH = String(h + 2 < 24 ? h + 2 : h).padStart(2, '0');
+      const endAt = `${date}T${endH}:${String(m).padStart(2, '0')}:00`;
+      const description = [
+        perito ? `Perito: ${perito}` : '',
+        obs ? `Observações: ${obs}` : '',
+      ].filter(Boolean).join('\n');
+
+      await api.post('/calendar/events', {
+        type: 'PERICIA',
+        title: title.trim() || 'Perícia',
+        start_at: startAt,
+        end_at: endAt,
+        legal_case_id: legalCase.id,
+        lead_id: legalCase.lead_id,
+        location: location.trim() || undefined,
+        description: description || undefined,
+        priority: 'URGENTE',
+        reminders: [
+          { minutes_before: 1440, channel: 'WHATSAPP' },
+          { minutes_before: 120, channel: 'WHATSAPP' },
+        ],
+      });
+      onScheduled();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'Erro ao agendar. Tente novamente.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative z-10 w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-border bg-sky-500/5">
+          <div className="w-9 h-9 rounded-xl bg-sky-500/15 flex items-center justify-center shrink-0">
+            <span className="text-[18px]">🔬</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-bold text-foreground">Agendar Perícia</p>
+            <p className="text-[11px] text-sky-400/80 mt-0.5">
+              Registre data, local e perito designado
+            </p>
+          </div>
+          <button onClick={onCancel} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent">
+            <X size={14} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-5 py-4 space-y-4">
+          {/* Info do processo */}
+          <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-accent/30 border border-border text-[12px] text-muted-foreground">
+            <Scale size={12} className="shrink-0" />
+            <span className="truncate font-mono">{legalCase.case_number || 'Processo sem número'}</span>
+            <span className="shrink-0">·</span>
+            <span className="truncate">{legalCase.lead?.name || 'Sem cliente'}</span>
+          </div>
+
+          {/* Tipo de perícia */}
+          <div>
+            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+              Tipo de Perícia
+            </label>
+            <input
+              type="text"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              className="w-full text-[12px] bg-background border border-border rounded-xl px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+              placeholder="Ex: Perícia Médica, Perícia Contábil…"
+            />
+          </div>
+
+          {/* Data + Hora */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                Data *
+              </label>
+              <input
+                type="date"
+                value={date}
+                min={today}
+                onChange={e => setDate(e.target.value)}
+                className="w-full text-[12px] bg-background border border-border rounded-xl px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                Hora
+              </label>
+              <input
+                type="time"
+                value={time}
+                onChange={e => setTime(e.target.value)}
+                className="w-full text-[12px] bg-background border border-border rounded-xl px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+              />
+            </div>
+          </div>
+
+          {/* Local */}
+          <div>
+            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+              Local / Endereço
+            </label>
+            <input
+              type="text"
+              value={location}
+              onChange={e => setLocation(e.target.value)}
+              placeholder="Ex: Fórum, clínica, endereço do perito"
+              className="w-full text-[12px] bg-background border border-border rounded-xl px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+            />
+          </div>
+
+          {/* Perito */}
+          <div>
+            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+              Nome do Perito (opcional)
+            </label>
+            <input
+              type="text"
+              value={perito}
+              onChange={e => setPerito(e.target.value)}
+              placeholder="Nome do perito designado"
+              className="w-full text-[12px] bg-background border border-border rounded-xl px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+            />
+          </div>
+
+          {/* Observações */}
+          <div>
+            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+              Observações (opcional)
+            </label>
+            <textarea
+              value={obs}
+              onChange={e => setObs(e.target.value)}
+              rows={2}
+              placeholder="Documentos a levar, orientações ao cliente…"
+              className="w-full text-[12px] bg-background border border-border rounded-xl px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-sky-500/40 resize-none"
+            />
+          </div>
+
+          {error && (
+            <p className="text-[12px] text-red-400 flex items-center gap-1.5">
+              <AlertTriangle size={11} /> {error}
+            </p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center gap-2 px-5 py-4 border-t border-border">
+          <button
+            onClick={onSkip}
+            className="text-[11px] font-medium text-muted-foreground hover:text-foreground px-3 py-2 rounded-xl border border-border hover:bg-accent transition-colors"
+          >
+            Pular por agora
+          </button>
+          <div className="flex-1" />
+          <button
+            onClick={onCancel}
+            className="text-[12px] font-semibold px-4 py-2 rounded-xl border border-border text-muted-foreground hover:bg-accent transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !date}
+            className="flex items-center gap-1.5 text-[12px] font-bold px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-500/90 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {saving ? <Loader2 size={12} className="animate-spin" /> : <span>🔬</span>}
             {saving ? 'Agendando…' : 'Agendar e Mover'}
           </button>
         </div>
@@ -2778,6 +2992,13 @@ function ProcessosPageContent() {
     suggestedDate?: string | null;
   } | null>(null);
 
+  // Mover para PERICIA_AGENDADA abre modal de perícia
+  const [pendingMoveToPericia, setPendingMoveToPericia] = useState<{
+    legalCase: LegalCase;
+    targetStage: string;
+    suggestedDate?: string | null;
+  } | null>(null);
+
   // (DJEN movido para /atendimento/djen)
 
   // Board pan
@@ -2855,6 +3076,23 @@ function ProcessosPageContent() {
   };
 
   const moveCase = async (caseId: string, newTrackingStage: string) => {
+    // PERICIA_AGENDADA — abre modal para agendar perícia
+    if (newTrackingStage === 'PERICIA_AGENDADA') {
+      const lc = cases.find(c => c.id === caseId);
+      let suggestedDate: string | null = null;
+      try {
+        const res = await api.get('/calendar/events', {
+          params: { type: 'PERICIA', legalCaseId: caseId, showAll: 'true' },
+        });
+        const events: any[] = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+        if (events.length > 0 && events[0]?.start_at) suggestedDate = events[0].start_at;
+      } catch { /* permite mover mesmo sem eventos */ }
+      if (lc) {
+        setPendingMoveToPericia({ legalCase: lc, targetStage: newTrackingStage, suggestedDate });
+        return;
+      }
+    }
+
     // INSTRUCAO exige audiência cadastrada no calendário
     if (newTrackingStage === 'INSTRUCAO') {
       const lc = cases.find(c => c.id === caseId);
@@ -3234,6 +3472,25 @@ function ProcessosPageContent() {
           </div>
         )}
       </main>
+
+      {/* Modal: Agendar Perícia (ao mover para PERICIA_AGENDADA) */}
+      {pendingMoveToPericia && (
+        <AgendarPericiaModal
+          legalCase={pendingMoveToPericia.legalCase}
+          suggestedDate={pendingMoveToPericia.suggestedDate}
+          onScheduled={() => {
+            const { legalCase: lc, targetStage } = pendingMoveToPericia;
+            setPendingMoveToPericia(null);
+            executeMoveCase(lc.id, targetStage);
+          }}
+          onSkip={() => {
+            const { legalCase: lc, targetStage } = pendingMoveToPericia;
+            setPendingMoveToPericia(null);
+            executeMoveCase(lc.id, targetStage);
+          }}
+          onCancel={() => setPendingMoveToPericia(null)}
+        />
+      )}
 
       {/* Modal: Agendar Audiência (bloqueio ao mover para INSTRUCAO) */}
       {pendingMoveToInstrucao && (

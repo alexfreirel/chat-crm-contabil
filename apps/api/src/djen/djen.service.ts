@@ -314,8 +314,52 @@ export class DjenService {
                 `[DJEN] Tarefa automática criada para processo ${numeroProcesso}: "${classification.taskTitle}"`,
               );
 
-              // ── Se for publicação de audiência, tentar criar evento no calendário ──
+              // ── Se for publicação de perícia, tentar criar evento no calendário ──
               const pubText = [tipoComunicacao, assunto, conteudo].join(' ').toLowerCase();
+              if (/perí?cia|laudo pericial|perito designado/.test(pubText)) {
+                try {
+                  const periciaDate = extractHearingDateTime(conteudo);
+                  if (periciaDate) {
+                    const existingPericia = await this.prisma.calendarEvent.findFirst({
+                      where: {
+                        legal_case_id: legalCase.id,
+                        type: 'PERICIA',
+                        start_at: {
+                          gte: new Date(periciaDate.getTime() - 86400000),
+                          lte: new Date(periciaDate.getTime() + 86400000),
+                        },
+                      },
+                      select: { id: true },
+                    });
+                    if (!existingPericia) {
+                      const endDate = new Date(periciaDate.getTime() + 120 * 60000); // +2h
+                      await this.calendarService.create({
+                        type: 'PERICIA',
+                        title: `[DJEN] Perícia — ${numeroProcesso}`,
+                        description: `Perícia detectada automaticamente via DJEN.\n${assunto || ''}`,
+                        start_at: periciaDate.toISOString(),
+                        end_at: endDate.toISOString(),
+                        assigned_user_id: legalCase.lawyer_id,
+                        legal_case_id: legalCase.id,
+                        created_by_id: legalCase.lawyer_id,
+                        tenant_id: legalCase.tenant_id || undefined,
+                        priority: 'URGENTE',
+                        reminders: [
+                          { minutes_before: 1440, channel: 'WHATSAPP' },
+                          { minutes_before: 120, channel: 'WHATSAPP' },
+                        ],
+                      });
+                      this.logger.log(
+                        `[DJEN] Perícia automática criada: ${periciaDate.toISOString()} (caso ${legalCase.id})`,
+                      );
+                    }
+                  }
+                } catch (e: any) {
+                  this.logger.warn(`[DJEN] Falha ao criar perícia automática: ${e.message}`);
+                }
+              }
+
+              // ── Se for publicação de audiência, tentar criar evento no calendário ──
               if (/audiência|audiencia|designada|designando/.test(pubText)) {
                 try {
                   const hearingDate = extractHearingDateTime(conteudo);

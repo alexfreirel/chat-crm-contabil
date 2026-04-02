@@ -67,6 +67,18 @@ function templateAdvogado(event: any, minutesBefore: number): string {
       `\n_Lembrete automático do CRM Jurídico_`
     );
   }
+  if (tipo === 'PERICIA') {
+    return (
+      `🔬 *Lembrete de Perícia — ${prazo} antes*\n\n` +
+      `Olá, ${advNome}!\n\n` +
+      `📋 *Processo:* ${caseNum}\n` +
+      `📅 *Data/Hora:* ${dateStr}\n` +
+      (event.location ? `📍 *Local:* ${event.location}\n` : '') +
+      (event.lead?.name ? `👤 *Cliente:* ${event.lead.name}\n` : '') +
+      (event.description ? `📝 *Obs:* ${event.description}\n` : '') +
+      `\n_Lembrete automático do CRM Jurídico_`
+    );
+  }
   if (tipo === 'PRAZO') {
     return (
       `⏰ *Lembrete de Prazo — ${prazo} restantes*\n\n` +
@@ -283,7 +295,7 @@ export class CalendarReminderWorker extends WorkerHost {
   // ─── Orquestra os envios ──────────────────────────────────────────────────
 
   private async sendWhatsAppReminders(event: any, minutesBefore: number) {
-    const isAudiencia = event.type === 'AUDIENCIA';
+    const isAudiencia = event.type === 'AUDIENCIA' || event.type === 'PERICIA';
 
     // Carrega contexto adicional do cliente (memória + ficha + publicações DJEN)
     const leadId = event.lead?.id;
@@ -626,6 +638,7 @@ Gere APENAS a mensagem final para WhatsApp, sem explicações.`;
     const prazo = minutesLabel(minutesBefore);
     const firstName = (event.lead?.name || 'Cliente').split(' ')[0];
 
+    const isPericia = event.type === 'PERICIA';
     const systemPrompt = `Você é o assistente virtual do escritório de advocacia André Lustosa Advogados.
 Sua função é enviar lembretes personalizados e humanizados via WhatsApp para os clientes.
 
@@ -636,9 +649,10 @@ REGRAS IMPORTANTES:
 - Personalize com base no histórico e contexto do caso
 - NÃO invente informações — use apenas o que está no contexto fornecido
 - NÃO mencione valores monetários a menos que estejam explicitamente no contexto
-- Se o caso for trabalhista, mencione a importância da audiência para o direito do cliente
+${isPericia
+  ? '- Para perícia: oriente o cliente a chegar com 15 min de antecedência, levar documentos pessoais e laudos médicos se houver, e cooperar plenamente com o perito'
+  : '- Se o caso for trabalhista, mencione a importância da audiência para o direito do cliente\n- Sempre oriente a chegar com antecedência (30 min)'}
 - Sempre indique o horário e local de forma clara
-- Sempre oriente a chegar com antecedência (30 min)
 - Finalize sinalizando disponibilidade para dúvidas
 - Limite: máximo 250 palavras
 - NÃO use assinatura longa — apenas "_André Lustosa Advogados_" no final`;

@@ -113,10 +113,11 @@ function agingBorderClass(days: number, stage: string): string {
 
 const EVENT_TYPE_EMOJI: Record<string, string> = {
   AUDIENCIA: '⚖️',
-  PRAZO: '⏰',
-  CONSULTA: '📞',
-  TAREFA: '✓',
-  OUTRO: '📅',
+  PERICIA:   '🔬',
+  PRAZO:     '⏰',
+  CONSULTA:  '📞',
+  TAREFA:    '✓',
+  OUTRO:     '📅',
 };
 
 function eventDaysUntil(startAt: string): number {
