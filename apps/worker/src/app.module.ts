@@ -9,6 +9,7 @@ import { AiModule } from './ai/ai.module';
 import { ReminderModule } from './reminder/reminder.module';
 import { FollowupModule } from './followup/followup.module';
 import { PaymentAlertsModule } from './payment/payment-alerts.module';
+import { TaskAlertsModule } from './task/task-alerts.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { PaymentAlertsModule } from './payment/payment-alerts.module';
     ReminderModule,
     FollowupModule,
     PaymentAlertsModule,
+    TaskAlertsModule,
   ],
 })
 export class AppModule {}
