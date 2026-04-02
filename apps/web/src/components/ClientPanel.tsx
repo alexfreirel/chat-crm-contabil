@@ -5,6 +5,7 @@ import { Search, User, Phone, Loader2, X, MessageSquare, Calendar, Brain, Chevro
 import FichaTrabalhista from '@/components/FichaTrabalhista';
 import { useRouter } from 'next/navigation';
 import api, { getMediaUrl } from '@/lib/api';
+import { showError } from '@/lib/toast';
 import { formatPhone } from '@/lib/utils';
 
 interface LeadDetail {
