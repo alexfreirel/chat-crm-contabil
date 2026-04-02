@@ -45,9 +45,10 @@ export class AsaasClient {
     const sandboxStr = await this.settingsService.get('asaas_sandbox');
     const sandbox = sandboxStr === 'true';
 
+    // Docs: https://docs.asaas.com/docs/authentication-2
     const baseUrl = sandbox
-      ? 'https://sandbox.asaas.com/api/v3'
-      : 'https://api.asaas.com/api/v3';
+      ? 'https://api-sandbox.asaas.com/v3'
+      : 'https://api.asaas.com/v3';
 
     return { apiKey: apiKey || '', baseUrl, sandbox };
   }
@@ -82,6 +83,7 @@ export class AsaasClient {
           headers: {
             access_token: config.apiKey,
             'Content-Type': 'application/json',
+            'User-Agent': 'LexCRM/1.0',  // Obrigatório desde Nov/2024
           },
           timeout: 30000,
         });
