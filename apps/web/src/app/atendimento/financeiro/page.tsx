@@ -761,6 +761,7 @@ const CHARGE_STATUS_MAP: Record<string, { label: string; color: string; dot: str
   PENDING: { label: 'Aguardando pagamento', color: 'text-amber-400 bg-amber-400/10 border-amber-400/20', dot: 'bg-amber-400' },
   RECEIVED: { label: 'Recebida', color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20', dot: 'bg-emerald-400' },
   CONFIRMED: { label: 'Confirmada', color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20', dot: 'bg-emerald-400' },
+  RECEIVED_IN_CASH: { label: 'Recebida em dinheiro', color: 'text-teal-400 bg-teal-400/10 border-teal-400/20', dot: 'bg-teal-400' },
   OVERDUE: { label: 'Vencida', color: 'text-red-400 bg-red-400/10 border-red-400/20', dot: 'bg-red-400' },
   REFUNDED: { label: 'Estornada', color: 'text-purple-400 bg-purple-400/10 border-purple-400/20', dot: 'bg-purple-400' },
   DELETED: { label: 'Removida', color: 'text-gray-400 bg-gray-400/10 border-gray-400/20', dot: 'bg-gray-500' },
@@ -779,6 +780,7 @@ const STATUS_FILTERS = [
   { id: 'OVERDUE', label: 'Vencida' },
   { id: 'RECEIVED', label: 'Recebida' },
   { id: 'CONFIRMED', label: 'Confirmada' },
+  { id: 'RECEIVED_IN_CASH', label: 'Recebida em dinheiro' },
   { id: 'REFUNDED', label: 'Estornada' },
 ];
 
