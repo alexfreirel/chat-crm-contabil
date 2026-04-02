@@ -784,8 +784,6 @@ export class LegalCasesService {
     // Recalcular honorários de êxito quando sentence_value é preenchido
     if (extraData.sentence_value) {
       try {
-        const { HonorariosService } = await import('../honorarios/honorarios.service');
-        // Dynamic import para evitar circular dependency — recalcula no próprio Prisma
         const exitoHonorarios = await this.prisma.caseHonorario.findMany({
           where: { legal_case_id: id, type: { in: ['EXITO', 'MISTO'] }, success_percentage: { not: null }, status: 'ATIVO' },
         });
