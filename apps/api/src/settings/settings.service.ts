@@ -1128,7 +1128,7 @@ Você prepara o caso. O advogado decide.
         if (existing) {
           await (this.prisma as any).promptSkill.update({
             where: { id: existing.id },
-            data: { system_prompt: s.system_prompt, max_tokens: s.max_tokens, model: s.model, temperature: s.temperature },
+            data: { system_prompt: s.system_prompt },
           });
         } else {
           await (this.prisma as any).promptSkill.create({ data: s });
