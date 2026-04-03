@@ -20,7 +20,7 @@ import {
   Search,
 } from 'lucide-react';
 import Image from 'next/image';
-import { FICHA_SECTIONS, type FichaField, getEmptyFormData } from '@/lib/fichaTrabalhistaFields';
+import { FICHA_SECTIONS, REQUIRED_FIELD_KEYS, type FichaField, getEmptyFormData } from '@/lib/fichaTrabalhistaFields';
 import api, { API_BASE_URL } from '@/lib/api';
 
 // ─── Formatters ─────────────────────────────────────────────────
@@ -284,6 +284,32 @@ export default function FichaTrabalhista({
 
   const handleFinalize = useCallback(async () => {
     if (finalizado || finalizing) return;
+
+    // Validar campos obrigatórios antes de finalizar
+    const missing: { key: string; label: string; sectionId: string }[] = [];
+    for (const section of FICHA_SECTIONS) {
+      for (const field of section.fields) {
+        if (field.required) {
+          const val = formData[field.key];
+          if (!val || val.trim() === '') {
+            missing.push({ key: field.key, label: field.label, sectionId: section.id });
+          }
+        }
+      }
+    }
+
+    if (missing.length > 0) {
+      // Abrir seções com campos faltantes para o usuário ver
+      const sectionsToOpen: Record<string, boolean> = {};
+      missing.forEach((m) => { sectionsToOpen[m.sectionId] = true; });
+      setOpenSections((prev) => ({ ...prev, ...sectionsToOpen }));
+
+      const fieldNames = missing.slice(0, 5).map((m) => m.label).join(', ');
+      const extra = missing.length > 5 ? ` e mais ${missing.length - 5} campo(s)` : '';
+      setSaveError(`Preencha os campos obrigatórios antes de finalizar: ${fieldNames}${extra}`);
+      return;
+    }
+
     setFinalizing(true);
     setSaveError(null);
     try {
@@ -319,7 +345,7 @@ export default function FichaTrabalhista({
     } finally {
       setFinalizing(false);
     }
-  }, [leadId, isPublic, finalizado, finalizing, onFinalize]);
+  }, [leadId, isPublic, finalizado, finalizing, onFinalize, formData]);
 
   // ─── Toggle sections ─────────────────────────────────────────
 
@@ -629,7 +655,7 @@ export default function FichaTrabalhista({
       {!readOnly && !finalizado && (
         <button
           onClick={handleFinalize}
-          disabled={finalizing || completionPct < 10}
+          disabled={finalizing}
           className="w-full py-4 sm:py-3 rounded-xl font-bold text-base sm:text-[14px] transition-colors flex items-center justify-center gap-2
             bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
         >

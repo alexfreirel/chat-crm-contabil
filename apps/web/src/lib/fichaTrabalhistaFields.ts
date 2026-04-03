@@ -157,6 +157,11 @@ export const FICHA_SECTIONS: FichaSection[] = [
   },
 ];
 
+// Lista de keys dos campos obrigatórios (required: true)
+export const REQUIRED_FIELD_KEYS: string[] = FICHA_SECTIONS.flatMap((s) =>
+  s.fields.filter((f) => f.required).map((f) => f.key),
+);
+
 // Default empty form data
 export function getEmptyFormData(): Record<string, string> {
   const data: Record<string, string> = {};

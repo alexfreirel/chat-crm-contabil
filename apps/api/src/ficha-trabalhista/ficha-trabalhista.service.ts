@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { ChatGateway } from '../gateway/chat.gateway';
@@ -6,6 +6,51 @@ import { UpdateFichaDto } from './dto/update-ficha.dto';
 
 // Total de campos úteis do formulário (para cálculo de %)
 const TOTAL_FIELDS = 76;
+
+// Campos obrigatórios para finalização (espelha FICHA_SECTIONS com required: true)
+const REQUIRED_FIELDS: { key: string; label: string }[] = [
+  // Pessoal
+  { key: 'nome_completo', label: 'Nome Completo' },
+  { key: 'cpf', label: 'CPF' },
+  { key: 'data_nascimento', label: 'Data de Nascimento' },
+  { key: 'nome_mae', label: 'Nome da Mãe' },
+  { key: 'estado_civil', label: 'Estado Civil' },
+  { key: 'nacionalidade', label: 'Nacionalidade' },
+  { key: 'profissao', label: 'Profissão' },
+  { key: 'telefone', label: 'Telefone' },
+  { key: 'email', label: 'E-mail' },
+  // Endereço
+  { key: 'cep', label: 'CEP' },
+  { key: 'logradouro', label: 'Logradouro' },
+  { key: 'numero', label: 'Número' },
+  { key: 'bairro', label: 'Bairro' },
+  { key: 'cidade', label: 'Cidade' },
+  { key: 'estado_uf', label: 'UF' },
+  // Contrato
+  { key: 'nome_empregador', label: 'Nome do Empregador' },
+  { key: 'funcao', label: 'Função/Cargo' },
+  { key: 'data_admissao', label: 'Data de Admissão' },
+  { key: 'situacao_atual', label: 'Situação Atual' },
+  { key: 'salario', label: 'Último Salário' },
+  { key: 'periodicidade_pagamento', label: 'Periodicidade' },
+  { key: 'ctps_numero', label: 'Nº CTPS' },
+  { key: 'ctps_assinada_corretamente', label: 'CTPS assinada corretamente?' },
+  { key: 'atividades_realizadas', label: 'Atividades Realizadas' },
+  // Jornada
+  { key: 'horario_entrada', label: 'Horário de Entrada' },
+  { key: 'horario_saida', label: 'Horário de Saída' },
+  { key: 'tempo_intervalo', label: 'Tempo de Intervalo' },
+  { key: 'dias_trabalhados', label: 'Dias Trabalhados' },
+  { key: 'fazia_horas_extras', label: 'Fazia horas extras?' },
+  // Verbas
+  { key: 'fgts_depositado', label: 'FGTS depositado corretamente?' },
+  { key: 'fgts_sacado', label: 'Conseguiu sacar o FGTS?' },
+  { key: 'tem_ferias_pendentes', label: 'Tem férias pendentes?' },
+  { key: 'tem_decimo_terceiro_pendente', label: 'Tem 13º pendente?' },
+  // Provas
+  { key: 'possui_testemunhas', label: 'Possui testemunhas?' },
+  { key: 'possui_provas_documentais', label: 'Possui provas documentais?' },
+];
 
 @Injectable()
 export class FichaTrabalhistaService {
@@ -177,6 +222,19 @@ export class FichaTrabalhistaService {
   async finalize(leadId: string) {
     const existing = await this.findByLeadId(leadId);
     if (!existing) throw new NotFoundException('Ficha não encontrada');
+
+    // Validar campos obrigatórios
+    const data = (existing.data as Record<string, any>) || {};
+    const missing = REQUIRED_FIELDS.filter(
+      (f) => !data[f.key] || String(data[f.key]).trim() === '',
+    );
+    if (missing.length > 0) {
+      const names = missing.slice(0, 5).map((f) => f.label).join(', ');
+      const extra = missing.length > 5 ? ` e mais ${missing.length - 5}` : '';
+      throw new BadRequestException(
+        `Preencha os campos obrigatórios antes de finalizar: ${names}${extra}`,
+      );
+    }
 
     // 1. Marca finalizado
     const ficha = await this.prisma.fichaTrabalhista.update({
