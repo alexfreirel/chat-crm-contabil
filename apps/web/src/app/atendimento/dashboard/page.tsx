@@ -57,6 +57,9 @@ export default function DashboardPage() {
   const velocity = useConversionVelocity(period);
   const teamPerf = useTeamPerformance(period, isAdmin);
 
+  // Dashboard agressivo para ADMIN e OPERADOR
+  const aggressive = isAdmin || isOperador;
+
   // Visibility per role
   const showInbox = isAdmin || isOperador;
   const showFinancials = isAdmin || isAdvogado || isFinanceiro;
@@ -105,100 +108,9 @@ export default function DashboardPage() {
 
   if (!data) return null;
 
-  /* ═══════════════════════════════════════════════════════════════
-     OPERADOR: Layout agressivo focado em performance comercial
-     ═══════════════════════════════════════════════════════════════ */
-  if (isOperador) {
-    return (
-      <div className="h-full overflow-y-auto bg-background">
-        <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-4 pb-28 md:pb-6">
-
-          {/* Row 1: Header + Period Selector */}
-          <MotionWidget>
-            <div className="space-y-3">
-              <DashboardHeader data={data} isAdmin={false} />
-              <PeriodSelector active={period.key} onSelect={setPeriod} onCustomRange={setCustomRange} />
-            </div>
-          </MotionWidget>
-
-          {/* Row 2: Stats Grid Agressivo (8 cards) */}
-          <MotionWidget delay={0.05}>
-            <StatsGrid
-              data={data}
-              isOperador
-              funnel={funnel.data}
-              responseTime={responseTime.data}
-              velocity={velocity.data}
-            />
-          </MotionWidget>
-
-          {/* Row 3: Performance Strip */}
-          <MotionWidget delay={0.08}>
-            <OperatorPerformanceStrip
-              funnel={funnel.data}
-              responseTime={responseTime.data}
-              tasks={tasks.data}
-            />
-          </MotionWidget>
-
-          {/* Row 4: Inbox Stats (full width, com metas) */}
-          {data.inboxStats && (
-            <MotionWidget delay={0.12}>
-              <InboxStats
-                closedToday={data.inboxStats.closedToday}
-                closedThisWeek={data.inboxStats.closedThisWeek}
-                closedThisMonth={data.inboxStats.closedThisMonth}
-                isOperador
-              />
-            </MotionWidget>
-          )}
-
-          {/* Row 5: Lead Funnel + Lead Sources (2 col) */}
-          <MotionWidget delay={0.16}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <LeadFunnelChart data={funnel.data} loading={funnel.loading} />
-              <LeadSourcesChart data={sources.data} loading={sources.loading} />
-            </div>
-          </MotionWidget>
-
-          {/* Row 6: Response Time + Conversion Velocity (2 col) */}
-          <MotionWidget delay={0.2}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <ResponseTimeWidget data={responseTime.data} loading={responseTime.loading} />
-              <ConversionVelocityWidget data={velocity.data} loading={velocity.loading} />
-            </div>
-          </MotionWidget>
-
-          {/* Row 7: Lead Pipeline (full width) */}
-          <MotionWidget delay={0.24}>
-            <LeadPipeline pipeline={data.leadPipeline} />
-          </MotionWidget>
-
-          {/* Row 8: Task Completion (full width) */}
-          <MotionWidget delay={0.28}>
-            <TaskCompletionChart data={tasks.data} loading={tasks.loading} />
-          </MotionWidget>
-
-          {/* Row 9: Upcoming Events (full width) */}
-          <MotionWidget delay={0.32}>
-            <UpcomingEvents events={data.upcomingEvents} />
-          </MotionWidget>
-
-          {/* Row 10: Quick Actions */}
-          <MotionWidget delay={0.36}>
-            <QuickActions roleInfo={roleInfo} />
-          </MotionWidget>
-        </div>
-      </div>
-    );
-  }
-
-  /* ═══════════════════════════════════════════════════════════════
-     DEMAIS ROLES: Layout padrao
-     ═══════════════════════════════════════════════════════════════ */
   return (
     <div className="h-full overflow-y-auto bg-background">
-      <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 pb-28 md:pb-6">
+      <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-4 pb-28 md:pb-6">
 
         {/* Row 1: Header + Period Selector */}
         <MotionWidget>
@@ -208,19 +120,37 @@ export default function DashboardPage() {
           </div>
         </MotionWidget>
 
-        {/* Row 2: Stats Grid */}
+        {/* Row 2: Stats Grid — agressivo (8 cards) para ADMIN/OPERADOR, padrao para demais */}
         <MotionWidget delay={0.05}>
-          <StatsGrid data={data} />
+          <StatsGrid
+            data={data}
+            aggressive={aggressive}
+            funnel={aggressive ? funnel.data : undefined}
+            responseTime={aggressive ? responseTime.data : undefined}
+            velocity={aggressive ? velocity.data : undefined}
+          />
         </MotionWidget>
 
-        {/* Row 3: Inbox + Financial Stats */}
-        <MotionWidget delay={0.1}>
+        {/* Row 3: Performance Strip (ADMIN + OPERADOR) */}
+        {aggressive && (
+          <MotionWidget delay={0.08}>
+            <OperatorPerformanceStrip
+              funnel={funnel.data}
+              responseTime={responseTime.data}
+              tasks={tasks.data}
+            />
+          </MotionWidget>
+        )}
+
+        {/* Row 4: Inbox Stats (com metas) + Financial Stats */}
+        <MotionWidget delay={0.12}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {showInbox && data.inboxStats && (
               <InboxStats
                 closedToday={data.inboxStats.closedToday}
                 closedThisWeek={data.inboxStats.closedThisWeek}
                 closedThisMonth={data.inboxStats.closedThisMonth}
+                isOperador={aggressive}
               />
             )}
             {showFinancials && (
@@ -231,76 +161,86 @@ export default function DashboardPage() {
           </div>
         </MotionWidget>
 
-        {/* Row 4: Revenue Trend (full width) */}
+        {/* Row 5: Revenue Trend (full width) */}
         {showRevenue && (
           <MotionWidget delay={0.15}>
             <RevenueTrendChart data={revenue.data} loading={revenue.loading} />
           </MotionWidget>
         )}
 
-        {/* Row 5: Lead Funnel + Task Completion */}
-        <MotionWidget delay={0.2}>
+        {/* Row 6: Lead Funnel + Lead Sources (2 col) */}
+        <MotionWidget delay={0.18}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {showFunnel && <LeadFunnelChart data={funnel.data} loading={funnel.loading} />}
-            {showTasks && <TaskCompletionChart data={tasks.data} loading={tasks.loading} />}
+            {showSources ? <LeadSourcesChart data={sources.data} loading={sources.loading} /> : showTasks && <TaskCompletionChart data={tasks.data} loading={tasks.loading} />}
           </div>
         </MotionWidget>
 
-        {/* Row 6: Lead Pipeline (admin/operator) */}
+        {/* Row 7: Response Time + Conversion Velocity (2 col) */}
+        {(showResponse || showVelocity) && (
+          <MotionWidget delay={0.22}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {showResponse && <ResponseTimeWidget data={responseTime.data} loading={responseTime.loading} />}
+              {showVelocity && <ConversionVelocityWidget data={velocity.data} loading={velocity.loading} />}
+            </div>
+          </MotionWidget>
+        )}
+
+        {/* Row 8: Lead Pipeline (full width) */}
         {showPipeline && (
           <MotionWidget delay={0.25}>
             <LeadPipeline pipeline={data.leadPipeline} />
           </MotionWidget>
         )}
 
-        {/* Row 7: Legal Cases Pipeline (2 columns) */}
+        {/* Row 9: Task Completion (se nao foi mostrado acima) */}
+        {showTasks && showSources && (
+          <MotionWidget delay={0.28}>
+            <TaskCompletionChart data={tasks.data} loading={tasks.loading} />
+          </MotionWidget>
+        )}
+
+        {/* Row 10: Legal Cases Pipeline (2 columns) */}
         {showCases && (
           <MotionWidget delay={0.3}>
             <LegalCasesPipeline legalCases={data.legalCases} trackingCases={data.trackingCases} />
           </MotionWidget>
         )}
 
-        {/* Row 8: Case Duration + Financial Aging */}
-        <MotionWidget delay={0.35}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {showCaseDuration && <CaseDurationChart data={caseDuration.data} loading={caseDuration.loading} />}
-            {showAging && <FinancialAgingChart data={aging.data} loading={aging.loading} />}
-          </div>
-        </MotionWidget>
+        {/* Row 11: Case Duration + Financial Aging */}
+        {(showCaseDuration || showAging) && (
+          <MotionWidget delay={0.33}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {showCaseDuration && <CaseDurationChart data={caseDuration.data} loading={caseDuration.loading} />}
+              {showAging && <FinancialAgingChart data={aging.data} loading={aging.loading} />}
+            </div>
+          </MotionWidget>
+        )}
 
-        {/* Row 9: Velocity + Response Time + Lead Sources (3 col) */}
-        <MotionWidget delay={0.4}>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {showVelocity && <ConversionVelocityWidget data={velocity.data} loading={velocity.loading} />}
-            {showResponse && <ResponseTimeWidget data={responseTime.data} loading={responseTime.loading} />}
-            {showSources && <LeadSourcesChart data={sources.data} loading={sources.loading} />}
-          </div>
-        </MotionWidget>
-
-        {/* Row 10: AI Usage (admin) */}
+        {/* Row 12: AI Usage (admin) */}
         {showAi && (
-          <MotionWidget delay={0.45}>
+          <MotionWidget delay={0.36}>
             <AiUsageChart data={aiUsage.data} loading={aiUsage.loading} />
           </MotionWidget>
         )}
 
-        {/* Row 11: Team Performance (admin) — comparacoes agressivas */}
+        {/* Row 13: Team Performance (admin) — comparacoes agressivas */}
         {showTeam && (
-          <MotionWidget delay={0.5}>
+          <MotionWidget delay={0.39}>
             <TeamPerformanceBoard data={teamPerf.data} loading={teamPerf.loading} />
           </MotionWidget>
         )}
 
-        {/* Row 12: Events + DJEN (2 columns) */}
-        <MotionWidget delay={0.55}>
+        {/* Row 14: Events + DJEN (2 columns) */}
+        <MotionWidget delay={0.42}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {showEvents && <UpcomingEvents events={data.upcomingEvents} />}
             {showDjen && <DjenPublications items={data.recentDjen} />}
           </div>
         </MotionWidget>
 
-        {/* Row 13: Quick Actions */}
-        <MotionWidget delay={0.6}>
+        {/* Row 15: Quick Actions */}
+        <MotionWidget delay={0.45}>
           <QuickActions roleInfo={roleInfo} />
         </MotionWidget>
       </div>

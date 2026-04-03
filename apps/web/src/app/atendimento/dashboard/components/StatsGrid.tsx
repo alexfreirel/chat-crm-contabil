@@ -63,7 +63,7 @@ function AggressiveCard({ icon: Icon, label, value, color, sub, trend, trendColo
 
 interface Props {
   data: DashboardData;
-  isOperador?: boolean;
+  aggressive?: boolean;
   funnel?: LeadFunnelData | null;
   responseTime?: ResponseTimeData | null;
   velocity?: ConversionVelocityData | null;
@@ -87,9 +87,9 @@ function conversionColor(rate: number): string {
 
 /* ─── Component ─── */
 
-export function StatsGrid({ data, isOperador, funnel, responseTime, velocity }: Props) {
-  // Default grid for non-operator roles
-  if (!isOperador) {
+export function StatsGrid({ data, aggressive, funnel, responseTime, velocity }: Props) {
+  // Default grid for roles without aggressive dashboard
+  if (!aggressive) {
     return (
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <AggressiveCard
@@ -126,7 +126,7 @@ export function StatsGrid({ data, isOperador, funnel, responseTime, velocity }: 
     );
   }
 
-  // ─── OPERADOR: 8 cards agressivos ───
+  // ─── ADMIN/OPERADOR: 8 cards agressivos ───
   const totalLeads = data.leadPipeline.reduce((s, p) => s + p.count, 0);
   const conversionRate = funnel?.overallConversionRate ?? 0;
   const medianResponse = responseTime?.medianMinutes ?? 0;
