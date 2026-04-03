@@ -156,8 +156,14 @@ export class AiProcessor extends WorkerHost {
     );
   }
 
-  // ─── Substitui variáveis {{var}} no prompt ───
-  // injectVariables removido — agora delegado ao PromptBuilder
+  // ─── Normaliza IDs de modelos (aliases → IDs reais da API) ───
+  private normalizeModelId(model: string): string {
+    const aliases: Record<string, string> = {
+      'claude-haiku-4-5': 'claude-haiku-4-5-20251001',
+      'claude-sonnet-4-5': 'claude-sonnet-4-5-20250514',
+    };
+    return aliases[model] || model;
+  }
 
   // ─── Parseia resposta JSON da IA com fallbacks robustos ───
   private parseAiResponse(raw: string): {
@@ -1350,8 +1356,7 @@ STATUS DA FICHA:
           maxContextTokens: skill.max_context_tokens || 4000,
           vars,
         });
-        model = skill.model || (await this.settings.getDefaultModel());
-        // Trabalhista precisa de mais tokens para o form_data completo; outros usam o padrão do skill
+        model = this.normalizeModelId(skill.model || (await this.settings.getDefaultModel()));
         maxTokens = Math.max(skill.max_tokens || 500, 800);
         temperature = skill.temperature ?? 0.7;
         this.logger.log(
