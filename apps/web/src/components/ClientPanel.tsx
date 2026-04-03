@@ -215,6 +215,10 @@ export function ClientPanel({
   const [addingNote, setAddingNote] = useState(false);
   const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
 
+  // Histórico de transferências
+  const [transfersOpen, setTransfersOpen] = useState(false);
+  const [transfers, setTransfers] = useState<{ id: string; text: string; created_at: string }[]>([]);
+
   // Histórico de atividades (timeline)
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
@@ -327,6 +331,23 @@ export function ClientPanel({
     if (!notesOpen || !leadId) return;
     api.get(`/leads/${leadId}/notes`).then(r => setNotes(r.data || [])).catch(() => {});
   }, [notesOpen, leadId]);
+
+  // Buscar histórico de transferências quando seção abrir
+  useEffect(() => {
+    if (!transfersOpen || !lead?.conversations?.length) return;
+    const convId = lead.conversations[0]?.id;
+    if (!convId) return;
+    api.get(`/messages/conversation/${convId}`, { params: { limit: 500 } })
+      .then(r => {
+        const msgs = Array.isArray(r.data) ? r.data : (r.data?.data || []);
+        setTransfers(msgs.filter((m: any) => m.type === 'transfer_event').map((m: any) => ({
+          id: m.id,
+          text: m.text || '',
+          created_at: m.created_at,
+        })));
+      })
+      .catch(() => {});
+  }, [transfersOpen, lead]);
 
   // Buscar timeline quando seção abrir
   useEffect(() => {
@@ -888,6 +909,44 @@ export function ClientPanel({
                     </div>
                   ) : (
                     <p className="text-xs text-muted-foreground text-center py-2">Sem dados financeiros</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Histórico de Transferências */}
+            <div className="border-t border-border">
+              <button
+                className="w-full px-6 py-4 flex items-center justify-between hover:bg-accent/30 transition-colors"
+                onClick={() => setTransfersOpen(!transfersOpen)}
+              >
+                <div className="flex items-center gap-2.5">
+                  <ArrowRight size={15} className="text-sky-400" />
+                  <span className="text-[13px] font-bold text-foreground">Transferências</span>
+                  {transfers.length > 0 && (
+                    <span className="text-[11px] text-muted-foreground bg-foreground/[0.06] px-2 py-0.5 rounded-full font-mono">{transfers.length}</span>
+                  )}
+                </div>
+                {transfersOpen ? <ChevronUp size={15} className="text-muted-foreground" /> : <ChevronDown size={15} className="text-muted-foreground" />}
+              </button>
+              {transfersOpen && (
+                <div className="px-6 pb-5">
+                  {transfers.length === 0 ? (
+                    <p className="text-[12px] text-muted-foreground/50 italic text-center py-3">Nenhuma transferência registrada</p>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {transfers.map(t => (
+                        <div key={t.id} className="flex items-start gap-2.5 py-2 border-b border-border/50 last:border-0">
+                          <span className="text-sky-400 text-sm shrink-0 mt-0.5">{t.text.startsWith('↩') ? '↩' : '📨'}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[12px] text-foreground leading-relaxed">{t.text}</p>
+                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">
+                              {new Date(t.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               )}

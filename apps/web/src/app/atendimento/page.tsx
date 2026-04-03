@@ -2230,6 +2230,17 @@ export default function Dashboard() {
                         </div>
                       )}
                     </div>
+                    <button
+                      onClick={() => setTransferContextMap(prev => {
+                        const next = { ...prev };
+                        delete next[selectedId];
+                        return next;
+                      })}
+                      className="text-muted-foreground hover:text-foreground shrink-0 mt-0.5"
+                      title="Dispensar"
+                    >
+                      <X size={13} />
+                    </button>
                   </div>
                 </div>
               );
