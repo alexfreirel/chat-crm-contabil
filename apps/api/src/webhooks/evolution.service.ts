@@ -490,6 +490,26 @@ export class EvolutionService {
           });
         }
       }
+
+      // 5b. Conversa do operador humano (ai_mode=false): enfileira job apenas para
+      // atualizar a Long Memory. O worker detecta ai_mode=false e só extrai fatos,
+      // sem gerar resposta IA. Debounce de 15s para acumular mensagens rápidas.
+      if (!isOutgoing && !conv.ai_mode) {
+        const memJobId = `memory-debounce-${conv.id}`;
+        const existing = await this.aiQueue.getJob(memJobId);
+        if (existing) {
+          try {
+            await existing.remove();
+          } catch {
+            // Job ativo — será processado; a próxima mensagem pega no próximo ciclo
+          }
+        }
+        await this.aiQueue.add(
+          'process_ai_response',
+          { conversation_id: conv.id, lead_id: lead.id },
+          { jobId: memJobId, delay: 15_000, removeOnComplete: true, removeOnFail: false },
+        );
+      }
     }
   }
 
