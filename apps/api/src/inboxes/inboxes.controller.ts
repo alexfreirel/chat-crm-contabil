@@ -17,8 +17,8 @@ export class InboxesController {
   }
 
   @Get('operators')
-  @Roles('ADMIN')
   async getAllOperators() {
+    // Qualquer usuário autenticado pode listar operadores (necessário para transferências)
     return this.inboxesService.findAllOperators();
   }
 

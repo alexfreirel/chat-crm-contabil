@@ -415,6 +415,7 @@ export class ConversationsService {
           where: { id },
           data: {
             assigned_user_id: userId,
+            origin_assigned_user_id: current.pending_transfer_from_id,
             ai_mode: false,
             pending_transfer_to_id: null,
             pending_transfer_from_id: null,

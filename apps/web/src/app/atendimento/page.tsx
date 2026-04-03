@@ -1663,9 +1663,12 @@ export default function Dashboard() {
           })
           .catch(() => { /* resumo é opcional — falha silenciosa */ });
       }
+      const convId = incomingTransfer.conversationId;
       setIncomingTransfer(null);
       fetchPendingTransfers(true);
       fetchConversations(selectedInboxIdRef.current, true);
+      // Navega para a conversa aceita
+      setSelectedId(convId);
     } catch (e) {
       console.error('Failed to accept transfer', e);
     } finally {
