@@ -9,13 +9,7 @@ import { API_BASE_URL } from '@/lib/api';
 import { NotificationCenter } from '@/app/atendimento/components/NotificationCenter';
 import { useRole } from '@/lib/useRole';
 
-const THEMES = [
-  { id: 'logo-dark', name: 'Dark (Logo)', color: '#000000' },
-  { id: 'logo-light', name: 'Light (Logo)', color: '#fafafa' },
-  { id: 'modern-dark', name: 'Modern Dark', color: '#0a0a0f' },
-  { id: 'modern-light', name: 'Modern Light', color: '#f8fafc' },
-  { id: 'rose-light', name: 'Rose Light', color: '#fff1f2' },
-];
+import { THEMES } from '@/components/ThemeSwitcher';
 
 // ─── Tooltip Styles (shared) ──────────────────────────────────────
 const TOOLTIP_CLS =
