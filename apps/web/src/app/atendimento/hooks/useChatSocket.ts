@@ -125,6 +125,7 @@ export function useChatSocket(leadId: string): UseChatSocketResult {
           });
 
           socketRef.current.on('incoming_message_notification', (data: any) => {
+            if (currentUserId && data?.assignedUserId && data.assignedUserId !== currentUserId) return;
             if (data?.conversationId !== convo.id) {
               playNotificationSound();
             }

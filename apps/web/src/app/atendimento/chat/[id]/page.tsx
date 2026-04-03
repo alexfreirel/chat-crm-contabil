@@ -484,9 +484,10 @@ export default function ChatPage({ params }: { params: { id: string } }) {
             if (currentUserId) socketRef.current?.emit('join_user', currentUserId);
           });
 
-          // Som de notificacao apenas para mensagens de OUTRAS conversas.
-          // Mensagens da conversa atual ja tocam som no listener 'newMessage'.
+          // Som apenas para mensagens atribuídas a mim e de OUTRAS conversas.
+          // Mensagens da conversa atual são cobertas pelo handler 'newMessage'.
           socketRef.current.on('incoming_message_notification', (data: any) => {
+            if (currentUserId && data?.assignedUserId && data.assignedUserId !== currentUserId) return;
             if (data?.conversationId !== convo.id) {
               playNotificationSound();
             }
