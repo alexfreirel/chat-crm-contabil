@@ -9,8 +9,9 @@ const api = axios.create({
 /** Decodifica o payload do JWT (sem verificar assinatura — só para leitura local) */
 function decodeTokenPayload(token: string): { exp?: number; role?: string; sub?: string } | null {
   try {
-    // JWT usa base64url — converter para base64 standard para atob()
-    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    // JWT usa base64url — converter para base64 standard + padding para atob()
+    let b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
     return JSON.parse(atob(b64));
   } catch {
     return null;
