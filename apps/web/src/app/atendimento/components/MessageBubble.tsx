@@ -103,6 +103,18 @@ function MessageBubbleInner({
   onReact,
   onForward,
 }: MessageBubbleProps) {
+  // Evento de transferência: separador centralizado
+  if (msg.type === 'transfer_event') {
+    return (
+      <div id={`msg-${msg.id}`} className="w-full flex justify-center my-2">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[11px] font-semibold">
+          <span>{msg.text}</span>
+          <span className="text-sky-400/50 text-[9px]">{formatTime(msg.created_at)}</span>
+        </div>
+      </div>
+    );
+  }
+
   // Nota interna: renderização especial em amber sem envio ao WhatsApp
   if (msg.type === 'internal_note') {
     return (

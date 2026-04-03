@@ -399,7 +399,7 @@ export class ConversationsService {
 
   async acceptTransfer(id: string, userId: string) {
     // Transação atômica: ler estado atual + atualizar
-    const { current, acceptingUser, conv } = await this.prisma.$transaction(async (tx) => {
+    const { current, acceptingUser, fromUser, conv } = await this.prisma.$transaction(async (tx) => {
       const current = await (tx as any).conversation.findUnique({
         where: { id },
         select: { pending_transfer_to_id: true, pending_transfer_from_id: true, tenant_id: true, lead: { select: { name: true, phone: true } } },
@@ -409,8 +409,11 @@ export class ConversationsService {
         throw new ForbiddenException('Você não é o destinatário desta transferência.');
       }
 
-      const [acceptingUser, conv] = await Promise.all([
+      const [acceptingUser, fromUser, conv] = await Promise.all([
         tx.user.findUnique({ where: { id: userId }, select: { name: true } }),
+        current.pending_transfer_from_id
+          ? tx.user.findUnique({ where: { id: current.pending_transfer_from_id }, select: { name: true } })
+          : null,
         (tx as any).conversation.update({
           where: { id },
           data: {
@@ -425,8 +428,23 @@ export class ConversationsService {
         }),
       ]);
 
-      return { current, acceptingUser, conv };
+      return { current, acceptingUser, fromUser, conv };
     });
+
+    // Salvar mensagem de histórico de transferência
+    const fromName = fromUser?.name || 'Operador';
+    const toName = acceptingUser?.name || 'Operador';
+    const transferMsg = await this.prisma.message.create({
+      data: {
+        conversation_id: id,
+        direction: 'out',
+        type: 'transfer_event',
+        text: `📨 Transferido de ${fromName} para ${toName}`,
+        status: 'enviado',
+        external_message_id: `transfer_${Date.now()}`,
+      },
+    });
+    this.chatGateway.emitNewMessage(id, transferMsg);
 
     if (current?.pending_transfer_from_id) {
       this.chatGateway.emitTransferResponse(current.pending_transfer_from_id, {
@@ -568,6 +586,20 @@ export class ConversationsService {
         tenantId: conv.tenant_id as string | null,
       };
     });
+
+    // Salvar mensagem de histórico de devolução
+    const originUser = await this.prisma.user.findUnique({ where: { id: originUserId }, select: { name: true } });
+    const returnMsg = await this.prisma.message.create({
+      data: {
+        conversation_id: id,
+        direction: 'out',
+        type: 'transfer_event',
+        text: `↩ Devolvido de ${returningUserName} para ${originUser?.name || 'Operador'}${reason?.trim() ? ` — ${reason.trim()}` : ''}`,
+        status: 'enviado',
+        external_message_id: `transfer_${Date.now()}`,
+      },
+    });
+    this.chatGateway.emitNewMessage(id, returnMsg);
 
     // Notificar o atendente de origem sobre a devolução com o contexto do advogado
     this.chatGateway.emitTransferReturned(originUserId, {
