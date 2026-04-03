@@ -440,6 +440,12 @@ export default function ChatPage({ params }: { params: { id: string } }) {
         if (convoRes.data && convoRes.data.length > 0) {
           const convo = convoRes.data[0];
           setLead(convo.lead);
+          // Buscar memória completa do lead (o endpoint de conversa pode não incluir)
+          api.get(`/leads/${convo.lead.id}`).then((r) => {
+            if (r.data?.memory) {
+              setLead((prev: any) => ({ ...prev, memory: r.data.memory }));
+            }
+          }).catch(() => {});
           setConvoId(convo.id);
           setConvoStatus(convo.status || 'ABERTO');
           setAiMode(!!convo.ai_mode);
