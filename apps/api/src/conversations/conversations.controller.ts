@@ -160,4 +160,9 @@ export class ConversationsController {
   createNote(@Param('id') id: string, @Body() dto: CreateNoteDto, @Req() req: any) {
     return this.conversationsService.createNote(id, req.user.id, dto.text, req.user?.tenant_id);
   }
+
+  @Patch(':id/notes/:noteId')
+  updateNote(@Param('noteId') noteId: string, @Body() dto: CreateNoteDto, @Req() req: any) {
+    return this.conversationsService.updateNote(noteId, req.user.id, dto.text);
+  }
 }

@@ -3230,6 +3230,7 @@ export default function Dashboard() {
       {notesPanelOpen && selectedId && !selectedId.startsWith('demo-') && (
         <NotesPanel
           conversationId={selectedId}
+          currentUserId={currentUserId}
           onClose={() => setNotesPanelOpen(false)}
           socketRef={socketRef}
         />

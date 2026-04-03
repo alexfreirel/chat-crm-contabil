@@ -682,4 +682,17 @@ export class ConversationsService {
     this.chatGateway.emitNewNote(conversationId, note);
     return note;
   }
+
+  async updateNote(noteId: string, userId: string, text: string) {
+    const note = await (this.prisma as any).conversationNote.findUnique({ where: { id: noteId } });
+    if (!note) throw new NotFoundException('Nota não encontrada');
+    if (note.user_id !== userId) throw new ForbiddenException('Apenas o autor pode editar esta nota');
+    const updated = await (this.prisma as any).conversationNote.update({
+      where: { id: noteId },
+      data: { text },
+      include: { user: { select: { id: true, name: true } } },
+    });
+    this.chatGateway.emitNoteUpdated(note.conversation_id, updated);
+    return updated;
+  }
 }
