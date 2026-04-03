@@ -245,11 +245,6 @@ export function ChatHeader({
                 </div>
               )}
             </div>
-            {fichaFinalizada && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/20">
-                ✅ Ficha Finalizada
-              </span>
-            )}
             {selected.legalArea && (
               <div className="relative" ref={lawyerDropdownRef}>
                 <button
@@ -339,6 +334,11 @@ export function ChatHeader({
                 <Eye size={10} />
                 Visualizar Ficha
               </button>
+              {fichaFinalizada && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/20">
+                  ✅ Ficha Finalizada
+                </span>
+              )}
             </>
           )}
           {isRealConvo && (
@@ -401,15 +401,6 @@ export function ChatHeader({
             >
               <Clock size={16} />
               Adiar
-            </button>
-          )}
-          {isRealConvo && onSyncHistory && (
-            <button
-              onClick={onSyncHistory}
-              title="Sincronizar histórico de mensagens com WhatsApp"
-              className="p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded-xl transition-colors"
-            >
-              <RefreshCw size={16} />
             </button>
           )}
         </div>
