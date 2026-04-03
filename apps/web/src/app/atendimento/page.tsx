@@ -732,13 +732,9 @@ export default function Dashboard() {
       });
     });
 
-    // Incoming message notification — scoped ao tenant; cada cliente filtra por assignedUserId
-    socket.on('incoming_message_notification', (data: { conversationId: string; contactName?: string; assignedUserId?: string | null }) => {
-      const myId = currentUserIdRef.current;
-      // Sem myId → não notifica (fail closed, evita vazar para todos)
-      if (!myId) return;
-      // Conversa atribuída a outro atendente → ignora
-      if (data?.assignedUserId && data.assignedUserId !== myId) return;
+    // Incoming message notification — backend envia apenas para o user room do atendente
+    // atribuído (ou para o tenant se sem atribuição). Se chegou aqui, é para mim.
+    socket.on('incoming_message_notification', (data: { conversationId: string; contactName?: string }) => {
       playNotificationSound();
       showDesktopNotification({
         title: data?.contactName || 'Nova mensagem',
@@ -746,7 +742,6 @@ export default function Dashboard() {
         tag: `msg-${data.conversationId}`,
         onClick: () => setSelectedId(data.conversationId),
       });
-      // Badge: só incrementa se não está visualizando a conversa agora
       if (data?.conversationId && data.conversationId !== selectedIdRef.current) {
         setUnreadCounts(prev => ({
           ...prev,

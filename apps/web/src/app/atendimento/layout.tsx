@@ -92,14 +92,6 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     if (!token) return;
 
-    // Decodifica userId do JWT para filtrar som (só toca se a mensagem é para mim)
-    let myId: string | null = null;
-    try {
-      let b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-      while (b64.length % 4) b64 += '=';
-      myId = JSON.parse(atob(b64)).sub || null;
-    } catch { /* ignora */ }
-
     const socket = io(getWsUrl(), {
       path: getSocketPath(),
       transports: ['polling', 'websocket'],
@@ -109,15 +101,13 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
       reconnectionDelay: 2000,
     });
 
-    socket.on('incoming_message_notification', (data: { conversationId: string; assignedUserId?: string | null }) => {
-      // Se o usuário está na tela de chat (/atendimento), page.tsx já cuida do som.
+    // Backend envia incoming_message_notification apenas para o user room do
+    // atendente atribuído (ou tenant se sem atribuição). Se chegou, é para mim.
+    // Na tela de chat, page.tsx já cuida → evita som duplo.
+    socket.on('incoming_message_notification', () => {
       const onChatPage = pathnameRef.current === '/atendimento' ||
         pathnameRef.current.startsWith('/atendimento/chat');
       if (onChatPage) return;
-      // Sem myId (JWT falhou) → não toca (fail closed, evita notificar todo mundo)
-      if (!myId) return;
-      // Conversa atribuída a outro atendente → ignora
-      if (data?.assignedUserId && data.assignedUserId !== myId) return;
       playNotificationSound();
       setUnreadTotal(prev => prev + 1);
     });

@@ -124,8 +124,8 @@ export function useChatSocket(leadId: string): UseChatSocketResult {
             if (currentUserId) socketRef.current?.emit('join_user', currentUserId);
           });
 
+          // Backend já filtra por atribuição — se chegou, é para mim.
           socketRef.current.on('incoming_message_notification', (data: any) => {
-            if (currentUserId && data?.assignedUserId && data.assignedUserId !== currentUserId) return;
             if (data?.conversationId !== convo.id) {
               playNotificationSound();
             }

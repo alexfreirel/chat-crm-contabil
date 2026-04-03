@@ -1226,14 +1226,6 @@ export default function CrmPage() {
       if (document.visibilityState === 'visible') fetchLeads(true);
     }, 30_000);
 
-    // Decode userId do JWT para filtrar notificações
-    let myId: string | null = null;
-    try {
-      let b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-      while (b64.length % 4) b64 += '=';
-      myId = JSON.parse(atob(b64)).sub || null;
-    } catch { /* ignora */ }
-
     // Socket: atualiza o CRM em tempo real quando há novos leads/mensagens
     const socket = io(getWsUrl(), {
       path: getSocketPath(),
@@ -1243,9 +1235,9 @@ export default function CrmPage() {
     socket.on('inboxUpdate', () => {
       if (document.visibilityState === 'visible') fetchLeads(true);
     });
-    socket.on('incoming_message_notification', (data: { contactName?: string; assignedUserId?: string | null }) => {
-      // Ignora mensagens atribuídas a outro atendente
-      if (myId && data?.assignedUserId && data.assignedUserId !== myId) return;
+    // Backend envia incoming_message_notification apenas para o user room do atendente
+    // atribuído (ou tenant inteiro se sem atribuição). Se chegou aqui, é para mim.
+    socket.on('incoming_message_notification', (data: { contactName?: string }) => {
       if (document.visibilityState === 'visible') {
         fetchLeads(true);
         if (data?.contactName) showSuccess(`Nova mensagem de ${data.contactName}`);

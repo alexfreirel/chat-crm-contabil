@@ -132,14 +132,23 @@ export class ChatGateway {
     }
   }
 
-  /** Emit incoming message notification scoped to tenant room */
+  /**
+   * Emit incoming message notification.
+   * Se a conversa tem operador atribuído → emite só para user:${assignedUserId}
+   * Se não tem (conversa sem operador) → emite para o tenant inteiro
+   */
   emitIncomingMessageNotification(tenantId: string | null, assignedUserId: string | null, data: { conversationId: string; contactName?: string }) {
-    this.logger.log(`[SOCKET] Emitting incoming_message_notification (tenant: ${tenantId ?? 'default'}, assignedUserId: ${assignedUserId ?? 'none'})`);
     const payload = { ...data, assignedUserId };
-    if (tenantId) {
+
+    if (assignedUserId) {
+      // Conversa atribuída: notifica SOMENTE o operador responsável
+      this.logger.log(`[SOCKET] incoming_message_notification → user:${assignedUserId}`);
+      this.server.to(`user:${assignedUserId}`).emit('incoming_message_notification', payload);
+    } else if (tenantId) {
+      // Sem operador: notifica todos do tenant para alguém assumir
+      this.logger.log(`[SOCKET] incoming_message_notification → tenant:${tenantId} (sem atribuicao)`);
       this.server.to(`tenant:${tenantId}`).emit('incoming_message_notification', payload);
     } else {
-      // Fallback: resolve default tenant
       this.prisma.tenant.findFirst().then((t) => {
         if (t) {
           this.server.to(`tenant:${t.id}`).emit('incoming_message_notification', payload);
