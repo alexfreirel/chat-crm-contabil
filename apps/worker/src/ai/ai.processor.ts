@@ -1735,19 +1735,24 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
 
       // Captura o ID real da mensagem retornado pela Evolution API
       // para que o webhook echo seja corretamente deduplicado e não gere registro duplicado.
-      const sendResult = await axios.post(
-        `${apiUrl}/message/sendText/${instanceName}`,
-        {
-          number: convo.lead.phone,
-          text: textToSend,
-        },
-        {
-          headers: { 'Content-Type': 'application/json', apikey: apiKey },
-          timeout: 30000,
-        },
-      );
-      const evolutionMsgId: string =
-        sendResult.data?.key?.id || `sys_ai_${Date.now()}`;
+      let evolutionMsgId = `sys_ai_${Date.now()}`;
+      try {
+        const sendResult = await axios.post(
+          `${apiUrl}/message/sendText/${instanceName}`,
+          {
+            number: convo.lead.phone,
+            text: textToSend,
+          },
+          {
+            headers: { 'Content-Type': 'application/json', apikey: apiKey },
+            timeout: 30000,
+          },
+        );
+        evolutionMsgId = sendResult.data?.key?.id || evolutionMsgId;
+      } catch (sendErr: any) {
+        this.logger.error(`[AI] Falha ao enviar via Evolution (${sendErr.response?.status || sendErr.message}): ${JSON.stringify(sendErr.response?.data || {}).slice(0, 200)}`);
+        // Continua para salvar no banco — a mensagem ficará com status erro
+      }
 
       // 17. Salvar mensagem no banco com skill_id (texto limpo, sem assinatura)
       // Usa o ID real da Evolution para que o echo do webhook seja deduplicado
