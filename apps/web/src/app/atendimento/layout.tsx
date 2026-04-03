@@ -85,17 +85,21 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
     };
   }, []);
 
+  // ─── Token reativo (cobre login → dashboard, pois o layout persiste) ───
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  useEffect(() => {
+    setAuthToken(localStorage.getItem('token'));
+  }, [pathname]); // re-lê token a cada navegação (captura momento pós-login)
+
   // ─── Socket global de notificações (persiste em todas as rotas) ──────────
   // page.tsx cuida do som e dos badges quando o usuário está na tela do chat.
   // Este socket garante que o som toque em QUALQUER outra rota do sistema.
   useEffect(() => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    if (!token) return;
+    if (!authToken) return;
 
-    // Decodifica userId do JWT para join_user
     let myId: string | null = null;
     try {
-      let b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      let b64 = authToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
       while (b64.length % 4) b64 += '=';
       myId = JSON.parse(atob(b64)).sub || null;
     } catch { /* ignora */ }
@@ -103,13 +107,12 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
     const socket = io(getWsUrl(), {
       path: getSocketPath(),
       transports: ['polling', 'websocket'],
-      auth: { token },
+      auth: { token: authToken },
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 2000,
     });
 
-    // Entrar no room user:${myId} para receber notificações direcionadas
     socket.on('connect', () => {
       if (myId) socket.emit('join_user', myId);
     });
@@ -117,16 +120,24 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
     // Backend envia incoming_message_notification para user:${assignedUserId}
     // (ou tenant se sem atribuição). Se chegou, é para mim.
     // Na tela de chat, page.tsx já cuida → evita som duplo.
-    socket.on('incoming_message_notification', () => {
+    socket.on('incoming_message_notification', (data: { contactName?: string }) => {
       const onChatPage = pathnameRef.current === '/atendimento' ||
         pathnameRef.current.startsWith('/atendimento/chat');
       if (onChatPage) return;
       playNotificationSound();
       setUnreadTotal(prev => prev + 1);
+      // Desktop notification (browser nativo)
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && !document.hasFocus()) {
+        const n = new Notification(data?.contactName || 'Nova mensagem', {
+          body: 'Nova mensagem recebida',
+          silent: true,
+        });
+        setTimeout(() => n.close(), 6000);
+      }
     });
 
     return () => { socket.disconnect(); };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [authToken]);
 
   // ─── Mobile detection ─────────────────────────────────────
   useEffect(() => {
