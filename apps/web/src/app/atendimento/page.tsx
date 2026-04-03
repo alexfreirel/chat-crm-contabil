@@ -1633,10 +1633,11 @@ export default function Dashboard() {
 
   const handleAcceptTransfer = async () => {
     if (!incomingTransfer) return;
+    const convId = incomingTransfer.conversationId;
     setProcessingTransfer(true);
     try {
-      await api.patch(`/conversations/${incomingTransfer.conversationId}/transfer-accept`);
-      shownTransferIdsRef.current.delete(incomingTransfer.conversationId);
+      await api.patch(`/conversations/${convId}/transfer-accept`);
+      shownTransferIdsRef.current.delete(convId);
       // Salvar contexto (motivo + áudios) para exibir no chat após aceitar
       const baseContext = {
         fromUserName: incomingTransfer.fromUserName,
@@ -1644,41 +1645,38 @@ export default function Dashboard() {
         audioIds: incomingTransfer.audioIds || [],
       };
       if (incomingTransfer.reason || incomingTransfer.audioIds?.length) {
-        setTransferContextMap(prev => ({ ...prev, [incomingTransfer.conversationId]: baseContext }));
+        setTransferContextMap(prev => ({ ...prev, [convId]: baseContext }));
       }
-      // #11: Buscar resumo IA do lead para exibir no banner de contexto
-      const conv = conversations.find(c => c.id === incomingTransfer.conversationId);
+      // Buscar resumo IA do lead (fire-and-forget)
+      const conv = conversations.find(c => c.id === convId);
       if (conv?.leadId) {
         api.get(`/leads/${conv.leadId}/summary`, { _silent401: true } as any)
           .then(r => {
             const summary = r.data?.summary;
             if (summary) {
-              setTransferContextMap(prev => {
-                const existing = prev[incomingTransfer.conversationId] || baseContext;
-                return {
-                  ...prev,
-                  [incomingTransfer.conversationId]: {
-                    ...existing,
-                    reason: existing.reason
-                      ? `${existing.reason}\n\n🤖 Resumo IA: ${summary}`
-                      : `🤖 Resumo IA: ${summary}`,
-                  },
-                };
-              });
+              setTransferContextMap(prev => ({
+                ...prev,
+                [convId]: {
+                  ...(prev[convId] || baseContext),
+                  reason: (prev[convId]?.reason || baseContext.reason)
+                    ? `${prev[convId]?.reason || baseContext.reason}\n\n🤖 Resumo IA: ${summary}`
+                    : `🤖 Resumo IA: ${summary}`,
+                },
+              }));
             }
-          })
-          .catch(() => { /* resumo é opcional — falha silenciosa */ });
+          }).catch(() => {});
       }
-      const convId = incomingTransfer.conversationId;
+      showSuccess('Transferência aceita');
+    } catch (e: any) {
+      console.error('Failed to accept transfer', e);
+      showError(e?.response?.data?.message || 'Erro ao aceitar transferência');
+    } finally {
+      // Sempre fecha o modal e navega, mesmo em erro (evita ficar preso)
+      setProcessingTransfer(false);
       setIncomingTransfer(null);
       fetchPendingTransfers(true);
       fetchConversations(selectedInboxIdRef.current, true);
-      // Navega para a conversa aceita
       setSelectedId(convId);
-    } catch (e) {
-      console.error('Failed to accept transfer', e);
-    } finally {
-      setProcessingTransfer(false);
     }
   };
 
