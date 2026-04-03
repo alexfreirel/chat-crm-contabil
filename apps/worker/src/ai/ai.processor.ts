@@ -1457,7 +1457,9 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
 
       if (useToolCalling) {
         // ─── PATH NOVO: Function Calling com Tool Executor ───
-        const provider: LLMProvider = skill.provider || 'openai';
+        // Auto-detectar provider pelo nome do modelo (evita inconsistência model/provider)
+        const isClaudeModel = model.startsWith('claude-');
+        const provider: LLMProvider = isClaudeModel ? 'anthropic' : (skill.provider || 'openai');
         const apiKeyForSkill = provider === 'anthropic'
           ? await this.settings.getAnthropicKey()
           : await this.settings.getOpenAiKey();
