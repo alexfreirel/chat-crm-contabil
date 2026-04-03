@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback, useMemo, Fragment } from 'rea
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, UserCheck, PanelLeftOpen, CornerDownLeft, Inbox, Pencil, Search, ChevronDown, ClipboardList, ArrowLeft, MoreVertical, Clock } from 'lucide-react';
+import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, UserCheck, PanelLeftOpen, CornerDownLeft, Inbox, Pencil, Search, ChevronDown, ClipboardList, ArrowLeft, MoreVertical, Clock, StickyNote } from 'lucide-react';
 import FichaTrabalhista from '@/components/FichaTrabalhista';
 import { AudioRecorder } from '@/components/AudioRecorder';
 import { AuthAudioPlayer } from '@/components/AuthAudioPlayer';
@@ -31,6 +31,7 @@ import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import ContratoTrabalhistaModal from '@/components/modals/ContratoTrabalhistaModal';
 import { InboxSidebar } from './components/InboxSidebar';
 import { ChatHeader } from './components/ChatHeader';
+import { NotesPanel } from './components/NotesPanel';
 
 // ─── Slash commands estáticos registrados ─────────────────────────────────────
 const SLASH_COMMANDS = [
@@ -180,7 +181,7 @@ export default function Dashboard() {
   const [closeConvModal, setCloseConvModal] = useState(false);
   const [csatOnClose, setCsatOnClose] = useState(false);
   // Modo nota interna (mensagem não enviada ao cliente)
-  const [internalNoteMode, setInternalNoteMode] = useState(false);
+  const [notesPanelOpen, setNotesPanelOpen] = useState(false);
   // Chave para forçar re-fetch de mensagens (incrementada no reconnect do socket)
   const [msgRefreshKey, setMsgRefreshKey] = useState(0);
   // Modal de criação rápida de tarefa a partir do chat
@@ -503,6 +504,7 @@ export default function Dashboard() {
     setShowDetailsPanel(false);
     setMsgSearchOpen(false);
     setMsgSearchQuery('');
+    setNotesPanelOpen(false);
   }, [selectedId]);
 
   // Busca: focar input ao abrir
@@ -682,6 +684,14 @@ export default function Dashboard() {
       fetchConversations(selectedInboxIdRef.current, true);
       fetchAdiadoConversations(selectedInboxIdRef.current);
       fetchPendingTransfers(true);
+    });
+
+    // Nota criada em uma conversa — marcar hasNotes=true na lista
+    socket.on('newNote', (note: any) => {
+      if (note?.conversation_id) {
+        setConversations(prev => prev.map(c => c.id === note.conversation_id ? { ...c, hasNotes: true } : c));
+        setAdiadoConversations(prev => prev.map(c => c.id === note.conversation_id ? { ...c, hasNotes: true } : c));
+      }
     });
 
     // Typing indicator
@@ -1227,7 +1237,7 @@ export default function Dashboard() {
       id: optimisticId,
       conversation_id: selectedId,
       direction: 'out',
-      type: internalNoteMode ? 'internal_note' : 'text',
+      type: 'text',
       text: msgText,
       created_at: new Date().toISOString(),
       status: 'enviando',
@@ -1235,14 +1245,12 @@ export default function Dashboard() {
       media: [],
     };
     setMessages(prev => [...prev, optimisticMsg]);
-    if (internalNoteMode) setInternalNoteMode(false);
 
     try {
       const res = await api.post('/messages/send', {
         conversationId: selectedId,
         text: msgText,
         ...(replyId ? { replyToId: replyId } : {}),
-        ...(optimisticMsg.type === 'internal_note' ? { isInternal: true } : {}),
       });
       // Substituir msg otimista pela real do servidor
       // Se o WebSocket já substituiu a otimista, o ID real já está na lista — não duplicar
@@ -2778,14 +2786,17 @@ export default function Dashboard() {
                         : <Paperclip size={20} />}
                     </button>
                   )}
-                  {/* Botão nota interna */}
+                  {/* Botão notas da conversa */}
                   {!isMobile && isRealConvo && (
                     <button
-                      onClick={() => setInternalNoteMode(prev => !prev)}
-                      title={internalNoteMode ? 'Modo nota interna ativo (clique para desativar)' : 'Nota interna — só visível para a equipe'}
-                      className={`p-2.5 md:p-3 rounded-xl border transition-colors shrink-0 mb-0.5 ${internalNoteMode ? 'bg-amber-500/20 border-amber-500/40 text-amber-400' : 'bg-card border-border text-muted-foreground hover:text-amber-400 hover:border-amber-500/30 hover:bg-amber-500/10'}`}
+                      onClick={() => setNotesPanelOpen(true)}
+                      title="Notas da conversa — visíveis para a equipe"
+                      className={`relative p-2.5 md:p-3 rounded-xl border transition-colors shrink-0 mb-0.5 ${selected?.hasNotes ? 'bg-amber-500/20 border-amber-500/40 text-amber-400' : 'bg-card border-border text-muted-foreground hover:text-amber-400 hover:border-amber-500/30 hover:bg-amber-500/10'}`}
                     >
-                      🔒
+                      <StickyNote size={20} />
+                      {selected?.hasNotes && (
+                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+                      )}
                     </button>
                   )}
                   {/* Busca e quick snooze removidos da toolbar — acessíveis via Ctrl+F e botão Adiar no header */}
@@ -2863,14 +2874,11 @@ export default function Dashboard() {
                           handleSend();
                         }
                       }}
-                      placeholder={internalNoteMode ? "🔒 Nota interna — visível só para a equipe..." : (isRealConvo ? "Digite sua mensagem..." : "Selecione uma conversa...")}
+                      placeholder={isRealConvo ? "Digite sua mensagem..." : "Selecione uma conversa..."}
                       disabled={!isRealConvo || sending}
                       className={`w-full border rounded-2xl py-3 md:py-4 focus:outline-none focus:ring-2 shadow-sm disabled:opacity-50 text-sm md:text-base resize-none leading-normal overflow-hidden pl-4 ${
                         isRealConvo ? (isMobile ? 'pr-[7rem]' : 'pr-24') : 'pr-4'
-                      } ${internalNoteMode
-                        ? 'bg-amber-500/10 border-amber-500/40 focus:ring-amber-500/30 text-amber-100 placeholder:text-amber-400/60'
-                        : 'bg-card border-border focus:ring-primary text-foreground'
-                      }`}
+                      } bg-card border-border focus:ring-primary text-foreground`}
                     />
                     {/* Contador de caracteres */}
                     {text.length > 4500 && (
@@ -3216,6 +3224,15 @@ export default function Dashboard() {
           </div>
         </div>,
         document.body
+      )}
+
+      {/* Painel de Notas da Conversa */}
+      {notesPanelOpen && selectedId && !selectedId.startsWith('demo-') && (
+        <NotesPanel
+          conversationId={selectedId}
+          onClose={() => setNotesPanelOpen(false)}
+          socketRef={socketRef}
+        />
       )}
 
       {/* Modal Adiar Atendimento — portal para garantir z-index acima de tudo */}

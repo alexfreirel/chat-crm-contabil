@@ -1,9 +1,10 @@
-import { Controller, Get, Param, Patch, Body, Post, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Param, Patch, Body, Post, Query, UseGuards, Request, Req } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TransferRequestDto, TransferToLawyerDto, ReturnToOriginDto } from './dto/transfer-request.dto';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { SendPresenceDto } from './dto/presence.dto';
+import { CreateNoteDto } from './dto/create-note.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('conversations')
@@ -146,5 +147,17 @@ export class ConversationsController {
     @Body('legalArea') legalArea: string | null,
   ) {
     return this.conversationsService.setLegalArea(id, legalArea ?? null);
+  }
+
+  // ── Notas internas fixas ──────────────────────────────────────
+
+  @Get(':id/notes')
+  listNotes(@Param('id') id: string, @Req() req: any) {
+    return this.conversationsService.listNotes(id, req.user?.tenant_id);
+  }
+
+  @Post(':id/notes')
+  createNote(@Param('id') id: string, @Body() dto: CreateNoteDto, @Req() req: any) {
+    return this.conversationsService.createNote(id, req.user.id, dto.text, req.user?.tenant_id);
   }
 }

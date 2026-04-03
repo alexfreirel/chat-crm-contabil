@@ -129,6 +129,19 @@ export class ConversationsService {
       : [];
     const userNameMap: Record<string, string> = Object.fromEntries(enrichUsers.map((u) => [u.id, u.name]));
 
+    // Enrich with hasNotes flag (1 query, não N+1)
+    const convIds = conversations.map((c) => c.id);
+    const noteCounts = convIds.length
+      ? await (this.prisma as any).conversationNote.groupBy({
+          by: ['conversation_id'],
+          where: { conversation_id: { in: convIds } },
+          _count: true,
+        })
+      : [];
+    const noteCountMap: Record<string, boolean> = Object.fromEntries(
+      noteCounts.map((n: any) => [n.conversation_id, true]),
+    );
+
     const data = conversations.map((c) => ({
       id: c.id,
       leadId: c.lead_id,
@@ -167,6 +180,7 @@ export class ConversationsService {
         assignedUserId: (c as any).tasks[0].assigned_user_id || null,
         postponeCount: (c as any).tasks[0].postpone_count || 0,
       } : null,
+      hasNotes: !!noteCountMap[c.id],
     }));
 
     return { data, total };
@@ -640,5 +654,32 @@ export class ConversationsService {
     } catch {
       return { sent: false };
     }
+  }
+
+  // ── Notas internas fixas ──────────────────────────────────────────────────
+
+  async listNotes(conversationId: string, tenantId?: string) {
+    if (tenantId) {
+      const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId }, select: { tenant_id: true } });
+      if (conv?.tenant_id && conv.tenant_id !== tenantId) throw new ForbiddenException('Acesso negado');
+    }
+    return (this.prisma as any).conversationNote.findMany({
+      where: { conversation_id: conversationId },
+      orderBy: { created_at: 'asc' },
+      include: { user: { select: { id: true, name: true } } },
+    });
+  }
+
+  async createNote(conversationId: string, userId: string, text: string, tenantId?: string) {
+    if (tenantId) {
+      const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId }, select: { tenant_id: true } });
+      if (conv?.tenant_id && conv.tenant_id !== tenantId) throw new ForbiddenException('Acesso negado');
+    }
+    const note = await (this.prisma as any).conversationNote.create({
+      data: { conversation_id: conversationId, user_id: userId, text },
+      include: { user: { select: { id: true, name: true } } },
+    });
+    this.chatGateway.emitNewNote(conversationId, note);
+    return note;
   }
 }

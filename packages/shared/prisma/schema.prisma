@@ -73,6 +73,7 @@ model User {
   cs_leads                 Lead[]                 @relation("CSManager")
   financial_transactions   FinancialTransaction[] @relation("FinancialLawyer")
   tax_records              TaxRecord[]            @relation("TaxRecordLawyer")
+  conversation_notes       ConversationNote[]     @relation("ConversationNoteAuthor")
 }
 
 model Lead {
@@ -155,6 +156,7 @@ model Conversation {
   calendar_events            CalendarEvent[]
   transfer_audios            TransferAudio[]
   contract_signatures        ContractSignature[]
+  notes                      ConversationNote[]
 
   @@index([lead_id])
   @@index([last_message_at(sort: Desc)])
@@ -1295,4 +1297,18 @@ model TaxRecord {
 
   @@unique([tenant_id, lawyer_id, year, month])
   @@index([lawyer_id, year])
+}
+
+model ConversationNote {
+  id              String       @id @default(uuid())
+  conversation_id String
+  user_id         String
+  text            String
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+
+  conversation    Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  user            User         @relation("ConversationNoteAuthor", fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([conversation_id, created_at])
 }

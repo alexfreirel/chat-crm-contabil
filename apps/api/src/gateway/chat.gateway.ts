@@ -101,6 +101,11 @@ export class ChatGateway {
     this.server.to(conversationId).emit('newMessage', message);
   }
 
+  emitNewNote(conversationId: string, note: any) {
+    this.logger.log(`[SOCKET] Emitting newNote to room ${conversationId}`);
+    this.server.to(conversationId).emit('newNote', note);
+  }
+
   emitMessageUpdate(conversationId: string, message: any) {
     this.logger.log(`[SOCKET] Emitting messageUpdate to room ${conversationId}`);
     this.server.to(conversationId).emit('messageUpdate', message);
