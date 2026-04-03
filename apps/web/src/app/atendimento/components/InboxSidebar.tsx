@@ -367,8 +367,8 @@ export function InboxSidebar({
           </div>
         )}
 
-        {/* Seletor de Setores (Inboxes) */}
-        {userInboxes.length > 0 && (
+        {/* Seletor de Setores (Inboxes) — so mostra quando ha 2+ setores */}
+        {userInboxes.length > 1 && (
           <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar no-scrollbar">
             <button
               onClick={() => onSetSelectedInboxId(null)}
