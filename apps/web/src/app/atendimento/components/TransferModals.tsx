@@ -25,6 +25,7 @@ export interface TransferModalsProps {
   selectedTransferUserId: string | null;
   onSelectTransferUser: (id: string | null) => void;
   selected: ConversationSummary | null;
+  currentUserId: string | null;
   onOpenReasonPopup: (context: 'lawyer' | 'operator' | 'return', targetName: string) => void;
 
   // Reason Popup
@@ -63,7 +64,7 @@ export interface TransferModalsProps {
 
 export function TransferModals({
   transferModal, onCloseTransferModal, transferGroups, loadingOperators, transferError,
-  selectedTransferUserId, onSelectTransferUser, selected, onOpenReasonPopup,
+  selectedTransferUserId, onSelectTransferUser, selected, currentUserId, onOpenReasonPopup,
   showReasonPopup, reasonPopupContext, reasonPopupTargetName, transferReason,
   onSetTransferReason, transferring, onCloseReasonPopup, onTransferToLawyer,
   onReturnWithReason, onTransfer, onSetTransferAudioIds, selectedConversationId,
@@ -101,7 +102,7 @@ export function TransferModals({
               <>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 px-1 shrink-0">Selecione o destino</p>
                 <div className="flex flex-col gap-4 overflow-y-auto custom-scrollbar flex-1 min-h-0">
-                  {transferGroups.filter(g => g.users.length > 0 || (g.type === 'SECTOR' && g.auto_route)).map(group => (
+                  {transferGroups.map(g => ({ ...g, users: g.users.filter(u => u.id !== currentUserId) })).filter(g => g.users.length > 0 || (g.type === 'SECTOR' && g.auto_route)).map(group => (
                     <div key={group.id}>
                       <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5 px-1">
                         {group.type === 'SECTOR' ? (group.auto_route ? '{"⚖️"}' : '{"🏢"}') : '{"📥"}'} {group.name}

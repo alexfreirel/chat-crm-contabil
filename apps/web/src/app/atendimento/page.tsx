@@ -3100,6 +3100,7 @@ export default function Dashboard() {
         selectedTransferUserId={selectedTransferUserId}
         onSelectTransferUser={setSelectedTransferUserId}
         selected={selected || null}
+        currentUserId={currentUserId}
         onOpenReasonPopup={openReasonPopup}
         showReasonPopup={showReasonPopup}
         reasonPopupContext={reasonPopupContext}
