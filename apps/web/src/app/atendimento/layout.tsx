@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { io } from 'socket.io-client';
 import { Sidebar } from '@/components/Sidebar';
 import { GlobalCommandPalette, useGlobalCommandPalette } from './components/GlobalCommandPalette';
 import { TaskAlertPopup } from './components/TaskAlertPopup';
@@ -12,8 +13,23 @@ import {
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useRole } from '@/lib/useRole';
+import { playNotificationSound, unlockAudioContext } from '@/lib/notificationSounds';
 
 import { THEMES } from '@/components/ThemeSwitcher';
+
+function getWsUrl(): string {
+  if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005';
+  if (apiUrl.startsWith('http')) {
+    try { return new URL(apiUrl).origin; } catch { /* fall through */ }
+  }
+  return typeof window !== 'undefined' ? window.location.origin : '';
+}
+
+function getSocketPath(): string {
+  if (process.env.NEXT_PUBLIC_SOCKET_PATH) return process.env.NEXT_PUBLIC_SOCKET_PATH;
+  return '/socket.io/';
+}
 
 export default function AtendimentoLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -30,6 +46,8 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [overdueCount, setOverdueCount] = useState(0);
+  const pathnameRef = useRef(pathname);
+  useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
 
   // ─── Auth check ───────────────────────────────────────────
   useEffect(() => {
@@ -55,6 +73,55 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
     window.addEventListener('auth:logout', handleAuthLogout);
     return () => window.removeEventListener('auth:logout', handleAuthLogout);
   }, [pathname, router]);
+
+  // ─── Unlock áudio no primeiro gesto do usuário (necessário para autoplay) ──
+  useEffect(() => {
+    const unlock = () => unlockAudioContext();
+    document.addEventListener('click', unlock, { once: true });
+    document.addEventListener('keydown', unlock, { once: true });
+    return () => {
+      document.removeEventListener('click', unlock);
+      document.removeEventListener('keydown', unlock);
+    };
+  }, []);
+
+  // ─── Socket global de notificações (persiste em todas as rotas) ──────────
+  // page.tsx cuida do som e dos badges quando o usuário está na tela do chat.
+  // Este socket garante que o som toque em QUALQUER outra rota do sistema.
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) return;
+
+    // Decodifica userId do JWT para filtrar som (só toca se a mensagem é para mim)
+    let myId: string | null = null;
+    try {
+      myId = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub || null;
+    } catch { /* ignora */ }
+
+    const socket = io(getWsUrl(), {
+      path: getSocketPath(),
+      transports: ['polling', 'websocket'],
+      auth: { token },
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 2000,
+    });
+
+    socket.on('incoming_message_notification', (data: { conversationId: string; assignedUserId?: string | null }) => {
+      // Se o usuário está na tela de chat (/atendimento), page.tsx já cuida do som.
+      // Aqui tratamos apenas as demais rotas para evitar som duplo.
+      const onChatPage = pathnameRef.current === '/atendimento' ||
+        pathnameRef.current.startsWith('/atendimento/chat');
+      if (!onChatPage) {
+        const isForMe = !myId || !data?.assignedUserId || data.assignedUserId === myId;
+        if (isForMe) playNotificationSound();
+        // Incrementa badge do ícone de chat na nav
+        setUnreadTotal(prev => prev + 1);
+      }
+    });
+
+    return () => { socket.disconnect(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Mobile detection ─────────────────────────────────────
   useEffect(() => {
