@@ -14,6 +14,7 @@ import {
 import { useTheme } from 'next-themes';
 import { useRole } from '@/lib/useRole';
 import { playNotificationSound, unlockAudioContext } from '@/lib/notificationSounds';
+import toast from 'react-hot-toast';
 
 import { THEMES } from '@/components/ThemeSwitcher';
 
@@ -151,9 +152,13 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
         }
       }
 
-      // Desktop notification (browser nativo)
+      // Toast in-app (visível mesmo com a aba focada)
+      const name = data?.contactName || 'Novo contato';
+      toast(`Nova mensagem de ${name}`, { icon: '💬', duration: 4000 });
+
+      // Desktop notification (browser nativo — só aparece com aba desfocada)
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && !document.hasFocus()) {
-        const n = new Notification(data?.contactName || 'Nova mensagem', {
+        const n = new Notification(name, {
           body: 'Nova mensagem recebida',
           silent: true,
         });
