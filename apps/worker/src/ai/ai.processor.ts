@@ -1225,6 +1225,40 @@ export class AiProcessor extends WorkerHost {
         this.logger.warn(`[AI] Falha ao buscar próximos eventos: ${e.message}`);
       }
 
+      // ── Notas internas dos operadores (ConversationNote) — visíveis para a IA ──
+      let operatorNotesBlock = '';
+      try {
+        const opNotes = await (this.prisma as any).conversationNote.findMany({
+          where: { conversation_id: convo.id },
+          orderBy: { created_at: 'desc' },
+          take: 10,
+          include: { user: { select: { name: true } } },
+        });
+        if (opNotes.length > 0) {
+          const lines = opNotes.reverse().map((n: any) => {
+            const date = new Date(n.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+            return `- [${n.user?.name || 'Operador'}, ${date}]: ${n.text}`;
+          });
+          operatorNotesBlock =
+            `\n═══════════════════════════════════════════════════\n` +
+            `📝 NOTAS INTERNAS DOS OPERADORES (instruções da equipe — OBEDEÇA):\n` +
+            lines.join('\n') + '\n' +
+            `═══════════════════════════════════════════════════\n`;
+        }
+      } catch (e: any) {
+        this.logger.warn(`[AI] Falha ao carregar notas internas: ${e.message}`);
+      }
+
+      // ── ai_notes — observações da própria IA sobre o lead ──
+      let aiNotesBlock = '';
+      if ((convo as any).ai_notes) {
+        aiNotesBlock =
+          `\n═══════════════════════════════════════════════════\n` +
+          `🤖 SUAS ANOTAÇÕES ANTERIORES (você escreveu isso):\n` +
+          `${(convo as any).ai_notes}\n` +
+          `═══════════════════════════════════════════════════\n`;
+      }
+
       // ── Reminder context — injeta aviso se cliente está respondendo a um lembrete recente ──
       let reminderContextBlock = '';
       const reminderCtx = (convo as any).reminder_context as any;
@@ -1272,6 +1306,8 @@ export class AiProcessor extends WorkerHost {
         available_slots: availableSlots,
         reminder_context: reminderContextBlock,
         upcoming_events: upcomingEventsBlock,
+        operator_notes: operatorNotesBlock,
+        ai_notes: aiNotesBlock,
       };
 
       // Cabeçalho fixo de capacidades — injetado antes de qualquer skill prompt
@@ -1291,6 +1327,8 @@ Use essa data para referências temporais e para saber os valores vigentes (ex: 
 MEMÓRIA DO LEAD (tudo que já foi coletado sobre este cliente):
 {{lead_memory}}
 ═══════════════════════════════════════════════════
+{{operator_notes}}
+{{ai_notes}}
 {{reminder_context}}
 {{upcoming_events}}
 REGRA CRÍTICA — PROIBIDO REPETIR PERGUNTAS:
