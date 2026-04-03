@@ -44,7 +44,7 @@ export function ThemeSwitcher() {
               style={{
                 backgroundColor: t.color,
                 color: t.dark ? '#fff' : '#111',
-                ringColor: isActive ? t.accent : undefined,
+                ['--tw-ring-color' as string]: t.accent,
               }}
               title={t.name}
             >
