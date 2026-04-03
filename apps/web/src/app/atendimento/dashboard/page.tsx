@@ -23,6 +23,7 @@ import { TeamPerformanceBoard } from './components/TeamPerformanceBoard';
 import { UpcomingEvents } from './components/UpcomingEvents';
 import { DjenPublications } from './components/DjenPublications';
 import { QuickActions } from './components/QuickActions';
+import { OperatorPerformanceStrip } from './components/OperatorPerformanceStrip';
 
 import { RevenueTrendChart } from './components/charts/RevenueTrendChart';
 import { LeadFunnelChart } from './components/charts/LeadFunnelChart';
@@ -104,6 +105,97 @@ export default function DashboardPage() {
 
   if (!data) return null;
 
+  /* ═══════════════════════════════════════════════════════════════
+     OPERADOR: Layout agressivo focado em performance comercial
+     ═══════════════════════════════════════════════════════════════ */
+  if (isOperador) {
+    return (
+      <div className="h-full overflow-y-auto bg-background">
+        <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-4 pb-28 md:pb-6">
+
+          {/* Row 1: Header + Period Selector */}
+          <MotionWidget>
+            <div className="space-y-3">
+              <DashboardHeader data={data} isAdmin={false} />
+              <PeriodSelector active={period.key} onSelect={setPeriod} onCustomRange={setCustomRange} />
+            </div>
+          </MotionWidget>
+
+          {/* Row 2: Stats Grid Agressivo (8 cards) */}
+          <MotionWidget delay={0.05}>
+            <StatsGrid
+              data={data}
+              isOperador
+              funnel={funnel.data}
+              responseTime={responseTime.data}
+              velocity={velocity.data}
+            />
+          </MotionWidget>
+
+          {/* Row 3: Performance Strip */}
+          <MotionWidget delay={0.08}>
+            <OperatorPerformanceStrip
+              funnel={funnel.data}
+              responseTime={responseTime.data}
+              tasks={tasks.data}
+            />
+          </MotionWidget>
+
+          {/* Row 4: Inbox Stats (full width, com metas) */}
+          {data.inboxStats && (
+            <MotionWidget delay={0.12}>
+              <InboxStats
+                closedToday={data.inboxStats.closedToday}
+                closedThisWeek={data.inboxStats.closedThisWeek}
+                closedThisMonth={data.inboxStats.closedThisMonth}
+                isOperador
+              />
+            </MotionWidget>
+          )}
+
+          {/* Row 5: Lead Funnel + Lead Sources (2 col) */}
+          <MotionWidget delay={0.16}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <LeadFunnelChart data={funnel.data} loading={funnel.loading} />
+              <LeadSourcesChart data={sources.data} loading={sources.loading} />
+            </div>
+          </MotionWidget>
+
+          {/* Row 6: Response Time + Conversion Velocity (2 col) */}
+          <MotionWidget delay={0.2}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <ResponseTimeWidget data={responseTime.data} loading={responseTime.loading} />
+              <ConversionVelocityWidget data={velocity.data} loading={velocity.loading} />
+            </div>
+          </MotionWidget>
+
+          {/* Row 7: Lead Pipeline (full width) */}
+          <MotionWidget delay={0.24}>
+            <LeadPipeline pipeline={data.leadPipeline} />
+          </MotionWidget>
+
+          {/* Row 8: Task Completion (full width) */}
+          <MotionWidget delay={0.28}>
+            <TaskCompletionChart data={tasks.data} loading={tasks.loading} />
+          </MotionWidget>
+
+          {/* Row 9: Upcoming Events (full width) */}
+          <MotionWidget delay={0.32}>
+            <UpcomingEvents events={data.upcomingEvents} />
+          </MotionWidget>
+
+          {/* Row 10: Quick Actions */}
+          <MotionWidget delay={0.36}>
+            <QuickActions roleInfo={roleInfo} />
+          </MotionWidget>
+        </div>
+      </div>
+    );
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     DEMAIS ROLES: Layout padrao
+     ═══════════════════════════════════════════════════════════════ */
   return (
     <div className="h-full overflow-y-auto bg-background">
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 pb-28 md:pb-6">
