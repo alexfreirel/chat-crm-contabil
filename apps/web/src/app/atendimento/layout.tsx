@@ -92,6 +92,14 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     if (!token) return;
 
+    // Decodifica userId do JWT para join_user
+    let myId: string | null = null;
+    try {
+      let b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      myId = JSON.parse(atob(b64)).sub || null;
+    } catch { /* ignora */ }
+
     const socket = io(getWsUrl(), {
       path: getSocketPath(),
       transports: ['polling', 'websocket'],
@@ -101,8 +109,13 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
       reconnectionDelay: 2000,
     });
 
-    // Backend envia incoming_message_notification apenas para o user room do
-    // atendente atribuído (ou tenant se sem atribuição). Se chegou, é para mim.
+    // Entrar no room user:${myId} para receber notificações direcionadas
+    socket.on('connect', () => {
+      if (myId) socket.emit('join_user', myId);
+    });
+
+    // Backend envia incoming_message_notification para user:${assignedUserId}
+    // (ou tenant se sem atribuição). Se chegou, é para mim.
     // Na tela de chat, page.tsx já cuida → evita som duplo.
     socket.on('incoming_message_notification', () => {
       const onChatPage = pathnameRef.current === '/atendimento' ||

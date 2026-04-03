@@ -1226,17 +1226,27 @@ export default function CrmPage() {
       if (document.visibilityState === 'visible') fetchLeads(true);
     }, 30_000);
 
+    // Decode userId para join_user
+    let myId: string | null = null;
+    try {
+      let b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      myId = JSON.parse(atob(b64)).sub || null;
+    } catch { /* ignora */ }
+
     // Socket: atualiza o CRM em tempo real quando há novos leads/mensagens
     const socket = io(getWsUrl(), {
       path: getSocketPath(),
       transports: ['polling', 'websocket'],
       auth: { token },
     });
+    // Entrar no room user:${myId} para receber notificações direcionadas
+    socket.on('connect', () => {
+      if (myId) socket.emit('join_user', myId);
+    });
     socket.on('inboxUpdate', () => {
       if (document.visibilityState === 'visible') fetchLeads(true);
     });
-    // Backend envia incoming_message_notification apenas para o user room do atendente
-    // atribuído (ou tenant inteiro se sem atribuição). Se chegou aqui, é para mim.
     socket.on('incoming_message_notification', (data: { contactName?: string }) => {
       if (document.visibilityState === 'visible') {
         fetchLeads(true);
