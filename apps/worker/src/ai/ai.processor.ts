@@ -1562,25 +1562,55 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
 
       } else {
         // ─── PATH LEGADO: JSON mode (sem tools) ───
-        const completion = await ai.chat.completions.create({
+        const isClaudeModelLegacy = model.startsWith('claude-');
+        const legacyProvider: LLMProvider = isClaudeModelLegacy ? 'anthropic' : 'openai';
+        const legacyApiKey = isClaudeModelLegacy
+          ? await this.settings.getAnthropicKey()
+          : openAiKey;
+
+        if (!legacyApiKey) {
+          this.logger.error(`[AI] API key não encontrada para provider "${legacyProvider}" (legacy path)`);
+          return;
+        }
+
+        const legacyClient = createLLMClient(legacyProvider, legacyApiKey);
+        const legacyMessages = chatTurns.map((t: any) => ({
+          role: t.role as 'user' | 'assistant',
+          content: t.content,
+        }));
+        // Adicionar instrução final como último user message
+        if (visionImages.length > 0) {
+          legacyMessages.push({ role: 'user' as const, content: [{ type: 'text', text: instruction }, ...visionImages] });
+        } else {
+          legacyMessages.push({ role: 'user' as const, content: instruction });
+        }
+
+        const legacyResult = await legacyClient.chat({
           model,
-          messages: openAiMessages,
-          ...this.tokenParam(model, maxTokens),
+          systemPrompt,
+          messages: legacyMessages,
+          maxTokens,
           temperature,
-          response_format: { type: 'json_object' },
+          jsonMode: true,
+        });
+
+        const completion = { choices: [{ message: { content: legacyResult.content } }] } as any;
+        // Salvar usage com dados reais
+        await this.saveUsage({
+          conversation_id,
+          skill_id: skill?.id ?? null,
+          model,
+          call_type: 'chat',
+          usage: {
+            prompt_tokens: legacyResult.usage.promptTokens,
+            completion_tokens: legacyResult.usage.completionTokens,
+            total_tokens: legacyResult.usage.totalTokens,
+          },
         });
 
         const rawResponse =
           completion.choices[0]?.message?.content ||
           '{"reply":"Desculpe, estou com instabilidade no momento."}';
-
-        await this.saveUsage({
-          conversation_id: conversation_id,
-          skill_id: skill?.id ?? null,
-          model,
-          call_type: 'chat',
-          usage: completion.usage,
-        });
 
         const parsed = this.parseAiResponse(rawResponse);
         aiText = parsed.reply;
