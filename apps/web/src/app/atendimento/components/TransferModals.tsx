@@ -104,7 +104,7 @@ export function TransferModals({
                   {transferGroups.filter(g => g.users.length > 0 || (g.type === 'SECTOR' && g.auto_route)).map(group => (
                     <div key={group.id}>
                       <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5 px-1">
-                        {group.type === 'SECTOR' ? (group.auto_route ? '\u2696\uFE0F' : '\uD83C\uDFE2') : '\uD83D\uDCE5'} {group.name}
+                        {group.type === 'SECTOR' ? (group.auto_route ? '{"⚖️"}' : '{"🏢"}') : '{"📥"}'} {group.name}
                         {group.auto_route && <span className="ml-1 text-violet-400">(auto)</span>}
                       </p>
                       {group.type === 'SECTOR' && group.auto_route ? (
@@ -118,7 +118,7 @@ export function TransferModals({
                                   onClick={() => onOpenReasonPopup('lawyer', lawyerName)}
                                   className="w-full py-3 bg-violet-500/10 border border-violet-500/30 text-violet-300 rounded-xl font-bold text-sm hover:bg-violet-500/20 transition-colors flex items-center justify-center gap-2"
                                 >
-                                  \u2696\uFE0F Transferir para {lawyerName}{selected.legalArea ? ` (${selected.legalArea})` : ''}
+                                  {"⚖️"} Transferir para {lawyerName}{selected.legalArea ? ` (${selected.legalArea})` : ''}
                                 </button>
                               );
                             })()
@@ -135,7 +135,7 @@ export function TransferModals({
                                         : 'bg-muted/30 hover:bg-sky-500/10 hover:text-sky-400 border-border hover:border-sky-500/30'
                                     }`}
                                   >
-                                    {selectedTransferUserId === user.id && <span className="mr-2">\u2713</span>}
+                                    {selectedTransferUserId === user.id && <span className="mr-2">{"✓"}</span>}
                                     {user.name}
                                   </button>
                                 ))}
@@ -159,7 +159,7 @@ export function TransferModals({
                                   : 'bg-muted/30 hover:bg-sky-500/10 hover:text-sky-400 border-border hover:border-sky-500/30'
                               }`}
                             >
-                              {selectedTransferUserId === user.id && <span className="mr-2">\u2713</span>}
+                              {selectedTransferUserId === user.id && <span className="mr-2">{"✓"}</span>}
                               {user.name}
                             </button>
                           ))}
@@ -208,9 +208,9 @@ export function TransferModals({
               'bg-sky-500/5'
             }`}>
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">
-                {reasonPopupContext === 'lawyer' ? '\u2696\uFE0F Transferencia para especialista' :
-                 reasonPopupContext === 'return' ? '\u21A9 Devolver contato' :
-                 '\uD83D\uDCE8 Solicitar transferencia'}
+                {reasonPopupContext === 'lawyer' ? '{"⚖️"} Transferencia para especialista' :
+                 reasonPopupContext === 'return' ? '{"↩"} Devolver contato' :
+                 '{"📨"} Solicitar transferencia'}
               </p>
               <h3 className="font-bold text-sm text-foreground">
                 {reasonPopupContext === 'return' ? `Para: ${reasonPopupTargetName}` : reasonPopupTargetName}
@@ -274,9 +274,9 @@ export function TransferModals({
                     : 'bg-sky-500 text-white hover:bg-sky-600'
                 }`}
               >
-                {transferring ? '\u23F3 Enviando...' :
-                 reasonPopupContext === 'lawyer' ? '\u2696\uFE0F Confirmar' :
-                 reasonPopupContext === 'return' ? '\u21A9 Devolver' :
+                {transferring ? '{"⏳"} Enviando...' :
+                 reasonPopupContext === 'lawyer' ? '{"⚖️"} Confirmar' :
+                 reasonPopupContext === 'return' ? '{"↩"} Devolver' :
                  'Enviar'}
               </button>
             </div>
@@ -290,7 +290,7 @@ export function TransferModals({
           <div className="bg-card border-2 border-amber-500/40 rounded-2xl shadow-2xl w-full max-w-sm flex flex-col max-h-[90vh]">
             {/* Header fixo */}
             <div className="flex items-center gap-3 px-6 pt-6 pb-4 shrink-0">
-              <span className="text-2xl">\uD83D\uDCE8</span>
+              <span className="text-2xl">{"📨"}</span>
               <div>
                 <h3 className="font-bold text-base">Pedido de Transferencia</h3>
                 <p className="text-xs text-muted-foreground">De: <strong className="text-foreground">{incomingTransfer.fromUserName}</strong></p>
@@ -348,14 +348,14 @@ export function TransferModals({
                       disabled={processingTransfer}
                       className="flex-1 py-2.5 bg-emerald-500 text-white rounded-xl font-bold text-sm hover:bg-emerald-600 transition-colors disabled:opacity-50"
                     >
-                      \u2713 Aceitar
+                      {"✓"} Aceitar
                     </button>
                     <button
                       onClick={() => onSetShowDeclineInput(true)}
                       disabled={processingTransfer}
                       className="flex-1 py-2.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl font-bold text-sm hover:bg-red-500/20 transition-colors"
                     >
-                      \u2717 Recusar
+                      {"✗"} Recusar
                     </button>
                   </>
                 ) : (
