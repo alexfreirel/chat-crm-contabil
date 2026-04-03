@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 
-export type AppRole = 'ADMIN' | 'ADVOGADO' | 'OPERADOR' | 'ESTAGIARIO' | 'FINANCEIRO';
+export type AppRole = 'ADMIN' | 'ADVOGADO' | 'OPERADOR' | 'COMERCIAL' | 'ESTAGIARIO' | 'FINANCEIRO';
 
 export interface RoleInfo {
   role: AppRole | null;
@@ -10,6 +10,7 @@ export interface RoleInfo {
   isAdmin: boolean;
   isAdvogado: boolean;
   isOperador: boolean;
+  isComercial: boolean;
   isEstagiario: boolean;
   isFinanceiro: boolean;
   canManageLegalCases: boolean;  // criar, editar, arquivar processos
@@ -56,13 +57,14 @@ function buildInfo(role: string | null, userId: string | null): RoleInfo {
     userId,
     isAdmin: r === 'ADMIN',
     isAdvogado: r === 'ADVOGADO',
-    isOperador: r === 'OPERADOR',
+    isOperador: r === 'OPERADOR' || r === 'COMERCIAL',
+    isComercial: r === 'COMERCIAL',
     isEstagiario: r === 'ESTAGIARIO',
     isFinanceiro: r === 'FINANCEIRO',
     canManageLegalCases: is(['ADMIN', 'ADVOGADO']),
     canViewLegalCases: is(['ADMIN', 'ADVOGADO', 'ESTAGIARIO']),
     canManageSettings: r === 'ADMIN',
-    canViewDashboard: is(['ADMIN', 'ADVOGADO']),
+    canViewDashboard: is(['ADMIN', 'ADVOGADO', 'OPERADOR', 'COMERCIAL']),
     canViewAnalytics: is(['ADMIN', 'ADVOGADO']),
     canViewDjen: is(['ADMIN', 'ADVOGADO', 'ESTAGIARIO']),
     canViewFinanceiro: is(['ADMIN', 'FINANCEIRO']),
