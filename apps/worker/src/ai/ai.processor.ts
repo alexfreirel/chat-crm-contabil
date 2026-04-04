@@ -832,6 +832,11 @@ export class AiProcessor extends WorkerHost {
 
     const { conversation_id } = job.data;
 
+    if (!conversation_id) {
+      this.logger.warn(`[AI] Job ${job.id} sem conversation_id — ignorando (payload: ${JSON.stringify(job.data).slice(0, 100)})`);
+      return;
+    }
+
     try {
       // 2. Buscar conversa + lead + últimas 20 mensagens com mídia incluída
       // orderBy desc para pegar as mais RECENTES; invertemos abaixo para ordem cronológica
