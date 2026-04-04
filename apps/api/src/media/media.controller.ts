@@ -55,7 +55,9 @@ export class MediaController {
         const protocol = media.original_url.startsWith('https') ? https : http;
         await new Promise<void>((resolve, reject) => {
           const req2 = protocol.get(media.original_url!, (proxyRes) => {
-            const ct = proxyRes.headers['content-type'] || media.mime_type || 'application/octet-stream';
+            // Forçar mime_type do banco quando proxy retorna genérico (ex: application/octet-stream)
+            const proxyCt = proxyRes.headers['content-type'] || '';
+            const ct = (proxyCt && proxyCt !== 'application/octet-stream') ? proxyCt : (media.mime_type || 'application/octet-stream');
             const cl = proxyRes.headers['content-length'];
             res.setHeader('Content-Type', ct);
             res.setHeader('Cache-Control', 'private, max-age=86400');

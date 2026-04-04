@@ -44,8 +44,10 @@ export function AudioPlayer({ src, duration, isOutgoing }: AudioPlayerProps) {
           }
           throw new Error(`HTTP ${res.status}`);
         }
-        const blob = await res.blob();
+        const rawBlob = await res.blob();
         if (cancelled) return;
+        // Forçar tipo audio/ogg quando Content-Type vier errado (ex: application/octet-stream)
+        const blob = rawBlob.type.startsWith('audio/') ? rawBlob : new Blob([rawBlob], { type: 'audio/ogg' });
         const url = URL.createObjectURL(blob);
         setBlobUrl(url);
       } catch {
