@@ -75,6 +75,13 @@ export class MediaProcessor extends WorkerHost {
       // Para documentos, a Evolution API fornece o nome original do arquivo
       const originalName: string | null = media_data?.fileName ?? null;
 
+      // Verificar se a mensagem ainda existe (pode ter sido deletada com o lead)
+      const msgExists = await this.prisma.message.findUnique({ where: { id: message_id }, select: { id: true } });
+      if (!msgExists) {
+        this.logger.warn(`[MEDIA] Mensagem ${message_id} não existe mais — ignorando mídia`);
+        return;
+      }
+
       await this.prisma.media.create({
         data: {
           message_id: message_id,
