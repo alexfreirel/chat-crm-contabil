@@ -1769,9 +1769,12 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
         `[AI] Resposta enviada para ${convo.lead.phone} (model=${model}, skill=${skill?.name || 'fallback'})`,
       );
 
-      // 18. TTS — enviar áudio da resposta via Google TTS (se habilitado)
+      // 18. TTS — enviar áudio da resposta via Google TTS
+      // Envia áudio quando: TTS habilitado E a última mensagem do lead foi áudio (espelha o formato)
+      const lastInbound = [...convo.messages].reverse().find((m: any) => m.direction === 'in');
+      const leadSentAudio = lastInbound?.type === 'audio';
       const ttsConfig = await this.settings.getTtsConfig();
-      if (ttsConfig.enabled && ttsConfig.googleApiKey) {
+      if (ttsConfig.enabled && ttsConfig.googleApiKey && leadSentAudio) {
         // Verificar se a chave foi desencriptada corretamente
         if (ttsConfig.googleApiKey.startsWith('enc:')) {
           this.logger.warn('[TTS] API key ainda encriptada — ENCRYPTION_KEY/JWT_SECRET ausente ou incorreto no worker');
