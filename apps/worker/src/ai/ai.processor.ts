@@ -316,30 +316,7 @@ export class AiProcessor extends WorkerHost {
         `[AI] Nome atualizado: "${updates.name}" → lead ${leadId}`,
       );
 
-      const { apiUrl, apiKey } = await this.settings.getEvolutionConfig();
-      if (apiUrl && instanceName) {
-        try {
-          await axios.post(
-            `${apiUrl}/contact/upsert/${instanceName}`,
-            {
-              contacts: [{ phone: leadPhone, fullName: updates.name }],
-            },
-            {
-              headers: {
-                'Content-Type': 'application/json',
-                apikey: apiKey,
-              },
-            },
-          );
-          this.logger.log(
-            `[AI] Contato atualizado na Evolution: ${leadPhone} → "${updates.name}"`,
-          );
-        } catch (e: any) {
-          this.logger.warn(
-            `[AI] Falha ao atualizar contato na Evolution: ${e.message}`,
-          );
-        }
-      }
+      // Nome salvo no banco (Lead.name) — Evolution API não tem endpoint para renomear contatos
     }
 
     // b. Status → Lead.stage
