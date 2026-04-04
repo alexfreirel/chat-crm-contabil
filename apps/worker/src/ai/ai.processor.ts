@@ -853,8 +853,7 @@ export class AiProcessor extends WorkerHost {
       // 3a. Mesmo sem ai_mode, atualiza Long Memory para conversas do operador humano.
       // Isso garante que o "Resumo dos Fatos" seja atualizado mesmo quando um humano atende.
       if (!convo.ai_mode) {
-        const inboundTotal = convo.messages.filter((m) => m.direction === 'in').length;
-        if (inboundTotal > 0) {
+        if (convo.messages.length > 0) {
           try {
             const aiForMemory = new OpenAI({ apiKey: openAiKey });
             const chronologicalMemory = [...convo.messages].reverse();
