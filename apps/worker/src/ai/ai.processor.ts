@@ -170,35 +170,29 @@ export class AiProcessor extends WorkerHost {
     reply: string;
     updates: any;
     scheduling_action?: { action: string; date?: string; time?: string };
+    slots_to_offer?: { date: string; time: string; label: string }[];
   } {
+    const extract = (parsed: any) => ({
+      reply: parsed.reply,
+      updates: parsed.updates || parsed.lead_update || {},
+      scheduling_action: parsed.scheduling_action || undefined,
+      slots_to_offer: parsed.slots_to_offer || undefined,
+    });
+
     try {
       const parsed = JSON.parse(raw);
-      if (parsed.reply) {
-        return {
-          reply: parsed.reply,
-          updates: parsed.updates || parsed.lead_update || {},
-          scheduling_action: parsed.scheduling_action || undefined,
-        };
-      }
+      if (parsed.reply) return extract(parsed);
     } catch {}
 
     const jsonMatch = raw.match(/```json?\s*([\s\S]*?)```/);
     if (jsonMatch) {
       try {
         const parsed = JSON.parse(jsonMatch[1].trim());
-        if (parsed.reply) {
-          return {
-            reply: parsed.reply,
-            updates: parsed.updates || parsed.lead_update || {},
-            scheduling_action: parsed.scheduling_action || undefined,
-          };
-        }
+        if (parsed.reply) return extract(parsed);
       } catch {}
     }
 
-    this.logger.warn(
-      '[AI] Resposta não é JSON válido — usando como texto puro',
-    );
+    this.logger.warn('[AI] Resposta não é JSON válido — usando como texto puro');
     return { reply: raw, updates: {} };
   }
 
@@ -1618,6 +1612,7 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
         aiText = parsed.reply;
         updates = parsed.updates;
         scheduling_action = parsed.scheduling_action;
+        slotsToOffer = parsed.slots_to_offer || null;
       }
 
       this.logger.log(
