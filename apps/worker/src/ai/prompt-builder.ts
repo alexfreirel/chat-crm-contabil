@@ -47,12 +47,16 @@ export class PromptBuilder {
       }
 
       prompt += refBlock;
+      this.logger.log(`[PromptBuilder] ${references.length} references injetadas (${totalChars} chars)`);
+    } else {
+      this.logger.warn('[PromptBuilder] NENHUMA reference encontrada para injeção');
     }
 
     if (extraInjections) {
       prompt += '\n\n' + this.injectVariables(extraInjections, vars);
     }
 
+    this.logger.log(`[PromptBuilder] Prompt total: ${prompt.length} chars (~${Math.round(prompt.length/4)} tokens)`);
     return prompt;
   }
 
