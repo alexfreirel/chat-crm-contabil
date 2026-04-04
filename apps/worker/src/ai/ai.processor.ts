@@ -1772,9 +1772,12 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
       // 18. TTS — enviar áudio da resposta via Google TTS (se habilitado)
       const ttsConfig = await this.settings.getTtsConfig();
       if (ttsConfig.enabled && ttsConfig.googleApiKey) {
-        // Debug: mostra primeiros chars da chave para verificar se foi descriptografada
-        const keyPreview = ttsConfig.googleApiKey.slice(0, 6) + '...' + ttsConfig.googleApiKey.slice(-4);
-        this.logger.log(`[TTS] Usando chave: ${keyPreview} (len=${ttsConfig.googleApiKey.length}), voz=${ttsConfig.voice}`);
+        // Verificar se a chave foi desencriptada corretamente
+        if (ttsConfig.googleApiKey.startsWith('enc:')) {
+          this.logger.warn('[TTS] API key ainda encriptada — ENCRYPTION_KEY/JWT_SECRET ausente ou incorreto no worker');
+        } else {
+          this.logger.log(`[TTS] Chave OK (len=${ttsConfig.googleApiKey.length}), voz=${ttsConfig.voice}`);
+        }
         try {
           // Remove formatação markdown do texto (negrito, itálico) antes de enviar ao TTS
           const ttsText = finalText

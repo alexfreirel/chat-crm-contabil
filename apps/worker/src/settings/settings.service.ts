@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { createDecipheriv, scryptSync } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class SettingsService {
+  private readonly logger = new Logger(SettingsService.name);
   constructor(private prisma: PrismaService) {}
 
   async getEvolutionConfig() {
@@ -100,10 +101,16 @@ export class SettingsService {
     if (!value.startsWith(ENCRYPTED_PREFIX)) return value;
     try {
       const secret = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET;
-      if (!secret) return value;
+      if (!secret) {
+        this.logger.warn('[DECRYPT] Sem ENCRYPTION_KEY ou JWT_SECRET — retornando valor encriptado');
+        return value;
+      }
       const key = scryptSync(secret, 'crm-settings-salt', 32);
       const parts = value.slice(ENCRYPTED_PREFIX.length).split(':');
-      if (parts.length !== 3) return value;
+      if (parts.length !== 3) {
+        this.logger.warn(`[DECRYPT] Formato inválido (${parts.length} partes, esperado 3)`);
+        return value;
+      }
       const [ivHex, tagHex, encHex] = parts;
       const iv        = Buffer.from(ivHex,  'hex');
       const tag       = Buffer.from(tagHex, 'hex');
@@ -111,7 +118,8 @@ export class SettingsService {
       const decipher  = createDecipheriv('aes-256-gcm', key, iv);
       decipher.setAuthTag(tag);
       return decipher.update(encrypted).toString('utf8') + decipher.final('utf8');
-    } catch {
+    } catch (e: any) {
+      this.logger.warn(`[DECRYPT] Falha ao desencriptar: ${e.message}`);
       return value;
     }
   }
