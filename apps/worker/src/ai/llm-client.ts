@@ -164,10 +164,20 @@ export class AnthropicClient {
       input_schema: t.function.parameters as Anthropic.Tool.InputSchema,
     }));
 
+    // Anthropic não tem response_format: json_object. Para forçar JSON:
+    // 1. Adicionar instrução no system prompt
+    // 2. Prefill com "{" no assistant para guiar o modelo
+    let systemPrompt = params.systemPrompt;
+    const anthropicMessages = [...messages];
+    if (params.jsonMode && !tools?.length) {
+      systemPrompt += '\n\nIMPORTANTE: Retorne SOMENTE um JSON válido, sem texto antes ou depois. Comece com { e termine com }.';
+      anthropicMessages.push({ role: 'assistant', content: '{' });
+    }
+
     const requestParams: Anthropic.MessageCreateParams = {
       model: params.model,
-      system: params.systemPrompt,
-      messages,
+      system: systemPrompt,
+      messages: anthropicMessages,
       max_tokens: params.maxTokens,
       temperature: params.temperature,
     };
@@ -192,6 +202,11 @@ export class AnthropicClient {
           arguments: JSON.stringify(block.input),
         });
       }
+    }
+
+    // Reconstituir JSON completo quando usou prefill com "{"
+    if (params.jsonMode && !tools?.length && content && !content.trimStart().startsWith('{')) {
+      content = '{' + content;
     }
 
     return {
