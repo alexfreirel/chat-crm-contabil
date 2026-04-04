@@ -1860,13 +1860,11 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
               },
             });
 
-            // Envia via Evolution API como áudio de WhatsApp
-            const publicApiUrl = process.env.PUBLIC_API_URL || '';
-            const audioUrl     = `${publicApiUrl}/media/${audioMsg.id}`;
-
+            // Envia via Evolution API como áudio base64 (evita problemas de URL pública)
+            const audioBase64 = `data:audio/ogg;base64,${audioBuffer.toString('base64')}`;
             await axios.post(
               `${apiUrl}/message/sendWhatsAppAudio/${instanceName}`,
-              { number: convo.lead.phone, audio: audioUrl },
+              { number: convo.lead.phone, audio: audioBase64 },
               { headers: { 'Content-Type': 'application/json', apikey: apiKey }, timeout: 30000 },
             );
 
