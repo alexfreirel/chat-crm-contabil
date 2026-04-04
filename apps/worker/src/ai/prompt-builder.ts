@@ -130,6 +130,31 @@ export class PromptBuilder {
                   type: 'string',
                   description: 'Observações internas sobre o lead',
                 },
+                form_data: {
+                  type: 'object',
+                  description: 'Campos do formulário trabalhista coletados. Inclua todos os campos já obtidos.',
+                },
+              },
+            },
+            scheduling_action: {
+              type: 'object',
+              description: 'Use para confirmar agendamento de reunião. Preencha quando o lead CONFIRMAR o horário.',
+              properties: {
+                action: { type: 'string', enum: ['confirm_slot'] },
+                date: { type: 'string', description: 'Data no formato YYYY-MM-DD' },
+                time: { type: 'string', description: 'Horário no formato HH:MM' },
+              },
+            },
+            slots_to_offer: {
+              type: 'array',
+              description: 'Quando oferecer horários de reunião ao lead, liste aqui os horários disponíveis. O sistema enviará como mensagem interativa (lista clicável) no WhatsApp. Use APENAS quando estiver na etapa de oferecer horários, NÃO quando já confirmou.',
+              items: {
+                type: 'object',
+                properties: {
+                  date: { type: 'string', description: 'Data YYYY-MM-DD' },
+                  time: { type: 'string', description: 'Horário HH:MM' },
+                  label: { type: 'string', description: 'Texto amigável ex: "Segunda 07/04 às 09:00"' },
+                },
               },
             },
           },

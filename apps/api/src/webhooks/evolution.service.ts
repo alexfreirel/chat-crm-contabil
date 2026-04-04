@@ -193,6 +193,9 @@ export class EvolutionService {
       const messageContent =
         (data.message?.conversation as string) ||
         (data.message?.extendedTextMessage?.text as string) ||
+        (data.message?.listResponseMessage?.singleSelectReply?.selectedRowId as string) ||
+        (data.message?.listResponseMessage?.title as string) ||
+        (data.message?.buttonsResponseMessage?.selectedDisplayText as string) ||
         '';
       const messageType = (data.messageType as string) || 'text';
 

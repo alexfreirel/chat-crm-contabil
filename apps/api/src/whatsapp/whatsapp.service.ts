@@ -120,6 +120,28 @@ export class WhatsappService {
     });
   }
 
+  // --- MENSAGENS INTERATIVAS ---
+
+  async sendList(
+    number: string,
+    title: string,
+    description: string,
+    buttonText: string,
+    sections: { title: string; rows: { title: string; description?: string; rowId: string }[] }[],
+    instanceName?: string,
+    footerText?: string,
+  ) {
+    const targetInstance = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'whatsapp';
+    return this.request('POST', `message/sendList/${targetInstance}`, {
+      number,
+      title,
+      description,
+      buttonText,
+      footerText: footerText || '',
+      sections,
+    });
+  }
+
   // --- REAÇÕES ---
 
   async sendReaction(instanceName: string, key: { remoteJid: string; fromMe: boolean; id: string }, emoji: string) {

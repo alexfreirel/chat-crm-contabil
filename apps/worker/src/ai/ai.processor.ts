@@ -1458,6 +1458,7 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
       let aiText = '';
       let updates: any = {};
       let scheduling_action: any = null;
+      let slotsToOffer: any[] | null = null;
       let toolCallLogs: any[] = [];
 
       if (useToolCalling) {
@@ -1527,6 +1528,7 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
           aiText = respondCall.input.reply || '';
           updates = respondCall.input.updates || {};
           scheduling_action = respondCall.input.scheduling_action || null;
+          slotsToOffer = respondCall.input.slots_to_offer || null;
         } else if (toolResult.response.content) {
           // Fallback: parse content as JSON (hybrid mode) ou texto puro
           const parsed = this.parseAiResponse(toolResult.response.content);
@@ -1737,21 +1739,39 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
       // para que o webhook echo seja corretamente deduplicado e não gere registro duplicado.
       let evolutionMsgId = `sys_ai_${Date.now()}`;
       try {
-        const sendResult = await axios.post(
-          `${apiUrl}/message/sendText/${instanceName}`,
-          {
-            number: convo.lead.phone,
-            text: textToSend,
-          },
-          {
-            headers: { 'Content-Type': 'application/json', apikey: apiKey },
-            timeout: 30000,
-          },
-        );
+        let sendResult: any;
+        const evoHeaders = { 'Content-Type': 'application/json', apikey: apiKey };
+
+        // Se a IA ofereceu horários, envia como lista interativa (clicável)
+        if (slotsToOffer?.length) {
+          const rows = slotsToOffer.map((s: any) => ({
+            title: s.label || `${s.date} ${s.time}`,
+            description: '',
+            rowId: `slot_${s.date}_${s.time}`,
+          }));
+          sendResult = await axios.post(
+            `${apiUrl}/message/sendList/${instanceName}`,
+            {
+              number: convo.lead.phone,
+              title: 'Horários disponíveis',
+              description: finalText,
+              buttonText: 'Escolher horário',
+              footerText: 'André Lustosa Advogados',
+              sections: [{ title: 'Horários', rows }],
+            },
+            { headers: evoHeaders, timeout: 30000 },
+          );
+          this.logger.log(`[AI] Lista interativa enviada: ${rows.length} horários`);
+        } else {
+          sendResult = await axios.post(
+            `${apiUrl}/message/sendText/${instanceName}`,
+            { number: convo.lead.phone, text: textToSend },
+            { headers: evoHeaders, timeout: 30000 },
+          );
+        }
         evolutionMsgId = sendResult.data?.key?.id || evolutionMsgId;
       } catch (sendErr: any) {
         this.logger.error(`[AI] Falha ao enviar via Evolution (${sendErr.response?.status || sendErr.message}): ${JSON.stringify(sendErr.response?.data || {}).slice(0, 200)}`);
-        // Continua para salvar no banco — a mensagem ficará com status erro
       }
 
       // 17. Salvar mensagem no banco com skill_id (texto limpo, sem assinatura)
