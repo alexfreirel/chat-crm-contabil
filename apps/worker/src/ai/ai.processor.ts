@@ -1745,7 +1745,8 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
       // para que o webhook echo seja corretamente deduplicado e não gere registro duplicado.
       let evolutionMsgId = `sys_ai_${Date.now()}`;
       // Pré-calcular se vai enviar áudio (para pular texto nesse caso)
-      const _lastIn = [...convo.messages].reverse().find((m: any) => m.direction === 'in');
+      // Buscar a última mensagem inbound (mais recente = primeiro do array desc)
+      const _lastIn = convo.messages.find((m: any) => m.direction === 'in');
       const _tts = await this.settings.getTtsConfig();
       const _willAudio = _tts.enabled && _tts.googleApiKey && !_tts.googleApiKey.startsWith('enc:') && _lastIn?.type === 'audio';
 
