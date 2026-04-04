@@ -18,6 +18,7 @@ import { TaskAlertsModule } from './task/task-alerts.module';
     SettingsModule,
     ScheduleModule.forRoot(),
     BullModule.forRoot({
+      prefix: process.env.BULL_PREFIX || 'bull',
       connection: {
         host: process.env.REDIS_HOST || 'localhost',
         port: parseInt(process.env.REDIS_PORT || '6379'),

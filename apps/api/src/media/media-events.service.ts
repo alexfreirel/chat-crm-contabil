@@ -23,8 +23,9 @@ export class MediaEventsService implements OnModuleInit, OnModuleDestroy {
     };
 
     // Queue para buscar dados do job pelo ID
-    this.queue = new Queue('media-jobs', { connection });
-    this.queueEvents = new QueueEvents('media-jobs', { connection });
+    const prefix = process.env.BULL_PREFIX || 'bull';
+    this.queue = new Queue('media-jobs', { connection, prefix });
+    this.queueEvents = new QueueEvents('media-jobs', { connection, prefix });
 
     this.queueEvents.on('completed', async ({ jobId }) => {
       try {

@@ -78,6 +78,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-crm_user}:${POSTGRES_PASSWORD:-crm_pass}@postgres:5432/${POSTGRES_DB:-lexcrm}?schema=public
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - BULL_PREFIX=${BULL_PREFIX:-lustosa}
       - JWT_SECRET=${JWT_SECRET:-troque_esta_secret}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-365d}
       - EVOLUTION_API_URL=${EVOLUTION_API_URL}
@@ -126,6 +127,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-crm_user}:${POSTGRES_PASSWORD:-crm_pass}@postgres:5432/${POSTGRES_DB:-lexcrm}?schema=public
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - BULL_PREFIX=${BULL_PREFIX:-lustosa}
       - JWT_SECRET=${JWT_SECRET:-troque_esta_secret}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - PUBLIC_API_URL=${PUBLIC_API_URL:-https://andrelustosaadvogados.com.br/api}

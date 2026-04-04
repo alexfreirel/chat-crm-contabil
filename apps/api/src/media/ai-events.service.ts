@@ -27,8 +27,9 @@ export class AiEventsService implements OnModuleInit, OnModuleDestroy {
       enableReadyCheck: false,
     };
 
-    this.queue = new Queue('ai-jobs', { connection });
-    this.queueEvents = new QueueEvents('ai-jobs', { connection });
+    const prefix = process.env.BULL_PREFIX || 'bull';
+    this.queue = new Queue('ai-jobs', { connection, prefix });
+    this.queueEvents = new QueueEvents('ai-jobs', { connection, prefix });
 
     // O worker retorna { conversationId, messageId } ao concluir com sucesso
     this.queueEvents.on('completed', async ({ jobId, returnvalue }) => {

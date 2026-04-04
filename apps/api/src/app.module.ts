@@ -53,6 +53,7 @@ import { RolesGuard } from './auth/guards/roles.guard';
     ScheduleModule.forRoot(),
     BullModule.forRootAsync({
       useFactory: () => ({
+        prefix: process.env.BULL_PREFIX || 'bull',
         connection: {
           host: process.env.REDIS_HOST || 'localhost',
           port: parseInt(process.env.REDIS_PORT || '6379'),
