@@ -460,48 +460,46 @@ export class EvolutionService {
       // rápidas. Quando o lead para de digitar, o job dispara e a IA responde tudo de uma vez.
       this.logger.debug(`[AI-CHECK] conv=${conv.id} ai_mode=${conv.ai_mode} isOutgoing=${isOutgoing}`);
       if (!isOutgoing && conv.ai_mode) {
-        const cooldownRaw = await this.prisma.globalSetting.findUnique({
-          where: { key: 'AI_COOLDOWN_SECONDS' },
-        });
-        const cooldownSeconds = cooldownRaw?.value ? parseInt(cooldownRaw.value, 10) : 8;
-        const debounceMs = (isNaN(cooldownSeconds) ? 8 : Math.max(0, cooldownSeconds)) * 1000;
-        const jobId = `ai-debounce-${conv.id}`;
-
-        if (debounceMs > 0) {
-          // Tenta remover job pendente com o mesmo ID para resetar o timer.
-          // Se o job já estiver ATIVO (locked pelo worker), não pode ser removido;
-          // nesse caso agendamos um novo job SEM jobId fixo para que o BullMQ
-          // não faça deduplicação — garantindo que a nova mensagem seja processada
-          // assim que o job atual terminar.
-          let useFixedId = true;
-          const existing = await this.aiQueue.getJob(jobId);
-          if (existing) {
-            try {
-              await existing.remove();
-              this.logger.log(`[AI] Debounce: job ${jobId} removido, timer resetado`);
-            } catch {
-              // Job está bloqueado (em execução) — não pode ser cancelado.
-              // Agendamos novo job sem ID fixo para processar a nova mensagem em seguida.
-              useFixedId = false;
-              this.logger.warn(
-                `[AI] Debounce: job ${jobId} ativo/bloqueado — novo job agendado sem ID fixo`,
-              );
-            }
-          }
-
-          await this.aiQueue.add(
-            'process_ai_response',
-            { conversation_id: conv.id, lead_id: lead.id },
-            useFixedId
-              ? { jobId, delay: debounceMs, removeOnComplete: true, removeOnFail: false }
-              : { delay: debounceMs, removeOnComplete: true, removeOnFail: false },
-          );
-        } else {
-          // Sem debounce: processa imediatamente
-          await this.aiQueue.add('process_ai_response', {
-            conversation_id: conv.id,
-            lead_id: lead.id,
+        try {
+          const cooldownRaw = await this.prisma.globalSetting.findUnique({
+            where: { key: 'AI_COOLDOWN_SECONDS' },
           });
+          const cooldownSeconds = cooldownRaw?.value ? parseInt(cooldownRaw.value, 10) : 8;
+          const debounceMs = (isNaN(cooldownSeconds) ? 8 : Math.max(0, cooldownSeconds)) * 1000;
+          const jobId = `ai-debounce-${conv.id}`;
+
+          if (debounceMs > 0) {
+            let useFixedId = true;
+            const existing = await this.aiQueue.getJob(jobId);
+            if (existing) {
+              try {
+                await existing.remove();
+                this.logger.log(`[AI] Debounce: job ${jobId} removido, timer resetado`);
+              } catch {
+                useFixedId = false;
+                this.logger.warn(
+                  `[AI] Debounce: job ${jobId} ativo/bloqueado — novo job agendado sem ID fixo`,
+                );
+              }
+            }
+
+            await this.aiQueue.add(
+              'process_ai_response',
+              { conversation_id: conv.id, lead_id: lead.id },
+              useFixedId
+                ? { jobId, delay: debounceMs, removeOnComplete: true, removeOnFail: false }
+                : { delay: debounceMs, removeOnComplete: true, removeOnFail: false },
+            );
+            this.logger.log(`[AI] Job enfileirado: ${useFixedId ? jobId : '(sem ID fixo)'} delay=${debounceMs}ms`);
+          } else {
+            await this.aiQueue.add('process_ai_response', {
+              conversation_id: conv.id,
+              lead_id: lead.id,
+            });
+            this.logger.log(`[AI] Job enfileirado imediato para conv ${conv.id}`);
+          }
+        } catch (queueErr: any) {
+          this.logger.error(`[AI] ERRO ao enfileirar job de IA: ${queueErr.message}`);
         }
       }
 
