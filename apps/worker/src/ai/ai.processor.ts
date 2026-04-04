@@ -1304,8 +1304,9 @@ PROIBIDO REPETIR PERGUNTAS:
 - ANTES de perguntar algo, verifique SE a informação já foi dita no histórico OU na memória.
 - Se perceber que repetiu, reconheça e avance.
 
-HORÁRIOS DISPONÍVEIS DO ADVOGADO:
+HORÁRIOS DISPONÍVEIS DO ADVOGADO (use SOMENTE estes — NUNCA invente datas ou horários):
 {{available_slots}}
+REGRAS DE AGENDAMENTO: sábado e domingo NÃO são dias úteis. NUNCA ofereça fim de semana. Use {{data_hoje}} para calcular dias da semana corretamente.
 
 STATUS DA FICHA:
 {{ficha_status}}
