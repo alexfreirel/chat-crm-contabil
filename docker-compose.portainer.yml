@@ -27,6 +27,7 @@ services:
   # ------ Redis (Filas e Cache) ------
   redis:
     image: redis:alpine
+    command: redis-server --stop-writes-on-bgsave-error no --save 900 1 --save 300 100
     ports:
       - "46379:6379"
     networks:
