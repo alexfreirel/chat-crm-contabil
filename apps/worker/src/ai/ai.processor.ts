@@ -1780,13 +1780,12 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
       const lastInbound = [...convo.messages].reverse().find((m: any) => m.direction === 'in');
       const leadSentAudio = lastInbound?.type === 'audio';
       const ttsConfig = await this.settings.getTtsConfig();
-      if (ttsConfig.enabled && ttsConfig.googleApiKey && leadSentAudio) {
-        // Verificar se a chave foi desencriptada corretamente
-        if (ttsConfig.googleApiKey.startsWith('enc:')) {
-          this.logger.warn('[TTS] API key ainda encriptada — ENCRYPTION_KEY/JWT_SECRET ausente ou incorreto no worker');
-        } else {
-          this.logger.log(`[TTS] Chave OK (len=${ttsConfig.googleApiKey.length}), voz=${ttsConfig.voice}`);
-        }
+      const ttsKeyValid = ttsConfig.enabled && ttsConfig.googleApiKey && !ttsConfig.googleApiKey.startsWith('enc:');
+      if (ttsConfig.enabled && ttsConfig.googleApiKey?.startsWith('enc:')) {
+        this.logger.warn('[TTS] API key encriptada — pulando TTS (configure ENCRYPTION_KEY no worker)');
+      }
+      if (ttsKeyValid && leadSentAudio) {
+        this.logger.log(`[TTS] Chave OK (len=${ttsConfig.googleApiKey.length}), voz=${ttsConfig.voice}`);
         try {
           // Remove formatação markdown do texto (negrito, itálico) antes de enviar ao TTS
           const ttsText = finalText
