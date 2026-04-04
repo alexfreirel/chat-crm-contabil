@@ -509,17 +509,15 @@ export default function ChatPage({ params }: { params: { id: string } }) {
               // Auto mark-read since operator is viewing the chat
               api.post(`/conversations/${convo.id}/mark-read`).catch(() => {});
             }
-            // Refetch memória quando IA responde (skill_id/skill indica msg da IA).
-            // Delay de 3s para dar tempo do updateLongMemory gravar no banco.
-            if (msg.skill_id || msg.skill) {
-              setTimeout(() => {
-                api.get(`/leads/${convo.lead.id}`).then((r) => {
-                  if (r.data?.memory) {
-                    setLead((prev: any) => ({ ...prev, memory: r.data.memory }));
-                  }
-                }).catch(() => {});
-              }, 3000);
-            }
+            // Refetch memória após cada mensagem (IA: 3s, humano: 18s para cobrir debounce)
+            const memDelay = (msg.skill_id || msg.skill) ? 3000 : 18000;
+            setTimeout(() => {
+              api.get(`/leads/${convo.lead.id}`).then((r) => {
+                if (r.data?.memory) {
+                  setLead((prev: any) => ({ ...prev, memory: r.data.memory }));
+                }
+              }).catch(() => {});
+            }, memDelay);
           });
 
           socketRef.current.on('messageUpdate', (updatedMsg: any) => {

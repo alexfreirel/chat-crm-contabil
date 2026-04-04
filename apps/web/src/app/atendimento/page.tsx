@@ -992,19 +992,18 @@ export default function Dashboard() {
               return [...prev, msg];
             });
             if (msg.direction === 'in') playNotificationSound();
-            // Refetch memória quando IA responde (skill presente = msg da IA)
-            if ((msg as any).skill_id || (msg as any).skill) {
-              setTimeout(() => {
-                api.get(`/conversations/${msg.conversation_id}`, { _silent401: true } as any).then(r => {
-                  const leadId = r.data?.lead_id || r.data?.lead?.id;
-                  if (leadId) {
-                    api.get(`/leads/${leadId}`, { _silent401: true } as any).then(lr => {
-                      setOpenQuestions(lr.data?.memory?.facts_json?.open_questions || []);
-                    }).catch(() => {});
-                  }
-                }).catch(() => {});
-              }, 3000);
-            }
+            // Refetch memória após cada mensagem (IA: 3s, humano: 18s para cobrir debounce de 15s)
+            const delay = (msg as any).skill_id || (msg as any).skill ? 3000 : 18000;
+            setTimeout(() => {
+              api.get(`/conversations/${msg.conversation_id}`, { _silent401: true } as any).then(r => {
+                const leadId = r.data?.lead_id || r.data?.lead?.id;
+                if (leadId) {
+                  api.get(`/leads/${leadId}`, { _silent401: true } as any).then(lr => {
+                    setOpenQuestions(lr.data?.memory?.facts_json?.open_questions || []);
+                  }).catch(() => {});
+                }
+              }).catch(() => {});
+            }, delay);
           });
           socketRef.current.off('mediaReady');
           socketRef.current.on('mediaReady', (updatedMsg: MessageItem) => {
