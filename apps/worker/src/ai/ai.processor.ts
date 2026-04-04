@@ -1765,7 +1765,7 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
             { headers: evoHeaders, timeout: 30000 },
           );
         }
-        evolutionMsgId = sendResult.data?.key?.id || evolutionMsgId;
+        if (sendResult) evolutionMsgId = sendResult.data?.key?.id || evolutionMsgId;
       } catch (sendErr: any) {
         this.logger.error(`[AI] Falha ao enviar via Evolution (${sendErr.response?.status || sendErr.message}): ${JSON.stringify(sendErr.response?.data || {}).slice(0, 200)}`);
       }
@@ -1862,7 +1862,7 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
 
             // Envia via Evolution API como áudio de WhatsApp
             const publicApiUrl = process.env.PUBLIC_API_URL || '';
-            const audioUrl     = `${publicApiUrl}/messages/${audioMsg.id}/media`;
+            const audioUrl     = `${publicApiUrl}/media/${audioMsg.id}`;
 
             await axios.post(
               `${apiUrl}/message/sendWhatsAppAudio/${instanceName}`,
