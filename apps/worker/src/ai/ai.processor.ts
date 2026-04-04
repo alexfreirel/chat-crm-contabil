@@ -1818,17 +1818,9 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
         `[AI] Resposta enviada para ${convo.lead.phone} (model=${model}, skill=${skill?.name || 'fallback'})`,
       );
 
-      // 18. TTS — enviar áudio da resposta via Google TTS
-      // Envia APENAS áudio quando: TTS habilitado E a última mensagem do lead foi áudio
-      const lastInbound = [...convo.messages].reverse().find((m: any) => m.direction === 'in');
-      const leadSentAudio = lastInbound?.type === 'audio';
-      const ttsConfig = await this.settings.getTtsConfig();
-      const ttsKeyValid = ttsConfig.enabled && ttsConfig.googleApiKey && !ttsConfig.googleApiKey.startsWith('enc:');
-      const willSendAudio = ttsKeyValid && leadSentAudio;
-      if (ttsConfig.enabled && ttsConfig.googleApiKey?.startsWith('enc:')) {
-        this.logger.warn('[TTS] API key encriptada — pulando TTS (configure ENCRYPTION_KEY no worker)');
-      }
-      if (ttsKeyValid && leadSentAudio) {
+      // 18. TTS — reutiliza _willAudio calculado antes do envio de texto
+      const ttsConfig = _tts; // reutiliza config já carregado
+      if (_willAudio) {
         this.logger.log(`[TTS] Chave OK (len=${ttsConfig.googleApiKey.length}), voz=${ttsConfig.voice}`);
         try {
           // Remove formatação markdown do texto
