@@ -1285,7 +1285,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
             </div>
             {/* Conteúdo da ficha */}
             <div className="flex-1 overflow-y-auto p-4">
-              <FichaTrabalhista leadId={lead.id} />
+              <FichaTrabalhista leadId={lead.id} embedded />
             </div>
           </div>
         </div>

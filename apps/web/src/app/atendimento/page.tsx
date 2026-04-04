@@ -3407,7 +3407,7 @@ export default function Dashboard() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
-              <FichaTrabalhista leadId={selected.leadId} onFinalize={() => { setFichaFinalizada(true); setFichaInboxVisible(false); }} />
+              <FichaTrabalhista leadId={selected.leadId} embedded onFinalize={() => { setFichaFinalizada(true); setFichaInboxVisible(false); }} />
             </div>
           </div>
         </div>

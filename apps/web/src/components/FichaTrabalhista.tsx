@@ -86,6 +86,7 @@ interface FichaTrabalhistaProps {
   leadId: string;
   readOnly?: boolean;
   isPublic?: boolean;
+  embedded?: boolean; // true = dentro do chat/inbox (barra fixa, sem sticky)
   onFinalize?: () => void;
 }
 
@@ -93,6 +94,7 @@ export default function FichaTrabalhista({
   leadId,
   readOnly = false,
   isPublic = false,
+  embedded = false,
   onFinalize,
 }: FichaTrabalhistaProps) {
   const [formData, setFormData] = useState<Record<string, string>>(getEmptyFormData());
@@ -708,8 +710,8 @@ export default function FichaTrabalhista({
         />
       </div>
 
-      {/* Progress bar — sticky abaixo do header */}
-      <div className="sticky top-[73px] z-30 -mx-4 px-4 sm:-mx-6 sm:px-6 py-2 bg-zinc-950/95 backdrop-blur-sm">
+      {/* Progress bar — sticky na página completa, estática quando embedded no chat */}
+      <div className={embedded ? 'py-2' : 'sticky top-[73px] z-30 -mx-4 px-4 sm:-mx-6 sm:px-6 py-2 bg-zinc-950/95 backdrop-blur-sm'}>
         <div className="flex items-center gap-3">
           <div className="flex-1 h-2 bg-border rounded-full overflow-hidden">
             <div
