@@ -886,10 +886,17 @@ export default function Dashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Buscar stage do lead ao selecionar conversa
+  // Buscar stage do lead + limpar unread ao selecionar conversa
   useEffect(() => {
     if (!selectedId) { setLeadStage(null); setOpenQuestions([]); return; }
     setShowStageDropdown(false);
+    // Limpar contador de não lidas desta conversa
+    setUnreadCounts(prev => {
+      if (!prev[selectedId]) return prev;
+      const next = { ...prev };
+      delete next[selectedId];
+      return next;
+    });
     const conv = conversations.find(c => c.id === selectedId);
     if (conv?.leadId) {
       api.get(`/leads/${conv.leadId}`, { _silent401: true } as any)
