@@ -243,6 +243,7 @@ export class AiProcessor extends WorkerHost {
           file,
           model: 'whisper-1',
           language: 'pt',
+          prompt: 'Transcrição de mensagem de voz do WhatsApp em português brasileiro. O cliente está conversando com um escritório de advocacia sobre questões jurídicas.',
         });
 
         const transcription = result.text?.trim() || '';
