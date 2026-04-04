@@ -55,6 +55,7 @@ export const OPENAI_PRICING: Record<string, { input: number; output: number }> =
   'gpt-4.1-nano': { input: 0.10,  output: 0.40  },
   'gpt-5':        { input: 15.00, output: 60.00 },
   'gpt-5-mini':   { input: 1.50,  output: 6.00  },
+  'gpt-5.4-mini': { input: 1.00,  output: 4.00  },
   'o1':           { input: 15.00, output: 60.00 },
   'o3-mini':      { input: 1.10,  output: 4.40  },
 };

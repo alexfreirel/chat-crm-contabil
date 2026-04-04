@@ -63,6 +63,7 @@ interface SkillForm {
 }
 
 const OPENAI_MODELS = [
+  { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini — rápido, inteligente' },
   { value: 'gpt-5.1', label: 'GPT-5.1 — conversacional avançado' },
   { value: 'gpt-4.1', label: 'GPT-4.1 — analítico' },
   { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini — balanceado' },
@@ -332,6 +333,7 @@ export default function AiSettingsPage() {
     const colors: Record<string, string> = {
       'gpt-4o-mini': 'bg-sky-500/10 text-sky-400 border-sky-500/20',
       'gpt-4o': 'bg-violet-500/10 text-violet-400 border-violet-500/20',
+      'gpt-5.4-mini': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
       'gpt-4.1': 'bg-purple-500/10 text-purple-400 border-purple-500/20',
       'gpt-4.1-mini': 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
       'o1-mini': 'bg-pink-500/10 text-pink-400 border-pink-500/20',
@@ -400,7 +402,8 @@ export default function AiSettingsPage() {
                 >
                   <optgroup label="OpenAI">
                     {[
-                      { value: 'gpt-4o-mini',  label: 'GPT-4o Mini — rápido, econômico (recomendado)' },
+                      { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini — rápido, inteligente' },
+                      { value: 'gpt-4o-mini',  label: 'GPT-4o Mini — rápido, econômico' },
                       { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini — balanceado' },
                       { value: 'gpt-4.1',      label: 'GPT-4.1 — analítico avançado' },
                       { value: 'gpt-4o',       label: 'GPT-4o — alta precisão' },
