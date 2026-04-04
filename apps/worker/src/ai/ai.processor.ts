@@ -1904,13 +1904,22 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
 
             // Envia via Evolution API como áudio base64 puro
             const audioBase64 = audioBuffer.toString('base64');
-            await axios.post(
+            const ttsEvoResult = await axios.post(
               `${apiUrl}/message/sendWhatsAppAudio/${instanceName}`,
               { number: convo.lead.phone, audio: audioBase64 },
               { headers: { 'Content-Type': 'application/json', apikey: apiKey }, timeout: 30000 },
             );
 
-            this.logger.log(`[TTS] Áudio Gemini enviado para ${convo.lead.phone} (${audioBuffer.length} bytes, voz=${voiceName})`);
+            // Salvar external_message_id para deduplicação do echo da Evolution
+            const ttsEvoId = ttsEvoResult.data?.key?.id;
+            if (ttsEvoId) {
+              await this.prisma.message.update({
+                where: { id: audioMsg.id },
+                data: { external_message_id: ttsEvoId },
+              });
+            }
+
+            this.logger.log(`[TTS] Áudio Gemini enviado para ${convo.lead.phone} (${audioBuffer.length} bytes, voz=${voiceName}, evoId=${ttsEvoId || 'N/A'})`);
             }
           }
         } catch (ttsErr: any) {
