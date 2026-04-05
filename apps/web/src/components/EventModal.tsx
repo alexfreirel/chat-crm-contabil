@@ -84,7 +84,9 @@ function formatISO(iso: string): string {
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface EventModalProps {
-  caseId: string;
+  caseId?: string;
+  leadId?: string;
+  conversationId?: string;
   lawyerId?: string;
   users: UserOption[];          // todos os usuários (para campo Responsável genérico)
   interns?: UserOption[];       // apenas estagiários do advogado (para delegação de prazo)
@@ -94,7 +96,7 @@ interface EventModalProps {
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
-export function EventModal({ caseId, lawyerId = '', users, interns = [], onClose, onCreated }: EventModalProps) {
+export function EventModal({ caseId, leadId, conversationId, lawyerId = '', users, interns = [], onClose, onCreated }: EventModalProps) {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   const todayLocal = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`;
@@ -206,7 +208,9 @@ export function EventModal({ caseId, lawyerId = '', users, interns = [], onClose
         location: location.trim() || undefined,
         priority,
         assigned_user_id: assignedUserId || undefined,
-        legal_case_id: caseId,
+        legal_case_id: caseId || undefined,
+        lead_id: leadId || undefined,
+        conversation_id: conversationId || undefined,
         reminders: reminders.length > 0 ? reminders : undefined,
       });
 

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, UserCheck, PanelLeftOpen, CornerDownLeft, Inbox, Pencil, Search, ChevronDown, ClipboardList, ArrowLeft, MoreVertical, Clock, StickyNote } from 'lucide-react';
 import FichaTrabalhista from '@/components/FichaTrabalhista';
+import { EventModal, type UserOption } from '@/components/EventModal';
 import { AudioRecorder } from '@/components/AudioRecorder';
 import { AuthAudioPlayer } from '@/components/AuthAudioPlayer';
 import { EmojiPickerButton } from '@/components/EmojiPickerButton';
@@ -1573,18 +1574,19 @@ export default function Dashboard() {
     }
   };
 
-  // Abre o modal de criação rápida de tarefa vinculada ao lead do chat atual
+  // State para o EventModal (Novo Evento / Tarefa)
+  const [showEventModal, setShowEventModal] = useState<{ leadId: string; conversationId: string } | null>(null);
+  const [eventModalUsers, setEventModalUsers] = useState<UserOption[]>([]);
+
+  // Abre o modal de criação de evento/tarefa vinculado ao lead do chat atual
   const openTaskModal = async () => {
     const conv = conversations.find(c => c.id === selectedId) ?? adiadoConversations.find(c => c.id === selectedId);
     if (!conv?.leadId) return;
-    setTaskTitle('');
-    setTaskDueAt('');
-    setTaskAssignedId('');
-    setTaskModal({ leadId: conv.leadId, conversationId: conv.id, leadName: conv.contactName || 'Lead' });
-    if (taskAgents.length === 0) {
+    setShowEventModal({ leadId: conv.leadId, conversationId: conv.id });
+    if (eventModalUsers.length === 0) {
       try {
         const res = await api.get('/users/agents');
-        setTaskAgents(res.data || []);
+        setEventModalUsers((res.data || []).map((u: any) => ({ id: u.id, name: u.name, role: u.role })));
       } catch { /* silencioso */ }
     }
   };
@@ -3555,6 +3557,20 @@ export default function Dashboard() {
               <X size={14} />
             </button>
           </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal Novo Evento/Tarefa — usa EventModal do calendário */}
+      {showEventModal && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm dark">
+          <EventModal
+            leadId={showEventModal.leadId}
+            conversationId={showEventModal.conversationId}
+            users={eventModalUsers}
+            onClose={() => setShowEventModal(null)}
+            onCreated={() => { setShowEventModal(null); }}
+          />
         </div>,
         document.body
       )}
