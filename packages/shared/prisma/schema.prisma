@@ -593,6 +593,7 @@ model DjenPublication {
   auto_task_id          String?
   parte_autora          String?
   parte_rea             String?
+  client_notified_at    DateTime?
   created_at            DateTime   @default(now())
 
   @@index([data_disponibilizacao])

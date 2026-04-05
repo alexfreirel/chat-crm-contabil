@@ -1,8 +1,9 @@
-import { Injectable, Logger, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ConflictException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { CalendarService } from '../calendar/calendar.service';
+import { WhatsappService } from '../whatsapp/whatsapp.service';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -168,6 +169,7 @@ export class DjenService {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly calendarService: CalendarService,
+    @Inject(forwardRef(() => WhatsappService)) private readonly whatsappService: WhatsappService,
   ) {}
 
   /** Cron diário às 8h — sincroniza publicações de ontem e hoje */
@@ -229,12 +231,15 @@ export class DjenService {
 
         // Tenta vincular ao LegalCase pelo número do processo
         let legalCaseId: string | null = null;
-        let legalCase: { id: string; lawyer_id: string; tenant_id: string | null } | null = null;
+        let legalCase: { id: string; lawyer_id: string; tenant_id: string | null; lead?: { id: string; name: string | null; phone: string } | null } | null = null;
 
         if (numeroProcesso) {
           legalCase = await this.prisma.legalCase.findFirst({
             where: { case_number: numeroProcesso, in_tracking: true },
-            select: { id: true, lawyer_id: true, tenant_id: true },
+            select: {
+              id: true, lawyer_id: true, tenant_id: true,
+              lead: { select: { id: true, name: true, phone: true } },
+            },
           });
           if (legalCase) legalCaseId = legalCase.id;
         }
@@ -408,6 +413,11 @@ export class DjenService {
               this.logger.warn(`[DJEN] Falha ao criar tarefa automática: ${e.message}`);
             }
           }
+
+          // ─── Notificar lead via WhatsApp sobre nova movimentação ─────
+          this.notifyLeadAboutMovement(pub, legalCase, tipoComunicacao, numeroProcesso, dataDisp).catch(e =>
+            this.logger.warn(`[DJEN] Falha ao notificar lead: ${e.message}`),
+          );
         }
       } catch (e) {
         this.logger.error(`[DJEN] Erro ao salvar publicação: ${e}`);
@@ -918,6 +928,84 @@ ${pub.conteudo.slice(0, 2000)}`;
       });
     }
     this.logger.log(`[DJEN] Análise salva na memória do lead ${leadId}`);
+  }
+
+  // ─── Notificação WhatsApp ao lead sobre movimentação ──────────────────────
+
+  /**
+   * Envia notificação WhatsApp ao lead quando publicação é vinculada a seu processo.
+   * Controles: horário comercial, deduplica por publicação, setting habilitável.
+   */
+  private async notifyLeadAboutMovement(
+    pub: { id: string; client_notified_at?: Date | null },
+    legalCase: { id: string; lead?: { id: string; name: string | null; phone: string } | null; tenant_id: string | null },
+    tipoComunicacao: string | null,
+    numeroProcesso: string,
+    dataDisp: Date,
+  ): Promise<void> {
+    // Já notificou para esta publicação
+    if (pub.client_notified_at) return;
+
+    // Lead deve existir e ter telefone
+    const lead = legalCase.lead;
+    if (!lead?.phone) return;
+
+    // Verificar setting (default: habilitado)
+    const notifyEnabled = await this.settings.get('DJEN_NOTIFY_CLIENT');
+    if (notifyEnabled === 'false') return;
+
+    // Horário comercial (Maceió/AL — UTC-3): 8h–20h, seg–sex
+    const now = new Date();
+    const maceioOffset = -3;
+    const maceioHour = (now.getUTCHours() + maceioOffset + 24) % 24;
+    const maceioDay = new Date(now.getTime() + maceioOffset * 3600000).getDay();
+    const isBusinessHours = maceioDay >= 1 && maceioDay <= 5 && maceioHour >= 8 && maceioHour < 20;
+
+    if (!isBusinessHours) {
+      this.logger.log(`[DJEN] Notificação adiada (fora do horário comercial) para lead ${lead.id}`);
+      return; // Próximo sync diário às 8h cuidará
+    }
+
+    // Buscar instância WhatsApp do lead (da última conversa)
+    const lastConvo = await this.prisma.conversation.findFirst({
+      where: { lead_id: lead.id },
+      orderBy: { last_message_at: 'desc' },
+      select: { instance_name: true },
+    });
+    const instance = lastConvo?.instance_name || process.env.EVOLUTION_INSTANCE_NAME || 'whatsapp';
+
+    // Montar mensagem
+    const nome = lead.name?.split(' ')[0] || 'cliente';
+    const dataFmt = dataDisp.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const tipo = tipoComunicacao || 'Publicação';
+    const processoFmt = numeroProcesso.length > 20 ? numeroProcesso.slice(0, 20) + '…' : numeroProcesso;
+
+    const message = [
+      `⚖️ *Movimentação no seu processo*`,
+      ``,
+      `Olá ${nome}! Houve uma nova movimentação no seu processo nº ${processoFmt}.`,
+      ``,
+      `📋 Tipo: ${tipo}`,
+      `📅 Data: ${dataFmt}`,
+      ``,
+      `Nosso advogado já foi notificado e vai analisar. Se tiver dúvidas, pode nos chamar aqui!`,
+      ``,
+      `André Lustosa Advogados`,
+    ].join('\n');
+
+    try {
+      await this.whatsappService.sendText(lead.phone, message, instance);
+
+      // Marcar como notificado
+      await this.prisma.djenPublication.update({
+        where: { id: pub.id },
+        data: { client_notified_at: new Date() },
+      });
+
+      this.logger.log(`[DJEN] ✅ Lead ${lead.id} notificado sobre movimentação no processo ${numeroProcesso}`);
+    } catch (e: any) {
+      this.logger.warn(`[DJEN] Falha ao enviar WhatsApp para lead ${lead.id}: ${e.message}`);
+    }
   }
 
   // ─── Suggest Leads — Match automático por nome das partes ─────────────────
