@@ -508,14 +508,12 @@ export function HomeTemplate({
             {[...Array(20)].map((_, i) => (
               <div
                 key={i}
-                className="relative h-[65px] w-[220px] mx-0.5 shrink-0"
+                className="flex items-center gap-3 mx-6 shrink-0"
               >
-                <Image
-                  src="/landing/logo_andre_lustosa_transparente.png"
-                  alt="André Lustosa Logo"
-                  fill
-                  className="object-contain"
-                />
+                <span className="text-[#A89048] font-black uppercase tracking-[0.2em] text-xl" style={{ fontFamily: 'serif' }}>
+                  LEXCON
+                </span>
+                <span className="text-[#A89048]/40 text-lg">✦</span>
               </div>
             ))}
           </div>
