@@ -156,6 +156,15 @@ export class AiProcessor extends WorkerHost {
     );
   }
 
+  // ─── Normaliza IDs de modelos (aliases → IDs reais da API) ───
+  private normalizeModelId(model: string): string {
+    const aliases: Record<string, string> = {
+      'claude-haiku-4-5': 'claude-haiku-4-5-20251001',
+      'claude-sonnet-4-5': 'claude-sonnet-4-5-20250514',
+    };
+    return aliases[model] || model;
+  }
+
   // ─── Substitui variáveis {{var}} no prompt ───
   private injectVariables(
     prompt: string,
@@ -1506,7 +1515,7 @@ scheduling_action: Use SOMENTE quando agendar reunião.
           ? this.injectVariables(FORM_DATA_INJECTION, vars)
           : '';
         systemPrompt = MEDIA_CAPABILITIES_HEADER + this.injectVariables(BEHAVIOR_RULES, vars) + this.injectVariables(skill.system_prompt, vars) + formInjection;
-        model = skill.model || (await this.settings.getDefaultModel());
+        model = this.normalizeModelId(skill.model || (await this.settings.getDefaultModel()));
         // Trabalhista precisa de mais tokens para o form_data completo; outros usam o padrão do skill
         maxTokens = skill.area === 'Trabalhista'
           ? Math.max(skill.max_tokens || 500, 1500)
@@ -1536,7 +1545,7 @@ Valores válidos para updates.next_step: duvidas | triagem_concluida | entrevist
 updates.loss_reason: motivo da perda em português (ex: "Sem interesse"). Obrigatório quando next_step="perdido". Null nos demais casos.
 form_data: objeto com campos trabalhistas extraídos (só quando area=Trabalhista). Null quando não se aplica.
 scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} quando confirmar agendamento. Null quando não se aplica.`;
-        model = await this.settings.getDefaultModel();
+        model = this.normalizeModelId(await this.settings.getDefaultModel());
         maxTokens = 1500;
         temperature = 0.7;
         this.logger.warn(

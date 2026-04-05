@@ -651,6 +651,41 @@ Você prepara o caso. O advogado decide.
           await (this.prisma as any).promptSkill.create({ data: s });
         }
       }
+
+      // Sincronizar references padrão (SkillAssets com inject_mode=full_text)
+      const defaultReferences: { skillName: string; refs: { name: string; content_text: string }[] }[] = [
+        // Adicione aqui os assets/referências padrão específicos do CRM contábil
+      ];
+
+      for (const { skillName, refs } of defaultReferences) {
+        const skill = await (this.prisma as any).promptSkill.findFirst({ where: { name: skillName } });
+        if (!skill) continue;
+        for (const ref of refs) {
+          const existing = await (this.prisma as any).skillAsset.findFirst({
+            where: { skill_id: skill.id, name: ref.name },
+          });
+          if (!existing) {
+            await (this.prisma as any).skillAsset.create({
+              data: {
+                skill_id: skill.id,
+                name: ref.name,
+                asset_type: 'reference',
+                inject_mode: 'full_text',
+                content_text: ref.content_text,
+                s3_key: '',
+                mime_type: 'text/markdown',
+                size: ref.content_text.length,
+              },
+            });
+          } else {
+            await (this.prisma as any).skillAsset.update({
+              where: { id: existing.id },
+              data: { content_text: ref.content_text, inject_mode: 'full_text' },
+            });
+          }
+        }
+      }
+
       skills = await (this.prisma as any).promptSkill.findMany({
         orderBy: [{ order: 'asc' }, { id: 'asc' }],
         include: { tools: { where: { active: true } }, assets: true },
