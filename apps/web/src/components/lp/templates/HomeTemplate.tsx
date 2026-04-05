@@ -317,21 +317,23 @@ export function HomeTemplate({
           {/* Desktop Background */}
           <div className="hidden md:block absolute inset-0">
             <Image
-              src="/landing/Design sem nome (35).png"
+              src="/landing/login-bg.jpg"
               alt="Fundo Escritório Desktop"
               fill
-              className="object-cover object-top"
+              className="object-cover object-center"
               priority
+              quality={100}
             />
           </div>
           {/* Mobile Background */}
           <div className="md:hidden absolute inset-0">
             <Image
-              src="/landing/Design sem nome (26).png"
+              src="/landing/login-bg.jpg"
               alt="Fundo Escritório Mobile"
               fill
-              className="object-cover object-top"
+              className="object-cover object-center"
               priority
+              quality={100}
             />
           </div>
 
