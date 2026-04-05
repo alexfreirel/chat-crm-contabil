@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   User, Search, RefreshCw, MessageSquare, MoreVertical, ChevronDown, ChevronRight,
   Plus, X, Calendar, FileText, Gavel, Clock, Archive, ArchiveRestore, Send,
-  AlertTriangle, CheckCircle2, Loader2, ExternalLink, ArrowRight, Flame, ArrowDown,
+  AlertTriangle, CheckCircle2, Loader2, ExternalLink, ArrowRight, Flame, ArrowDown, CheckSquare,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { formatPhone } from '@/lib/utils';
@@ -1165,6 +1165,9 @@ export default function AdvogadoPage() {
   // BUG FIX: archivedCount via fetch separado
   const [archivedTotal, setArchivedTotal] = useState(0);
 
+  // Modal de confirmação de conclusão de tarefas ao mover estágio
+  const [pendingMove, setPendingMove] = useState<{ caseId: string; newStage: string; pendingTasks: number } | null>(null);
+
   // Board pan
   const boardRef = useRef<HTMLDivElement>(null);
   const isPanning = useRef(false);
@@ -1239,11 +1242,10 @@ export default function AdvogadoPage() {
     return () => clearInterval(interval);
   }, [router, fetchCases, fetchArchivedTotal, view]);
 
-  const moveCaseToStage = async (caseId: string, newStage: string) => {
+  const executeMoveToStage = async (caseId: string, newStage: string) => {
     // Optimistic update
     const now = new Date().toISOString();
     setCases(prev => prev.map(c => c.id === caseId ? { ...c, stage: newStage, stage_changed_at: now } : c));
-    // Atualiza painel se estiver aberto neste caso
     if (selectedCase?.id === caseId) {
       setSelectedCase(prev => prev ? { ...prev, stage: newStage, stage_changed_at: now } : prev);
     }
@@ -1252,6 +1254,33 @@ export default function AdvogadoPage() {
     } catch {
       fetchCases(true); // rollback
     }
+  };
+
+  const moveCaseToStage = async (caseId: string, newStage: string) => {
+    // Verificar tarefas pendentes antes de mover
+    try {
+      const res = await api.get(`/calendar/events/legal-case/${caseId}`);
+      const tasks = (res.data || []).filter((t: any) => t.type === 'TAREFA' && ['AGENDADO', 'CONFIRMADO'].includes(t.status));
+      if (tasks.length > 0) {
+        // Mostrar modal de confirmação
+        setPendingMove({ caseId, newStage, pendingTasks: tasks.length });
+        return;
+      }
+    } catch {} // Se falhar a verificação, segue sem perguntar
+    // Sem tarefas pendentes → mover direto
+    executeMoveToStage(caseId, newStage);
+  };
+
+  const handleConfirmMove = async (completeTasks: boolean) => {
+    if (!pendingMove) return;
+    const { caseId, newStage } = pendingMove;
+    if (completeTasks) {
+      try {
+        await api.patch(`/legal-cases/${caseId}/complete-stage-tasks`);
+      } catch {}
+    }
+    setPendingMove(null);
+    executeMoveToStage(caseId, newStage);
   };
 
   const handleCreateCase = async (conv: IncomingLead) => {
@@ -1622,6 +1651,49 @@ export default function AdvogadoPage() {
           onCaseUpdated={handleCaseUpdated}
           onRefresh={() => { fetchCases(true); fetchArchivedTotal(); }}
         />
+      )}
+
+      {/* Modal: Tarefas pendentes ao mover estágio */}
+      {pendingMove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setPendingMove(null)} />
+          <div className="relative z-10 w-full max-w-sm bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center">
+                <CheckSquare size={18} className="text-amber-400" />
+              </div>
+              <div>
+                <p className="text-[14px] font-bold text-foreground">Tarefas pendentes</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {pendingMove.pendingTasks} tarefa{pendingMove.pendingTasks > 1 ? 's' : ''} pendente{pendingMove.pendingTasks > 1 ? 's' : ''} neste estágio
+                </p>
+              </div>
+            </div>
+            <p className="text-[12px] text-muted-foreground">
+              Deseja concluir as tarefas antes de avançar para o próximo estágio?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => handleConfirmMove(true)}
+                className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[12px] font-bold transition-colors"
+              >
+                Concluir tarefas e avançar
+              </button>
+              <button
+                onClick={() => handleConfirmMove(false)}
+                className="w-full py-2.5 rounded-xl bg-accent hover:bg-accent/80 text-foreground text-[12px] font-medium transition-colors"
+              >
+                Avançar sem concluir
+              </button>
+              <button
+                onClick={() => setPendingMove(null)}
+                className="w-full py-2 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

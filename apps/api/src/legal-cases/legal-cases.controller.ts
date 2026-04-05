@@ -198,6 +198,12 @@ export class LegalCasesController {
     return this.service.sendToTracking(id, body.caseNumber, body.court, req.user?.tenant_id);
   }
 
+  /** Concluir todas as tarefas pendentes de um caso (ao avançar estágio) */
+  @Patch(':id/complete-stage-tasks')
+  completeStageTasks(@Param('id') id: string, @Request() req: any) {
+    return this.service.completeStageTasks(id, req.user?.tenant_id).then(count => ({ completed: count }));
+  }
+
   @Patch(':id/tracking-stage')
   updateTrackingStage(
     @Param('id') id: string,

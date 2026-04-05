@@ -38,14 +38,36 @@ export class LegalCasesService {
     legal_area?: string;
     tenant_id?: string;
   }) {
+    // Pré-preencher com dados da memória da IA (Sophia já coletou durante atendimento)
+    let opposing_party: string | null = null;
+    let notes: string | null = null;
+    let resolvedArea = data.legal_area || null;
+
+    try {
+      const memory = await this.prisma.aiMemory.findUnique({ where: { lead_id: data.lead_id } });
+      if (memory) {
+        const facts: any = (typeof memory.facts_json === 'string' ? JSON.parse(memory.facts_json as string) : memory.facts_json) || {};
+        const caseData = facts.cases?.[0] || facts.case || {};
+        const parties = facts.parties || {};
+
+        opposing_party = parties.counterparty_name || null;
+        if (!resolvedArea && caseData.area) resolvedArea = caseData.area;
+        if (memory.summary) notes = memory.summary.slice(0, 500);
+      }
+    } catch (e: any) {
+      this.logger.warn(`[LEGAL] Falha ao pré-preencher caso com memória IA: ${e.message}`);
+    }
+
     return this.prisma.legalCase.create({
       data: {
         lead_id: data.lead_id,
         conversation_id: data.conversation_id,
         lawyer_id: data.lawyer_id,
-        legal_area: data.legal_area,
+        legal_area: resolvedArea,
         tenant_id: data.tenant_id,
         stage: 'VIABILIDADE',
+        opposing_party,
+        notes,
       },
       include: { lead: true },
     });
@@ -223,8 +245,13 @@ export class LegalCasesService {
     const updated = await this.prisma.legalCase.update({
       where: { id },
       data: { stage: newStage, stage_changed_at: new Date() },
-      include: { lead: { select: { name: true } } },
+      include: { lead: { select: { name: true, id: true } } },
     });
+
+    // Auto-criar tarefa para o novo estágio
+    this.createStageTask(updated.id, newStage, updated.lawyer_id, updated.tenant_id, updated.lead?.id).catch(e =>
+      this.logger.warn(`[LEGAL] Falha ao criar tarefa automática para ${newStage}: ${e.message}`),
+    );
 
     try {
       this.chatGateway.emitLegalCaseUpdate(updated.lawyer_id, {
@@ -235,6 +262,99 @@ export class LegalCasesService {
     } catch {}
 
     return updated;
+  }
+
+  // ─── AUTO-TASK POR ESTÁGIO ─────────────────────────────────────
+
+  private static readonly STAGE_TASKS: Record<string, { title: string; description: string; dueDays: number; priority: string }> = {
+    DOCUMENTACAO: {
+      title: 'Coletar documentos do caso',
+      description: 'Solicitar e reunir todos os documentos necessários para o caso (contratos, comprovantes, laudos, fotos, etc).',
+      dueDays: 5,
+      priority: 'NORMAL',
+    },
+    PETICAO: {
+      title: 'Redigir petição inicial',
+      description: 'Elaborar a petição inicial com base nos fatos e documentos coletados.',
+      dueDays: 10,
+      priority: 'NORMAL',
+    },
+    REVISAO: {
+      title: 'Revisar petição antes de protocolar',
+      description: 'Revisar a petição inicial: verificar fundamentação, pedidos, provas e formatação.',
+      dueDays: 3,
+      priority: 'URGENTE',
+    },
+    PROTOCOLO: {
+      title: 'Protocolar processo no tribunal',
+      description: 'Protocolar a petição inicial no sistema do tribunal e obter o número do processo.',
+      dueDays: 2,
+      priority: 'URGENTE',
+    },
+  };
+
+  private async createStageTask(caseId: string, stage: string, lawyerId: string, tenantId: string | null, leadId?: string | null): Promise<void> {
+    const taskDef = LegalCasesService.STAGE_TASKS[stage];
+    if (!taskDef) return; // VIABILIDADE ou estágio sem tarefa
+
+    // Deduplica: não criar se já existe tarefa idêntica nos últimos 7 dias
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const existing = await this.prisma.calendarEvent.findFirst({
+      where: {
+        legal_case_id: caseId,
+        title: taskDef.title,
+        created_at: { gte: sevenDaysAgo },
+      },
+      select: { id: true },
+    });
+    if (existing) return;
+
+    // Calcular data de vencimento (dias úteis)
+    const dueAt = this.addBusinessDays(new Date(), taskDef.dueDays);
+
+    await this.calendarService.create({
+      type: 'TAREFA',
+      title: taskDef.title,
+      description: taskDef.description,
+      start_at: dueAt.toISOString(),
+      end_at: new Date(dueAt.getTime() + 30 * 60000).toISOString(),
+      priority: taskDef.priority,
+      legal_case_id: caseId,
+      assigned_user_id: lawyerId,
+      created_by_id: lawyerId,
+      lead_id: leadId || undefined,
+      tenant_id: tenantId || undefined,
+    });
+
+    this.logger.log(`[LEGAL] Tarefa automática criada: "${taskDef.title}" para caso ${caseId} (prazo: ${taskDef.dueDays} dias úteis)`);
+  }
+
+  private addBusinessDays(date: Date, days: number): Date {
+    const d = new Date(date);
+    let added = 0;
+    while (added < days) {
+      d.setDate(d.getDate() + 1);
+      const dow = d.getDay();
+      if (dow !== 0 && dow !== 6) added++;
+    }
+    return d;
+  }
+
+  // ─── CONCLUIR TAREFAS DO ESTÁGIO ──────────────────────────────
+
+  /** Marca todas as tarefas pendentes de um caso como CONCLUIDO */
+  async completeStageTasks(caseId: string, tenantId?: string): Promise<number> {
+    await this.verifyTenantOwnership(caseId, tenantId);
+    const result = await this.prisma.calendarEvent.updateMany({
+      where: {
+        legal_case_id: caseId,
+        type: 'TAREFA',
+        status: { in: ['AGENDADO', 'CONFIRMADO'] },
+      },
+      data: { status: 'CONCLUIDO' },
+    });
+    this.logger.log(`[LEGAL] ${result.count} tarefa(s) concluída(s) para caso ${caseId}`);
+    return result.count;
   }
 
   // ─── ARCHIVE / UNARCHIVE ───────────────────────────────────────
