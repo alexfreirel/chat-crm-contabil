@@ -386,11 +386,11 @@ export function HomeTemplate({
 
             {/* Título Monumental - Elegante */}
             <h1 className="text-[clamp(2.25rem,4.5vw,3.75rem)] 2xl:text-[clamp(2.5rem,4vw,4.5rem)] font-medium text-[#FAFAFA] leading-tight tracking-normal font-[family-name:var(--font-playfair)] drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)]">
-              {hero.title.split(/(LEXCON ASSESSORIA E CONSULTORIA TRIBUTARIA)/g).map((part, i) => (
+              {hero.title.split(/(Lexcon Assessoria Contábil)/g).map((part, i) => (
                 <span
                   key={i}
                   className={
-                    part === "LEXCON ASSESSORIA E CONSULTORIA TRIBUTARIA"
+                    part === "Lexcon Assessoria Contábil"
                       ? "text-[#A89048] drop-shadow-[0_0_20px_rgba(168,144,72,0.5)]"
                       : ""
                   }
