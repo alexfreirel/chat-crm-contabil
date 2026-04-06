@@ -55,6 +55,7 @@ export function HomeTemplate({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isShining, setIsShining] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
+  const [bgIndex, setBgIndex] = useState(0);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Common Premium Journey Data
@@ -124,6 +125,14 @@ export function HomeTemplate({
     setActiveStep(
       (prev) => (prev - 1 + displaySteps.length) % displaySteps.length
     );
+
+  // Background slideshow
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setBgIndex((prev) => (prev === 0 ? 1 : 0));
+    }, 10000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Toggle shine effect on scroll (for mobile engagement)
   useEffect(() => {
@@ -312,30 +321,30 @@ export function HomeTemplate({
         id="about"
         className="relative h-dvh min-h-[600px] w-full flex items-center bg-black group/hero overflow-hidden"
       >
-        {/* Background com Imagem de Biblioteca/Escritório com Overlay Escuro */}
+        {/* Background Slideshow */}
         <div className="absolute inset-0 z-0 overflow-hidden">
-          {/* Desktop Background */}
-          <div className="hidden md:block absolute inset-0">
-            <Image
-              src="/landing/login-bg.jpg"
-              alt="Fundo Escritório Desktop"
-              fill
-              className="object-cover object-center"
-              priority
-              quality={100}
-            />
-          </div>
-          {/* Mobile Background */}
-          <div className="md:hidden absolute inset-0">
-            <Image
-              src="/landing/login-bg.jpg"
-              alt="Fundo Escritório Mobile"
-              fill
-              className="object-cover object-center"
-              priority
-              quality={100}
-            />
-          </div>
+          {[
+            { src: "/landing/login-bg-1.jpg", alt: "Equipe apresentando resultados contábeis", kb: "animate-kenburns-a" },
+            { src: "/landing/login-bg-2.jpg", alt: "Equipe de contabilidade reunida", kb: "animate-kenburns-b" },
+          ].map((img, idx) => (
+            <div
+              key={img.src}
+              className={`absolute inset-0 transition-opacity duration-[2000ms] ease-in-out ${
+                idx === bgIndex ? "opacity-100" : "opacity-0"
+              }`}
+            >
+              <div className={`absolute inset-0 ${idx === bgIndex ? img.kb : ""}`}>
+                <Image
+                  src={img.src}
+                  alt={img.alt}
+                  fill
+                  className="object-cover object-center"
+                  priority={idx === 0}
+                  quality={90}
+                />
+              </div>
+            </div>
+          ))}
 
           {/* Premium Gradient Overlay - Lighter Version */}
           <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/40 to-transparent z-10 pointer-events-none" />

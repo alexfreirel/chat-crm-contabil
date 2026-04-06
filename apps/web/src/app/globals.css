@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+@keyframes kenburns-a {
+  0%   { transform: scale(1.08) translate(0%, 0%); }
+  100% { transform: scale(1.0) translate(-1%, -1%); }
+}
+@keyframes kenburns-b {
+  0%   { transform: scale(1.0) translate(1%, 0%); }
+  100% { transform: scale(1.08) translate(-1%, 1%); }
+}
+.animate-kenburns-a { animation: kenburns-a 12s ease-out forwards; }
+.animate-kenburns-b { animation: kenburns-b 12s ease-in forwards; }
+
 /* ─── Schedule-X overrides ────────────────────────────
    Center time labels in cells instead of on dividing lines.
    Default: top: -0.75em (sits on the border line)
