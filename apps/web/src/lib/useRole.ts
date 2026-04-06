@@ -67,12 +67,12 @@ function buildInfo(roles: AppRole[], userId: string | null): RoleInfo {
     isEstagiario: roles.includes('ESTAGIARIO'),
     isFinanceiro: roles.includes('FINANCEIRO'),
     canManageLegalCases: has(['ADMIN', 'ADVOGADO']),
-    canViewLegalCases: has(['ADMIN', 'ADVOGADO', 'ESTAGIARIO']),
+    canViewLegalCases: has(['ADMIN', 'ADVOGADO']),
     canManageSettings: roles.includes('ADMIN'),
     canViewDashboard: has(['ADMIN', 'ADVOGADO', 'OPERADOR', 'COMERCIAL']),
     canViewAnalytics: has(['ADMIN', 'ADVOGADO']),
-    canViewDjen: has(['ADMIN', 'ADVOGADO', 'ESTAGIARIO']),
+    canViewDjen: has(['ADMIN', 'ADVOGADO']),
     canViewFinanceiro: has(['ADMIN', 'FINANCEIRO']),
-    canViewAdvogado: has(['ADMIN', 'ADVOGADO', 'ESTAGIARIO']),
+    canViewAdvogado: has(['ADMIN', 'ADVOGADO']),
   };
 }
