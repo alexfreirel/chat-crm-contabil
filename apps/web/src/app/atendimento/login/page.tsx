@@ -121,7 +121,7 @@ export default function LoginPage() {
               <h1 className="mb-6 text-5xl font-black leading-tight text-white uppercase tracking-tight">
                 Excelência em <br />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#e3c788] via-[#d4b568] to-[#c8aa62]">
-                  Justiça Digital
+                  Contabilidade Digital
                 </span>
               </h1>
 
