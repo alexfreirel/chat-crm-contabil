@@ -14,12 +14,19 @@ export class InboxesService {
   }
 
   async findAllOperators() {
-    const [inboxes, sectors] = await Promise.all([
+    const [inboxes, sectors, allEligible] = await Promise.all([
       this.inbox.findMany({
         include: { users: { select: { id: true, name: true } } },
       }),
       (this.prisma as any).sector.findMany({
         include: { users: { select: { id: true, name: true } } },
+        orderBy: { name: 'asc' },
+      }),
+      // Inclui TODOS os usuários que têm role de OPERADOR ou ADVOGADO (multi-role)
+      // Mesmo que não estejam vinculados a um inbox específico
+      (this.prisma as any).user.findMany({
+        where: { roles: { hasSome: ['OPERADOR', 'ADVOGADO', 'ADMIN'] } },
+        select: { id: true, name: true },
         orderBy: { name: 'asc' },
       }),
     ]);
@@ -40,7 +47,27 @@ export class InboxesService {
       users: sector.users as { id: string; name: string }[],
     }));
 
-    return [...inboxGroups, ...sectorGroups];
+    // Grupo "Todos" com usuários elegíveis que podem receber transferências
+    const inboxUserIds = new Set(inboxes.flatMap((i: any) => (i.users || []).map((u: any) => u.id)));
+    const sectorUserIds = new Set(sectors.flatMap((s: any) => (s.users || []).map((u: any) => u.id)));
+    const ungroupedUsers = (allEligible as { id: string; name: string }[]).filter(
+      u => !inboxUserIds.has(u.id) && !sectorUserIds.has(u.id),
+    );
+
+    const result = [...inboxGroups, ...sectorGroups];
+
+    // Adicionar grupo "Equipe" com usuários que não estão em nenhum inbox/setor
+    if (ungroupedUsers.length > 0) {
+      result.push({
+        id: '__team__',
+        name: 'Equipe',
+        type: 'SECTOR' as const,
+        auto_route: false,
+        users: ungroupedUsers,
+      });
+    }
+
+    return result;
   }
 
   async findAll(tenantId?: string, userId?: string) {
