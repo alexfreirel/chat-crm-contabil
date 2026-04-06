@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { GoogleDriveService } from '../google-drive/google-drive.service';
+import { ChatGateway } from '../gateway/chat.gateway';
 
 const VALID_TYPES = [
   'INICIAL', 'CONTESTACAO', 'REPLICA', 'EMBARGOS',
@@ -31,6 +32,7 @@ export class PetitionsService {
   constructor(
     private prisma: PrismaService,
     private googleDrive: GoogleDriveService,
+    private gateway: ChatGateway,
   ) {}
 
   // ─── Helpers ────────────────────────────────────────────
@@ -90,6 +92,7 @@ export class PetitionsService {
       content_json?: any;
       content_html?: string;
       create_google_doc?: boolean;
+      deadline_at?: string;
     },
     userId: string,
     tenantId?: string,
@@ -160,6 +163,7 @@ export class PetitionsService {
         content_json: contentJson,
         content_html: contentHtml,
         template_id: data.template_id || null,
+        deadline_at: data.deadline_at ? new Date(data.deadline_at) : null,
         google_doc_id: googleDocId,
         google_doc_url: googleDocUrl,
       },
@@ -190,7 +194,7 @@ export class PetitionsService {
 
   async update(
     petitionId: string,
-    data: { content_json?: any; content_html?: string; title?: string },
+    data: { content_json?: any; content_html?: string; title?: string; deadline_at?: string },
     tenantId?: string,
   ) {
     await this.verifyPetitionAccess(petitionId, tenantId);
@@ -199,6 +203,7 @@ export class PetitionsService {
     if (data.content_json !== undefined) updateData.content_json = data.content_json;
     if (data.content_html !== undefined) updateData.content_html = data.content_html;
     if (data.title) updateData.title = data.title;
+    if (data.deadline_at !== undefined) updateData.deadline_at = data.deadline_at ? new Date(data.deadline_at) : null;
 
     return this.prisma.casePetition.update({
       where: { id: petitionId },
@@ -243,7 +248,44 @@ export class PetitionsService {
       );
     }
 
+    // WebSocket: notificar advogado quando petição enviada para revisão
+    if (newStatus === 'EM_REVISAO') {
+      this.notifyPetitionStatusChange(petition, newStatus, petition.status).catch(() => {});
+    }
+
     return result;
+  }
+
+  /** Notifica via WebSocket os envolvidos sobre mudança de status */
+  private async notifyPetitionStatusChange(
+    petition: any,
+    newStatus: string,
+    previousStatus: string,
+    reviewNotes?: string,
+  ) {
+    const legalCase = await this.prisma.legalCase.findUnique({
+      where: { id: petition.legal_case_id },
+      select: { lawyer_id: true },
+    });
+
+    const data = {
+      petitionId: petition.id,
+      title: petition.title,
+      status: newStatus,
+      previousStatus,
+      caseId: petition.legal_case_id,
+      reviewNotes,
+    };
+
+    // Notificar advogado (quando estagiário envia para revisão)
+    if (newStatus === 'EM_REVISAO' && legalCase?.lawyer_id) {
+      this.gateway.emitPetitionStatusChange(legalCase.lawyer_id, data);
+    }
+
+    // Notificar estagiário (quando advogado aprova ou devolve)
+    if ((newStatus === 'APROVADA' || newStatus === 'RASCUNHO') && petition.created_by_id) {
+      this.gateway.emitPetitionStatusChange(petition.created_by_id, { ...data, reviewNotes });
+    }
   }
 
   private async appendPetitionToMemory(petition: any, newStatus: string): Promise<void> {
@@ -309,6 +351,9 @@ export class PetitionsService {
         this.logger.warn(`[MEMORY] Falha ao registrar petição na memória: ${err}`),
       );
 
+      // WebSocket: notificar estagiário que petição foi aprovada
+      this.notifyPetitionStatusChange(petition, 'APROVADA', 'EM_REVISAO', notes).catch(() => {});
+
       return result;
     }
 
@@ -316,7 +361,7 @@ export class PetitionsService {
     if (petition.status !== 'EM_REVISAO') {
       throw new BadRequestException('Só é possível devolver petições em revisão');
     }
-    return this.prisma.casePetition.update({
+    const devolvido = await this.prisma.casePetition.update({
       where: { id: petitionId },
       data: {
         status: 'RASCUNHO',
@@ -326,6 +371,11 @@ export class PetitionsService {
       },
       select: { id: true, status: true, review_notes: true, updated_at: true },
     });
+
+    // WebSocket: notificar estagiário que petição foi devolvida
+    this.notifyPetitionStatusChange(petition, 'RASCUNHO', 'EM_REVISAO', notes).catch(() => {});
+
+    return devolvido;
   }
 
   async saveVersion(

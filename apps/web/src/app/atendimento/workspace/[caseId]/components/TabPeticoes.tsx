@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  FileSignature, Loader2, Plus, ArrowLeft, Save, Clock,
+  FileSignature, Loader2, Plus, ArrowLeft, Save, Clock, CalendarClock,
   ChevronDown, Trash2, Sparkles, RefreshCw, ExternalLink, FileText,
 } from 'lucide-react';
 import api from '@/lib/api';
@@ -230,6 +230,7 @@ function CreatePetitionForm({
   const [type, setType] = useState('INICIAL');
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [deadlineAt, setDeadlineAt] = useState('');
   const [createGoogleDoc, setCreateGoogleDoc] = useState(true);
   const [driveConfigured, setDriveConfigured] = useState(false);
 
@@ -249,6 +250,7 @@ function CreatePetitionForm({
       const res = await api.post(`/petitions/case/${caseId}`, {
         title,
         type,
+        deadline_at: deadlineAt || undefined,
         create_google_doc: driveConfigured ? createGoogleDoc : false,
       });
       showSuccess(res.data.google_doc_url ? 'Petição criada no Google Docs' : 'Petição criada');
@@ -302,18 +304,31 @@ function CreatePetitionForm({
           ))}
         </select>
       </div>
-      {driveConfigured && (
-        <label className="flex items-center gap-2 text-xs cursor-pointer">
-          <input
-            type="checkbox"
-            checked={createGoogleDoc}
-            onChange={(e) => setCreateGoogleDoc(e.target.checked)}
-            className="checkbox checkbox-xs checkbox-primary"
-          />
-          <FileText className="h-3.5 w-3.5 text-blue-500" />
-          Criar no Google Docs
+      <div className="flex items-center gap-3">
+        <label className="flex items-center gap-1.5 text-xs text-base-content/70">
+          <CalendarClock className="h-3.5 w-3.5" />
+          Prazo:
         </label>
-      )}
+        <input
+          type="date"
+          value={deadlineAt}
+          onChange={(e) => setDeadlineAt(e.target.value)}
+          className="input input-bordered input-xs w-40"
+          min={new Date().toISOString().split('T')[0]}
+        />
+        {driveConfigured && (
+          <label className="flex items-center gap-2 text-xs cursor-pointer ml-auto">
+            <input
+              type="checkbox"
+              checked={createGoogleDoc}
+              onChange={(e) => setCreateGoogleDoc(e.target.checked)}
+              className="checkbox checkbox-xs checkbox-primary"
+            />
+            <FileText className="h-3.5 w-3.5 text-blue-500" />
+            Criar no Google Docs
+          </label>
+        )}
+      </div>
       {generating && (
         <div className="flex items-center gap-2 text-xs text-primary animate-pulse">
           <Sparkles className="h-3.5 w-3.5" />

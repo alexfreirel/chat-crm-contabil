@@ -16,4 +16,10 @@ export class InternController {
   getKanban(@Request() req: any) {
     return this.internService.getKanbanDashboard(req.user.id, req.user?.tenant_id);
   }
+
+  /** GET /intern/badge-count — count de petições pendentes (para badge na sidebar) */
+  @Get('badge-count')
+  getBadgeCount(@Request() req: any) {
+    return this.internService.getBadgeCount(req.user.id);
+  }
 }

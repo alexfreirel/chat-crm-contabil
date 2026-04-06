@@ -199,6 +199,25 @@ export function Sidebar() {
     return () => clearInterval(interval);
   }, []);
 
+  // Badge para petições devolvidas (estagiário)
+  const [internBadge, setInternBadge] = useState(0);
+  useEffect(() => {
+    if (!perms.isEstagiario) return;
+    const fetchBadge = async () => {
+      try {
+        const res = await fetch('/api/intern/badge-count', {
+          headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('token') : ''}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        setInternBadge(data.corrections || 0);
+      } catch { /* silencioso */ }
+    };
+    fetchBadge();
+    const interval = setInterval(fetchBadge, 2 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [perms.isEstagiario]);
+
   // ─── Itens por grupo ──────────────────────────────────────────────
   const allItems: Record<string, NavItem> = {
     dashboard: {
@@ -243,6 +262,7 @@ export function Sidebar() {
       href: '/atendimento/estagiario',
       icon: <ClipboardList size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/estagiario'),
+      badge: internBadge,
       show: perms.isEstagiario,
     },
     advogado: {

@@ -273,4 +273,30 @@ export class ChatGateway {
     this.logger.log(`[SOCKET] Emitting messages_synced to room ${conversationId}: ${imported} imported`);
     this.server.to(conversationId).emit('messages_synced', { conversationId, imported });
   }
+
+  // ─── Petitions ─────────────────────────────────────────────
+
+  emitPetitionStatusChange(userId: string, data: {
+    petitionId: string;
+    title: string;
+    status: string;
+    previousStatus: string;
+    action?: string;
+    reviewNotes?: string;
+    caseId?: string;
+  }) {
+    this.logger.log(`[SOCKET] Emitting petition_status_change to user:${userId} — ${data.title} → ${data.status}`);
+    this.server.to(`user:${userId}`).emit('petition_status_change', data);
+  }
+
+  emitPetitionCreated(userId: string, data: {
+    petitionId: string;
+    title: string;
+    type: string;
+    caseId: string;
+    createdBy: string;
+  }) {
+    this.logger.log(`[SOCKET] Emitting petition_created to user:${userId} — ${data.title}`);
+    this.server.to(`user:${userId}`).emit('petition_created', data);
+  }
 }

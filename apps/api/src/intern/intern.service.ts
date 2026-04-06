@@ -207,4 +207,20 @@ export class InternService {
       },
     };
   }
+
+  /**
+   * Contagem leve para badge na sidebar:
+   * petições devolvidas para correção (RASCUNHO com versions > 0)
+   */
+  async getBadgeCount(userId: string) {
+    const corrections = await (this.prisma as any).casePetition.count({
+      where: {
+        created_by_id: userId,
+        status: 'RASCUNHO',
+        versions: { some: {} },
+      },
+    });
+
+    return { corrections };
+  }
 }

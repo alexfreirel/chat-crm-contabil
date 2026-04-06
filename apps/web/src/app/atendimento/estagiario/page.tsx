@@ -583,6 +583,41 @@ function KanbanView() {
     return () => clearInterval(interval);
   }, [fetchKanban]);
 
+  // WebSocket: refresh quando petição muda de status (devolvida/aprovada)
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+    if (!token) return;
+
+    let socket: any;
+    const initSocket = async () => {
+      const { io } = await import('socket.io-client');
+      const wsUrl = process.env.NEXT_PUBLIC_WS_URL || process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || '';
+      socket = io(wsUrl, {
+        path: '/socket.io/',
+        transports: ['polling', 'websocket'],
+        auth: { token },
+        reconnection: true,
+      });
+
+      socket.on('connect', () => {
+        const payload = token.split('.')[1];
+        if (payload) {
+          try {
+            const decoded = JSON.parse(atob(payload));
+            if (decoded.sub) socket.emit('join_user', decoded.sub);
+          } catch {}
+        }
+      });
+
+      socket.on('petition_status_change', () => {
+        fetchKanban();
+      });
+    };
+
+    initSocket();
+    return () => { socket?.disconnect(); };
+  }, [fetchKanban]);
+
   const handleDrop = async (targetColumn: KanbanColumnKey) => {
     if (!draggingId || targetColumn !== 'EM_REVISAO') return;
 
