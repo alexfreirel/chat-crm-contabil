@@ -94,8 +94,9 @@ export class LeadsService {
       const userInboxIds = (user?.inboxes ?? []).map((i: any) => i.id);
 
       if (!isAdminUser) {
-        // Operador/Advogado vê apenas leads cujas conversas estão atribuídas a ele,
-        // ou leads onde ele é o cs_user_id (pós-venda), ou leads das suas inboxes
+        // CRM Pipeline: operador/advogado vê apenas leads explicitamente atribuídos.
+        // Diferente do chat inbox (que mostra fila da inbox), aqui só mostra leads
+        // onde o usuário é assigned_user, assigned_lawyer, cs_user ou lawyer do caso.
         const orConditions: any[] = [];
 
         if (isAdvogadoUser) {
@@ -106,10 +107,6 @@ export class LeadsService {
         if (isOperadorUser || isAdvogadoUser) {
           orConditions.push({ conversations: { some: { assigned_user_id: userId } } });
           orConditions.push({ cs_user_id: userId });
-        }
-
-        if (userInboxIds.length > 0) {
-          orConditions.push({ conversations: { some: { inbox_id: { in: userInboxIds } } } });
         }
 
         // Fallback: se nenhuma condição (ex: estagiário), ver só os atribuídos
@@ -630,13 +627,12 @@ export class LeadsService {
     if (userId) {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
-        select: { roles: true, inboxes: { select: { id: true } } },
+        select: { roles: true },
       });
       const userRoles = normalizeRoles(user?.roles as any);
       const isAdminUser = userRoles.includes('ADMIN');
       const isAdvogadoUser = userRoles.includes('ADVOGADO');
       const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL');
-      const userInboxIds = (user?.inboxes ?? []).map((i: any) => i.id);
 
       if (!isAdminUser) {
         const orConditions: any[] = [];
@@ -647,9 +643,6 @@ export class LeadsService {
         if (isOperadorUser || isAdvogadoUser) {
           orConditions.push({ conversations: { some: { assigned_user_id: userId } } });
           orConditions.push({ cs_user_id: userId });
-        }
-        if (userInboxIds.length > 0) {
-          orConditions.push({ conversations: { some: { inbox_id: { in: userInboxIds } } } });
         }
         if (orConditions.length === 0) {
           orConditions.push({ conversations: { some: { assigned_user_id: userId } } });

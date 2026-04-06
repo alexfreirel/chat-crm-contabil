@@ -983,7 +983,7 @@ function ProcessoDetailPanel({
   // Archive
   const [showArchive, setShowArchive] = useState(false);
   const [archiveReason, setArchiveReason] = useState('');
-  const [notifyLead, setNotifyLead] = useState(true);
+  const [notifyLead, setNotifyLead] = useState(false);
   const [archiving, setArchiving] = useState(false);
 
   // Tasks

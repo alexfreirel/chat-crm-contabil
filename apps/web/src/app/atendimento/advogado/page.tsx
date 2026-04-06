@@ -291,11 +291,13 @@ function CaseDetailPanel({
   onClose,
   onCaseUpdated,
   onRefresh,
+  globalNotify = false,
 }: {
   legalCase: LegalCase;
   onClose: () => void;
   onCaseUpdated: (updated: LegalCase) => void;
   onRefresh: () => void;
+  globalNotify?: boolean;
 }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'info' | 'tasks' | 'events'>('info');
@@ -314,7 +316,7 @@ function CaseDetailPanel({
   // Archive
   const [showArchive, setShowArchive] = useState(false);
   const [archiveReason, setArchiveReason] = useState('');
-  const [notifyLead, setNotifyLead] = useState(true);
+  const [notifyLead, setNotifyLead] = useState(globalNotify);
   const [archiving, setArchiving] = useState(false);
 
   // Send to tracking (PROTOCOLO → Processos)
@@ -1781,6 +1783,7 @@ export default function AdvogadoPage() {
           onClose={() => setSelectedCase(null)}
           onCaseUpdated={handleCaseUpdated}
           onRefresh={() => { fetchCases(true); fetchArchivedTotal(); }}
+          globalNotify={djenNotify}
         />
       )}
 
