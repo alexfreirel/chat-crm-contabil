@@ -13,7 +13,7 @@ import {
   Facebook,
   Linkedin,
   Shield,
-  Scale,
+  Calculator,
   ChevronRight,
   ChevronLeft,
   Menu,
@@ -178,8 +178,8 @@ export function HomeTemplate({
               aria-label="Voltar para o topo"
             >
               <Image
-                src="/landing/logo_andre_lustosa_transparente.png"
-                alt="André Lustosa Advogado"
+                src="/landing/lexcon-logo.png"
+                alt="Lexcon Assessoria Contábil"
                 width={220}
                 height={60}
                 className="h-10 lg:h-12 w-auto object-contain"
@@ -359,7 +359,7 @@ export function HomeTemplate({
             <div className="flex lg:hidden flex-wrap justify-center gap-3 mb-6">
               <div className="flex items-center gap-2 bg-slate-900/40 backdrop-blur-xl border border-[#A89048]/30 rounded-lg px-4 py-2">
                 <div className="bg-[#A89048]/10 p-1.5 rounded-full">
-                  <Scale size={14} className="text-[#A89048]" />
+                  <Calculator size={14} className="text-[#A89048]" />
                 </div>
                 <div className="flex flex-col text-left">
                   <span className="text-[#A89048] text-[8px] font-bold uppercase tracking-widest leading-tight">
@@ -449,7 +449,7 @@ export function HomeTemplate({
             <div className="hidden lg:flex absolute top-[25%] left-[5%] z-20 pointer-events-auto animate-in fade-in slide-in-from-left duration-1000 delay-500">
               <div className="flex items-center gap-3 bg-slate-900/40 backdrop-blur-xl border border-[#A89048]/30 rounded-lg px-6 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.4)] transition-all duration-500 hover:scale-105 hover:border-[#A89048]/60 hover:shadow-[0_0_20px_rgba(168,144,72,0.2)] group cursor-default">
                 <div className="bg-[#A89048]/10 p-2 rounded-full">
-                  <Scale size={18} className="text-[#A89048]" />
+                  <Calculator size={18} className="text-[#A89048]" />
                 </div>
                 <div className="flex flex-col">
                   <span className="text-[#A89048] text-[10px] font-bold uppercase tracking-[0.2em] leading-tight">
@@ -519,9 +519,13 @@ export function HomeTemplate({
                 key={i}
                 className="flex items-center gap-3 mx-6 shrink-0"
               >
-                <span className="text-[#A89048] font-black uppercase tracking-[0.2em] text-xl" style={{ fontFamily: 'serif' }}>
-                  LEXCON
-                </span>
+                <Image
+                  src="/landing/lexcon-logo.png"
+                  alt="Lexcon"
+                  width={120}
+                  height={28}
+                  className="h-6 w-auto object-contain opacity-90"
+                />
                 <span className="text-[#A89048]/40 text-lg">✦</span>
               </div>
             ))}
@@ -745,7 +749,7 @@ export function HomeTemplate({
               <div className="space-y-4 flex flex-col items-center lg:items-start text-center lg:text-left">
                 <div className="flex flex-col lg:flex-row items-center justify-center lg:justify-start gap-3 w-full">
                   <div className="w-10 h-10 rounded-full bg-[#A89048]/10 flex items-center justify-center shrink-0">
-                    <Scale className="w-5 h-5 text-[#A89048]" />
+                    <Calculator className="w-5 h-5 text-[#A89048]" />
                   </div>
                   <h4 className="font-bold text-slate-900 text-base md:text-sm uppercase tracking-wider">
                     Profissionais experientes
@@ -966,7 +970,7 @@ export function HomeTemplate({
                   </div>
                   <div className="flex flex-col sm:flex-row items-center sm:items-start gap-2 p-2 rounded-xl bg-white/5 border border-white/10 hover:border-[#A89048]/30 transition-colors text-center sm:text-left">
                     <div className="p-1.5 rounded-lg bg-[#A89048]/20 text-[#A89048]">
-                      <Scale size={16} />
+                      <Calculator size={16} />
                     </div>
                     <div>
                       <h4 className="text-[#FAFAFA] font-bold text-xs mb-0.5">
