@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Save, Loader2, Gavel, Scale, UserX, User, FileText, Brain, MapPin, Sparkles, RefreshCw, DollarSign } from 'lucide-react';
+import { Save, Loader2, Gavel, Scale, UserX, User, FileText, Brain, Sparkles, RefreshCw, DollarSign, Phone, Mail, MapPin, Building2, BadgeCheck } from 'lucide-react';
 import api from '@/lib/api';
 import { showError, showSuccess } from '@/lib/toast';
 
@@ -30,18 +30,55 @@ interface WorkspaceData {
   lawyer: { id: string; name: string; email: string };
 }
 
-export default function TabResumo({
-  data,
-  onRefresh,
-}: {
-  data: WorkspaceData;
-  onRefresh: () => void;
+const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+function Field({ label, icon: Icon, value, onChange, placeholder, type = 'text' }: {
+  label: string; icon?: any; value: string; onChange: (v: string) => void; placeholder: string; type?: string;
 }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+        {Icon && <Icon size={11} className="text-primary/60" />}
+        {label}
+      </label>
+      <input
+        type={type}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full px-3 py-2.5 rounded-xl bg-accent/30 border border-border text-[12px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"
+      />
+    </div>
+  );
+}
+
+function InfoRow({ label, value, icon: Icon }: { label: string; value: string | null; icon?: any }) {
+  if (!value) return null;
+  return (
+    <div className="flex items-center justify-between py-2.5 border-b border-border/30 last:border-0">
+      <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+        {Icon && <Icon size={11} />}
+        {label}
+      </span>
+      <span className="text-[12px] font-medium text-foreground">{value}</span>
+    </div>
+  );
+}
+
+function FinCard({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className={`rounded-xl border p-3.5 text-center ${color}`}>
+      <p className="text-[9px] font-bold uppercase tracking-wider opacity-80">{label}</p>
+      <p className="text-[15px] font-bold mt-1">{fmt(value)}</p>
+    </div>
+  );
+}
+
+export default function TabResumo({ data, onRefresh }: { data: WorkspaceData; onRefresh: () => void }) {
   const [saving, setSaving] = useState(false);
   const [briefing, setBriefing] = useState<string | null>(null);
   const [generatingBriefing, setGeneratingBriefing] = useState(false);
 
-  // Resumo financeiro do caso
   const [caseFin, setCaseFin] = useState<{ honorarios: number; received: number; pending: number; overdue: number; expenses: number } | null>(null);
   useEffect(() => {
     api.get('/financeiro/transactions', { params: { legalCaseId: data.id, limit: 500 } })
@@ -74,6 +111,7 @@ export default function TabResumo({
       setGeneratingBriefing(false);
     }
   };
+
   const [actionType, setActionType] = useState(data.action_type || '');
   const [claimValue, setClaimValue] = useState(data.claim_value?.toString() || '');
   const [opposingParty, setOpposingParty] = useState(data.opposing_party || '');
@@ -105,280 +143,195 @@ export default function TabResumo({
 
   const memory = data.lead?.memory;
   const ficha = data.lead?.ficha_trabalhista;
+  const pctReceived = caseFin && caseFin.honorarios > 0 ? Math.round((caseFin.received / caseFin.honorarios) * 100) : 0;
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
-      {/* Dados do Caso */}
-      <section>
-        <h2 className="text-base font-semibold text-base-content mb-4 flex items-center gap-2">
-          <Gavel className="h-4 w-4 text-primary" />
-          Dados do Caso
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="label text-xs font-medium">Área Jurídica</label>
-            <input
-              type="text"
-              className="input input-bordered input-sm w-full"
-              placeholder="Ex: Trabalhista, Civil, Previdenciário"
-              value={legalArea}
-              onChange={(e) => setLegalArea(e.target.value)}
-            />
+    <div className="p-6 max-w-5xl mx-auto space-y-5">
+
+      {/* Row 1: Dados do Caso + Cliente */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+        {/* Dados do Caso (2/3) */}
+        <div className="lg:col-span-2 bg-card border border-border rounded-2xl overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-border flex items-center justify-between bg-accent/20">
+            <h2 className="text-[13px] font-bold text-foreground flex items-center gap-2">
+              <Gavel size={14} className="text-primary" />
+              Dados do Caso
+            </h2>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-[11px] font-bold hover:opacity-90 transition-opacity disabled:opacity-50 shadow-lg shadow-primary/20"
+            >
+              {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+              Salvar
+            </button>
           </div>
-          <div>
-            <label className="label text-xs font-medium">Tipo de Ação</label>
-            <input
-              type="text"
-              className="input input-bordered input-sm w-full"
-              placeholder="Ex: Reclamatória Trabalhista"
-              value={actionType}
-              onChange={(e) => setActionType(e.target.value)}
-            />
+          <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label="Area Juridica" icon={Scale} value={legalArea} onChange={setLegalArea} placeholder="Trabalhista, Civil..." />
+            <Field label="Tipo de Acao" icon={FileText} value={actionType} onChange={setActionType} placeholder="Reclamatoria Trabalhista..." />
+            <Field label="Valor da Causa (R$)" icon={DollarSign} value={claimValue} onChange={setClaimValue} placeholder="0,00" type="number" />
+            <Field label="Vara / Tribunal" icon={Building2} value={court} onChange={setCourt} placeholder="1a Vara do Trabalho..." />
+            <Field label="Parte Contraria" icon={UserX} value={opposingParty} onChange={setOpposingParty} placeholder="Nome da parte contraria" />
+            <Field label="Juiz / Desembargador" icon={Gavel} value={judge} onChange={setJudge} placeholder="Nome do juiz" />
           </div>
-          <div>
-            <label className="label text-xs font-medium">Valor da Causa (R$)</label>
-            <input
-              type="number"
-              step="0.01"
-              className="input input-bordered input-sm w-full"
-              placeholder="0,00"
-              value={claimValue}
-              onChange={(e) => setClaimValue(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="label text-xs font-medium">Vara / Tribunal</label>
-            <input
-              type="text"
-              className="input input-bordered input-sm w-full"
-              placeholder="Ex: 1ª Vara do Trabalho de Maceió"
-              value={court}
-              onChange={(e) => setCourt(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="label text-xs font-medium flex items-center gap-1">
-              <UserX className="h-3 w-3" /> Parte Contrária
+          <div className="px-5 pb-5">
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
+              <FileText size={11} className="text-primary/60" /> Observacoes
             </label>
-            <input
-              type="text"
-              className="input input-bordered input-sm w-full"
-              placeholder="Nome da parte contrária"
-              value={opposingParty}
-              onChange={(e) => setOpposingParty(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="label text-xs font-medium flex items-center gap-1">
-              <Scale className="h-3 w-3" /> Juiz / Desembargador
-            </label>
-            <input
-              type="text"
-              className="input input-bordered input-sm w-full"
-              placeholder="Nome do juiz"
-              value={judge}
-              onChange={(e) => setJudge(e.target.value)}
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Notas sobre o caso..."
+              className="w-full px-3 py-2.5 rounded-xl bg-accent/30 border border-border text-[12px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 min-h-[80px] resize-y transition-all"
             />
           </div>
         </div>
-      </section>
 
-      {/* Observações */}
-      <section>
-        <h2 className="text-base font-semibold text-base-content mb-4 flex items-center gap-2">
-          <FileText className="h-4 w-4 text-primary" />
-          Observações
-        </h2>
-        <textarea
-          className="textarea textarea-bordered w-full min-h-[120px] text-sm"
-          placeholder="Notas sobre o caso..."
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-        />
-      </section>
-
-      {/* Save button */}
-      <div className="flex justify-end">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="btn btn-primary btn-sm gap-2"
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Salvar alterações
-        </button>
+        {/* Cliente (1/3) */}
+        <div className="bg-card border border-border rounded-2xl overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-border bg-emerald-500/5">
+            <h2 className="text-[13px] font-bold text-foreground flex items-center gap-2">
+              <User size={14} className="text-emerald-400" />
+              Cliente
+            </h2>
+          </div>
+          <div className="p-5">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 flex items-center justify-center">
+                <span className="text-xl font-bold text-emerald-400">{(data.lead.name || '?')[0]?.toUpperCase()}</span>
+              </div>
+              <div>
+                <p className="text-[15px] font-bold text-foreground">{data.lead.name || 'Sem nome'}</p>
+                <p className="text-[10px] text-emerald-400 font-semibold uppercase tracking-wider">Cliente</p>
+              </div>
+            </div>
+            <div className="space-y-0">
+              <InfoRow label="Telefone" value={data.lead.phone} icon={Phone} />
+              {data.lead.email && <InfoRow label="Email" value={data.lead.email} icon={Mail} />}
+              <InfoRow label="Advogado" value={data.lawyer.name} icon={BadgeCheck} />
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Resumo Financeiro do Caso */}
+      {/* Row 2: Financeiro */}
       {caseFin && (caseFin.honorarios > 0 || caseFin.expenses > 0) && (
-        <section>
-          <h2 className="text-base font-semibold text-base-content mb-4 flex items-center gap-2">
-            <DollarSign className="h-4 w-4 text-emerald-400" />
-            Resumo Financeiro
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-center">
-              <p className="text-[9px] text-blue-400 uppercase tracking-wider font-medium">Honorários</p>
-              <p className="text-sm font-bold text-blue-400 mt-0.5">
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(caseFin.honorarios)}
-              </p>
-            </div>
-            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-center">
-              <p className="text-[9px] text-emerald-400 uppercase tracking-wider font-medium">Recebido</p>
-              <p className="text-sm font-bold text-emerald-400 mt-0.5">
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(caseFin.received)}
-              </p>
-            </div>
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-center">
-              <p className="text-[9px] text-amber-400 uppercase tracking-wider font-medium">Pendente</p>
-              <p className="text-sm font-bold text-amber-400 mt-0.5">
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(caseFin.pending)}
-              </p>
-            </div>
-            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-center">
-              <p className="text-[9px] text-red-400 uppercase tracking-wider font-medium">Atrasado</p>
-              <p className="text-sm font-bold text-red-400 mt-0.5">
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(caseFin.overdue)}
-              </p>
-            </div>
-            <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-3 text-center">
-              <p className="text-[9px] text-purple-400 uppercase tracking-wider font-medium">Despesas</p>
-              <p className="text-sm font-bold text-purple-400 mt-0.5">
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(caseFin.expenses)}
-              </p>
-            </div>
+        <div className="bg-card border border-border rounded-2xl overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-border bg-emerald-500/5">
+            <h2 className="text-[13px] font-bold text-foreground flex items-center gap-2">
+              <DollarSign size={14} className="text-emerald-400" />
+              Financeiro
+            </h2>
           </div>
-          {caseFin.honorarios > 0 && (
-            <div className="mt-3 bg-base-200/50 rounded-lg p-3">
-              <div className="flex justify-between text-xs text-base-content/60 mb-1">
-                <span>Lucro líquido estimado</span>
-                <span className={`font-bold ${(caseFin.received - caseFin.expenses) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(caseFin.received - caseFin.expenses)}
+          <div className="p-5">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <FinCard label="Honorarios" value={caseFin.honorarios} color="bg-blue-500/10 border-blue-500/20 text-blue-400" />
+              <FinCard label="Recebido" value={caseFin.received} color="bg-emerald-500/10 border-emerald-500/20 text-emerald-400" />
+              <FinCard label="Pendente" value={caseFin.pending} color="bg-amber-500/10 border-amber-500/20 text-amber-400" />
+              <FinCard label="Atrasado" value={caseFin.overdue} color="bg-red-500/10 border-red-500/20 text-red-400" />
+              <FinCard label="Despesas" value={caseFin.expenses} color="bg-purple-500/10 border-purple-500/20 text-purple-400" />
+            </div>
+            {caseFin.honorarios > 0 && (
+              <div className="mt-4 flex items-center gap-4">
+                <div className="flex-1 bg-accent/30 rounded-full h-2.5 overflow-hidden">
+                  <div className="bg-gradient-to-r from-emerald-500 to-emerald-400 h-2.5 rounded-full transition-all" style={{ width: `${Math.min(100, pctReceived)}%` }} />
+                </div>
+                <span className="text-[12px] font-bold text-emerald-400 shrink-0">{pctReceived}%</span>
+                <span className="text-[10px] text-muted-foreground shrink-0">
+                  Lucro: <span className={`font-bold ${(caseFin.received - caseFin.expenses) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {fmt(caseFin.received - caseFin.expenses)}
+                  </span>
                 </span>
               </div>
-              <div className="w-full bg-base-300 rounded-full h-1.5">
-                <div
-                  className="bg-emerald-500 h-1.5 rounded-full transition-all"
-                  style={{ width: `${Math.min(100, caseFin.honorarios > 0 ? (caseFin.received / caseFin.honorarios) * 100 : 0)}%` }}
-                />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Row 3: IA Memory + Briefing */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {memory && (
+          <div className="bg-card border border-violet-500/20 rounded-2xl overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-violet-500/20 bg-violet-500/5">
+              <h2 className="text-[13px] font-bold text-violet-300 flex items-center gap-2">
+                <Brain size={14} /> Memoria da IA
+              </h2>
+            </div>
+            <div className="p-5 text-[12px] text-foreground/80 leading-relaxed whitespace-pre-line max-h-[280px] overflow-y-auto custom-scrollbar">
+              {memory.summary}
+            </div>
+          </div>
+        )}
+        <div className="bg-card border border-border rounded-2xl overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-border flex items-center justify-between bg-amber-500/5">
+            <h2 className="text-[13px] font-bold text-foreground flex items-center gap-2">
+              <Sparkles size={14} className="text-amber-400" /> Briefing IA
+            </h2>
+            <button
+              onClick={handleGenerateBriefing}
+              disabled={generatingBriefing}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 text-[10px] font-bold transition-colors disabled:opacity-50"
+            >
+              {generatingBriefing ? <><Loader2 size={11} className="animate-spin" /> Gerando...</>
+                : briefing ? <><RefreshCw size={11} /> Regenerar</>
+                : <><Sparkles size={11} /> Gerar</>}
+            </button>
+          </div>
+          <div className="p-5">
+            {generatingBriefing && (
+              <div className="space-y-2.5 animate-pulse">
+                <div className="h-3 bg-muted rounded w-3/4" />
+                <div className="h-3 bg-muted rounded w-full" />
+                <div className="h-3 bg-muted rounded w-5/6" />
               </div>
-              <p className="text-[10px] text-base-content/40 mt-1">
-                {caseFin.honorarios > 0 ? Math.round((caseFin.received / caseFin.honorarios) * 100) : 0}% recebido
-              </p>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* Dados do Cliente */}
-      <section>
-        <h2 className="text-base font-semibold text-base-content mb-4 flex items-center gap-2">
-          <User className="h-4 w-4 text-primary" />
-          Dados do Cliente
-        </h2>
-        <div className="bg-base-200/50 rounded-lg p-4 space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-base-content/60">Nome</span>
-            <span className="font-medium">{data.lead.name || '—'}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-base-content/60">Telefone</span>
-            <span className="font-medium">{data.lead.phone}</span>
-          </div>
-          {data.lead.email && (
-            <div className="flex justify-between">
-              <span className="text-base-content/60">Email</span>
-              <span className="font-medium">{data.lead.email}</span>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* IA Memory */}
-      {memory && (
-        <section>
-          <h2 className="text-base font-semibold text-base-content mb-4 flex items-center gap-2">
-            <Brain className="h-4 w-4 text-secondary" />
-            Resumo da IA
-          </h2>
-          <div className="bg-secondary/5 border border-secondary/20 rounded-lg p-4 text-sm whitespace-pre-line">
-            {memory.summary}
-          </div>
-        </section>
-      )}
-
-      {/* Briefing IA */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-base font-semibold flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-violet-400" />
-            Briefing IA
-          </h2>
-          <button
-            onClick={handleGenerateBriefing}
-            disabled={generatingBriefing}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 text-xs font-semibold transition-colors disabled:opacity-50"
-          >
-            {generatingBriefing
-              ? <><Loader2 size={12} className="animate-spin" /> Gerando...</>
-              : briefing
-              ? <><RefreshCw size={12} /> Regenerar</>
-              : <><Sparkles size={12} /> Gerar Briefing IA</>}
-          </button>
-        </div>
-
-        {generatingBriefing && (
-          <div className="bg-card border border-border rounded-xl p-4 space-y-2 animate-pulse">
-            <div className="h-3 bg-muted rounded w-3/4" />
-            <div className="h-3 bg-muted rounded w-full" />
-            <div className="h-3 bg-muted rounded w-5/6" />
-            <div className="h-3 bg-muted rounded w-2/3" />
-          </div>
-        )}
-
-        {briefing && !generatingBriefing && (
-          <div className="bg-violet-500/5 border border-violet-500/20 rounded-xl p-4 text-sm text-foreground leading-relaxed whitespace-pre-wrap">
-            {briefing}
-          </div>
-        )}
-
-        {!briefing && !generatingBriefing && (
-          <p className="text-xs text-muted-foreground">
-            Clique em "Gerar Briefing IA" para receber um resumo estruturado do caso com situação atual, próximos passos e pontos de atenção.
-          </p>
-        )}
-      </section>
-
-      {/* Ficha Trabalhista */}
-      {ficha && (
-        <section>
-          <h2 className="text-base font-semibold text-base-content mb-4 flex items-center gap-2">
-            <MapPin className="h-4 w-4 text-accent" />
-            Ficha Trabalhista
-            <span className="badge badge-xs badge-accent">{ficha.completion_pct}%</span>
-            {ficha.finalizado && <span className="badge badge-xs badge-success">Finalizada</span>}
-          </h2>
-          <div className="bg-base-200/50 rounded-lg p-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-              {Object.entries(ficha.data as Record<string, any>)
-                .filter(([, v]) => v != null && v !== '')
-                .slice(0, 20)
-                .map(([key, value]) => (
-                  <div key={key} className="flex justify-between gap-2">
-                    <span className="text-base-content/60 truncate">{key.replace(/_/g, ' ')}</span>
-                    <span className="font-medium text-right truncate max-w-[200px]">
-                      {String(value)}
-                    </span>
-                  </div>
-                ))}
-            </div>
-            {Object.keys(ficha.data as Record<string, any>).length > 20 && (
-              <p className="text-xs text-base-content/40 mt-2">
-                ...e mais {Object.keys(ficha.data as Record<string, any>).length - 20} campos
+            )}
+            {briefing && !generatingBriefing && (
+              <div className="text-[12px] text-foreground/80 leading-relaxed whitespace-pre-wrap max-h-[280px] overflow-y-auto custom-scrollbar">
+                {briefing}
+              </div>
+            )}
+            {!briefing && !generatingBriefing && (
+              <p className="text-[11px] text-muted-foreground text-center py-8">
+                Clique em "Gerar" para um resumo com situacao atual, proximos passos e pontos de atencao.
               </p>
             )}
           </div>
-        </section>
+        </div>
+      </div>
+
+      {/* Row 4: Ficha Trabalhista */}
+      {ficha && (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-border flex items-center gap-3 bg-cyan-500/5">
+            <h2 className="text-[13px] font-bold text-foreground flex items-center gap-2">
+              <MapPin size={14} className="text-cyan-400" /> Ficha Trabalhista
+            </h2>
+            <div className="flex items-center gap-2">
+              <div className="w-24 bg-accent/30 rounded-full h-2 overflow-hidden">
+                <div className="bg-gradient-to-r from-cyan-500 to-cyan-400 h-2 rounded-full" style={{ width: `${ficha.completion_pct}%` }} />
+              </div>
+              <span className="text-[11px] font-bold text-cyan-400">{ficha.completion_pct}%</span>
+              {ficha.finalizado && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400">Finalizada</span>}
+            </div>
+          </div>
+          <div className="p-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0">
+              {Object.entries(ficha.data as Record<string, any>)
+                .filter(([, v]) => v != null && v !== '')
+                .slice(0, 24)
+                .map(([key, value]) => (
+                  <div key={key} className="flex items-center justify-between py-2 border-b border-border/20">
+                    <span className="text-[10px] text-muted-foreground truncate max-w-[45%]">{key.replace(/_/g, ' ')}</span>
+                    <span className="text-[11px] font-medium text-foreground text-right truncate max-w-[50%]">{String(value)}</span>
+                  </div>
+                ))}
+            </div>
+            {Object.keys(ficha.data as Record<string, any>).length > 24 && (
+              <p className="text-[10px] text-muted-foreground mt-3">...e mais {Object.keys(ficha.data as Record<string, any>).length - 24} campos</p>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
