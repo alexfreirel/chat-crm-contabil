@@ -1961,8 +1961,8 @@ export default function Dashboard() {
     }
     let result: ConversationSummary[];
     if (leadFilter === 'MINE') {
-      // Minhas conversas: todas atribuídas ao usuário atual (qualquer status exceto CLOSED)
-      result = conversations.filter(c => c.assignedAgentId === currentUserId && c.status !== 'CLOSED');
+      // Minhas conversas: atribuídas ao usuário atual, SEM IA ativa (IA tem aba própria "SophIA")
+      result = conversations.filter(c => c.assignedAgentId === currentUserId && !c.aiMode && c.status !== 'CLOSED');
     } else if (leadFilter === 'ACTIVE') {
       result = conversations.filter(myActiveConvs);
     } else if (leadFilter === 'BOT') {

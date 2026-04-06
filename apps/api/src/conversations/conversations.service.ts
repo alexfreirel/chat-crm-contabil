@@ -93,8 +93,8 @@ export class ConversationsService {
           }
         }
 
-        // Se tiver inboxes vinculados
-        if (userInboxIds.length > 0) {
+        // Se tiver inboxes vinculados (apenas no modo leads — clientes são filtrados por atribuição)
+        if (userInboxIds.length > 0 && clientMode !== true) {
           orConditions.push({ inbox_id: { in: userInboxIds } });
         }
 
