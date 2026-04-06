@@ -110,8 +110,8 @@ export default function LoginPage() {
             <div className="hidden flex-col justify-center lg:flex">
               <div className="mb-12">
                 <Image
-                  src="/logo_andre_lustosa.png"
-                  alt="André Lustosa Advogados"
+                  src="/landing/lexcon-logo-v2.png"
+                  alt="Lexcon Assessoria Contábil"
                   width={320}
                   height={100}
                   className="h-20 w-auto object-contain"
