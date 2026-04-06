@@ -57,39 +57,53 @@ export class ConversationsService {
       where.lead = { stage: { notIn: ['PERDIDO', 'FINALIZADO'] } };
     }
 
-    // ─── Controle de acesso por role ────────────────────────────────────
-    if (userRole === 'ADMIN') {
+    // ─── Controle de acesso por role (multi-role aware) ────────────────
+    const userRoles: string[] = Array.isArray(user?.roles) ? user.roles : [userRole];
+    const isAdminUser = userRoles.includes('ADMIN');
+    const isAdvogadoUser = userRoles.includes('ADVOGADO');
+    const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL');
+
+    if (isAdminUser) {
       // Admin vê tudo — apenas filtra por inboxId se explicitamente pedido
       if (inboxId) where.inbox_id = inboxId;
 
-    } else if (userRole === 'ADVOGADO') {
-      // Advogado vê:
-      // - No modo clientes: conversas onde é advogado atribuído OU responsável por um caso do lead
-      // - No modo leads: conversas onde foi indicado como advogado (triagem/reunião)
-      // - Com inboxId específico: respeita o inbox
+    } else {
+      // Multi-role: combina visibilidade de todos os papéis do usuário
+      // ADVOGADO vê: assigned_lawyer_id + legal_cases.lawyer_id
+      // OPERADOR vê: assigned_user_id + cs_user_id (clientes)
+      // Ambos: combina tudo via OR
       if (inboxId) {
         where.inbox_id = inboxId;
       } else {
-        where.OR = [
-          { assigned_lawyer_id: userId },
-          ...(clientMode === true
-            ? [{ lead: { is_client: true, legal_cases: { some: { lawyer_id: userId } } } }]
-            : []),
-          // Se tiver inboxes vinculados, também vê essas conversas
-          ...(userInboxIds.length > 0 ? [{ inbox_id: { in: userInboxIds } }] : []),
-        ];
-      }
+        const orConditions: any[] = [];
 
-    } else {
-      // OPERADOR / ESTAGIARIO / outros:
-      // - Modo leads: só vê conversas atribuídas a ele (assigned_user_id)
-      // - Modo clientes: só vê clientes que ele converteu (cs_user_id)
-      // - Transferências pendentes não aparecem até serem aceitas
-      if (clientMode === true) {
-        where.lead = { ...(where.lead ?? {}), cs_user_id: userId };
-      } else {
-        where.assigned_user_id = userId;
-        if (inboxId) where.inbox_id = inboxId;
+        // Visibilidade de ADVOGADO
+        if (isAdvogadoUser) {
+          orConditions.push({ assigned_lawyer_id: userId });
+          if (clientMode === true) {
+            orConditions.push({ lead: { is_client: true, legal_cases: { some: { lawyer_id: userId } } } });
+          }
+        }
+
+        // Visibilidade de OPERADOR
+        if (isOperadorUser || isAdvogadoUser) {
+          orConditions.push({ assigned_user_id: userId });
+          if (clientMode === true) {
+            orConditions.push({ lead: { ...(where.lead ?? {}), cs_user_id: userId } });
+          }
+        }
+
+        // Se tiver inboxes vinculados
+        if (userInboxIds.length > 0) {
+          orConditions.push({ inbox_id: { in: userInboxIds } });
+        }
+
+        // Se não é advogado nem operador (estagiário puro, financeiro)
+        if (orConditions.length === 0) {
+          orConditions.push({ assigned_user_id: userId });
+        }
+
+        where.OR = orConditions;
       }
     }
 
