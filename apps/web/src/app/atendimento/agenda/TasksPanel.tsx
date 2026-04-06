@@ -120,14 +120,7 @@ export function TasksPanel() {
   // ── Sprint 5: Task Drawer
   const [drawerTaskId, setDrawerTaskId] = useState<string | null>(null);
 
-  // Abrir tarefa via deep link (ex: clique no alerta de tarefa vencida)
-  useEffect(() => {
-    const taskId = sessionStorage.getItem('open_task_id');
-    if (taskId) {
-      sessionStorage.removeItem('open_task_id');
-      setDrawerTaskId(taskId);
-    }
-  }, []);
+  // (Deep link para tasks via sessionStorage foi removido — alertas agora abrem na agenda)
 
   // ── Sprint 6: Visualização (Lista / Kanban)
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');

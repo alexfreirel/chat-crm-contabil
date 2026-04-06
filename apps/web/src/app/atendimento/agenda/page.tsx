@@ -589,6 +589,21 @@ export default function AgendaPage() {
       setUsers(lawyers.map((u: any) => ({ id: u.id, name: u.name })));
     }).catch(() => {});
     api.get('/leads').then(r => setLeads((r.data || []).map((l: any) => ({ id: l.id, name: l.name, phone: l.phone })))).catch(() => {});
+
+    // Deep link: abrir evento via alerta de tarefa vencida
+    const openEventId = sessionStorage.getItem('open_event_id');
+    if (openEventId) {
+      sessionStorage.removeItem('open_event_id');
+      api.get(`/calendar/events/${openEventId}`)
+        .then(res => {
+          if (res.data) {
+            const ev = res.data;
+            setEditingEvent(ev);
+            setShowModal(true);
+          }
+        })
+        .catch(() => {});
+    }
   }, [router]);
 
   // Sync filtro → calendar

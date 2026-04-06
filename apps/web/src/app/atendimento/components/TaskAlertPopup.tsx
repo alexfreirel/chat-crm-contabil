@@ -29,10 +29,10 @@ export function TaskAlertPopup() {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [socket, setSocket] = useState<Socket | null>(null);
 
-  // Ao clicar no card do alerta, abre a tarefa na aba de tarefas
+  // Ao clicar no card do alerta, abre na agenda com o evento selecionado
   const openTask = useCallback((taskId: string) => {
-    sessionStorage.setItem('open_task_id', taskId);
-    router.push('/atendimento/agenda?tab=tasks');
+    sessionStorage.setItem('open_event_id', taskId);
+    router.push('/atendimento/agenda');
   }, [router]);
 
   // Conectar ao socket
