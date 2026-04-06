@@ -155,8 +155,8 @@ export default function LoginPage() {
                   {/* Mobile logo */}
                   <div className="mb-10 flex flex-col items-center justify-center lg:hidden">
                     <Image
-                      src="/logo_andre_lustosa.png"
-                      alt="André Lustosa Advogados"
+                      src="/landing/lexcon-logo-v2.png"
+                      alt="Lexcon Assessoria Contábil"
                       width={200}
                       height={60}
                       className="h-12 w-auto object-contain"
