@@ -91,7 +91,7 @@ export default function TabTarefas({
     fetchEvents();
     api.get('/users?limit=100').then(r => {
       const data = r.data?.data || r.data?.users || r.data || [];
-      setUsers(data.filter((u: any) => u.role));
+      setUsers(data.filter((u: any) => u.roles?.length > 0 || u.role));
     }).catch(() => {});
     if (lawyerId) {
       api.get(`/users/${lawyerId}/interns`).then(r => {

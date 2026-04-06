@@ -1048,7 +1048,7 @@ function ProcessoDetailPanel({
       // Todos os usuários com perfil (para campo Responsável em eventos não-prazo)
       const res2 = await api.get('/users?limit=100');
       const data = res2.data?.data || res2.data?.users || res2.data || [];
-      setAllUsers(data.filter((u: any) => u.role));
+      setAllUsers(data.filter((u: any) => u.roles?.length > 0 || u.role));
     } catch {}
   }, [legalCase.lawyer_id]);
 

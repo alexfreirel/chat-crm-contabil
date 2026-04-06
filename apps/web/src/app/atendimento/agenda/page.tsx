@@ -569,10 +569,13 @@ export default function AgendaPage() {
     try {
       const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
       if (payload?.sub) setCurrentUserId(payload.sub);
-      if (payload?.role) {
-        setCurrentUserRole(payload.role);
-        // Admin visualiza todos os advogados por padrão
-        if (payload.role === 'ADMIN') {
+      // Multi-role: aceita roles (array) ou role (string legado)
+      const roles: string[] = Array.isArray(payload?.roles)
+        ? payload.roles
+        : (payload?.role ? [payload.role] : []);
+      if (roles.length > 0) {
+        setCurrentUserRole(roles[0]);
+        if (roles.includes('ADMIN')) {
           setShowAllUsers(true);
         }
       }
@@ -581,7 +584,7 @@ export default function AgendaPage() {
     api.get('/users?limit=100').then(r => {
       const data: any[] = r.data?.data || r.data?.users || r.data || [];
       const lawyers = data.filter((u: any) =>
-        u.role === 'ADVOGADO' || u.role === 'ADMIN'
+        u.roles?.includes('ADVOGADO') || u.roles?.includes('ADMIN') || u.role === 'ADVOGADO' || u.role === 'ADMIN'
       );
       setUsers(lawyers.map((u: any) => ({ id: u.id, name: u.name })));
     }).catch(() => {});

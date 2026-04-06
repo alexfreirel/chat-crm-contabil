@@ -185,7 +185,7 @@ export function TasksPanel() {
   useEffect(() => {
     api.get('/users?limit=100').then(r => {
       const data = r.data?.data || r.data?.users || r.data || [];
-      setUsers(data.filter((u: any) => u.role));
+      setUsers(data.filter((u: any) => u.roles?.length > 0 || u.role));
     }).catch(() => {});
     fetchStats();
     // Sprint 4: buscar carga de trabalho
