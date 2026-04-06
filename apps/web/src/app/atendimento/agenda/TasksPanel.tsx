@@ -12,6 +12,7 @@ import api from '@/lib/api';
 import { showError, showSuccess, showInfo } from '@/lib/toast';
 import { TaskDrawer } from './TaskDrawer';
 import { KanbanBoard } from './KanbanBoard';
+import { useRole } from '@/lib/useRole';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -83,6 +84,9 @@ function formatDue(due: string | null) {
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export function TasksPanel() {
+  const { role, isAdmin, isAdvogado } = useRole();
+  const canViewAll = isAdmin || isAdvogado;
+
   // ── Dados
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
@@ -90,6 +94,7 @@ export function TasksPanel() {
   const [loading, setLoading] = useState(true);
 
   // ── Filtros
+  // Estagiário/Operador: vê apenas suas tarefas por padrão (backend filtra)
   const [statusFilter, setStatusFilter] = useState('');
   const [dueFilter, setDueFilter] = useState('');
   const [assignedFilter, setAssignedFilter] = useState('');
@@ -583,18 +588,24 @@ export function TasksPanel() {
 
         <div className="h-4 w-px bg-border" />
 
-        {/* Responsável */}
-        <div className="relative">
-          <select
-            value={assignedFilter}
-            onChange={e => setAssignedFilter(e.target.value)}
-            className="pl-3 pr-7 py-1.5 rounded-lg border border-border bg-background text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30 appearance-none"
-          >
-            <option value="">Todos os responsáveis</option>
-            {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-          </select>
-          <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-        </div>
+        {/* Responsável — Estagiário/Operador vê apenas suas tarefas */}
+        {canViewAll ? (
+          <div className="relative">
+            <select
+              value={assignedFilter}
+              onChange={e => setAssignedFilter(e.target.value)}
+              className="pl-3 pr-7 py-1.5 rounded-lg border border-border bg-background text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30 appearance-none"
+            >
+              <option value="">Todos os responsáveis</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+            <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          </div>
+        ) : (
+          <span className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-semibold">
+            Minhas Tarefas
+          </span>
+        )}
 
         {/* Search */}
         <div className="relative">
