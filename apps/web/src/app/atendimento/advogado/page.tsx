@@ -1245,12 +1245,13 @@ export default function AdvogadoPage() {
       .catch(() => {});
 
     // Fetch prazos/tarefas pendentes (AGENDADO/CONFIRMADO, tipo TAREFA/PRAZO)
-    api.get('/calendar/events', { params: { start: new Date(Date.now() - 30 * 86400000).toISOString(), end: in7d, type: 'TAREFA,PRAZO' } })
+    // Fetch prazos/tarefas pendentes — advogado vê todos os eventos dos seus casos
+    api.get('/calendar/events', { params: { start: new Date(Date.now() - 30 * 86400000).toISOString(), end: in7d, showAll: 'true' } })
       .then(r => {
         const items = (r.data || []).filter((e: any) =>
           ['AGENDADO', 'CONFIRMADO'].includes(e.status) && ['TAREFA', 'PRAZO'].includes(e.type) && e.legal_case_id
         );
-        setDeadlines(items.slice(0, 30));
+        setDeadlines(items.sort((a: any, b: any) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime()).slice(0, 30));
       })
       .catch(() => {});
 
