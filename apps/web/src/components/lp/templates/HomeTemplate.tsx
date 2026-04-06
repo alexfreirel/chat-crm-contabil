@@ -557,9 +557,9 @@ export function HomeTemplate({
               <span className="text-[#A89048]">Todo o Brasil</span>
             </h2>
             <p className="text-[clamp(1rem,1.1vw,1.125rem)] 2xl:text-[clamp(1.125rem,1.5vw,1.375rem)] text-[#9a9a9a] max-w-3xl mx-auto leading-relaxed">
-              Somos um escritório de advocacia com atendimento &quot;FULL
+              Somos um escritório de contabilidade com atendimento &quot;FULL
               SERVICE&quot;, e estamos comprometidos com a excelência na atuação
-              em diferentes áreas do direito.
+              em diferentes áreas da contabilidade.
             </p>
           </div>
 
