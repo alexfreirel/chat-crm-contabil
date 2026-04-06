@@ -1095,6 +1095,26 @@ export class AiProcessor extends WorkerHost {
       // 8. Carregar skills ativas (com tools e assets inclusos)
       const activeSkills = await this.settings.getActiveSkills();
 
+      // 8.5 Detectar se é CLIENTE com processo ativo → forçar skill Acompanhamento
+      let isActiveClient = false;
+      let activeCases: any[] = [];
+      try {
+        const lead = await (this.prisma as any).lead.findUnique({
+          where: { id: convo.lead_id },
+          select: { is_client: true, stage: true },
+        });
+        if (lead?.is_client) {
+          activeCases = await (this.prisma as any).legalCase.findMany({
+            where: { lead_id: convo.lead_id, archived: false },
+            select: { id: true, case_number: true, legal_area: true, tracking_stage: true, in_tracking: true, stage: true, opposing_party: true },
+            orderBy: { stage_changed_at: 'desc' },
+          });
+          if (activeCases.length > 0) isActiveClient = true;
+        }
+      } catch (e: any) {
+        this.logger.warn(`[AI] Falha ao verificar status de cliente: ${e.message}`);
+      }
+
       // 9. Selecionar skill — via Router inteligente ou fallback area-matching
       const legalArea = (convo as any).legal_area || null;
       const nextStep = (convo as any).next_step || null;
@@ -1103,7 +1123,16 @@ export class AiProcessor extends WorkerHost {
       let routerReason = '';
       let routerTokens = 0;
 
-      if (routerConfig.enabled && activeSkills.length > 1) {
+      // Se é cliente com processo ativo, forçar skill de Acompanhamento
+      if (isActiveClient) {
+        skill = activeSkills.find((s: any) => s.area === 'Acompanhamento') || null;
+        if (skill) {
+          routerReason = `cliente ativo com ${activeCases.length} processo(s) — skill Acompanhamento`;
+          this.logger.log(`[AI] Cliente ativo detectado (lead=${convo.lead_id}), usando skill Acompanhamento`);
+        }
+      }
+
+      if (!skill && routerConfig.enabled && activeSkills.length > 1) {
         try {
           const routerApiKey = routerConfig.provider === 'anthropic'
             ? await this.settings.getAnthropicKey()
@@ -1301,6 +1330,35 @@ export class AiProcessor extends WorkerHost {
         }
       }
 
+      // Montar info de processos ativos (para clientes com caso em andamento)
+      let activeCasesInfoBlock = '';
+      if (isActiveClient && activeCases.length > 0) {
+        const TRACKING_LABELS: Record<string, string> = {
+          DISTRIBUIDO: 'Distribuído', CITACAO: 'Citação', CONTESTACAO: 'Contestação',
+          REPLICA: 'Réplica', PERICIA_AGENDADA: 'Perícia Agendada', INSTRUCAO: 'Audiência/Instrução',
+          ALEGACOES_FINAIS: 'Alegações Finais', AGUARDANDO_SENTENCA: 'Aguardando Sentença',
+          JULGAMENTO: 'Julgamento', RECURSO: 'Recurso', TRANSITADO: 'Transitado em Julgado',
+          EXECUCAO: 'Execução', ENCERRADO: 'Encerrado',
+        };
+        const PREP_LABELS: Record<string, string> = {
+          VIABILIDADE: 'Análise de Viabilidade', DOCUMENTACAO: 'Coleta de Documentos',
+          PETICAO: 'Petição Inicial', REVISAO: 'Revisão', PROTOCOLO: 'Protocolo',
+        };
+        const caseLines = activeCases.map((c: any) => {
+          const stageLabel = c.in_tracking
+            ? (TRACKING_LABELS[c.tracking_stage] || c.tracking_stage || 'Em acompanhamento')
+            : (PREP_LABELS[c.stage] || c.stage || 'Em preparação');
+          return `  - Nº ${c.case_number || 'Sem número'} | ${c.legal_area || 'Área não definida'} | Estágio: ${stageLabel}${c.opposing_party ? ` | vs ${c.opposing_party}` : ''}`;
+        });
+        activeCasesInfoBlock = `═══════════════════════════════════════════════════
+⚖️ PROCESSOS ATIVOS DO CLIENTE (${activeCases.length}):
+${caseLines.join('\n')}
+
+IMPORTANTE: Este é um CLIENTE já contratado. NÃO faça triagem, NÃO investigue fatos, NÃO pergunte dados pessoais. Responda sobre o andamento do processo.
+═══════════════════════════════════════════════════
+`;
+      }
+
       const vars: Record<string, string> = {
         lead_name: convo.lead.name || 'Desconhecido',
         lead_phone: convo.lead.phone || '',
@@ -1325,6 +1383,7 @@ export class AiProcessor extends WorkerHost {
         upcoming_events: upcomingEventsBlock,
         operator_notes: operatorNotesBlock,
         ai_notes: aiNotesBlock,
+        active_cases_info: activeCasesInfoBlock,
       };
 
       // Cabeçalho fixo de capacidades — injetado antes de qualquer skill prompt
@@ -1347,6 +1406,7 @@ MEMÓRIA DO LEAD (tudo que já foi coletado sobre este cliente):
 {{ai_notes}}
 {{reminder_context}}
 {{upcoming_events}}
+{{active_cases_info}}
 REGRAS DE TOM E FORMATO (INVIOLÁVEIS):
 - MÁXIMO 2 frases curtas por mensagem. Se passar disso, CORTE.
 - NUNCA pular linha na mensagem. Tudo em bloco só.
