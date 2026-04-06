@@ -1165,6 +1165,12 @@ export default function AdvogadoPage() {
   // BUG FIX: archivedCount via fetch separado
   const [archivedTotal, setArchivedTotal] = useState(0);
 
+  // Prazos e petições pendentes
+  const [deadlines, setDeadlines] = useState<any[]>([]);
+  const [showDeadlines, setShowDeadlines] = useState(true);
+  const [interns, setInterns] = useState<{ id: string; name: string }[]>([]);
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+
   // Modal de confirmação de conclusão de tarefas ao mover estágio
   const [pendingMove, setPendingMove] = useState<{ caseId: string; newStage: string; pendingTasks: number } | null>(null);
 
@@ -1237,6 +1243,24 @@ export default function AdvogadoPage() {
     api.get('/calendar/events', { params: { start: now, end: in7d } })
       .then(r => setUpcomingEvents((r.data || []).filter((e: any) => e.status !== 'CANCELADO' && e.status !== 'CONCLUIDO').slice(0, 5)))
       .catch(() => {});
+
+    // Fetch prazos/tarefas pendentes (AGENDADO/CONFIRMADO, tipo TAREFA/PRAZO)
+    api.get('/calendar/events', { params: { start: new Date(Date.now() - 30 * 86400000).toISOString(), end: in7d, type: 'TAREFA,PRAZO' } })
+      .then(r => {
+        const items = (r.data || []).filter((e: any) =>
+          ['AGENDADO', 'CONFIRMADO'].includes(e.status) && ['TAREFA', 'PRAZO'].includes(e.type) && e.legal_case_id
+        );
+        setDeadlines(items.slice(0, 30));
+      })
+      .catch(() => {});
+
+    // Fetch estagiários vinculados
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      if (payload?.sub) {
+        api.get(`/users/${payload.sub}/interns`).then(r => setInterns(r.data || [])).catch(() => {});
+      }
+    } catch {}
 
     const interval = setInterval(() => fetchCases(true), 30_000);
     return () => clearInterval(interval);
@@ -1545,6 +1569,72 @@ export default function AdvogadoPage() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Prazos e Petições Pendentes */}
+            {view === 'active' && deadlines.length > 0 && (
+              <div className="mx-6 mt-4">
+                <button
+                  onClick={() => setShowDeadlines(!showDeadlines)}
+                  className="flex items-center gap-2 text-[12px] font-bold text-amber-400 uppercase tracking-wider mb-2 hover:opacity-80 transition-opacity"
+                >
+                  <ChevronRight size={14} className={`transition-transform ${showDeadlines ? 'rotate-90' : ''}`} />
+                  <Clock size={13} />
+                  Prazos e Petições ({deadlines.length})
+                </button>
+                {showDeadlines && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {deadlines.map((d: any) => {
+                      const isOverdue = new Date(d.start_at) < new Date();
+                      return (
+                        <div key={d.id} className={`bg-card border rounded-xl p-3 ${isOverdue ? 'border-red-500/40 bg-red-500/5' : 'border-border'}`}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded ${d.type === 'PRAZO' ? 'bg-red-500/15 text-red-400' : 'bg-blue-500/15 text-blue-400'}`}>
+                                  {d.type}
+                                </span>
+                                <span className={`text-[9px] font-semibold ${isOverdue ? 'text-red-400' : 'text-muted-foreground'}`}>
+                                  {new Date(d.start_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                                  {isOverdue && ' (vencido)'}
+                                </span>
+                              </div>
+                              <p className="text-[11px] font-semibold text-foreground truncate">{d.title}</p>
+                              {d.lead?.name && <p className="text-[9px] text-muted-foreground mt-0.5">{d.lead.name}</p>}
+                              {d.assigned_user && (
+                                <p className="text-[9px] text-emerald-400 mt-0.5">Atribuído: {d.assigned_user.name}</p>
+                              )}
+                            </div>
+                            <div className="shrink-0">
+                              {interns.length > 0 && (
+                                <select
+                                  value={d.assigned_user_id || ''}
+                                  onChange={async (e) => {
+                                    const newId = e.target.value || null;
+                                    setAssigningId(d.id);
+                                    try {
+                                      await api.patch(`/calendar/events/${d.id}`, { assigned_user_id: newId });
+                                      setDeadlines(prev => prev.map(item =>
+                                        item.id === d.id ? { ...item, assigned_user_id: newId, assigned_user: newId ? interns.find(i => i.id === newId) : null } : item
+                                      ));
+                                    } catch {}
+                                    setAssigningId(null);
+                                  }}
+                                  disabled={assigningId === d.id}
+                                  className="text-[9px] bg-accent/50 border border-border rounded-lg px-2 py-1 text-foreground focus:outline-none max-w-[100px]"
+                                >
+                                  <option value="">Atribuir...</option>
+                                  {interns.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                                </select>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
