@@ -35,6 +35,7 @@ import { S3Module } from './s3/s3.module';
 import { McpModule } from './mcp/mcp.module';
 import { AutomationsModule } from './automations/automations.module';
 import { FollowupModule } from './followup/followup.module';
+import { InternModule } from './intern/intern.module';
 import { AdminBotModule } from './admin-bot/admin-bot.module';
 import { FinanceiroModule } from './financeiro/financeiro.module';
 import { PaymentGatewayModule } from './payment-gateway/payment-gateway.module';
@@ -98,6 +99,7 @@ import { RolesGuard } from './auth/guards/roles.guard';
     McpModule,
     AutomationsModule,
     FollowupModule,
+    InternModule,
     AdminBotModule,
     FinanceiroModule,
     PaymentGatewayModule,
