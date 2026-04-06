@@ -42,7 +42,7 @@ model User {
   email                    String                 @unique
   phone                    String?
   password_hash            String
-  role                     String
+  roles                    String[]               @default(["OPERADOR"])
   specialties              String[]               @default([])
   created_at               DateTime               @default(now())
   updated_at               DateTime               @updatedAt

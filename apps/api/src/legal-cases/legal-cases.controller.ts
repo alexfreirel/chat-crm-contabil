@@ -46,7 +46,7 @@ export class LegalCasesController {
     @Query('leadId') leadId?: string,
     @Query('caseNumber') caseNumber?: string,
   ) {
-    const isAdmin = req.user.role === 'ADMIN';
+    const isAdmin = req.user.roles?.includes('ADMIN');
     const lawyerId = isAdmin ? undefined : req.user.id;
     const archivedBool = archived === 'true' ? true : archived === 'false' ? false : undefined;
     const inTrackingBool = inTracking === 'true' ? true : inTracking === 'false' ? false : undefined;
@@ -139,7 +139,7 @@ export class LegalCasesController {
     },
     @Request() req: any,
   ) {
-    const isAdmin = req.user.role === 'ADMIN';
+    const isAdmin = req.user.roles?.includes('ADMIN');
     return this.service.createDirect({
       ...body,
       lawyer_id: req.user.id,

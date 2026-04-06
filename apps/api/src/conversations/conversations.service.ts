@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ChatGateway } from '../gateway/chat.gateway';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { Prisma, Conversation } from '@crm/shared';
+import { effectiveRole } from '../common/utils/permissions.util';
 
 @Injectable()
 export class ConversationsService {
@@ -40,7 +41,7 @@ export class ConversationsService {
         })
       : null;
 
-    const userRole = user?.role ?? 'OPERADOR';
+    const userRole = effectiveRole(user?.roles ?? 'OPERADOR');
     const userInboxIds = (user?.inboxes ?? []).map((i: any) => i.id);
 
     // ─── Filtro por clientMode (modo Leads vs Clientes) ──────────────────
@@ -621,7 +622,7 @@ export class ConversationsService {
         where: { id: userId },
         include: { inboxes: { select: { id: true } } },
       });
-      if (user?.role !== 'ADMIN' && user?.inboxes && user.inboxes.length > 0) {
+      if (!user?.roles?.includes('ADMIN') && user?.inboxes && user.inboxes.length > 0) {
         where.inbox_id = { in: user.inboxes.map((i: any) => i.id) };
       }
     }

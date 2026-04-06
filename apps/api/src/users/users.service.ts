@@ -83,7 +83,7 @@ export class UsersService {
         email: data.email,
         phone: data.phone || null,
         password_hash,
-        role: data.role,
+        roles: data.role ? [data.role] : ['OPERADOR'],
         tenant_id: data.tenant_id,
         inboxes: data.inboxIds ? { connect: data.inboxIds.map(id => ({ id })) } : undefined
       },
@@ -100,7 +100,9 @@ export class UsersService {
     const updateData: Prisma.UserUpdateInput = {};
     if (data.name) updateData.name = data.name;
     if (data.email) updateData.email = data.email;
-    if (data.role) updateData.role = data.role;
+    if (data.role) {
+      (updateData as any).roles = [data.role];
+    }
     if (data.phone !== undefined) updateData.phone = data.phone || null;
     if (data.password) updateData.password_hash = await argon2.hash(data.password);
     if (data.specialties !== undefined) (updateData as any).specialties = { set: data.specialties };
@@ -165,15 +167,15 @@ export class UsersService {
         AND: [
           {
             OR: [
-              { role: 'ADVOGADO' },
-              { role: 'ADMIN', specialties: { isEmpty: false } },
+              { roles: { has: 'ADVOGADO' } },
+              { roles: { has: 'ADMIN' }, specialties: { isEmpty: false } },
             ],
           },
           // Isolamento multi-tenant combinado via AND para não sobrescrever o OR acima
           ...(Object.keys(tenantFilter).length > 0 ? [tenantFilter] : []),
         ],
       },
-      select: { id: true, name: true, role: true, specialties: true },
+      select: { id: true, name: true, roles: true, specialties: true },
       orderBy: { name: 'asc' },
     });
   }
@@ -182,7 +184,7 @@ export class UsersService {
   async findInterns(supervisorId: string) {
     return this.prisma.user.findMany({
       where: { supervisors: { some: { id: supervisorId } } },
-      select: { id: true, name: true, email: true, role: true },
+      select: { id: true, name: true, email: true, roles: true },
       orderBy: { name: 'asc' },
     });
   }

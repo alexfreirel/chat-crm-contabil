@@ -310,7 +310,7 @@ export class EvolutionService {
         // Fallback: atribui ao admin do tenant se nenhum operador disponível
         if (!nextUserId) {
           const admin = await this.prisma.user.findFirst({
-            where: { tenant_id: conv.tenant_id ?? undefined, role: 'ADMIN' },
+            where: { tenant_id: conv.tenant_id ?? undefined, roles: { has: 'ADMIN' } },
             select: { id: true },
           });
           nextUserId = admin?.id || null;

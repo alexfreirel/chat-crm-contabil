@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 type Quartile = 'TOP' | 'MID' | 'LOW';
 
-interface UserRef { id: string; name: string; role: string }
+interface UserRef { id: string; name: string; role?: string; roles?: string[] }
 
 @Injectable()
 export class TeamPerformanceService {
@@ -15,8 +15,9 @@ export class TeamPerformanceService {
       : {};
   }
 
-  async getPerformance(userId: string, role: string, tenantId?: string, startDate?: string, endDate?: string) {
-    if (role !== 'ADMIN') return { members: [], teamAverages: {}, period: {}, previousPeriod: {} };
+  async getPerformance(userId: string, roles: string | string[], tenantId?: string, startDate?: string, endDate?: string) {
+    const roleArr = Array.isArray(roles) ? roles : (roles ? [roles] : []);
+    if (!roleArr.includes('ADMIN')) return { members: [], teamAverages: {}, period: {}, previousPeriod: {} };
 
     const tw = this.tenantWhere(tenantId);
     const now = new Date();
@@ -29,14 +30,14 @@ export class TeamPerformanceService {
     // ─── 1. Get all team members ──
     const users = await this.prisma.user.findMany({
       where: tw,
-      select: { id: true, name: true, role: true },
+      select: { id: true, name: true, roles: true },
       orderBy: { name: 'asc' },
     });
 
-    const advogados = users.filter(u => u.role === 'ADVOGADO');
-    const operadores = users.filter(u => u.role === 'OPERADOR');
-    const estagiarios = users.filter(u => u.role === 'ESTAGIARIO');
-    const admins = users.filter(u => u.role === 'ADMIN');
+    const advogados = users.filter(u => u.roles?.includes('ADVOGADO'));
+    const operadores = users.filter(u => u.roles?.includes('OPERADOR'));
+    const estagiarios = users.filter(u => u.roles?.includes('ESTAGIARIO'));
+    const admins = users.filter(u => u.roles?.includes('ADMIN'));
     const allIds = users.map(u => u.id);
     const advIds = advogados.map(u => u.id);
     const opIds = operadores.map(u => u.id);
@@ -259,7 +260,7 @@ export class TeamPerformanceService {
       let score = 0;
       let prevScore = 0;
 
-      if (user.role === 'ADVOGADO' || user.role === 'ADMIN') {
+      if (user.roles?.some((r: string) => ['ADVOGADO', 'ADMIN'].includes(r))) {
         const active = gc(activeCases, 'lawyer_id', user.id);
         const filed = gc(casesFiledCurrent, 'lawyer_id', user.id);
         const totalSent = sentencedCases.filter(r => r.lawyer_id === user.id).reduce((s, r) => s + r._count, 0);
@@ -315,7 +316,7 @@ export class TeamPerformanceService {
         prevScore = 12 + (dlRate / 100) * 20 + ((prevColl > 0 && receivable > 0) ? (prevColl / (prevColl + receivable)) * 20 : 0) + (prevTaskRate / 100) * 15;
       }
 
-      if (user.role === 'OPERADOR') {
+      if (user.roles?.includes('OPERADOR')) {
         const open = gc(openConvs, 'assigned_user_id', user.id);
         const closed = gc(closedConvs, 'assigned_user_id', user.id);
         const handled = gc(leadsHandled, 'cs_user_id', user.id);
@@ -347,7 +348,7 @@ export class TeamPerformanceService {
         prevScore = (convRate / 100) * 30 + 25 + Math.min(15, prevClosed / 5 * 1.5) + (taskRate / 100) * 15 + Math.min(10, prevStages / 10 * 2);
       }
 
-      if (user.role === 'ESTAGIARIO') {
+      if (user.roles?.includes('ESTAGIARIO')) {
         const docs = gc(docsUploaded, 'uploaded_by_id', user.id);
         const dlManaged = gc(deadlines, 'created_by_id', user.id);
         const dlOnTime = estDeadlines.find(d => d.created_by_id === user.id)?._count || 0;
@@ -381,7 +382,7 @@ export class TeamPerformanceService {
       prevScore = Math.max(0, Math.min(100, Math.round(prevScore)));
 
       members.push({
-        userId: user.id, name: user.name, role: user.role,
+        userId: user.id, name: user.name, role: user.roles?.[0] ?? 'OPERADOR', roles: user.roles,
         compositeScore: score, previousScore: prevScore, scoreDelta: score - prevScore,
         rank: 0, quartile: 'MID' as Quartile,
         advogadoKPIs: advKPIs, operadorKPIs: opKPIs, estagiarioKPIs: estKPIs,
@@ -392,7 +393,7 @@ export class TeamPerformanceService {
 
     // ─── 6. Rank and quartile per role ──
     const rankGroup = (roleFilter: string) => {
-      const group = members.filter(m => m.role === roleFilter).sort((a, b) => b.compositeScore - a.compositeScore);
+      const group = members.filter(m => m.roles?.includes(roleFilter)).sort((a, b) => b.compositeScore - a.compositeScore);
       group.forEach((m, i) => { m.rank = i + 1; });
       const len = group.length;
       if (len >= 4) {

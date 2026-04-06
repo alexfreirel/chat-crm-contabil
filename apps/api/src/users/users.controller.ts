@@ -27,7 +27,7 @@ export class UsersController {
   @Get(':id')
   findOne(@Request() req: any, @Param('id') id: string) {
     // Permite ADMIN ou o próprio usuário ver seu perfil
-    if (req.user.role !== 'ADMIN' && req.user.id !== id) {
+    if (!req.user.roles?.includes('ADMIN') && req.user.id !== id) {
       throw new ForbiddenException('Sem permissão');
     }
     return this.usersService.findById(id, req.user?.tenant_id);

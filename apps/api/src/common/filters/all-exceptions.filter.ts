@@ -40,7 +40,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       this.auditLogger.warn(
         `ACESSO_NEGADO | ` +
         `user=${user?.id ?? 'anon'} | ` +
-        `role=${user?.role ?? '-'} | ` +
+        `roles=${(user?.roles || [user?.role]).filter(Boolean).join(',') || '-'} | ` +
         `${request.method} ${request.url} | ` +
         `ip=${request.ip ?? request.headers['x-forwarded-for'] ?? '-'} | ` +
         `motivo="${message}"`,

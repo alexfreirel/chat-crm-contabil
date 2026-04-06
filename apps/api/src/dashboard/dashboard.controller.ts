@@ -17,7 +17,7 @@ export class DashboardController {
   getDashboard(@Request() req: any) {
     return this.service.aggregate(
       req.user.id,
-      req.user.role,
+      req.user.roles,
       req.user.tenant_id,
     );
   }
@@ -88,7 +88,7 @@ export class DashboardController {
     @Request() req: any,
     @Query('months') months?: string,
   ) {
-    if (req.user.role !== 'ADMIN') return { byMonth: [], byModel: [], totalCost: 0 };
+    if (!req.user.roles?.includes('ADMIN')) return { byMonth: [], byModel: [], totalCost: 0 };
     return this.analytics.aiUsage(
       req.user.id, req.user.role, req.user.tenant_id,
       months ? parseInt(months, 10) : 6,

@@ -3,6 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatGateway } from '../gateway/chat.gateway';
+import { isAdmin } from '../common/utils/permissions.util';
 
 const EVENT_TYPES = ['CONSULTA', 'TAREFA', 'AUDIENCIA', 'PERICIA', 'PRAZO', 'OUTRO'] as const;
 const EVENT_STATUSES = ['AGENDADO', 'CONFIRMADO', 'CONCLUIDO', 'CANCELADO', 'ADIADO'] as const;
@@ -944,8 +945,8 @@ export class CalendarService {
 
   // ─── Ownership Check ──────────────────────────────────
 
-  async checkOwnership(eventId: string, userId: string, userRole: string, tenantId?: string): Promise<boolean> {
-    if (userRole === 'ADMIN') return true;
+  async checkOwnership(eventId: string, userId: string, userRoles: string | string[], tenantId?: string): Promise<boolean> {
+    if (isAdmin(userRoles)) return true;
     const event = await this.prisma.calendarEvent.findUnique({
       where: { id: eventId },
       select: { created_by_id: true, assigned_user_id: true, tenant_id: true },
@@ -1024,7 +1025,7 @@ export class CalendarService {
 
     let migrated = 0;
     for (const task of orphanTasks) {
-      const creatorId = task.assigned_user_id || (await this.prisma.user.findFirst({ where: { role: 'ADMIN' }, select: { id: true } }))?.id;
+      const creatorId = task.assigned_user_id || (await this.prisma.user.findFirst({ where: { roles: { has: 'ADMIN' } }, select: { id: true } }))?.id;
       if (!creatorId) continue;
 
       const event = await this.prisma.calendarEvent.create({

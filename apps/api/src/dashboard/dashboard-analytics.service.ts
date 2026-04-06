@@ -12,8 +12,9 @@ export class DashboardAnalyticsService {
   }
 
   /* ─── Revenue Trend (monthly) ─── */
-  async revenueTrend(userId: string, role: string, tenantId?: string, months = 12) {
-    const isAdmin = role === 'ADMIN';
+  async revenueTrend(userId: string, roles: string | string[], tenantId?: string, months = 12) {
+    const roleArr = Array.isArray(roles) ? roles : (roles ? [roles] : []);
+    const isAdmin = roleArr.includes('ADMIN');
     const tw = this.tenantWhere(tenantId);
     const since = new Date();
     since.setMonth(since.getMonth() - months);
@@ -77,7 +78,7 @@ export class DashboardAnalyticsService {
   }
 
   /* ─── Lead Funnel ─── */
-  async leadFunnel(userId: string, role: string, tenantId?: string, startDate?: string, endDate?: string) {
+  async leadFunnel(userId: string, roles: string | string[], tenantId?: string, startDate?: string, endDate?: string) {
     const tw = this.tenantWhere(tenantId);
     const dateFilter = startDate && endDate
       ? { created_at: { gte: new Date(startDate), lte: new Date(endDate) } }
@@ -116,7 +117,7 @@ export class DashboardAnalyticsService {
   }
 
   /* ─── Conversion Velocity ─── */
-  async conversionVelocity(userId: string, role: string, tenantId?: string, startDate?: string, endDate?: string) {
+  async conversionVelocity(userId: string, roles: string | string[], tenantId?: string, startDate?: string, endDate?: string) {
     const tw = this.tenantWhere(tenantId);
     const dateFilter: any = { is_client: true, became_client_at: { not: null }, ...tw };
     if (startDate && endDate) {
@@ -163,8 +164,9 @@ export class DashboardAnalyticsService {
   }
 
   /* ─── Task Completion ─── */
-  async taskCompletion(userId: string, role: string, tenantId?: string, startDate?: string, endDate?: string) {
-    const isAdmin = role === 'ADMIN';
+  async taskCompletion(userId: string, roles: string | string[], tenantId?: string, startDate?: string, endDate?: string) {
+    const roleArr = Array.isArray(roles) ? roles : (roles ? [roles] : []);
+    const isAdmin = roleArr.includes('ADMIN');
     const tw = this.tenantWhere(tenantId);
     const baseWhere: any = { type: 'TAREFA', ...tw };
     if (!isAdmin) baseWhere.assigned_user_id = userId;
@@ -190,8 +192,9 @@ export class DashboardAnalyticsService {
   }
 
   /* ─── Case Duration ─── */
-  async caseDuration(userId: string, role: string, tenantId?: string) {
-    const isAdmin = role === 'ADMIN';
+  async caseDuration(userId: string, roles: string | string[], tenantId?: string) {
+    const roleArr = Array.isArray(roles) ? roles : (roles ? [roles] : []);
+    const isAdmin = roleArr.includes('ADMIN');
     const tw = this.tenantWhere(tenantId);
 
     const cases = await this.prisma.legalCase.findMany({
@@ -224,8 +227,9 @@ export class DashboardAnalyticsService {
   }
 
   /* ─── Financial Aging ─── */
-  async financialAging(userId: string, role: string, tenantId?: string) {
-    const isAdmin = role === 'ADMIN';
+  async financialAging(userId: string, roles: string | string[], tenantId?: string) {
+    const roleArr = Array.isArray(roles) ? roles : (roles ? [roles] : []);
+    const isAdmin = roleArr.includes('ADMIN');
     const tw = this.tenantWhere(tenantId);
     const now = new Date();
 
@@ -261,7 +265,7 @@ export class DashboardAnalyticsService {
   }
 
   /* ─── AI Usage ─── */
-  async aiUsage(userId: string, role: string, tenantId?: string, months = 6) {
+  async aiUsage(userId: string, roles: string | string[], tenantId?: string, months = 6) {
     const since = new Date();
     since.setMonth(since.getMonth() - months);
 
@@ -304,7 +308,7 @@ export class DashboardAnalyticsService {
   }
 
   /* ─── Lead Sources ─── */
-  async leadSources(userId: string, role: string, tenantId?: string, startDate?: string, endDate?: string) {
+  async leadSources(userId: string, roles: string | string[], tenantId?: string, startDate?: string, endDate?: string) {
     const tw = this.tenantWhere(tenantId);
     const dateFilter = startDate && endDate
       ? { created_at: { gte: new Date(startDate), lte: new Date(endDate) } }
@@ -329,8 +333,9 @@ export class DashboardAnalyticsService {
   }
 
   /* ─── Response Time ─── */
-  async responseTime(userId: string, role: string, tenantId?: string, startDate?: string, endDate?: string) {
-    const isAdmin = role === 'ADMIN';
+  async responseTime(userId: string, roles: string | string[], tenantId?: string, startDate?: string, endDate?: string) {
+    const roleArr = Array.isArray(roles) ? roles : (roles ? [roles] : []);
+    const isAdmin = roleArr.includes('ADMIN');
     const tw = this.tenantWhere(tenantId);
 
     const convWhere: any = { ...tw };

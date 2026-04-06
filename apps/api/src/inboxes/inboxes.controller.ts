@@ -11,7 +11,7 @@ export class InboxesController {
   @Get()
   async findAll(@Request() req: any) {
     const userId = req.user?.id;
-    const isAdmin = req.user?.role === 'ADMIN';
+    const isAdmin = req.user?.roles?.includes('ADMIN');
     // ADMINs veem todos os inboxes; outros usuários só veem os que são membros
     return this.inboxesService.findAll(undefined, isAdmin ? undefined : userId);
   }

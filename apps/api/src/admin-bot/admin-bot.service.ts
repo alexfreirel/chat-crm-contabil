@@ -90,9 +90,9 @@ export class AdminBotService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.user.findFirst({
       where: {
         phone: { in: [normalized, phone] },
-        role: { in: ['ADMIN', 'ADVOGADO'] },
+        roles: { hasSome: ['ADMIN', 'ADVOGADO'] },
       },
-      select: { id: true, name: true, role: true, tenant_id: true },
+      select: { id: true, name: true, roles: true, tenant_id: true },
     });
   }
 
@@ -578,8 +578,8 @@ Para qual processo? (responda 1, 2, 3 ou "nenhum")`;
 
         case 'list_users': {
           const users = await this.prisma.user.findMany({
-            where: { role: { in: ['ADMIN', 'ADVOGADO', 'OPERADOR'] } },
-            select: { id: true, name: true, role: true },
+            where: { roles: { hasSome: ['ADMIN', 'ADVOGADO', 'OPERADOR'] } },
+            select: { id: true, name: true, roles: true },
             orderBy: { name: 'asc' },
           });
           return { users };

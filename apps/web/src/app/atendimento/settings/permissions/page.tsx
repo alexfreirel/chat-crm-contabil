@@ -158,30 +158,44 @@ export default function PermissionsSettingsPage() {
       .finally(() => setLoadingUsers(false));
   }, []);
 
-  const changeRole = async (userId: string, newRole: Role) => {
+  // Multi-role: toggle individual roles on/off
+  const toggleRole = async (userId: string, role: Role) => {
+    const user = users.find(u => u.id === userId);
+    if (!user) return;
+    const currentRoles: string[] = Array.isArray(user.roles) ? user.roles : (user.role ? [user.role] : []);
+    let newRoles: string[];
+    if (currentRoles.includes(role)) {
+      newRoles = currentRoles.filter(r => r !== role);
+      if (newRoles.length === 0) return; // Pelo menos 1 role obrigatório
+    } else {
+      newRoles = [...currentRoles, role];
+    }
     setUpdatingId(userId);
-    setOpenDropdown(null);
     try {
-      await api.patch(`/users/${userId}`, { role: newRole });
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
+      await api.patch(`/users/${userId}`, { role: newRoles[0], roles: newRoles });
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, roles: newRoles, role: newRoles[0] } : u));
     } catch {}
     setUpdatingId(null);
   };
 
-  // Normaliza o role para comparação (case-insensitive)
-  const normalizeRole = (r: string | null | undefined): Role | null => {
-    if (!r) return null;
-    const upper = r.toUpperCase() as Role;
-    return ROLES.includes(upper) ? upper : null;
+  // Normaliza roles para array
+  const getUserRoles = (u: any): string[] => {
+    if (Array.isArray(u.roles) && u.roles.length > 0) return u.roles;
+    if (u.role) return [u.role];
+    return [];
   };
 
+  // Agrupa: usuário pode aparecer em múltiplos grupos
   const usersByRole = ROLES.map(role => ({
     role,
-    users: users.filter(u => normalizeRole(u.role) === role),
+    users: users.filter(u => getUserRoles(u).includes(role)),
   }));
 
-  // Usuários com role desconhecida/nula ficam visíveis no grupo "Sem perfil"
-  const orphanUsers = users.filter(u => normalizeRole(u.role) === null);
+  // Usuários sem nenhum role válido
+  const orphanUsers = users.filter(u => {
+    const roles = getUserRoles(u);
+    return roles.length === 0 || !roles.some(r => ROLES.includes(r as Role));
+  });
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-background">
@@ -307,19 +321,19 @@ export default function PermissionsSettingsPage() {
                             </div>
                           </div>
 
-                          {/* Role selector */}
+                          {/* Multi-role selector */}
                           <div className="relative shrink-0">
                             <button
                               onClick={(e) => openDropdownAt(user.id, e.currentTarget)}
                               disabled={updatingId === user.id}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-accent text-[12px] font-semibold text-foreground transition-colors disabled:opacity-50"
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-accent text-[11px] font-semibold text-foreground transition-colors disabled:opacity-50 max-w-[220px]"
                             >
                               {updatingId === user.id
                                 ? <Loader2 size={12} className="animate-spin" />
-                                : <Shield size={12} className="text-muted-foreground" />
+                                : <Shield size={12} className="text-muted-foreground shrink-0" />
                               }
-                              {ROLE_LABELS[user.role as Role] || user.role}
-                              <ChevronDown size={12} className="text-muted-foreground" />
+                              <span className="truncate">{getUserRoles(user).map(r => ROLE_LABELS[r as Role] || r).join(', ') || 'Sem perfil'}</span>
+                              <ChevronDown size={12} className="text-muted-foreground shrink-0" />
                             </button>
                           </div>
                         </div>
@@ -350,8 +364,8 @@ export default function PermissionsSettingsPage() {
                           <div className="min-w-0">
                             <div className="text-[13px] font-semibold text-foreground truncate">{user.name || '(sem nome)'}</div>
                             <div className="text-[11px] text-muted-foreground truncate">{user.email}</div>
-                            {user.role && (
-                              <div className="text-[10px] text-destructive/70 font-mono mt-0.5">role no banco: "{user.role}"</div>
+                            {(user.roles?.length > 0 || user.role) && (
+                              <div className="text-[10px] text-destructive/70 font-mono mt-0.5">roles no banco: {JSON.stringify(user.roles || user.role)}</div>
                             )}
                           </div>
                         </div>
@@ -399,18 +413,26 @@ export default function PermissionsSettingsPage() {
             }}
             className="bg-card border border-border rounded-xl shadow-xl py-1 overflow-hidden"
           >
+            <div className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider border-b border-border">
+              Papéis (multi-select)
+            </div>
             {ROLES.map(r => {
               const u = users.find(u => u.id === openDropdown);
-              const isActive = u ? normalizeRole(u.role) === r : false;
+              const userRoles = u ? getUserRoles(u) : [];
+              const isActive = userRoles.includes(r);
+              const isOnlyRole = isActive && userRoles.length === 1;
               return (
                 <button
                   key={r}
-                  onClick={() => { changeRole(openDropdown, r); setDropdownPos(null); }}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-semibold transition-colors hover:bg-accent ${isActive ? 'text-primary bg-primary/5' : 'text-foreground'}`}
+                  onClick={() => toggleRole(openDropdown!, r)}
+                  disabled={isOnlyRole}
+                  title={isOnlyRole ? 'Pelo menos 1 papel obrigatório' : ''}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-semibold transition-colors hover:bg-accent ${isActive ? 'text-primary bg-primary/5' : 'text-foreground'} ${isOnlyRole ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-primary' : 'bg-muted'}`} />
+                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${isActive ? 'bg-primary border-primary' : 'border-muted-foreground/40'}`}>
+                    {isActive && <Check size={10} className="text-primary-foreground" />}
+                  </div>
                   {ROLE_LABELS[r]}
-                  {isActive && <Check size={12} className="ml-auto text-primary" />}
                 </button>
               );
             })}

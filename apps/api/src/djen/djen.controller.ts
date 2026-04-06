@@ -76,7 +76,7 @@ export class DjenController {
     @Body() body: { leadId?: string; leadName?: string; leadPhone?: string; trackingStage?: string; legalArea?: string; lawyerId?: string },
   ) {
     // ADMIN pode escolher outro advogado; demais usuários sempre recebem o processo
-    const isAdmin = req.user?.role === 'ADMIN';
+    const isAdmin = req.user?.roles?.includes('ADMIN');
     const effectiveLawyerId = (isAdmin && body?.lawyerId) ? body.lawyerId : req.user.id;
 
     return this.djenService.createProcessFromPublication(

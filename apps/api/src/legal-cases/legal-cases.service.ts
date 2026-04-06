@@ -1081,10 +1081,10 @@ export class LegalCasesService {
 
     const lawyer = await this.prisma.user.findUnique({
       where: { id: lawyerId },
-      select: { id: true, name: true, role: true },
+      select: { id: true, name: true, roles: true },
     });
     if (!lawyer) throw new BadRequestException('Advogado não encontrado.');
-    if (!['ADMIN', 'ADVOGADO'].includes(lawyer.role)) {
+    if (!lawyer.roles?.some((r: string) => ['ADMIN', 'ADVOGADO'].includes(r))) {
       throw new BadRequestException('Usuário não tem perfil de advogado.');
     }
 

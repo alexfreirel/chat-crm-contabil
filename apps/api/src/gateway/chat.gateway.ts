@@ -26,7 +26,8 @@ export class ChatGateway {
     }
 
     // Admin pode entrar em qualquer sala
-    if (socketUser.role === 'ADMIN') {
+    const userRoles = Array.isArray(socketUser.roles) ? socketUser.roles : (socketUser.role ? [socketUser.role] : []);
+    if (userRoles.includes('ADMIN')) {
       client.join(conversationId);
       this.logger.log(`[SOCKET] Client ${client.id} (ADMIN) joined room: ${conversationId}`);
       this.server.to(client.id).emit('joined_room', { room: conversationId });
