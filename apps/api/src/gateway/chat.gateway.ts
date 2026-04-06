@@ -8,14 +8,62 @@ export class ChatGateway {
 
   private logger = new Logger('ChatGateway');
 
+  // ─── Presença de usuários online ─────────────────────────────────
+  // Map<userId, Set<socketId>> — um usuário pode ter múltiplas abas
+  private onlineUsers = new Map<string, Set<string>>();
+
   constructor(private prisma: PrismaService) {}
 
   handleConnection(client: Socket) {
     this.logger.log(`[SOCKET] Client connected: ${client.id} (transport: ${client.conn?.transport?.name})`);
+    const socketUser = (client as any).user;
+    if (socketUser?.sub) {
+      this.trackUserOnline(socketUser.sub, client.id);
+    }
   }
 
   handleDisconnect(client: Socket) {
     this.logger.log(`Client disconnected: ${client.id}`);
+    const socketUser = (client as any).user;
+    if (socketUser?.sub) {
+      this.trackUserOffline(socketUser.sub, client.id);
+    }
+  }
+
+  private trackUserOnline(userId: string, socketId: string) {
+    if (!this.onlineUsers.has(userId)) {
+      this.onlineUsers.set(userId, new Set());
+    }
+    const wasOffline = this.onlineUsers.get(userId)!.size === 0;
+    this.onlineUsers.get(userId)!.add(socketId);
+    if (wasOffline) {
+      // Broadcast: usuário ficou online
+      this.server?.emit('user_presence', { userId, online: true });
+      this.logger.log(`[PRESENCE] User ${userId} ONLINE (${this.onlineUsers.get(userId)!.size} tab(s))`);
+    }
+  }
+
+  private trackUserOffline(userId: string, socketId: string) {
+    const sockets = this.onlineUsers.get(userId);
+    if (sockets) {
+      sockets.delete(socketId);
+      if (sockets.size === 0) {
+        this.onlineUsers.delete(userId);
+        // Broadcast: usuário ficou offline
+        this.server?.emit('user_presence', { userId, online: false });
+        this.logger.log(`[PRESENCE] User ${userId} OFFLINE`);
+      }
+    }
+  }
+
+  /** Retorna lista de userIds online */
+  getOnlineUserIds(): string[] {
+    return Array.from(this.onlineUsers.keys());
+  }
+
+  /** Verifica se um usuário específico está online */
+  isUserOnline(userId: string): boolean {
+    return (this.onlineUsers.get(userId)?.size ?? 0) > 0;
   }
 
   async handleJoinConversation(conversationId: string, client: Socket) {

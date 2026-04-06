@@ -23,6 +23,7 @@ import { TeamPerformanceBoard } from './components/TeamPerformanceBoard';
 import { UpcomingEvents } from './components/UpcomingEvents';
 import { DjenPublications } from './components/DjenPublications';
 import { QuickActions } from './components/QuickActions';
+import { TeamOnline } from './components/TeamOnline';
 import { OperatorPerformanceStrip } from './components/OperatorPerformanceStrip';
 
 import { RevenueTrendChart } from './components/charts/RevenueTrendChart';
@@ -243,6 +244,13 @@ export default function DashboardPage() {
         <MotionWidget delay={0.45}>
           <QuickActions roleInfo={roleInfo} />
         </MotionWidget>
+
+        {/* Row 16: Equipe Online (ADMIN only) */}
+        {isAdmin && (
+          <MotionWidget delay={0.5}>
+            <TeamOnline />
+          </MotionWidget>
+        )}
       </div>
     </div>
   );

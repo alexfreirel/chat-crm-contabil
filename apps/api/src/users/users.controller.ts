@@ -2,11 +2,22 @@ import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Request, 
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { ChatGateway } from '../gateway/chat.gateway';
 
 @UseGuards(JwtAuthGuard)
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly chatGateway: ChatGateway,
+  ) {}
+
+  /** Retorna lista de usuários online (para admin ver quem está no sistema) */
+  @Get('online')
+  @Roles('ADMIN')
+  getOnlineUsers() {
+    return { onlineUserIds: this.chatGateway.getOnlineUserIds() };
+  }
 
   @Get('agents')
   findAgents(@Request() req: any) {
