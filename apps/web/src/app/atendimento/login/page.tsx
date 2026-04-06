@@ -127,7 +127,7 @@ export default function LoginPage() {
 
               <p className="mb-10 text-lg text-slate-400 font-medium leading-relaxed max-w-md">
                 Acesse sua plataforma exclusiva de gestão estratégica.
-                Tecnologia de ponta a serviço do seu direito.
+                Tecnologia de ponta a serviço da sua contabilidade.
               </p>
 
               <div className="space-y-5">
