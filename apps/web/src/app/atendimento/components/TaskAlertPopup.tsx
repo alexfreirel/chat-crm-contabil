@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { io, Socket } from 'socket.io-client';
 import { AlertTriangle, Clock, CheckCircle2, X, Bell } from 'lucide-react';
 
@@ -23,9 +24,16 @@ interface TaskAlert {
  * O usuário pode dispensar (some por 30 min) ou marcar como vista.
  */
 export function TaskAlertPopup() {
+  const router = useRouter();
   const [alerts, setAlerts] = useState<TaskAlert[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [socket, setSocket] = useState<Socket | null>(null);
+
+  // Ao clicar no card do alerta, abre a tarefa na aba de tarefas
+  const openTask = useCallback((taskId: string) => {
+    sessionStorage.setItem('open_task_id', taskId);
+    router.push('/atendimento/agenda?tab=tasks');
+  }, [router]);
 
   // Conectar ao socket
   useEffect(() => {
@@ -140,10 +148,11 @@ export function TaskAlertPopup() {
       {visibleAlerts.map((alert) => (
         <div
           key={alert.taskId}
-          className={`pointer-events-auto p-4 rounded-xl border shadow-2xl backdrop-blur-sm animate-in slide-in-from-right duration-300 ${
+          onClick={() => openTask(alert.taskId)}
+          className={`pointer-events-auto p-4 rounded-xl border shadow-2xl backdrop-blur-sm animate-in slide-in-from-right duration-300 cursor-pointer hover:scale-[1.01] transition-transform ${
             alert.level === 'critical'
-              ? 'bg-red-950/95 border-red-500/40'
-              : 'bg-amber-950/95 border-amber-500/40'
+              ? 'bg-red-950/95 border-red-500/40 hover:border-red-500/60'
+              : 'bg-amber-950/95 border-amber-500/40 hover:border-amber-500/60'
           }`}
         >
           <div className="flex items-start gap-3">
@@ -181,7 +190,7 @@ export function TaskAlertPopup() {
 
             {/* Dismiss */}
             <button
-              onClick={() => dismissAlert(alert.taskId)}
+              onClick={(e) => { e.stopPropagation(); dismissAlert(alert.taskId); }}
               className="shrink-0 p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-colors"
               title="Dispensar por 30 min"
             >
