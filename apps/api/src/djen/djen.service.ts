@@ -671,6 +671,27 @@ export class DjenService {
       ? trackingStage
       : 'DISTRIBUIDO';
 
+    // Extrair dados da análise IA que já estão salvos na publicação ou no raw_json
+    // Se a publicação já foi analisada, parte_autora/parte_rea/etc estão preenchidos
+    // Senão, tenta extrair do conteúdo via regex básico
+    const parteRea = pub.parte_rea || null;
+    const rawAnalysis = (pub as any).raw_json || {};
+
+    // Tentar extrair juízo do conteúdo (ex: "1ª Vara do Trabalho", "2ª Vara Cível")
+    let court: string | null = null;
+    const conteudo = pub.conteudo || '';
+    const courtMatch = conteudo.match(/(\d+ª?\s*Vara\s+[\w\s]+?)(?:\s*[-–]|\s*de\s+\w)/i);
+    if (courtMatch) court = courtMatch[1].trim();
+
+    // Tentar extrair valor da causa (ex: "R$ 50.000,00")
+    let claimValue: number | null = null;
+    const valorMatch = conteudo.match(/(?:valor\s+(?:da\s+)?causa|valor\s+(?:do\s+)?débito|valor\s+exequ?endo)[:\s]*R?\$?\s*([\d.,]+)/i);
+    if (valorMatch) {
+      const cleanVal = valorMatch[1].replace(/\./g, '').replace(',', '.');
+      const parsed = parseFloat(cleanVal);
+      if (!isNaN(parsed) && parsed > 0) claimValue = parsed;
+    }
+
     const legalCase = await this.prisma.legalCase.create({
       data: {
         lead_id: lead.id,
@@ -683,6 +704,10 @@ export class DjenService {
         filed_at: pub.data_disponibilizacao,
         legal_area: resolvedLegalArea,
         stage_changed_at: new Date(),
+        // Campos pré-preenchidos pela análise IA
+        opposing_party: parteRea,
+        court: court,
+        claim_value: claimValue,
       },
     });
 
