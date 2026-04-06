@@ -88,6 +88,7 @@ interface KanbanPetition {
     lawyer: { id: string; name: string };
   };
   reviewed_by: { id: string; name: string } | null;
+  google_doc_url: string | null;
   _count: { versions: number };
 }
 
@@ -458,9 +459,23 @@ function KanbanPetitionCard({
       }`}
     >
       {/* Title */}
-      <h4 className="text-[13px] font-bold text-foreground leading-tight mb-2 line-clamp-2">
-        {petition.title}
-      </h4>
+      <div className="flex items-start gap-1.5 mb-2">
+        <h4 className="text-[13px] font-bold text-foreground leading-tight line-clamp-2 flex-1">
+          {petition.title}
+        </h4>
+        {petition.google_doc_url && (
+          <a
+            href={petition.google_doc_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="shrink-0 p-1 rounded-md hover:bg-blue-500/10 transition-colors"
+            title="Abrir no Google Docs"
+          >
+            <FileText size={12} className="text-blue-500" />
+          </a>
+        )}
+      </div>
 
       {/* Badges row */}
       <div className="flex flex-wrap gap-1 mb-2">

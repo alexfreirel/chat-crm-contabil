@@ -35,6 +35,7 @@ import { S3Module } from './s3/s3.module';
 import { McpModule } from './mcp/mcp.module';
 import { AutomationsModule } from './automations/automations.module';
 import { FollowupModule } from './followup/followup.module';
+import { GoogleDriveModule } from './google-drive/google-drive.module';
 import { InternModule } from './intern/intern.module';
 import { AdminBotModule } from './admin-bot/admin-bot.module';
 import { FinanceiroModule } from './financeiro/financeiro.module';
@@ -91,6 +92,7 @@ import { RolesGuard } from './auth/guards/roles.guard';
     CaseDocumentsModule,
     CaseDeadlinesModule,
     PetitionsModule,
+    GoogleDriveModule,
     LegalTemplatesModule,
     HonorariosModule,
     DashboardModule,

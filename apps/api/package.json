@@ -40,6 +40,7 @@
     "class-validator": "^0.15.1",
     "docx": "^9.5.0",
     "dotenv": "^16.6.1",
+    "googleapis": "^171.4.0",
     "openai": "^4.104.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",

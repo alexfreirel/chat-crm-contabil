@@ -100,6 +100,9 @@ model Lead {
   cs_user_id           String?
   cs_user              User?                @relation("CSManager", fields: [cs_user_id], references: [id], onDelete: SetNull)
 
+  // Google Drive
+  google_drive_folder_id String?
+
   memory               AiMemory?
   conversations        Conversation[]
   tenant               Tenant?              @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
@@ -491,6 +494,7 @@ model LegalCase {
   opposing_party   String? // Parte contrária (nome)
   judge            String? // Juiz/Desembargador
   priority         String    @default("NORMAL") // URGENTE | NORMAL | BAIXA
+  google_drive_folder_id String? // Pasta do caso no Google Drive
   stage_changed_at DateTime  @default(now()) // quando mudou de etapa
   created_at       DateTime  @default(now())
   updated_at       DateTime  @updatedAt
@@ -918,6 +922,8 @@ model CasePetition {
   review_notes   String? // Observações do advogado na revisão
   reviewed_by_id String? // Quem revisou
   reviewed_at    DateTime? // Quando revisou
+  google_doc_id  String? // Google Docs document ID
+  google_doc_url String? // URL completa do Google Doc
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 

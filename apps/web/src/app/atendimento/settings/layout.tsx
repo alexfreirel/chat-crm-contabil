@@ -4,7 +4,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import {
   UserCog, Bot, Shield, ChevronLeft, MessageSquare, Layout, Briefcase,
   Bell, DollarSign, Calendar, FileSignature, Plug, Kanban, Zap, GitBranch,
-  CreditCard, FileText, Building2, Users, Wallet, Cpu, Link2,
+  CreditCard, FileText, Building2, Users, Wallet, Cpu, Link2, HardDrive,
 } from 'lucide-react';
 import { useRole } from '@/lib/useRole';
 import { RouteGuard } from '@/components/RouteGuard';
@@ -65,6 +65,7 @@ const settingsSections: MenuSection[] = [
     title: 'Integrações',
     items: [
       { label: 'WhatsApp (Evolution)', href: '/atendimento/settings/whatsapp', icon: MessageSquare },
+      { label: 'Google Drive', href: '/atendimento/settings/google-drive', icon: HardDrive },
       { label: 'Integração MCP', href: '/atendimento/settings/mcp', icon: Plug },
     ],
   },
@@ -78,6 +79,7 @@ const adminOnlyPaths = new Set([
   '/atendimento/settings/costs',
   '/atendimento/settings/whatsapp',
   '/atendimento/settings/automations',
+  '/atendimento/settings/google-drive',
   '/atendimento/settings/mcp',
   '/atendimento/settings/payment-gateway',
   '/atendimento/settings/nota-fiscal',

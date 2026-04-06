@@ -181,6 +181,7 @@ export class PetitionsController {
       template_id?: string;
       content_json?: any;
       content_html?: string;
+      create_google_doc?: boolean;
     },
     @Request() req: any,
   ) {
@@ -253,6 +254,33 @@ export class PetitionsController {
     @Request() req: any,
   ) {
     return this.service.reviewPetition(id, body.action, body.notes, req.user.id, req.user.tenant_id);
+  }
+
+  // ─── Google Drive/Docs ─────────────────────────────────
+
+  /** POST /petitions/:id/sync-gdoc — sincronizar conteúdo do Google Doc */
+  @Post(':id/sync-gdoc')
+  syncFromGoogleDoc(
+    @Param('id') id: string,
+    @Request() req: any,
+  ) {
+    return this.service.syncFromGoogleDoc(id, req.user.tenant_id);
+  }
+
+  /** GET /petitions/:id/export-pdf — exportar petição como PDF via Google Docs */
+  @Get(':id/export-pdf')
+  async exportPdf(
+    @Param('id') id: string,
+    @Request() req: any,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.service.exportPdf(id, req.user.tenant_id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
+      'Content-Length': buffer.length,
+    });
+    res.send(buffer);
   }
 
   @Delete(':id')

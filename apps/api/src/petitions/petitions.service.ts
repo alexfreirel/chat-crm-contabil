@@ -6,6 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { GoogleDriveService } from '../google-drive/google-drive.service';
 
 const VALID_TYPES = [
   'INICIAL', 'CONTESTACAO', 'REPLICA', 'EMBARGOS',
@@ -27,7 +28,10 @@ const STATUS_TRANSITIONS: Record<string, string[]> = {
 export class PetitionsService {
   private readonly logger = new Logger(PetitionsService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private googleDrive: GoogleDriveService,
+  ) {}
 
   // ─── Helpers ────────────────────────────────────────────
 
@@ -85,6 +89,7 @@ export class PetitionsService {
       template_id?: string;
       content_json?: any;
       content_html?: string;
+      create_google_doc?: boolean;
     },
     userId: string,
     tenantId?: string,
@@ -110,6 +115,41 @@ export class PetitionsService {
       }
     }
 
+    // Google Drive: criar Doc se configurado e solicitado
+    let googleDocId: string | null = null;
+    let googleDocUrl: string | null = null;
+
+    if (data.create_google_doc !== false) {
+      try {
+        const configured = await this.googleDrive.isConfigured();
+        if (configured) {
+          const legalCase = await this.prisma.legalCase.findUnique({
+            where: { id: caseId },
+            select: { lead_id: true, legal_area: true, case_number: true },
+          });
+          if (legalCase) {
+            const caseLabel = [legalCase.legal_area, legalCase.case_number || 'Novo Caso']
+              .filter(Boolean)
+              .join(' - ');
+            const folderId = await this.googleDrive.ensureCaseFolder(
+              caseId,
+              legalCase.lead_id,
+              caseLabel,
+            );
+            const doc = await this.googleDrive.createDoc(
+              data.title,
+              folderId,
+              contentHtml || undefined,
+            );
+            googleDocId = doc.docId;
+            googleDocUrl = doc.docUrl;
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(`Falha ao criar Google Doc: ${err.message}`);
+      }
+    }
+
     const petition = await this.prisma.casePetition.create({
       data: {
         legal_case_id: caseId,
@@ -120,6 +160,8 @@ export class PetitionsService {
         content_json: contentJson,
         content_html: contentHtml,
         template_id: data.template_id || null,
+        google_doc_id: googleDocId,
+        google_doc_url: googleDocUrl,
       },
       include: {
         created_by: { select: { id: true, name: true } },
@@ -336,6 +378,52 @@ export class PetitionsService {
       },
       orderBy: { version: 'desc' },
     });
+  }
+
+  /**
+   * Sincroniza conteúdo do Google Doc para o banco de dados.
+   */
+  async syncFromGoogleDoc(petitionId: string, tenantId?: string) {
+    const petition = await this.verifyPetitionAccess(petitionId, tenantId);
+
+    if (!petition.google_doc_id) {
+      throw new BadRequestException('Petição não possui Google Doc vinculado');
+    }
+
+    const content = await this.googleDrive.getDocContent(petition.google_doc_id);
+
+    const updated = await this.prisma.casePetition.update({
+      where: { id: petitionId },
+      data: {
+        content_html: content,
+        updated_at: new Date(),
+      },
+      select: {
+        id: true,
+        title: true,
+        content_html: true,
+        google_doc_id: true,
+        google_doc_url: true,
+        updated_at: true,
+      },
+    });
+
+    this.logger.log(`Petição ${petitionId} sincronizada do Google Doc ${petition.google_doc_id}`);
+    return updated;
+  }
+
+  /**
+   * Exporta petição como PDF via Google Docs.
+   */
+  async exportPdf(petitionId: string, tenantId?: string) {
+    const petition = await this.verifyPetitionAccess(petitionId, tenantId);
+
+    if (!petition.google_doc_id) {
+      throw new BadRequestException('Petição não possui Google Doc vinculado');
+    }
+
+    const buffer = await this.googleDrive.exportAsPdf(petition.google_doc_id);
+    return { buffer, filename: `${petition.title}.pdf` };
   }
 
   async remove(petitionId: string, tenantId?: string) {

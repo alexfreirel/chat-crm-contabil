@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FileSignature, Loader2, Plus, ArrowLeft, Save, Clock,
-  ChevronDown, Trash2, Sparkles, RefreshCw,
+  ChevronDown, Trash2, Sparkles, RefreshCw, ExternalLink, FileText,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { showError, showSuccess } from '@/lib/toast';
 import TiptapEditor from '@/components/TiptapEditor';
+import GoogleDocsEmbed from '@/components/GoogleDocsEmbed';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -31,6 +32,8 @@ interface PetitionDetail {
   content_json: any;
   content_html: string | null;
   template_id: string | null;
+  google_doc_id: string | null;
+  google_doc_url: string | null;
   created_at: string;
   updated_at: string;
   created_by: { id: string; name: string };
@@ -227,6 +230,14 @@ function CreatePetitionForm({
   const [type, setType] = useState('INICIAL');
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [createGoogleDoc, setCreateGoogleDoc] = useState(true);
+  const [driveConfigured, setDriveConfigured] = useState(false);
+
+  useEffect(() => {
+    api.get('/google-drive/config').then(res => {
+      setDriveConfigured(res.data?.configured || false);
+    }).catch(() => {});
+  }, []);
 
   const handleCreate = async () => {
     if (!title.trim()) {
@@ -235,8 +246,12 @@ function CreatePetitionForm({
     }
     setSaving(true);
     try {
-      const res = await api.post(`/petitions/case/${caseId}`, { title, type });
-      showSuccess('Petição criada');
+      const res = await api.post(`/petitions/case/${caseId}`, {
+        title,
+        type,
+        create_google_doc: driveConfigured ? createGoogleDoc : false,
+      });
+      showSuccess(res.data.google_doc_url ? 'Petição criada no Google Docs' : 'Petição criada');
       onCreated(res.data.id);
     } catch {
       showError('Erro ao criar petição');
@@ -287,6 +302,18 @@ function CreatePetitionForm({
           ))}
         </select>
       </div>
+      {driveConfigured && (
+        <label className="flex items-center gap-2 text-xs cursor-pointer">
+          <input
+            type="checkbox"
+            checked={createGoogleDoc}
+            onChange={(e) => setCreateGoogleDoc(e.target.checked)}
+            className="checkbox checkbox-xs checkbox-primary"
+          />
+          <FileText className="h-3.5 w-3.5 text-blue-500" />
+          Criar no Google Docs
+        </label>
+      )}
       {generating && (
         <div className="flex items-center gap-2 text-xs text-primary animate-pulse">
           <Sparkles className="h-3.5 w-3.5" />
@@ -340,6 +367,10 @@ function PetitionEditor({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestContentRef = useRef<{ json: any; html: string } | null>(null);
   const [currentContent, setCurrentContent] = useState(petition.content_json);
+  const [editorMode, setEditorMode] = useState<'local' | 'gdocs'>(
+    petition.google_doc_url ? 'gdocs' : 'local'
+  );
+  const [syncing, setSyncing] = useState(false);
 
   const isEditable = status === 'RASCUNHO' || status === 'EM_REVISAO';
 
@@ -463,6 +494,20 @@ function PetitionEditor({
     }
   };
 
+  // ─── Sync from Google Doc ────────────────────────────────────
+
+  const handleSyncFromGoogleDoc = async () => {
+    setSyncing(true);
+    try {
+      await api.post(`/petitions/${petition.id}/sync-gdoc`);
+      showSuccess('Conteúdo sincronizado do Google Docs');
+    } catch (e: any) {
+      showError(e?.response?.data?.message || 'Erro ao sincronizar');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   // ─── Status transitions ────────────────────────────────────
 
   const transitions: Record<string, string[]> = {
@@ -519,6 +564,42 @@ function PetitionEditor({
 
       {/* Action bar */}
       <div className="flex items-center gap-2 border-b border-base-300 bg-base-100 px-4 py-1.5">
+        {/* Editor mode toggle (only if Google Doc exists) */}
+        {petition.google_doc_url && (
+          <div className="flex items-center bg-base-200 rounded-lg p-0.5">
+            <button
+              onClick={() => setEditorMode('local')}
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                editorMode === 'local' ? 'bg-base-100 shadow-sm text-foreground' : 'text-base-content/50 hover:text-base-content/70'
+              }`}
+            >
+              Editor Local
+            </button>
+            <button
+              onClick={() => setEditorMode('gdocs')}
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1 ${
+                editorMode === 'gdocs' ? 'bg-base-100 shadow-sm text-foreground' : 'text-base-content/50 hover:text-base-content/70'
+              }`}
+            >
+              <FileText className="h-3 w-3 text-blue-500" />
+              Google Docs
+            </button>
+          </div>
+        )}
+
+        {/* Sync from Google Doc */}
+        {petition.google_doc_url && editorMode === 'local' && (
+          <button
+            onClick={handleSyncFromGoogleDoc}
+            disabled={syncing}
+            className="btn btn-ghost btn-xs gap-1 text-blue-500"
+            title="Sincronizar conteúdo do Google Docs"
+          >
+            {syncing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+            Sincronizar do Google
+          </button>
+        )}
+
         {/* Save version */}
         <button
           onClick={handleSaveVersion}
@@ -541,7 +622,7 @@ function PetitionEditor({
         </button>
 
         {/* Regenerate with AI */}
-        {isEditable && (
+        {isEditable && editorMode === 'local' && (
           <button
             onClick={handleRegenerate}
             disabled={regenerating}
@@ -607,6 +688,11 @@ function PetitionEditor({
             <Sparkles className="h-8 w-8 text-primary animate-pulse" />
             <p className="text-sm text-base-content/60">Gerando petição com IA... isso pode levar até 30 segundos</p>
           </div>
+        ) : editorMode === 'gdocs' && petition.google_doc_url ? (
+          <GoogleDocsEmbed
+            docUrl={petition.google_doc_url}
+            editable={isEditable}
+          />
         ) : (
           <TiptapEditor
             key={contentKey}

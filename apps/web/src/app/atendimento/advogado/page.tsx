@@ -95,6 +95,7 @@ interface Petition {
   type: string;
   status: string;
   template_id: string | null;
+  google_doc_url: string | null;
   created_at: string;
   updated_at: string;
   created_by: { id: string; name: string };
@@ -1270,6 +1271,18 @@ function CaseDetailPanel({
                               <span className="flex items-center gap-0.5">
                                 <FileText size={9} /> {petition._count.versions} {petition._count.versions === 1 ? 'versão' : 'versões'}
                               </span>
+                            )}
+                            {petition.google_doc_url && (
+                              <a
+                                href={petition.google_doc_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="flex items-center gap-0.5 text-blue-500 hover:text-blue-400 transition-colors"
+                              >
+                                <FileText size={9} /> Google Docs
+                                <ExternalLink size={8} />
+                              </a>
                             )}
                           </div>
 
