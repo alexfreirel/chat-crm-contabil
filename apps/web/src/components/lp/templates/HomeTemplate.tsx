@@ -166,7 +166,7 @@ export function HomeTemplate({
   };
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans overflow-x-hidden">
+    <div className="min-h-screen bg-white text-slate-900 font-sans overflow-x-hidden" data-version="lexcon-v1">
       <nav className="absolute top-0 left-0 right-0 z-50 pointer-events-none transition-all duration-300">
         <div className="mx-auto w-[90vw] lg:w-[min(90rem,80vw)] px-4 sm:px-6 lg:px-8 flex items-center justify-between pointer-events-auto pt-6">
           {/* Desktop & Tablet: Full Unified Bar */}
@@ -1567,8 +1567,8 @@ export function HomeTemplate({
           {/* BRAND & INFO (5 cols) */}
           <div className="md:col-span-5 flex flex-col items-center md:items-start text-center md:text-left">
             <Image
-              src="/landing/logo_andre_lustosa_transparente.png"
-              alt="André Lustosa Advogados"
+              src="/landing/lexcon-logo-v2.png"
+              alt="Lexcon Assessoria Contábil"
               width={240}
               height={65}
               className="h-20 lg:h-24 w-auto object-contain mb-6 drop-shadow-[0_2px_10px_rgba(255,255,255,0.1)]"
