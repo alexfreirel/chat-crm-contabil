@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Pencil, Trash2, X, UserCog, Phone } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, UserCog, Phone, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
 
 const SPECIALTY_SUGGESTIONS = ['Trabalhista', 'Civil', 'Criminal', 'Tributário', 'Família', 'Empresarial', 'Previdenciário', 'Imobiliário', 'Consumidor'];
@@ -174,13 +174,44 @@ export default function UsersSettingsPage() {
     }
   };
 
+  // ── Modal de exclusão com transferência ──
+  const [deleteModal, setDeleteModal] = useState<{ id: string; name: string } | null>(null);
+  const [deleteSummary, setDeleteSummary] = useState<{ cases: number; conversations: number; tasks: number; events: number; leads: number } | null>(null);
+  const [deleteTransferTo, setDeleteTransferTo] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Tem certeza que deseja remover o usuário "${name}"?`)) return;
+    setDeleteModal({ id, name });
+    setDeleteTransferTo('');
+    setDeleteError('');
+    setDeleting(false);
+    setDeleteSummary(null);
     try {
-      await api.delete(`/users/${id}`);
+      const res = await api.get(`/users/${id}/transfer-summary`);
+      setDeleteSummary(res.data);
+    } catch {}
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteModal) return;
+    const hasData = deleteSummary && (deleteSummary.cases > 0 || deleteSummary.conversations > 0 || deleteSummary.tasks > 0 || deleteSummary.leads > 0);
+    if (hasData && !deleteTransferTo) {
+      setDeleteError('Selecione para quem transferir antes de excluir.');
+      return;
+    }
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await api.delete(`/users/${deleteModal.id}`, {
+        data: deleteTransferTo ? { transferToId: deleteTransferTo } : undefined,
+      });
+      setDeleteModal(null);
       fetchUsers();
     } catch (e: any) {
-      alert(e.response?.data?.message || 'Erro ao remover usuário.');
+      setDeleteError(e.response?.data?.message || 'Erro ao remover usuário.');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -533,6 +564,85 @@ export default function UsersSettingsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de exclusão com transferência */}
+      {deleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !deleting && setDeleteModal(null)} />
+          <div className="relative z-10 w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-500/15 flex items-center justify-center">
+                <Trash2 size={18} className="text-red-400" />
+              </div>
+              <div>
+                <p className="text-[14px] font-bold text-foreground">Excluir {deleteModal.name}</p>
+                <p className="text-[11px] text-muted-foreground">Esta ação não pode ser desfeita.</p>
+              </div>
+            </div>
+
+            {deleteSummary && (deleteSummary.cases > 0 || deleteSummary.conversations > 0 || deleteSummary.tasks > 0 || deleteSummary.leads > 0) ? (
+              <>
+                <div className="rounded-xl bg-amber-500/5 border border-amber-500/20 p-3 space-y-1.5">
+                  <p className="text-[11px] font-bold text-amber-400">Este usuário possui:</p>
+                  {deleteSummary.cases > 0 && <p className="text-[11px] text-muted-foreground">⚖️ {deleteSummary.cases} processo(s) como advogado</p>}
+                  {deleteSummary.conversations > 0 && <p className="text-[11px] text-muted-foreground">💬 {deleteSummary.conversations} conversa(s) atribuída(s)</p>}
+                  {deleteSummary.tasks > 0 && <p className="text-[11px] text-muted-foreground">📋 {deleteSummary.tasks} tarefa(s)/evento(s)</p>}
+                  {deleteSummary.leads > 0 && <p className="text-[11px] text-muted-foreground">👤 {deleteSummary.leads} lead(s) como responsável</p>}
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                    Transferir tudo para *
+                  </label>
+                  <select
+                    value={deleteTransferTo}
+                    onChange={e => setDeleteTransferTo(e.target.value)}
+                    className="w-full text-[12px] bg-accent/40 border border-border rounded-xl px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  >
+                    <option value="">Selecione o destinatário...</option>
+                    {users.filter(u => u.id !== deleteModal.id).map(u => (
+                      <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Processos, conversas, tarefas e leads serão transferidos para este usuário.
+                  </p>
+                </div>
+              </>
+            ) : deleteSummary ? (
+              <p className="text-[12px] text-muted-foreground">
+                Este usuário não possui dados vinculados. Pode ser excluído diretamente.
+              </p>
+            ) : (
+              <div className="flex items-center gap-2 py-2">
+                <Loader2 size={14} className="animate-spin text-muted-foreground" />
+                <p className="text-[11px] text-muted-foreground">Verificando dados do usuário...</p>
+              </div>
+            )}
+
+            {deleteError && (
+              <p className="text-[11px] text-red-400 bg-red-500/5 border border-red-500/20 rounded-lg px-3 py-2">{deleteError}</p>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteModal(null)}
+                disabled={deleting}
+                className="flex-1 py-2.5 rounded-xl bg-accent hover:bg-accent/80 text-foreground text-[12px] font-medium transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting || !deleteSummary}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-[12px] font-bold transition-colors disabled:opacity-50"
+              >
+                {deleting ? 'Excluindo...' : 'Excluir e Transferir'}
+              </button>
+            </div>
           </div>
         </div>
       )}

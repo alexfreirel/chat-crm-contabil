@@ -56,12 +56,19 @@ export class UsersController {
     return this.usersService.linkSupervisors(id, data.lawyerIds);
   }
 
+  /** Resumo do que o usuário possui (para modal de transferência antes de excluir) */
+  @Get(':id/transfer-summary')
+  @Roles('ADMIN')
+  transferSummary(@Param('id') id: string, @Request() req: any) {
+    return this.usersService.getTransferSummary(id, req.user?.tenant_id);
+  }
+
   @Delete(':id')
   @Roles('ADMIN')
-  remove(@Request() req: any, @Param('id') id: string) {
+  remove(@Request() req: any, @Param('id') id: string, @Body() body?: { transferToId?: string }) {
     if (req.user.id === id) {
       throw new ForbiddenException('Você não pode remover a si mesmo');
     }
-    return this.usersService.remove(id, req.user?.tenant_id);
+    return this.usersService.remove(id, req.user?.tenant_id, body?.transferToId);
   }
 }

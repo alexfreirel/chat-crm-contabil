@@ -1,10 +1,11 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import { Injectable, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, User } from '@crm/shared';
 import * as argon2 from 'argon2';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
   constructor(private prisma: PrismaService) {}
 
   private tenantWhere(tenantId?: string) {
@@ -126,34 +127,87 @@ export class UsersService {
     return result as any;
   }
 
-  async remove(id: string, tenantId?: string): Promise<void> {
+  /** Retorna contadores do que o usuário possui (para o modal de transferência) */
+  async getTransferSummary(id: string, tenantId?: string) {
+    await this.verifyTenantOwnership(id, tenantId);
+    const [cases, conversations, tasks, events, leads] = await Promise.all([
+      this.prisma.legalCase.count({ where: { lawyer_id: id } }),
+      this.prisma.conversation.count({ where: { OR: [{ assigned_user_id: id }, { assigned_lawyer_id: id }] } }),
+      this.prisma.calendarEvent.count({ where: { OR: [{ assigned_user_id: id }, { created_by_id: id }] } }),
+      this.prisma.calendarEvent.count({ where: { created_by_id: id } }),
+      this.prisma.lead.count({ where: { cs_user_id: id } }),
+    ]);
+    return { cases, conversations, tasks, events, leads };
+  }
+
+  async remove(id: string, tenantId?: string, transferToId?: string): Promise<void> {
     await this.verifyTenantOwnership(id, tenantId);
 
-    // Verificar se o usuario possui registros que impedem exclusao (FKs required)
-    const [caseCount, createdEventCount] = await Promise.all([
-      this.prisma.legalCase.count({ where: { lawyer_id: id } }),
-      this.prisma.calendarEvent.count({ where: { created_by_id: id } }),
-    ]);
+    // Se informou transferToId, transferir tudo antes de excluir
+    if (transferToId) {
+      const dest = await this.prisma.user.findUnique({ where: { id: transferToId }, select: { id: true } });
+      if (!dest) throw new BadRequestException('Usuário destino da transferência não encontrado.');
 
-    if (caseCount > 0) {
-      throw new ForbiddenException(
-        `Nao e possivel excluir: usuario possui ${caseCount} caso(s) juridico(s) como advogado. Reatribua os casos antes.`,
-      );
+      // Transferir tudo em uma transação
+      await this.prisma.$transaction([
+        // Processos (lawyer_id)
+        this.prisma.legalCase.updateMany({
+          where: { lawyer_id: id },
+          data: { lawyer_id: transferToId },
+        }),
+        // Conversas atribuídas como operador
+        this.prisma.conversation.updateMany({
+          where: { assigned_user_id: id },
+          data: { assigned_user_id: transferToId },
+        }),
+        // Conversas atribuídas como advogado
+        this.prisma.conversation.updateMany({
+          where: { assigned_lawyer_id: id },
+          data: { assigned_lawyer_id: transferToId },
+        }),
+        // Tarefas atribuídas
+        this.prisma.calendarEvent.updateMany({
+          where: { assigned_user_id: id },
+          data: { assigned_user_id: transferToId },
+        }),
+        // Eventos criados (FK required)
+        this.prisma.calendarEvent.updateMany({
+          where: { created_by_id: id },
+          data: { created_by_id: transferToId },
+        }),
+        // Leads como CS manager
+        this.prisma.lead.updateMany({
+          where: { cs_user_id: id },
+          data: { cs_user_id: transferToId },
+        }),
+      ]);
+
+      this.logger.log(`[USERS] Transferido tudo de ${id} para ${transferToId} antes da exclusão`);
+    } else {
+      // Sem transferência: verificar se tem registros bloqueantes
+      const [caseCount, createdEventCount] = await Promise.all([
+        this.prisma.legalCase.count({ where: { lawyer_id: id } }),
+        this.prisma.calendarEvent.count({ where: { created_by_id: id } }),
+      ]);
+
+      if (caseCount > 0) {
+        throw new ForbiddenException(
+          `Não é possível excluir: usuário possui ${caseCount} caso(s) jurídico(s). Informe para quem transferir.`,
+        );
+      }
+      if (createdEventCount > 0) {
+        throw new ForbiddenException(
+          `Não é possível excluir: usuário criou ${createdEventCount} evento(s). Informe para quem transferir.`,
+        );
+      }
+
+      // Desassociar conversas
+      await this.prisma.conversation.updateMany({
+        where: { assigned_user_id: id },
+        data: { assigned_user_id: null },
+      });
     }
-    if (createdEventCount > 0) {
-      throw new ForbiddenException(
-        `Nao e possivel excluir: usuario criou ${createdEventCount} evento(s) de calendario. Exclua ou reatribua os eventos antes.`,
-      );
-    }
 
-    // Desassociar conversas atribuidas (SetNull via schema, mas limpar explicitamente)
-    await this.prisma.conversation.updateMany({
-      where: { assigned_user_id: id },
-      data: { assigned_user_id: null },
-    });
-
-    // As demais relacoes (Task, TaskComment, CalendarEventComment, UserSchedule, AuditLog)
-    // sao tratadas pelo onDelete: SetNull/Cascade no schema Prisma
     await this.prisma.user.delete({ where: { id } });
   }
 
