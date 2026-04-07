@@ -1,24 +1,24 @@
 'use client';
 
-import { ExternalLink, FileText, Loader2, Maximize2, Download } from 'lucide-react';
+import { ExternalLink, FileText, Loader2, Maximize2, Edit3, Eye } from 'lucide-react';
 import { useState } from 'react';
 
 interface GoogleDocsEmbedProps {
   docUrl: string;
   editable?: boolean;
   className?: string;
-  /** Se true, o iframe ocupa quase 100% da viewport (modo fullscreen) */
   fullHeight?: boolean;
-  /** ID da petição — usado para exportar PDF */
   petitionId?: string;
 }
 
 /**
  * Embed de Google Docs dentro do sistema.
- * Usa iframe com URL /edit?embedded=true (editável) ou /preview (somente leitura).
  *
- * Quando Google Drive está configurado e a petição tem google_doc_url,
- * este é o editor PRIMÁRIO — oferece experiência idêntica ao Google Docs.
+ * O iframe usa /preview (visualização) porque navegadores modernos bloqueiam
+ * cookies de terceiros necessários para /edit embedded.
+ *
+ * Para EDITAR, o usuário clica em "Editar no Docs" que abre em nova aba —
+ * experiência completa do Google Docs (formatação, comentários, etc).
  */
 export default function GoogleDocsEmbed({
   docUrl,
@@ -28,6 +28,7 @@ export default function GoogleDocsEmbed({
   petitionId,
 }: GoogleDocsEmbedProps) {
   const [loaded, setLoaded] = useState(false);
+  const [iframeError, setIframeError] = useState(false);
 
   if (!docUrl) {
     return (
@@ -38,17 +39,14 @@ export default function GoogleDocsEmbed({
     );
   }
 
-  // Converter URL para embed
-  // Formato: https://docs.google.com/document/d/{docId}/edit?embedded=true
-  let embedUrl: string;
-  if (editable) {
-    // Remove qualquer query string ou fragmento e adiciona /edit?embedded=true
-    embedUrl = docUrl.replace(/\/(edit|preview).*$/, '') + '/edit?embedded=true';
-  } else {
-    embedUrl = docUrl.replace(/\/(edit|preview).*$/, '') + '/preview';
-  }
+  // Extrair base URL do doc (sem /edit, /preview, query strings)
+  const baseUrl = docUrl.replace(/\/(edit|preview|pub).*$/, '');
 
-  // Altura do iframe — no modo fullHeight, usa quase toda a viewport
+  // Sempre usar /preview no iframe (funciona sem cookies de terceiros)
+  const previewUrl = baseUrl + '/preview';
+  // URL de edição para abrir em nova aba
+  const editUrl = baseUrl + '/edit';
+
   const iframeStyle = fullHeight
     ? { height: 'calc(100vh - 200px)', minHeight: '600px' }
     : { height: 'calc(100vh - 300px)', minHeight: '500px' };
@@ -56,53 +54,67 @@ export default function GoogleDocsEmbed({
   return (
     <div className={`relative w-full flex flex-col ${className}`}>
       {/* Loading spinner overlay */}
-      {!loaded && (
+      {!loaded && !iframeError && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-base-100 rounded-xl z-10 gap-3">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
           <p className="text-sm text-base-content/50">Carregando Google Docs...</p>
         </div>
       )}
 
-      {/* Barra de ações compacta */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-base-200/80 border border-base-300 border-b-0 rounded-t-lg">
+      {/* Barra de ações */}
+      <div className="flex items-center justify-between px-3 py-2 bg-base-200/80 border border-base-300 border-b-0 rounded-t-lg">
         <div className="flex items-center gap-2 text-xs text-base-content/60">
           <FileText className="w-3.5 h-3.5 text-blue-500" />
           <span className="font-medium">Google Docs</span>
-          {editable ? (
-            <span className="px-1.5 py-0.5 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 rounded text-[10px] font-semibold">
-              Editável
-            </span>
-          ) : (
-            <span className="px-1.5 py-0.5 bg-gray-500/15 text-gray-500 dark:text-gray-400 rounded text-[10px] font-semibold">
-              Somente leitura
-            </span>
-          )}
+          <span className="px-1.5 py-0.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded text-[10px] font-semibold">
+            Preview
+          </span>
         </div>
-        <div className="flex items-center gap-1">
-          {/* Abrir em nova aba (Google Docs completo) */}
+        <div className="flex items-center gap-1.5">
+          {/* Botão principal — Editar no Google Docs (nova aba) */}
+          {editable && (
+            <a
+              href={editUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold rounded-lg transition-colors"
+              title="Editar no Google Docs (abre em nova aba)"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              Editar no Docs
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
+          {/* Abrir em nova aba (visualizar) */}
           <a
-            href={docUrl}
+            href={previewUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="btn btn-ghost btn-xs gap-1 text-primary hover:text-primary/80"
-            title="Abrir no Google Docs (tela cheia)"
+            className="btn btn-ghost btn-xs gap-1 text-base-content/60 hover:text-base-content"
+            title="Abrir visualização em nova aba"
           >
-            <Maximize2 className="w-3 h-3" />
-            Abrir no Docs
-            <ExternalLink className="w-3 h-3" />
+            <Eye className="w-3 h-3" />
+            Abrir
           </a>
         </div>
       </div>
 
-      {/* iframe — ocupa toda a área disponível */}
+      {/* iframe — preview (não requer cookies de terceiros) */}
       <iframe
-        src={embedUrl}
+        src={previewUrl}
         onLoad={() => setLoaded(true)}
+        onError={() => setIframeError(true)}
         className="w-full border border-base-300 rounded-b-lg bg-white flex-1"
         style={iframeStyle}
         allow="clipboard-read; clipboard-write"
-        sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-popups-to-escape-sandbox"
       />
+
+      {/* Mensagem de ajuda */}
+      {loaded && (
+        <p className="text-[10px] text-base-content/40 text-center mt-1">
+          Para editar, clique em <strong>"Editar no Docs"</strong> acima — abre o editor completo do Google Docs em nova aba
+        </p>
+      )}
     </div>
   );
 }
