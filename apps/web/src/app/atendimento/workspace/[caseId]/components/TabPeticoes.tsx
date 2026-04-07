@@ -382,8 +382,11 @@ function PetitionEditor({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestContentRef = useRef<{ json: any; html: string } | null>(null);
   const [currentContent, setCurrentContent] = useState(petition.content_json);
+  // Google Docs é SEMPRE o editor primário quando disponível
+  // O editor local (Tiptap) só é usado como fallback quando Google Drive não está configurado
+  const hasGoogleDoc = !!petition.google_doc_url;
   const [editorMode, setEditorMode] = useState<'local' | 'gdocs'>(
-    petition.google_doc_url ? 'gdocs' : 'local'
+    hasGoogleDoc ? 'gdocs' : 'local'
   );
   const [syncing, setSyncing] = useState(false);
 
@@ -578,41 +581,38 @@ function PetitionEditor({
       </div>
 
       {/* Action bar */}
-      <div className="flex items-center gap-2 border-b border-base-300 bg-base-100 px-4 py-1.5">
-        {/* Editor mode toggle (only if Google Doc exists) */}
-        {petition.google_doc_url && (
-          <div className="flex items-center bg-base-200 rounded-lg p-0.5">
-            <button
-              onClick={() => setEditorMode('local')}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                editorMode === 'local' ? 'bg-base-100 shadow-sm text-foreground' : 'text-base-content/50 hover:text-base-content/70'
-              }`}
-            >
-              Editor Local
-            </button>
-            <button
-              onClick={() => setEditorMode('gdocs')}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1 ${
-                editorMode === 'gdocs' ? 'bg-base-100 shadow-sm text-foreground' : 'text-base-content/50 hover:text-base-content/70'
-              }`}
-            >
-              <FileText className="h-3 w-3 text-blue-500" />
-              Google Docs
-            </button>
-          </div>
+      <div className="flex items-center gap-2 border-b border-base-300 bg-base-100 px-4 py-1.5 flex-wrap">
+        {/* Google Docs: botão discreto para trocar para editor local (avançado) */}
+        {hasGoogleDoc && editorMode === 'gdocs' && (
+          <button
+            onClick={() => setEditorMode('local')}
+            className="btn btn-ghost btn-xs gap-1 text-base-content/40 hover:text-base-content/60"
+            title="Alternar para editor local (avançado)"
+          >
+            Editor local
+          </button>
         )}
 
-        {/* Sync from Google Doc */}
-        {petition.google_doc_url && editorMode === 'local' && (
-          <button
-            onClick={handleSyncFromGoogleDoc}
-            disabled={syncing}
-            className="btn btn-ghost btn-xs gap-1 text-blue-500"
-            title="Sincronizar conteúdo do Google Docs"
-          >
-            {syncing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-            Sincronizar do Google
-          </button>
+        {/* Se está no editor local mas tem Google Doc, botão para voltar ao Docs */}
+        {hasGoogleDoc && editorMode === 'local' && (
+          <>
+            <button
+              onClick={() => setEditorMode('gdocs')}
+              className="btn btn-ghost btn-xs gap-1 text-blue-500"
+            >
+              <FileText className="h-3 w-3" />
+              Voltar ao Google Docs
+            </button>
+            <button
+              onClick={handleSyncFromGoogleDoc}
+              disabled={syncing}
+              className="btn btn-ghost btn-xs gap-1 text-blue-500"
+              title="Sincronizar conteúdo do Google Docs"
+            >
+              {syncing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+              Sincronizar
+            </button>
+          </>
         )}
 
         {/* Save version */}
@@ -636,7 +636,7 @@ function PetitionEditor({
           <ChevronDown className={`h-3 w-3 transition-transform ${showVersions ? 'rotate-180' : ''}`} />
         </button>
 
-        {/* Regenerate with AI */}
+        {/* Regenerate with AI (only in local editor mode) */}
         {isEditable && editorMode === 'local' && (
           <button
             onClick={handleRegenerate}
@@ -697,7 +697,7 @@ function PetitionEditor({
       )}
 
       {/* Editor */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className={`flex-1 overflow-y-auto ${editorMode === 'gdocs' ? 'p-0' : 'p-4'}`}>
         {regenerating ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <Sparkles className="h-8 w-8 text-primary animate-pulse" />
@@ -707,6 +707,8 @@ function PetitionEditor({
           <GoogleDocsEmbed
             docUrl={petition.google_doc_url}
             editable={isEditable}
+            fullHeight
+            petitionId={petition.id}
           />
         ) : (
           <TiptapEditor

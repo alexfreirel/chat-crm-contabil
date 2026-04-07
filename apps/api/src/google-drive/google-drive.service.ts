@@ -182,6 +182,8 @@ export class GoogleDriveService {
 
   /**
    * Cria um Google Doc dentro da pasta especificada.
+   * Após criação, compartilha com "anyone with link" para que
+   * o iframe embed funcione e os usuários do escritório possam editar.
    * Retorna { docId, docUrl }
    */
   async createDoc(
@@ -191,25 +193,75 @@ export class GoogleDriveService {
   ): Promise<{ docId: string; docUrl: string }> {
     const drive = await this.getDriveClient();
 
-    // Criar Doc vazio no Drive (dentro da pasta)
-    const res = await drive.files.create({
-      requestBody: {
-        name: title,
-        mimeType: 'application/vnd.google-apps.document',
-        parents: [folderId],
-      },
-      fields: 'id,webViewLink',
-    });
+    this.logger.log(`Criando Google Doc: "${title}" na pasta ${folderId}...`);
 
-    const docId = res.data.id!;
-    const docUrl = res.data.webViewLink!;
-
-    // Se há conteúdo HTML inicial, inserir via Docs API
-    if (initialHtml) {
-      await this.insertHtmlContent(docId, initialHtml);
+    // 1. Criar Doc vazio no Drive (dentro da pasta)
+    let res: any;
+    try {
+      res = await drive.files.create({
+        requestBody: {
+          name: title,
+          mimeType: 'application/vnd.google-apps.document',
+          parents: [folderId],
+        },
+        fields: 'id,webViewLink,name,mimeType',
+      });
+    } catch (createErr: any) {
+      const errDetails = createErr?.response?.data?.error || createErr?.errors || createErr.message;
+      this.logger.error(`Erro ao criar Google Doc via drive.files.create: ${JSON.stringify(errDetails)}`);
+      throw new Error(`Falha ao criar Google Doc: ${JSON.stringify(errDetails)}`);
     }
 
-    this.logger.log(`Google Doc criado: ${title} (${docId})`);
+    const docId = res.data.id;
+    if (!docId) {
+      this.logger.error(`drive.files.create retornou sem ID. Response: ${JSON.stringify(res.data)}`);
+      throw new Error('Google Drive não retornou o ID do documento criado');
+    }
+
+    // URL de fallback caso webViewLink não venha
+    const docUrl = res.data.webViewLink || `https://docs.google.com/document/d/${docId}/edit`;
+
+    this.logger.log(`Google Doc criado com sucesso: "${title}" (${docId}) - URL: ${docUrl}`);
+
+    // 2. Compartilhar com "anyone with link" como writer
+    //    Necessário para o iframe embed funcionar e para os usuários do escritório editarem
+    try {
+      await drive.permissions.create({
+        fileId: docId,
+        requestBody: {
+          type: 'anyone',
+          role: 'writer',
+        },
+      });
+      this.logger.log(`Doc ${docId} compartilhado (anyone/writer)`);
+    } catch (shareErr: any) {
+      // Se não conseguir compartilhar como "anyone" (ex: domínio Google Workspace restringe),
+      // tenta como "anyone with link" reader
+      this.logger.warn(`Não foi possível compartilhar como writer: ${shareErr.message}. Tentando reader...`);
+      try {
+        await drive.permissions.create({
+          fileId: docId,
+          requestBody: {
+            type: 'anyone',
+            role: 'reader',
+          },
+        });
+        this.logger.log(`Doc ${docId} compartilhado (anyone/reader - fallback)`);
+      } catch (shareErr2: any) {
+        this.logger.warn(`Falha ao compartilhar doc ${docId}: ${shareErr2.message}. O doc foi criado mas pode não ser visível no iframe.`);
+      }
+    }
+
+    // 3. Se há conteúdo HTML inicial, inserir via Docs API
+    if (initialHtml) {
+      try {
+        await this.insertHtmlContent(docId, initialHtml);
+      } catch (contentErr: any) {
+        this.logger.warn(`Doc criado mas falha ao inserir conteúdo: ${contentErr.message}`);
+        // Não re-throw — o doc foi criado com sucesso, só o conteúdo inicial falhou
+      }
+    }
+
     return { docId, docUrl };
   }
 
@@ -313,36 +365,104 @@ export class GoogleDriveService {
     this.logger.log(`Compartilhado ${fileId} com ${email} (${role})`);
   }
 
+  /**
+   * Garante que uma pasta ou arquivo seja acessível por "anyone with link".
+   * Útil quando o service account cria recursos que precisam ser visíveis no iframe.
+   */
+  private async ensureAnyoneAccess(fileId: string, role: 'reader' | 'writer' = 'writer'): Promise<void> {
+    try {
+      const drive = await this.getDriveClient();
+      await drive.permissions.create({
+        fileId,
+        requestBody: { type: 'anyone', role },
+      });
+    } catch (err: any) {
+      this.logger.warn(`Não foi possível definir acesso público para ${fileId}: ${err.message}`);
+    }
+  }
+
   // ── Teste de Conexão ───────────────────────────────────────
 
   /**
-   * Testa a conexão com Google Drive listando a root folder.
+   * Testa a conexão com Google Drive: lê a pasta raiz e tenta criar/excluir um doc de teste.
    */
-  async testConnection(): Promise<{ ok: boolean; message: string; folderName?: string }> {
+  async testConnection(): Promise<{ ok: boolean; message: string; folderName?: string; details?: string[] }> {
+    const details: string[] = [];
     try {
       const rootFolder = await this.getSetting('GDRIVE_ROOT_FOLDER_ID');
       if (!rootFolder) {
-        return { ok: false, message: 'GDRIVE_ROOT_FOLDER_ID não configurado' };
+        return { ok: false, message: 'GDRIVE_ROOT_FOLDER_ID não configurado', details };
       }
 
       const drive = await this.getDriveClient();
+
+      // 1. Testar acesso à pasta raiz
+      details.push('Testando acesso à pasta raiz...');
       const res = await drive.files.get({
         fileId: rootFolder,
         fields: 'id,name,mimeType',
       });
 
       if (res.data.mimeType !== 'application/vnd.google-apps.folder') {
-        return { ok: false, message: 'O ID informado não é uma pasta do Google Drive' };
+        return { ok: false, message: 'O ID informado não é uma pasta do Google Drive', details };
+      }
+      details.push(`✓ Pasta raiz: ${res.data.name}`);
+
+      // 2. Testar criação de Google Doc
+      details.push('Testando criação de Google Doc...');
+      try {
+        const testDoc = await drive.files.create({
+          requestBody: {
+            name: '_teste_conexao_deletar',
+            mimeType: 'application/vnd.google-apps.document',
+            parents: [rootFolder],
+          },
+          fields: 'id,webViewLink,name',
+        });
+        const testDocId = testDoc.data.id;
+        details.push(`✓ Doc criado com sucesso: ${testDocId}`);
+
+        // 3. Testar compartilhamento
+        details.push('Testando compartilhamento (anyone/writer)...');
+        try {
+          await drive.permissions.create({
+            fileId: testDocId!,
+            requestBody: { type: 'anyone', role: 'writer' },
+          });
+          details.push('✓ Compartilhamento OK');
+        } catch (shareErr: any) {
+          details.push(`⚠ Compartilhamento falhou: ${shareErr.message}. Docs podem não ser visíveis no iframe.`);
+        }
+
+        // 4. Limpar — excluir doc de teste
+        try {
+          await drive.files.delete({ fileId: testDocId! });
+          details.push('✓ Doc de teste excluído');
+        } catch (delErr: any) {
+          details.push(`⚠ Não foi possível excluir doc de teste: ${delErr.message}`);
+        }
+      } catch (createErr: any) {
+        const errData = createErr?.response?.data?.error || createErr.message;
+        details.push(`✗ Falha ao criar Doc: ${JSON.stringify(errData)}`);
+        return {
+          ok: false,
+          message: `Pasta raiz OK, mas falha ao criar Google Doc: ${JSON.stringify(errData)}`,
+          folderName: res.data.name || undefined,
+          details,
+        };
       }
 
       return {
         ok: true,
-        message: `Conexão OK. Pasta raiz: ${res.data.name}`,
+        message: `Conexão OK. Pasta raiz: ${res.data.name}. Criação de docs ✓. Compartilhamento ✓.`,
         folderName: res.data.name || undefined,
+        details,
       };
     } catch (err: any) {
-      this.logger.error(`Teste de conexão Google Drive falhou: ${err.message}`);
-      return { ok: false, message: `Erro: ${err.message}` };
+      const errDetails = err?.response?.data?.error || err.message;
+      this.logger.error(`Teste de conexão Google Drive falhou: ${JSON.stringify(errDetails)}`);
+      details.push(`✗ Erro: ${JSON.stringify(errDetails)}`);
+      return { ok: false, message: `Erro: ${JSON.stringify(errDetails)}`, details };
     }
   }
 }

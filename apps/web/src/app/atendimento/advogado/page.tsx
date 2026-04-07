@@ -1625,23 +1625,23 @@ function CaseDetailPanel({
 
               {/* Action bar */}
               <div className="flex items-center gap-1.5 border-b border-border px-4 py-1.5 shrink-0 flex-wrap">
-                {/* Editor mode toggle */}
-                {editingPetition.google_doc_url && (
-                  <div className="flex items-center bg-accent rounded-lg p-0.5 mr-1">
-                    <button onClick={() => setEditorMode('local')} className={`px-2 py-1 text-[10px] font-medium rounded-md transition-colors ${editorMode === 'local' ? 'bg-card shadow-sm' : 'text-muted-foreground'}`}>
-                      Local
-                    </button>
-                    <button onClick={() => setEditorMode('gdocs')} className={`px-2 py-1 text-[10px] font-medium rounded-md transition-colors flex items-center gap-1 ${editorMode === 'gdocs' ? 'bg-card shadow-sm' : 'text-muted-foreground'}`}>
-                      <FileText size={10} className="text-blue-500" /> Docs
-                    </button>
-                  </div>
+                {/* Google Docs: botão discreto para trocar para editor local */}
+                {editingPetition.google_doc_url && editorMode === 'gdocs' && (
+                  <button onClick={() => setEditorMode('local')} className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground flex items-center gap-1 px-2 py-1">
+                    Editor local
+                  </button>
                 )}
 
-                {/* Sync from Google */}
+                {/* Se está no editor local mas tem Google Doc, botão para voltar ao Docs */}
                 {editingPetition.google_doc_url && editorMode === 'local' && (
-                  <button onClick={handleSyncFromGoogleDoc} disabled={syncing} className="text-[10px] text-blue-500 hover:text-blue-400 flex items-center gap-1 px-2 py-1">
-                    {syncing ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />} Sync Google
-                  </button>
+                  <>
+                    <button onClick={() => setEditorMode('gdocs')} className="text-[10px] text-blue-500 hover:text-blue-400 flex items-center gap-1 px-2 py-1">
+                      <FileText size={10} /> Voltar ao Docs
+                    </button>
+                    <button onClick={handleSyncFromGoogleDoc} disabled={syncing} className="text-[10px] text-blue-500 hover:text-blue-400 flex items-center gap-1 px-2 py-1">
+                      {syncing ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />} Sync
+                    </button>
+                  </>
                 )}
 
                 {/* Save version */}
@@ -1655,7 +1655,7 @@ function CaseDetailPanel({
                   <ChevronDown size={10} className={`transition-transform ${showEditVersions ? 'rotate-180' : ''}`} />
                 </button>
 
-                {/* Regenerate AI */}
+                {/* Regenerate AI (only in local editor mode) */}
                 {(editingPetition.status === 'RASCUNHO' || editingPetition.status === 'EM_REVISAO') && editorMode === 'local' && (
                   <button onClick={handleRegenerate} disabled={regenerating} className="text-[10px] text-primary hover:text-primary/80 flex items-center gap-1 px-2 py-1">
                     {regenerating ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />} IA
@@ -1720,14 +1720,19 @@ function CaseDetailPanel({
               )}
 
               {/* Editor area */}
-              <div className="flex-1 overflow-y-auto p-4">
+              <div className={`flex-1 overflow-y-auto ${editorMode === 'gdocs' ? 'p-0' : 'p-4'}`}>
                 {regenerating ? (
                   <div className="flex flex-col items-center justify-center py-16 gap-3">
                     <Sparkles size={24} className="text-primary animate-pulse" />
                     <p className="text-[12px] text-muted-foreground">Gerando com IA...</p>
                   </div>
                 ) : editorMode === 'gdocs' && editingPetition.google_doc_url ? (
-                  <GoogleDocsEmbed docUrl={editingPetition.google_doc_url} editable={editingPetition.status === 'RASCUNHO' || editingPetition.status === 'EM_REVISAO'} />
+                  <GoogleDocsEmbed
+                    docUrl={editingPetition.google_doc_url}
+                    editable={editingPetition.status === 'RASCUNHO' || editingPetition.status === 'EM_REVISAO'}
+                    fullHeight
+                    petitionId={editingPetition.id}
+                  />
                 ) : (
                   <TiptapEditor
                     key={editContentKey}

@@ -28,7 +28,7 @@ export default function GoogleDriveSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; message: string; folderName?: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string; folderName?: string; details?: string[] } | null>(null);
 
   const [serviceAccountJson, setServiceAccountJson] = useState('');
   const [rootFolderId, setRootFolderId] = useState('');
@@ -216,26 +216,43 @@ export default function GoogleDriveSettingsPage() {
 
         {/* Resultado do teste */}
         {testResult && (
-          <div className={`flex items-start gap-2.5 p-3 rounded-lg border ${
+          <div className={`p-3 rounded-lg border space-y-2 ${
             testResult.ok
               ? 'bg-emerald-500/5 border-emerald-500/20'
               : 'bg-red-500/5 border-red-500/20'
           }`}>
-            {testResult.ok ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
-            ) : (
-              <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
-            )}
-            <div>
-              <p className={`text-sm font-medium ${testResult.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>
-                {testResult.message}
-              </p>
-              {testResult.folderName && (
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Pasta: {testResult.folderName}
-                </p>
+            <div className="flex items-start gap-2.5">
+              {testResult.ok ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
               )}
+              <div>
+                <p className={`text-sm font-medium ${testResult.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>
+                  {testResult.message}
+                </p>
+                {testResult.folderName && (
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Pasta: {testResult.folderName}
+                  </p>
+                )}
+              </div>
             </div>
+            {/* Log detalhado dos passos do teste */}
+            {testResult.details && testResult.details.length > 0 && (
+              <div className="bg-background rounded-lg p-3 space-y-1 text-[11px] font-mono text-muted-foreground border border-border">
+                {testResult.details.map((detail, i) => (
+                  <p key={i} className={
+                    detail.startsWith('✓') ? 'text-emerald-600 dark:text-emerald-400' :
+                    detail.startsWith('✗') ? 'text-red-600 dark:text-red-400' :
+                    detail.startsWith('⚠') ? 'text-amber-600 dark:text-amber-400' :
+                    ''
+                  }>
+                    {detail}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

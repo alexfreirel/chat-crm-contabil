@@ -131,6 +131,7 @@ export class PetitionsService {
       try {
         const configured = await this.googleDrive.isConfigured();
         if (configured) {
+          this.logger.log(`Google Drive configurado. Criando Doc para petição "${data.title}" no caso ${caseId}...`);
           const legalCase = await this.prisma.legalCase.findUnique({
             where: { id: caseId },
             select: { lead_id: true, legal_area: true, case_number: true },
@@ -139,11 +140,15 @@ export class PetitionsService {
             const caseLabel = [legalCase.legal_area, legalCase.case_number || 'Novo Caso']
               .filter(Boolean)
               .join(' - ');
+
+            this.logger.log(`Criando pasta do caso: ${caseLabel}`);
             const folderId = await this.googleDrive.ensureCaseFolder(
               caseId,
               legalCase.lead_id,
               caseLabel,
             );
+            this.logger.log(`Pasta do caso OK: ${folderId}. Criando Google Doc...`);
+
             const doc = await this.googleDrive.createDoc(
               data.title,
               folderId,
@@ -151,10 +156,16 @@ export class PetitionsService {
             );
             googleDocId = doc.docId;
             googleDocUrl = doc.docUrl;
+            this.logger.log(`Google Doc criado com sucesso: ${googleDocId} - ${googleDocUrl}`);
+          } else {
+            this.logger.warn(`Caso ${caseId} não encontrado para criar Google Doc`);
           }
         }
       } catch (err: any) {
-        this.logger.warn(`Falha ao criar Google Doc: ${err.message}`);
+        // Log detalhado do erro para diagnóstico
+        const errDetails = err?.response?.data || err?.message || err;
+        this.logger.error(`ERRO ao criar Google Doc: ${JSON.stringify(errDetails)}`, err.stack);
+        // Não re-throw — a petição será criada sem Google Doc (editor local como fallback)
       }
     }
 

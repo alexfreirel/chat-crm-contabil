@@ -20,9 +20,8 @@ export class GoogleDriveController {
     private readonly prisma: PrismaService,
   ) {}
 
-  /** GET /google-drive/config — status da configuração */
+  /** GET /google-drive/config — status da configuração (acessível a todos autenticados) */
   @Get('config')
-  @Roles('ADMIN')
   getConfig() {
     return this.driveService.getConfig();
   }
