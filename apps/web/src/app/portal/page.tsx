@@ -24,10 +24,10 @@ const playfair = Playfair_Display({
   display: 'swap',
 });
 
-const WHATSAPP = 'https://wa.me/5582996390799';
-const PHONE = '82 99639-0799';
-const EMAIL = 'contato@andrelustosa.com.br';
-const ADDRESS = 'Rua Francisco Rodrigues Viana, 244, Baixa Grande, Arapiraca - AL';
+const WHATSAPP = 'https://wa.me/5582982344993';
+const PHONE = '82 98234-4993';
+const EMAIL = 'lustosa.lima@outlook.com';
+const ADDRESS = 'Rua Carmelita Nunes de Albuquerque, 58 - Santa Edwiges - Arapiraca - AL';
 
 export default function PortalPage() {
   return (
