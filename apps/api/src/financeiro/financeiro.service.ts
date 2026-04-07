@@ -377,29 +377,38 @@ export class FinanceiroService {
       if (endDate) where.date.lte = new Date(endDate);
     }
 
+    // Filtro de honorários por advogado
+    const honorarioWhere: any = {
+      status: { in: ['PENDENTE', 'ATRASADO'] },
+    };
+    if (lawyerId) {
+      honorarioWhere.honorario = { legal_case: { lawyer_id: lawyerId } };
+    }
+    if (tenantId) {
+      honorarioWhere.honorario = { ...honorarioWhere.honorario, tenant_id: tenantId };
+    }
+
     const [totalRevenue, totalExpenses, totalReceivable, totalOverdue] = await Promise.all([
-      // Total revenue (RECEITA + PAGO)
+      // Receita efetiva (regime de caixa: só PAGO)
       this.prisma.financialTransaction.aggregate({
         where: { ...where, type: 'RECEITA', status: 'PAGO' },
         _sum: { amount: true },
       }),
-      // Total expenses (DESPESA + PAGO)
+      // Despesas pagas
       this.prisma.financialTransaction.aggregate({
         where: { ...where, type: 'DESPESA', status: 'PAGO' },
         _sum: { amount: true },
       }),
-      // Total receivable (RECEITA + PENDENTE)
-      this.prisma.financialTransaction.aggregate({
-        where: { ...where, type: 'RECEITA', status: 'PENDENTE' },
+      // A receber: parcelas de honorários pendentes (não transações)
+      this.prisma.honorarioPayment.aggregate({
+        where: { ...honorarioWhere, status: { in: ['PENDENTE', 'ATRASADO'] } },
         _sum: { amount: true },
       }),
-      // Total overdue (RECEITA + PENDENTE + due_date < now)
-      this.prisma.financialTransaction.aggregate({
+      // Atrasado: parcelas com due_date vencida
+      this.prisma.honorarioPayment.aggregate({
         where: {
-          ...where,
-          type: 'RECEITA',
-          status: 'PENDENTE',
-          due_date: { lt: new Date() },
+          ...honorarioWhere,
+          status: 'ATRASADO',
         },
         _sum: { amount: true },
       }),

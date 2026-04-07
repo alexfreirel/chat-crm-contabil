@@ -122,8 +122,9 @@ export class HonorariosService {
     const baseAmount = Math.floor((totalValue * 100) / installmentCount) / 100;
     const lastAmount = Math.round((totalValue - baseAmount * (installmentCount - 1)) * 100) / 100;
 
-    const startDate = data.contract_date ? new Date(data.contract_date) : new Date();
-    const hasDueDate = data.type !== 'SUCUMBENCIA'; // Sucumbência: alvará judicial, sem vencimento
+    const startDate = data.contract_date ? new Date(data.contract_date) : null;
+    // Só gera vencimento se data foi informada E não é sucumbência
+    const hasDueDate = data.type !== 'SUCUMBENCIA' && !!startDate;
 
     const payments: Array<{
       amount: number;
@@ -135,7 +136,7 @@ export class HonorariosService {
       let dueDate: Date | null = null;
       let status = 'PENDENTE';
 
-      if (hasDueDate) {
+      if (hasDueDate && startDate) {
         dueDate = new Date(startDate);
         dueDate.setMonth(dueDate.getMonth() + i);
         if (dueDate < new Date()) status = 'ATRASADO';
@@ -158,7 +159,7 @@ export class HonorariosService {
         success_percentage: data.success_percentage ?? null,
         calculated_value: data.type === 'SUCUMBENCIA' ? totalValue : null,
         interest_rate: data.interest_rate ?? 1.0, // 1% ao mês (juros legais)
-        base_date: data.contract_date ? new Date(data.contract_date) : new Date(),
+        base_date: data.contract_date ? new Date(data.contract_date) : null,
         installment_count: installmentCount,
         contract_date: data.contract_date ? new Date(data.contract_date) : null,
         notes: data.notes,
@@ -177,15 +178,8 @@ export class HonorariosService {
       `Honorário criado: ${honorario.id} (${data.type}, R$ ${totalValue}, ${installmentCount} parcelas${data.success_percentage ? `, ${data.success_percentage}%` : ''})`,
     );
 
-    // Auto-criar FinancialTransaction PENDENTE para cada parcela
-    try {
-      for (const payment of honorario.payments) {
-        await this.financeiroService.createFromHonorarioPayment(payment.id, tenantId || lc.tenant_id || undefined);
-      }
-      this.logger.log(`[HONORARIO] ${honorario.payments.length} transações financeiras PENDENTE criadas`);
-    } catch (e: any) {
-      this.logger.warn(`[HONORARIO] Falha ao criar transações financeiras pendentes: ${e.message}`);
-    }
+    // Regime de caixa: NÃO cria FinancialTransaction ao cadastrar honorário.
+    // Receita só é registrada quando o pagamento é efetivamente recebido (markPaid).
 
     return honorario;
   }
