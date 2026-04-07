@@ -581,52 +581,28 @@ export function HomeTemplate({
           >
             {[
               {
-                icon: Briefcase,
-                title: "Direito Trabalhista",
+                icon: Calculator,
+                title: "Contábil",
                 description:
-                  "Protege os direitos dos trabalhadores, regulando relações como salários, jornada, férias, FGTS e demissões. Atuamos na defesa de quem busca justiça nas relações de emprego.",
-              },
-              {
-                icon: ShoppingCart,
-                title: "Direito do Consumidor",
-                description:
-                  "Garante a proteção contra práticas abusivas nas relações de consumo. Atuamos na defesa de clientes lesados por empresas, cobranças indevidas, produtos defeituosos ou serviços mal prestados.",
-              },
-              {
-                icon: HeartPulse,
-                title: "Direito Previdenciário",
-                description:
-                  "Voltado à garantia de benefícios como aposentadoria, pensão, auxílio-doença e BPC/LOAS. Defendemos os direitos de quem busca amparo do INSS em momentos de necessidade.",
-              },
-              {
-                icon: Users,
-                title: "Direito de Família",
-                description:
-                  "Cuida das relações familiares, como divórcio, guarda de filhos, pensão alimentícia e inventário. Atuamos com sensibilidade e firmeza na defesa dos seus direitos e da sua família.",
-              },
-              {
-                icon: Gavel,
-                title: "Direito Criminal",
-                description:
-                  "Defesa em processos criminais, desde inquérito até julgamento. Atuamos com estratégia e compromisso na proteção dos direitos do acusado, sempre respeitando o devido processo legal.",
+                  "Executamos serviços pertinentes a rotina contábil, desde a classificação dos documentos até a emissão dos relatórios correspondentes, observando os princípios, normas contábeis e a legislação em vigor. Estamos preparados para atender todos os tipos de empresa, Simples Nacional, Lucro Presumido, Lucro Real, Lucro Arbitrado, Imunes, Isentas e subsidiárias estrangeiras.",
               },
               {
                 icon: FileText,
-                title: "Direito Civil",
+                title: "Serviços Fiscais",
                 description:
-                  "Abrange questões do dia a dia como contratos, indenizações, posse, propriedade e responsabilidade civil. Atuamos na prevenção e resolução de conflitos com segurança jurídica.",
+                  "Efetuamos toda a rotina do departamento fiscal, desde a classificação fiscal das Notas Fiscais de Entrada e Saída até a operação dos impostos pertinentes (ICMS, IPI, ISS, COFINS, PIS, IRPJ, CSLL etc.). Assumimos a entrega de todas as obrigações acessórias periódicas (EFD ICMS/IPI, EFD Contribuições, DCTF, DIME, DIRF, ECF etc.) e prestamos assessoria em emissão de NFS, importação, exportação e alíquotas.",
+              },
+              {
+                icon: Briefcase,
+                title: "Trabalhista",
+                description:
+                  "Preparados para o e-Social, executamos toda a rotina do departamento pessoal: registro de funcionários, folha de pagamento, guias de impostos, rescisões, RAIS, DIRF, EFD Reinf, entre outros. Oferecemos assessoria completa na administração de pessoal e comunicamos ao cliente todas as alterações legais, incluindo dissídios da categoria.",
               },
               {
                 icon: Building2,
-                title: "Direito Imobiliário",
+                title: "Legalização de Empresas",
                 description:
-                  "Atuação em compra e venda de imóveis, contratos de locação, usucapião, inventário de bens imóveis e regularização fundiária. Protegemos seu patrimônio com segurança jurídica.",
-              },
-              {
-                icon: Landmark,
-                title: "Direito das Sucessões",
-                description:
-                  "Regula a transferência do patrimônio após o falecimento. Atuamos em inventários, partilhas, testamentos e planejamento sucessório, garantindo segurança jurídica e respeito à vontade dos herdeiros.",
+                  "Abertura, alteração e encerramento de empresas; constituição de empresas no Brasil com sócios estrangeiros; planejamento societário e blindagem patrimonial; processos de Incorporação, Cisão e Fusão; constituição de SCP, SPE e Patrimônio de Afetação com obtenção de Regime Especial de Tributação.",
               },
             ].map((area, index) => {
               const Icon = area.icon;
@@ -715,8 +691,8 @@ export function HomeTemplate({
             {/* Left Title */}
             <div className="lg:w-1/3 text-center lg:text-left">
               <h3 className="text-[clamp(1.5rem,4vw,2rem)] lg:text-[clamp(1.25rem,2vw,1.75rem)] 2xl:text-[clamp(1.5rem,2.5vw,2rem)] font-black text-slate-800 leading-snug md:leading-tight">
-                Referência em <span className="text-[#A89048]">Direito</span> e Alta
-                Performance Jurídica
+                Referência em <span className="text-[#A89048]">Contabilidade Gerencial</span> e Alta
+                Performance Contábil
               </h3>
             </div>
 
@@ -741,7 +717,7 @@ export function HomeTemplate({
                   </h4>
                 </div>
                 <p className="text-slate-500 text-sm md:text-xs leading-loose md:leading-relaxed font-medium">
-                  Agilidade e suporte de advogados prontos para atuar com
+                  Agilidade e suporte de contadores prontos para atuar com
                   rapidez, conforto e profissionalismo.
                 </p>
               </div>
@@ -756,7 +732,7 @@ export function HomeTemplate({
                   </h4>
                 </div>
                 <p className="text-slate-500 text-sm md:text-xs leading-loose md:leading-relaxed font-medium">
-                  Confiança de ter sua ação conduzida pelos melhores Advogados.
+                  Confiança de ter sua empresa conduzida pelos melhores Contadores.
                 </p>
               </div>
 
@@ -766,12 +742,12 @@ export function HomeTemplate({
                     <Award className="w-5 h-5 text-[#A89048]" />
                   </div>
                   <h4 className="font-bold text-slate-900 text-base md:text-sm uppercase tracking-wider">
-                    Advocacia de excelência
+                    Contabilidade de excelência
                   </h4>
                 </div>
                 <p className="text-slate-500 text-sm md:text-xs leading-loose md:leading-relaxed font-medium">
-                  Escritório de advocacia com reputação sólida, confiável e
-                  referência no meio jurídico.
+                  Escritório de contabilidade com reputação sólida, confiável e
+                  referência no meio contábil.
                 </p>
               </div>
             </div>
@@ -807,16 +783,16 @@ export function HomeTemplate({
                 <div className="space-y-4 text-[clamp(1.125rem,2vw,1.25rem)] lg:text-[clamp(0.9rem,1.1vw,1.125rem)] text-slate-400 font-medium max-w-2xl lg:max-w-none">
                   <p>
                     <span className="text-[#FAFAFA] font-bold">
-                      A equipe André Lustosa Advogados
+                      A equipe Lexcon Assessoria Contábil
                     </span>{" "}
-                    tem atuação destacada em diversas áreas do direito, e ao longo de seus 10 anos de experiência, consolidou-se como referência jurídica em todo o território nacional.
+                    tem atuação destacada em diversas áreas da contabilidade, e ao longo de seus 10 anos de experiência, consolidou-se como referência contábil em todo o território nacional.
                   </p>
                   <p>
                     Contamos com uma infraestrutura moderna e acolhedora,
                     projetada para garantir o máximo de sigilo e conforto
                     durante as consultas presenciais. Além disso, operamos com
                     um sistema 100% digital, permitindo que você resolva seus
-                    problemas jurídicos sem sair de casa, com a mesma segurança
+                    problemas contábeis sem sair de casa, com a mesma segurança
                     e proximidade.
                   </p>
                 </div>

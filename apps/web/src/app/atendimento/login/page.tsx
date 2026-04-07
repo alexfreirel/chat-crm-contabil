@@ -133,7 +133,7 @@ export default function LoginPage() {
               <div className="space-y-5">
                 {[
                   'Gestão Estratégica de Processos',
-                  'Inteligência Jurídica Avançada',
+                  'Inteligência Contábil Avançada',
                   'Ambiente Seguro e Privativo',
                   'Atendimento Nacional Digital',
                 ].map((feature, i) => (
