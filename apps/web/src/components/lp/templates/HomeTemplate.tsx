@@ -966,7 +966,7 @@ export function HomeTemplate({
                   {/* Glow overlay — masked by rotating conic-gradient */}
                   <span className="btn-premium-glow-overlay" />
                   <span className="relative z-10 flex items-center gap-2 md:gap-3">
-                    FALAR COM ADVOGADO
+                    FALAR COM CONTADOR
                     <ChevronRight size={20} className="hidden md:block" />
                     <ChevronRight size={18} className="md:hidden" />
                   </span>
@@ -1509,7 +1509,7 @@ export function HomeTemplate({
                     onClick={handleCtaClick}
                     className="bg-[#0B0B0B] hover:bg-slate-800 text-[#FAFAFA] font-black px-8 py-6 rounded-xl space-x-2 tracking-widest uppercase transition-all shadow-lg hover:shadow-xl shrink-0"
                   >
-                    <span>Falar com Advogado Agora</span>
+                    <span>Falar com Contador Agora</span>
                     <ChevronRight size={18} />
                   </Button>
                 </motion.div>

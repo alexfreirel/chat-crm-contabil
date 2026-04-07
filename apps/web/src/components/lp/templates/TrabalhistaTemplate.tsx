@@ -349,7 +349,7 @@ export function TrabalhistaTemplate({
                 onClick={handleCtaClick}
                 className="bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-base md:text-lg px-10 py-4 rounded-xl shadow-[0_10px_40px_rgba(37,211,102,0.35)] uppercase tracking-wider transition-all duration-300 hover:scale-105 hover:shadow-[0_15px_50px_rgba(37,211,102,0.45)]"
               >
-                {hero.ctaText || "FALAR COM ADVOGADO"}
+                {hero.ctaText || "FALAR COM CONTADOR"}
               </button>
             </div>
           </div>
@@ -619,7 +619,7 @@ export function TrabalhistaTemplate({
                 size="lg"
                 className="bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-base px-10 py-6 rounded-xl shadow-[0_10px_30px_rgba(37,211,102,0.25)] hover:shadow-[0_15px_40px_rgba(37,211,102,0.35)] transition-all duration-300 hover:scale-[1.02] uppercase tracking-wider w-full sm:w-auto"
               >
-                FALAR COM ADVOGADO
+                FALAR COM CONTADOR
               </Button>
             </div>
 
@@ -716,7 +716,7 @@ export function TrabalhistaTemplate({
             >
               <span className="btn-premium-glow-overlay" />
               <span className="relative z-10 flex items-center">
-                FALAR COM ADVOGADO TRABALHISTA
+                FALAR COM CONTADOR
                 <ChevronRight className="ml-2 w-6 h-6" />
               </span>
             </Button>
