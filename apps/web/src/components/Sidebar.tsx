@@ -214,7 +214,7 @@ export function Sidebar() {
         onMouseLeave={hideTooltip}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/landing/LOGO SEM FUNDO.png" alt="André Lustosa" className="w-full h-full object-contain p-1" draggable={false} />
+        <img src="/landing/lexcon-logo-v2.png" alt="Lexcon" className="w-full h-full object-contain p-1" draggable={false} />
       </div>
 
       {/* Nav items */}
