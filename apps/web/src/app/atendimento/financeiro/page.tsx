@@ -610,14 +610,14 @@ export default function FinanceiroPage() {
               <KpiCard
                 icon={DollarSign}
                 label="Total Contratado"
-                value={fmt(summary.totalRevenue)}
+                value={fmt(summary.totalRevenue + summary.totalReceivable)}
                 color="text-blue-400"
                 bgColor="bg-blue-500/15"
               />
               <KpiCard
                 icon={TrendingUp}
                 label="Recebido"
-                value={fmt(summary.totalRevenue - summary.totalReceivable)}
+                value={fmt(summary.totalRevenue)}
                 color="text-emerald-400"
                 bgColor="bg-emerald-500/15"
               />
