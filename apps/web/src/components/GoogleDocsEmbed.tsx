@@ -1,7 +1,6 @@
 'use client';
 
-import { ExternalLink, FileText, Loader2, Maximize2, Edit3, Eye } from 'lucide-react';
-import { useState } from 'react';
+import { ExternalLink, FileText, Edit3, Eye, FileCheck2 } from 'lucide-react';
 
 interface GoogleDocsEmbedProps {
   docUrl: string;
@@ -12,109 +11,105 @@ interface GoogleDocsEmbedProps {
 }
 
 /**
- * Embed de Google Docs dentro do sistema.
+ * Card de acesso ao Google Docs.
  *
- * O iframe usa /preview (visualização) porque navegadores modernos bloqueiam
- * cookies de terceiros necessários para /edit embedded.
+ * Google bloqueia embeds via iframe (cookies de terceiros + X-Frame-Options).
+ * Em vez de tentar forçar um iframe que não funciona, mostra um card limpo
+ * com botão de acesso direto ao Google Docs — igual Notion, Slack, etc.
  *
- * Para EDITAR, o usuário clica em "Editar no Docs" que abre em nova aba —
- * experiência completa do Google Docs (formatação, comentários, etc).
+ * O usuário clica em "Editar no Google Docs" e abre em nova aba com
+ * experiência completa (formatação, comentários, revisão, etc).
  */
 export default function GoogleDocsEmbed({
   docUrl,
   editable = true,
   className = '',
   fullHeight = true,
-  petitionId,
 }: GoogleDocsEmbedProps) {
-  const [loaded, setLoaded] = useState(false);
-  const [iframeError, setIframeError] = useState(false);
-
   if (!docUrl) {
     return (
       <div className="flex flex-col items-center justify-center h-64 bg-base-200/50 border border-base-300 rounded-xl text-base-content/50 gap-2">
         <FileText className="w-8 h-8 opacity-40" />
-        <p className="text-sm">Google Doc não disponível</p>
+        <p className="text-sm">Google Doc nao disponivel</p>
       </div>
     );
   }
 
   // Extrair base URL do doc (sem /edit, /preview, query strings)
   const baseUrl = docUrl.replace(/\/(edit|preview|pub).*$/, '');
-
-  // Sempre usar /preview no iframe (funciona sem cookies de terceiros)
-  const previewUrl = baseUrl + '/preview';
-  // URL de edição para abrir em nova aba
   const editUrl = baseUrl + '/edit';
+  const previewUrl = baseUrl + '/preview';
 
-  const iframeStyle = fullHeight
-    ? { height: 'calc(100vh - 200px)', minHeight: '600px' }
-    : { height: 'calc(100vh - 300px)', minHeight: '500px' };
+  const containerStyle = fullHeight
+    ? { minHeight: 'calc(100vh - 250px)' }
+    : { minHeight: '400px' };
 
   return (
-    <div className={`relative w-full flex flex-col ${className}`}>
-      {/* Loading spinner overlay */}
-      {!loaded && !iframeError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-base-100 rounded-xl z-10 gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          <p className="text-sm text-base-content/50">Carregando Google Docs...</p>
+    <div className={`w-full flex flex-col ${className}`} style={containerStyle}>
+      {/* Card principal */}
+      <div className="flex-1 flex flex-col items-center justify-center bg-base-200/30 border border-base-300 rounded-xl p-8 gap-6">
+        {/* Icone */}
+        <div className="relative">
+          <div className="w-20 h-20 rounded-2xl bg-blue-500/10 flex items-center justify-center">
+            <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" stroke="currentColor" strokeWidth="1.5" className="text-blue-500" />
+              <path d="M14 2v6h6" stroke="currentColor" strokeWidth="1.5" className="text-blue-500" />
+              <path d="M8 13h8M8 17h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="text-blue-400" />
+            </svg>
+          </div>
+          <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center shadow-lg">
+            <FileCheck2 className="w-4 h-4 text-white" />
+          </div>
         </div>
-      )}
 
-      {/* Barra de ações */}
-      <div className="flex items-center justify-between px-3 py-2 bg-base-200/80 border border-base-300 border-b-0 rounded-t-lg">
-        <div className="flex items-center gap-2 text-xs text-base-content/60">
-          <FileText className="w-3.5 h-3.5 text-blue-500" />
-          <span className="font-medium">Google Docs</span>
-          <span className="px-1.5 py-0.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded text-[10px] font-semibold">
-            Preview
-          </span>
+        {/* Texto */}
+        <div className="text-center space-y-2 max-w-sm">
+          <h3 className="text-lg font-semibold text-base-content">
+            Documento no Google Docs
+          </h3>
+          <p className="text-sm text-base-content/60">
+            {editable
+              ? 'Clique abaixo para abrir e editar no Google Docs. Todas as alteracoes sao salvas automaticamente.'
+              : 'Clique abaixo para visualizar o documento no Google Docs.'}
+          </p>
         </div>
-        <div className="flex items-center gap-1.5">
-          {/* Botão principal — Editar no Google Docs (nova aba) */}
+
+        {/* Botoes */}
+        <div className="flex flex-col sm:flex-row items-center gap-3">
           {editable && (
             <a
               href={editUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold rounded-lg transition-colors"
-              title="Editar no Google Docs (abre em nova aba)"
+              className="flex items-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 hover:scale-[1.02] active:scale-[0.98]"
             >
-              <Edit3 className="w-3.5 h-3.5" />
-              Editar no Docs
-              <ExternalLink className="w-3 h-3" />
+              <Edit3 className="w-5 h-5" />
+              Editar no Google Docs
+              <ExternalLink className="w-4 h-4 opacity-70" />
             </a>
           )}
-          {/* Abrir em nova aba (visualizar) */}
+
           <a
             href={previewUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="btn btn-ghost btn-xs gap-1 text-base-content/60 hover:text-base-content"
-            title="Abrir visualização em nova aba"
+            className="flex items-center gap-2 px-5 py-2.5 bg-base-200 hover:bg-base-300 text-base-content/70 hover:text-base-content font-medium rounded-xl transition-colors border border-base-300"
           >
-            <Eye className="w-3 h-3" />
-            Abrir
+            <Eye className="w-4 h-4" />
+            Visualizar
           </a>
         </div>
+
+        {/* Info */}
+        <div className="flex items-center gap-4 text-[11px] text-base-content/40 mt-2">
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            Salvamento automatico
+          </span>
+          <span>Formatacao completa</span>
+          <span>Comentarios e revisao</span>
+        </div>
       </div>
-
-      {/* iframe — preview (não requer cookies de terceiros) */}
-      <iframe
-        src={previewUrl}
-        onLoad={() => setLoaded(true)}
-        onError={() => setIframeError(true)}
-        className="w-full border border-base-300 rounded-b-lg bg-white flex-1"
-        style={iframeStyle}
-        allow="clipboard-read; clipboard-write"
-      />
-
-      {/* Mensagem de ajuda */}
-      {loaded && (
-        <p className="text-[10px] text-base-content/40 text-center mt-1">
-          Para editar, clique em <strong>"Editar no Docs"</strong> acima — abre o editor completo do Google Docs em nova aba
-        </p>
-      )}
     </div>
   );
 }
