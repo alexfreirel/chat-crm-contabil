@@ -23,14 +23,16 @@ interface CaseDoc {
 }
 
 const FOLDERS = [
-  { id: 'TODOS', label: 'Todos' },
-  { id: 'CLIENTE', label: 'Cliente' },
-  { id: 'PROVAS', label: 'Provas' },
-  { id: 'CONTRATOS', label: 'Contratos' },
-  { id: 'PETICOES', label: 'Petições' },
-  { id: 'DECISOES', label: 'Decisões' },
-  { id: 'PROCURACOES', label: 'Procurações' },
-  { id: 'OUTROS', label: 'Outros' },
+  { id: 'TODOS',          label: 'Todos' },
+  { id: 'CLIENTE',        label: 'Cliente' },
+  { id: 'NFE',            label: 'NF-e / NFS-e' },
+  { id: 'FOLHA',          label: 'Folha de Pagamento' },
+  { id: 'IMPOSTOS',       label: 'Impostos / Declarações' },
+  { id: 'BALANCETE',      label: 'Balancetes / DRE' },
+  { id: 'CONTRATO_SOCIAL',label: 'Contrato Social' },
+  { id: 'CONTRATOS',      label: 'Contratos' },
+  { id: 'PROCURACOES',    label: 'Procurações' },
+  { id: 'OUTROS',         label: 'Outros' },
 ];
 
 function formatSize(bytes: number) {
