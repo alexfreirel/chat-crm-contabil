@@ -1017,7 +1017,7 @@ export function HighConversionTemplate({
 
               <div className="relative w-full min-h-[450px] md:min-h-[650px] lg:min-h-[750px] overflow-hidden rounded-xl border border-[#A89048]/20 shadow-2xl bg-linear-to-b from-[#1a1a1a] to-[#0A0A0A]">
                 <Image
-                  src="/landing/Design-sem-nome-_34_.webp"
+                  src="/landing/Design-sem-nome-_34_.jpeg"
                   alt="Escritório André Lustosa Advogados"
                   fill
                   className="object-contain p-2 md:p-4 group-hover:scale-105 transition-transform duration-1000"
