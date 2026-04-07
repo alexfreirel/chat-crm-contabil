@@ -168,6 +168,10 @@ export class MediaProcessor extends WorkerHost {
       where: { id: conversation_id },
       include: { lead: { select: { created_at: true } } },
     });
+    if (!conv) {
+      this.logger.warn(`[RESYNC] Conversa ${conversation_id} não encontrada — abortando resync`);
+      return { imported: 0 };
+    }
     const cutoffTs = conv?.lead?.created_at
       ? Math.floor(new Date(conv.lead.created_at).getTime() / 1000)
       : 0;
