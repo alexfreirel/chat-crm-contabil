@@ -178,15 +178,6 @@ export class FinanceiroService {
   // ─── Create from Honorario Payment ─────────────────────
 
   async createFromHonorarioPayment(paymentId: string, tenantId?: string) {
-    // Check if transaction already exists for this payment
-    const existing = await this.prisma.financialTransaction.findUnique({
-      where: { honorario_payment_id: paymentId },
-    });
-    if (existing) {
-      this.logger.warn(`Transacao financeira ja existe para pagamento ${paymentId}`);
-      return existing;
-    }
-
     const payment = await this.prisma.honorarioPayment.findUnique({
       where: { id: paymentId },
       include: {
@@ -203,6 +194,24 @@ export class FinanceiroService {
     if (!payment) throw new NotFoundException('Pagamento de honorario nao encontrado');
 
     const legalCase = (payment as any).honorario?.legal_case;
+    const status = payment.status === 'PAGO' ? 'PAGO' : 'PENDENTE';
+
+    // Se já existe transação para este pagamento, atualizar status/valor
+    const existing = await this.prisma.financialTransaction.findUnique({
+      where: { honorario_payment_id: paymentId },
+    });
+    if (existing) {
+      return this.prisma.financialTransaction.update({
+        where: { id: existing.id },
+        data: {
+          status,
+          amount: payment.amount,
+          paid_at: payment.paid_at,
+          payment_method: payment.payment_method || existing.payment_method,
+          date: payment.paid_at || existing.date,
+        },
+      });
+    }
 
     return this.prisma.financialTransaction.create({
       data: {
@@ -211,11 +220,11 @@ export class FinanceiroService {
         category: 'HONORARIO',
         description: `Honorário - ${legalCase?.case_number || 'Processo'} ${legalCase?.legal_area ? `(${legalCase.legal_area})` : ''}`.trim(),
         amount: payment.amount,
-        date: payment.paid_at || new Date(),
+        date: payment.paid_at || payment.due_date || new Date(),
         paid_at: payment.paid_at,
         due_date: payment.due_date,
         payment_method: payment.payment_method,
-        status: payment.status === 'PAGO' ? 'PAGO' : 'PENDENTE',
+        status,
         legal_case_id: legalCase?.id || null,
         lead_id: legalCase?.lead_id || null,
         honorario_payment_id: paymentId,

@@ -15,6 +15,7 @@ import { TRACKING_STAGES, findTrackingStage } from '@/lib/legalStages';
 import { useRole } from '@/lib/useRole';
 import { ClientPanel } from '@/components/ClientPanel';
 import { EventModal } from '@/components/EventModal';
+import TabHonorarios from '@/app/atendimento/workspace/[caseId]/components/TabHonorarios';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -940,7 +941,7 @@ function ProcessoDetailPanel({
   onOpenClientPanel: (leadId: string) => void;
 }) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'info' | 'djen' | 'events' | 'tasks'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'djen' | 'events' | 'tasks' | 'honorarios'>('info');
   const { isAdmin } = useRole();
   const [saving, setSaving] = useState(false);
   const [savedFeedback, setSavedFeedback] = useState(false);
@@ -1344,11 +1345,12 @@ function ProcessoDetailPanel({
         {/* Tabs */}
         <div className="flex border-b border-border shrink-0">
           {([
-            { id: 'info', label: 'Processo' },
-            { id: 'djen', label: `DJEN (${djenPubs.length})` },
-            { id: 'events', label: `Movim. (${events.length})` },
-            { id: 'tasks', label: `Eventos (${tasks.length})` },
-          ] as const).map(tab => (
+            { id: 'info' as const, label: 'Processo' },
+            { id: 'honorarios' as const, label: 'Honorários' },
+            { id: 'djen' as const, label: `DJEN (${djenPubs.length})` },
+            { id: 'events' as const, label: `Movim. (${events.length})` },
+            { id: 'tasks' as const, label: `Eventos (${tasks.length})` },
+          ]).map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
@@ -1890,6 +1892,13 @@ function ProcessoDetailPanel({
                   </>
                 )
               )}
+            </div>
+          )}
+
+          {/* ─── HONORÁRIOS TAB ─── */}
+          {activeTab === 'honorarios' && (
+            <div className="py-2">
+              <TabHonorarios caseId={legalCase.id} />
             </div>
           )}
 

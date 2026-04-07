@@ -149,6 +149,21 @@ export class HonorariosService {
       `Honorário criado: ${honorario.id} (${data.type}, R$ ${data.total_value}, ${installmentCount} parcelas${data.success_percentage ? `, ${data.success_percentage}% êxito` : ''})`,
     );
 
+    // Auto-criar FinancialTransaction PENDENTE para cada parcela (receita a receber)
+    try {
+      const legalCase = await this.prisma.legalCase.findUnique({
+        where: { id: caseId },
+        select: { id: true, case_number: true, legal_area: true, lead_id: true, tenant_id: true },
+      });
+
+      for (const payment of honorario.payments) {
+        await this.financeiroService.createFromHonorarioPayment(payment.id, tenantId || legalCase?.tenant_id || undefined);
+      }
+      this.logger.log(`[HONORARIO] ${honorario.payments.length} transações financeiras PENDENTE criadas para honorário ${honorario.id}`);
+    } catch (e: any) {
+      this.logger.warn(`[HONORARIO] Falha ao criar transações financeiras pendentes: ${e.message}`);
+    }
+
     return honorario;
   }
 
