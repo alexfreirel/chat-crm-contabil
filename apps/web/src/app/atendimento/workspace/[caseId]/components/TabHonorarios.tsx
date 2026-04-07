@@ -80,6 +80,61 @@ function formatCurrency(value: number | string): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
 }
 
+/**
+ * Input monetário formato brasileiro: R$ 1.000,00
+ * Armazena valor numérico internamente, exibe formatado.
+ */
+function CurrencyInput({
+  value,
+  onChange,
+  placeholder,
+  autoFocus,
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  autoFocus?: boolean;
+  className?: string;
+}) {
+  const [display, setDisplay] = useState(() => {
+    if (!value) return '';
+    const num = parseFloat(value);
+    return isNaN(num) || num === 0 ? '' : num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  });
+
+  const handleChange = (raw: string) => {
+    // Remove tudo exceto dígitos
+    const digits = raw.replace(/\D/g, '');
+    if (!digits) {
+      setDisplay('');
+      onChange('');
+      return;
+    }
+    // Converte para centavos → reais
+    const cents = parseInt(digits, 10);
+    const reais = cents / 100;
+    const formatted = reais.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    setDisplay(formatted);
+    onChange(reais.toString());
+  };
+
+  return (
+    <div className="relative">
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground font-bold">R$</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        value={display}
+        onChange={e => handleChange(e.target.value)}
+        placeholder={placeholder || '0,00'}
+        autoFocus={autoFocus}
+        className={className || "w-full pl-9 pr-3 py-2.5 rounded-xl bg-accent/30 border border-border text-[12px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"}
+      />
+    </div>
+  );
+}
+
 function formatDate(d: string | null) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('pt-BR', {
@@ -367,15 +422,11 @@ function CreateHonorarioForm({
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Valor da Condenação (R$)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="50000.00"
+                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Valor da Condenação</label>
+                <CurrencyInput
                   value={sentenceValue}
-                  onChange={e => setSentenceValue(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-accent/30 border border-border text-[12px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"
+                  onChange={setSentenceValue}
+                  placeholder="50.000,00"
                   autoFocus
                 />
               </div>
@@ -414,16 +465,12 @@ function CreateHonorarioForm({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                  {type === 'ENTRADA' ? 'Valor da Entrada (R$)' : 'Valor Total (R$)'}
+                  {type === 'ENTRADA' ? 'Valor da Entrada' : 'Valor Total'}
                 </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="5000.00"
+                <CurrencyInput
                   value={totalValue}
-                  onChange={e => setTotalValue(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-accent/30 border border-border text-[12px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"
+                  onChange={setTotalValue}
+                  placeholder="5.000,00"
                   autoFocus
                 />
               </div>
@@ -863,15 +910,11 @@ function AddPaymentForm({
       <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Nova Parcela</p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="space-y-1.5">
-          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Valor (R$)</label>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            placeholder="Valor (R$)"
+          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Valor</label>
+          <CurrencyInput
             value={amount}
-            onChange={e => setAmount(e.target.value)}
-            className="w-full px-3 py-2.5 rounded-xl bg-accent/30 border border-border text-[12px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"
+            onChange={setAmount}
+            placeholder="1.000,00"
             autoFocus
           />
         </div>
