@@ -1055,9 +1055,9 @@ export function HomeTemplate({
                 <div className="h-[2px] w-12 bg-[#A89048]" />
               </div>
               <h2 className="text-[clamp(1.5rem,2.8vw,2.75rem)] 2xl:text-[clamp(2rem,3.2vw,3.5rem)] font-black text-[#1A1A1A] leading-[1.1] uppercase wrap-break-word hyphens-auto mb-8">
-                O ESCRITÓRIO JURÍDICO <br />
-                <span className="text-[#A89048]">ANDRÉ LUSTOSA</span> <br />
-                <span className="text-[#A89048]">ADVOGADOS!</span>
+                O ESCRITÓRIO CONTÁBIL <br />
+                <span className="text-[#A89048]">LEXCON</span> <br />
+                <span className="text-[#A89048]">ASSESSORIA CONTÁBIL!</span>
               </h2>
             </motion.div>
             <motion.div
@@ -1068,10 +1068,10 @@ export function HomeTemplate({
               className="w-full"
             >
               <p className="text-[#444444] text-[clamp(1rem,1.1vw,1.125rem)] font-medium leading-relaxed max-w-2xl mx-auto">
-                Unimos tradição jurídica à inovação tecnológica para entregar
+                Unimos tradição contábil à inovação tecnológica para entregar
                 resultados excepcionais. Nossa estrutura é moldada para a
-                agilidade do mundo moderno e a máxima proteção dos seus
-                interesses.
+                agilidade do mundo moderno e a máxima eficiência da sua
+                contabilidade.
               </p>
             </motion.div>
           </div>
