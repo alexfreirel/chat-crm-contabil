@@ -866,7 +866,7 @@ export function HomeTemplate({
                       </span>
                     </div>
                     <p className="text-slate-400 text-sm italic font-serif">
-                      Excelência jurídica com alcance nacional e atendimento digital personalizado.
+                      Excelência contábil com alcance nacional e atendimento digital personalizado.
                     </p>
                   </div>
                 </div>
