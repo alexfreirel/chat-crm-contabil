@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FileSignature, Loader2, Plus, ArrowLeft, Save, Clock, CalendarClock,
   ChevronDown, Trash2, Sparkles, RefreshCw, ExternalLink, FileText,
+  Edit3, Eye, MoreVertical, User, History,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { showError, showSuccess } from '@/lib/toast';
@@ -70,11 +71,21 @@ const STATUS_LABELS: Record<string, string> = {
   PROTOCOLADA: 'Protocolada',
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  RASCUNHO: 'badge-ghost',
-  EM_REVISAO: 'badge-warning',
-  APROVADA: 'badge-success',
-  PROTOCOLADA: 'badge-info',
+const STATUS_COLORS: Record<string, { text: string; bg: string; border: string; dot: string }> = {
+  RASCUNHO: { text: 'text-zinc-400', bg: 'bg-zinc-500/10', border: 'border-zinc-500/20', dot: 'bg-zinc-400' },
+  EM_REVISAO: { text: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', dot: 'bg-amber-400' },
+  APROVADA: { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', dot: 'bg-emerald-400' },
+  PROTOCOLADA: { text: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', dot: 'bg-blue-400' },
+};
+
+const TYPE_COLORS: Record<string, { text: string; bg: string }> = {
+  INICIAL: { text: 'text-blue-400', bg: 'bg-blue-500/10' },
+  CONTESTACAO: { text: 'text-red-400', bg: 'bg-red-500/10' },
+  REPLICA: { text: 'text-purple-400', bg: 'bg-purple-500/10' },
+  EMBARGOS: { text: 'text-amber-400', bg: 'bg-amber-500/10' },
+  RECURSO: { text: 'text-cyan-400', bg: 'bg-cyan-500/10' },
+  MANIFESTACAO: { text: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+  OUTRO: { text: 'text-zinc-400', bg: 'bg-zinc-500/10' },
 };
 
 function formatDate(d: string) {
@@ -91,6 +102,8 @@ export default function TabPeticoes({ caseId }: { caseId: string }) {
   const [loading, setLoading] = useState(true);
   const [editingPetition, setEditingPetition] = useState<PetitionDetail | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
 
   // ─── List ────────────────────────────────────────────────
 
@@ -126,7 +139,33 @@ export default function TabPeticoes({ caseId }: { caseId: string }) {
     fetchList();
   };
 
-  // ─── Create modal state ──────────────────────────────────
+  // ─── Delete petition ───────────────────────────────────
+
+  const handleDelete = async (id: string, title: string) => {
+    if (!confirm(`Excluir a petição "${title}"? Esta ação não pode ser desfeita.`)) return;
+    setDeletingId(id);
+    try {
+      await api.delete(`/petitions/${id}`);
+      showSuccess('Petição excluída');
+      setPetitions(prev => prev.filter(p => p.id !== id));
+    } catch {
+      showError('Erro ao excluir petição');
+    } finally {
+      setDeletingId(null);
+      setMenuOpenId(null);
+    }
+  };
+
+  // ─── Close menu on outside click ───────────────────────
+
+  useEffect(() => {
+    if (!menuOpenId) return;
+    const handler = () => setMenuOpenId(null);
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [menuOpenId]);
+
+  // ─── Render editor ──────────────────────────────────────
 
   if (editingPetition) {
     return (
@@ -137,23 +176,54 @@ export default function TabPeticoes({ caseId }: { caseId: string }) {
     );
   }
 
+  // Stats
+  const total = petitions.length;
+  const byStatus = {
+    rascunho: petitions.filter(p => p.status === 'RASCUNHO').length,
+    revisao: petitions.filter(p => p.status === 'EM_REVISAO').length,
+    aprovada: petitions.filter(p => p.status === 'APROVADA').length,
+    protocolada: petitions.filter(p => p.status === 'PROTOCOLADA').length,
+  };
+
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-4">
+    <div className="p-4 space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold flex items-center gap-2">
-          <FileSignature className="h-4 w-4 text-primary" />
-          Petições
-          {petitions.length > 0 && (
-            <span className="text-xs text-base-content/50">({petitions.length})</span>
-          )}
-        </h2>
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+            <FileSignature className="w-4 h-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-[13px] font-bold text-foreground">Petições</h2>
+            <p className="text-[10px] text-muted-foreground">
+              {total === 0 ? 'Nenhuma petição' : `${total} petição${total > 1 ? 'ões' : ''}`}
+            </p>
+          </div>
+        </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="btn btn-primary btn-sm gap-1"
+          className="flex items-center gap-1.5 px-3.5 py-2 text-[11px] font-semibold bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-all shadow-sm"
         >
-          <Plus className="h-3.5 w-3.5" /> Nova Petição
+          <Plus className="w-3.5 h-3.5" /> Nova Petição
         </button>
       </div>
+
+      {/* Stats mini cards */}
+      {total > 0 && (
+        <div className="grid grid-cols-4 gap-2">
+          {[
+            { label: 'Rascunho', count: byStatus.rascunho, color: STATUS_COLORS.RASCUNHO },
+            { label: 'Em Revisão', count: byStatus.revisao, color: STATUS_COLORS.EM_REVISAO },
+            { label: 'Aprovada', count: byStatus.aprovada, color: STATUS_COLORS.APROVADA },
+            { label: 'Protocolada', count: byStatus.protocolada, color: STATUS_COLORS.PROTOCOLADA },
+          ].map(s => (
+            <div key={s.label} className={`rounded-xl ${s.color.bg} border ${s.color.border} px-3 py-2 text-center`}>
+              <p className={`text-lg font-bold ${s.color.text}`}>{s.count}</p>
+              <p className="text-[9px] text-muted-foreground font-medium uppercase tracking-wide">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Create form */}
       {showCreate && (
@@ -169,46 +239,110 @@ export default function TabPeticoes({ caseId }: { caseId: string }) {
 
       {/* List */}
       {loading ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <div className="flex justify-center py-16">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
         </div>
-      ) : petitions.length === 0 ? (
-        <div className="text-center py-12 text-base-content/50">
-          <FileSignature className="h-12 w-12 mx-auto mb-2 opacity-30" />
-          <p>Nenhuma petição criada</p>
-          <p className="text-xs mt-1">Clique em &quot;Nova Petição&quot; para começar</p>
+      ) : petitions.length === 0 && !showCreate ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-accent/30 border border-border flex items-center justify-center mb-4">
+            <FileSignature className="w-7 h-7 text-muted-foreground/40" />
+          </div>
+          <p className="text-sm font-medium text-muted-foreground">Nenhuma petição criada</p>
+          <p className="text-[11px] text-muted-foreground/60 mt-1">Clique em &quot;Nova Petição&quot; para começar</p>
         </div>
       ) : (
         <div className="space-y-2">
-          {petitions.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => openPetition(p.id)}
-              className="w-full text-left rounded-lg border border-base-300 p-3 hover:bg-base-200/50 transition-colors"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
-                  <FileSignature className="h-4 w-4 text-primary shrink-0" />
-                  <span className="font-medium text-sm truncate">{p.title}</span>
-                  <span className="badge badge-xs badge-outline shrink-0">
-                    {TYPE_LABELS[p.type] || p.type}
-                  </span>
+          {petitions.map((p) => {
+            const statusColor = STATUS_COLORS[p.status] || STATUS_COLORS.RASCUNHO;
+            const typeColor = TYPE_COLORS[p.type] || TYPE_COLORS.OUTRO;
+            const isDeleting = deletingId === p.id;
+
+            return (
+              <div
+                key={p.id}
+                className={`group relative rounded-2xl border border-border bg-card hover:border-primary/30 transition-all ${isDeleting ? 'opacity-50 pointer-events-none' : ''}`}
+              >
+                <div
+                  className="flex items-center gap-3 p-3.5 cursor-pointer"
+                  onClick={() => openPetition(p.id)}
+                >
+                  {/* Status indicator */}
+                  <div className={`w-10 h-10 rounded-xl ${statusColor.bg} border ${statusColor.border} flex items-center justify-center shrink-0`}>
+                    <FileSignature className={`w-4.5 h-4.5 ${statusColor.text}`} />
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[13px] font-semibold text-foreground truncate">{p.title}</span>
+                      <span className={`shrink-0 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${typeColor.bg} ${typeColor.text}`}>
+                        {TYPE_LABELS[p.type] || p.type}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <User className="w-3 h-3" />
+                        {p.created_by.name}
+                      </span>
+                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <Clock className="w-3 h-3" />
+                        {formatDate(p.updated_at)}
+                      </span>
+                      {p._count.versions > 0 && (
+                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                          <History className="w-3 h-3" />
+                          {p._count.versions} versões
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Status badge */}
+                  <div className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-lg ${statusColor.bg} border ${statusColor.border}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${statusColor.dot}`} />
+                    <span className={`text-[10px] font-semibold ${statusColor.text}`}>
+                      {STATUS_LABELS[p.status] || p.status}
+                    </span>
+                  </div>
+
+                  {/* Actions menu */}
+                  <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuOpenId(menuOpenId === p.id ? null : p.id);
+                      }}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground/50 hover:text-foreground hover:bg-accent/50 transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                      <MoreVertical className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* Dropdown */}
+                    {menuOpenId === p.id && (
+                      <div className="absolute right-0 top-full mt-1 z-50 w-44 bg-card border border-border rounded-xl shadow-xl py-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                        <button
+                          onClick={() => { openPetition(p.id); setMenuOpenId(null); }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-foreground hover:bg-accent/50 transition-colors"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" /> Editar petição
+                        </button>
+                        {p.status !== 'PROTOCOLADA' && (
+                          <button
+                            onClick={() => handleDelete(p.id, p.title)}
+                            disabled={isDeleting}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-red-400 hover:bg-red-500/10 transition-colors"
+                          >
+                            {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                            Excluir petição
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <span className={`badge badge-xs ${STATUS_COLORS[p.status] || ''} shrink-0`}>
-                  {STATUS_LABELS[p.status] || p.status}
-                </span>
               </div>
-              <div className="flex items-center gap-3 mt-1 text-xs text-base-content/50">
-                <span>Por: {p.created_by.name}</span>
-                <span>Atualizado: {formatDate(p.updated_at)}</span>
-                {p._count.versions > 0 && (
-                  <span className="flex items-center gap-0.5">
-                    <Clock className="h-3 w-3" /> {p._count.versions} versões
-                  </span>
-                )}
-              </div>
-            </button>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -282,77 +416,93 @@ function CreatePetitionForm({
   const busy = saving || generating;
 
   return (
-    <div className="rounded-lg border border-primary/30 bg-base-200/50 p-4 space-y-3">
-      <h3 className="text-sm font-semibold">Nova Petição</h3>
-      <div className="flex gap-3">
+    <div className="rounded-2xl border-2 border-primary/30 bg-card p-5 space-y-4">
+      <div className="flex items-center gap-2">
+        <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
+          <Plus className="w-3.5 h-3.5 text-primary" />
+        </div>
+        <h3 className="text-[13px] font-bold text-foreground">Nova Petição</h3>
+      </div>
+
+      <div className="grid grid-cols-[1fr_160px] gap-3">
         <input
           type="text"
           placeholder="Título da petição..."
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          className="input input-bordered input-sm flex-1"
+          className="w-full px-3 py-2.5 rounded-xl bg-accent/30 border border-border text-[12px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"
           autoFocus
           onKeyDown={(e) => e.key === 'Enter' && !busy && handleCreate()}
         />
         <select
           value={type}
           onChange={(e) => setType(e.target.value)}
-          className="select select-bordered select-sm w-40"
+          className="w-full px-3 py-2.5 rounded-xl bg-accent/30 border border-border text-[12px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all appearance-none cursor-pointer"
         >
           {TYPES.map((t) => (
             <option key={t} value={t}>{TYPE_LABELS[t]}</option>
           ))}
         </select>
       </div>
-      <div className="flex items-center gap-3">
-        <label className="flex items-center gap-1.5 text-xs text-base-content/70">
-          <CalendarClock className="h-3.5 w-3.5" />
-          Prazo:
-        </label>
-        <input
-          type="date"
-          value={deadlineAt}
-          onChange={(e) => setDeadlineAt(e.target.value)}
-          className="input input-bordered input-xs w-40"
-          min={new Date().toISOString().split('T')[0]}
-        />
+
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
+          <CalendarClock className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Prazo</span>
+          <input
+            type="date"
+            value={deadlineAt}
+            onChange={(e) => setDeadlineAt(e.target.value)}
+            className="px-2.5 py-1.5 rounded-lg bg-accent/30 border border-border text-[11px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+            min={new Date().toISOString().split('T')[0]}
+          />
+        </div>
         {driveConfigured && (
-          <label className="flex items-center gap-2 text-xs cursor-pointer ml-auto">
-            <input
-              type="checkbox"
-              checked={createGoogleDoc}
-              onChange={(e) => setCreateGoogleDoc(e.target.checked)}
-              className="checkbox checkbox-xs checkbox-primary"
-            />
-            <FileText className="h-3.5 w-3.5 text-blue-500" />
-            Criar no Google Docs
+          <label className="flex items-center gap-2 text-[11px] cursor-pointer ml-auto select-none">
+            <div className={`relative w-8 h-4.5 rounded-full transition-colors ${createGoogleDoc ? 'bg-blue-500' : 'bg-accent/60'}`}>
+              <input
+                type="checkbox"
+                checked={createGoogleDoc}
+                onChange={(e) => setCreateGoogleDoc(e.target.checked)}
+                className="sr-only"
+              />
+              <div className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${createGoogleDoc ? 'translate-x-4' : 'translate-x-0.5'}`} />
+            </div>
+            <FileText className="w-3.5 h-3.5 text-blue-400" />
+            <span className="text-muted-foreground font-medium">Google Docs</span>
           </label>
         )}
       </div>
+
       {generating && (
-        <div className="flex items-center gap-2 text-xs text-primary animate-pulse">
-          <Sparkles className="h-3.5 w-3.5" />
-          Gerando petição com IA... isso pode levar até 30 segundos
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-primary/5 border border-primary/20">
+          <Sparkles className="w-3.5 h-3.5 text-primary animate-pulse" />
+          <span className="text-[11px] text-primary font-medium">Gerando petição com IA... isso pode levar até 30 segundos</span>
         </div>
       )}
-      <div className="flex justify-end gap-2">
-        <button onClick={onCancel} disabled={busy} className="btn btn-ghost btn-sm">
+
+      <div className="flex justify-end gap-2 pt-1">
+        <button
+          onClick={onCancel}
+          disabled={busy}
+          className="px-3.5 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground rounded-xl hover:bg-accent/50 transition-colors"
+        >
           Cancelar
         </button>
         <button
           onClick={handleCreate}
           disabled={busy}
-          className="btn btn-outline btn-sm gap-1"
+          className="flex items-center gap-1.5 px-3.5 py-2 text-[11px] font-semibold text-foreground bg-accent/50 border border-border rounded-xl hover:bg-accent transition-colors"
         >
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
           Criar vazia
         </button>
         <button
           onClick={handleGenerateAI}
           disabled={busy}
-          className="btn btn-primary btn-sm gap-1"
+          className="flex items-center gap-1.5 px-3.5 py-2 text-[11px] font-semibold bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-all shadow-sm"
         >
-          {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+          {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
           Gerar com IA
         </button>
       </div>
