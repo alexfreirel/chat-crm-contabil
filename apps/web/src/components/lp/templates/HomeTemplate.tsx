@@ -1056,8 +1056,7 @@ export function HomeTemplate({
               </div>
               <h2 className="text-[clamp(1.5rem,2.8vw,2.75rem)] 2xl:text-[clamp(2rem,3.2vw,3.5rem)] font-black text-[#1A1A1A] leading-[1.1] uppercase wrap-break-word hyphens-auto mb-8">
                 O ESCRITÓRIO CONTÁBIL <br />
-                <span className="text-[#A89048]">LEXCON</span> <br />
-                <span className="text-[#A89048]">ASSESSORIA CONTÁBIL!</span>
+                <span className="text-[#A89048]">LEXCON ASSESSORIA CONTÁBIL!</span>
               </h2>
             </motion.div>
             <motion.div
@@ -1070,8 +1069,8 @@ export function HomeTemplate({
               <p className="text-[#444444] text-[clamp(1rem,1.1vw,1.125rem)] font-medium leading-relaxed max-w-2xl mx-auto">
                 Unimos tradição contábil à inovação tecnológica para entregar
                 resultados excepcionais. Nossa estrutura é moldada para a
-                agilidade do mundo moderno e a máxima eficiência da sua
-                contabilidade.
+                agilidade do mundo moderno e a máxima proteção dos seus
+                interesses.
               </p>
             </motion.div>
           </div>
