@@ -777,7 +777,7 @@ export default function FinanceiroPage() {
         {tab === 'Processos' && <ProcessosFinanceiroTab lawyerId={effectiveLawyerId} />}
 
         {/* ─── TAB: Cobrancas (Asaas) ─── */}
-        {tab === 'Cobrancas' && <CobrancasAsaasTab />}
+        {tab === 'Cobrancas' && <CobrancasAsaasTab lawyerId={effectiveLawyerId} />}
 
         {/* ─── TAB: Clientes (CRM ↔ Asaas) ─── */}
         {tab === 'Clientes' && <ClientesSyncTab />}
@@ -884,7 +884,7 @@ const STATUS_FILTERS = [
   { id: 'REFUNDED', label: 'Estornada' },
 ];
 
-function CobrancasAsaasTab() {
+function CobrancasAsaasTab({ lawyerId }: { lawyerId?: string }) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -918,16 +918,42 @@ function CobrancasAsaasTab() {
   const fetchCharges = useCallback(async () => {
     setLoading(true);
     try {
-      const params: any = { limit: '100' };
-      if (statusFilters.size === 1) params.status = Array.from(statusFilters)[0];
-      if (billingTypeFilter) params.billingType = billingTypeFilter;
-      if (dateFrom) params.dateGe = dateFrom;
-      if (dateTo) params.dateLe = dateTo;
-      const res = await api.get('/payment-gateway/charges/asaas', { params });
-      setData(res.data);
+      if (lawyerId) {
+        // Advogado: usar endpoint local filtrado por lawyer_id
+        const params: any = { limit: '100', lawyerId };
+        if (statusFilters.size === 1) params.status = Array.from(statusFilters)[0];
+        const res = await api.get('/payment-gateway/charges', { params });
+        // Transformar dados locais para o mesmo formato da API Asaas
+        const charges = (res.data || []).map((c: any) => ({
+          id: c.external_id,
+          value: Number(c.amount),
+          netValue: c.net_value ? Number(c.net_value) : null,
+          billingType: c.billing_type,
+          status: c.status,
+          dueDate: c.due_date,
+          paymentDate: c.payment_date || c.paid_at,
+          description: c.description,
+          customer: c.customer_external_id,
+          customerName: c.honorario_payment?.honorario?.legal_case?.lead?.name || '--',
+          externalReference: c.honorario_payment_id,
+          invoiceUrl: c.invoice_url,
+          bankSlipUrl: c.boleto_url,
+          _localId: c.id,
+        }));
+        setData({ data: charges, totalCount: charges.length });
+      } else {
+        // Admin: buscar direto do Asaas (todas as cobranças)
+        const params: any = { limit: '100' };
+        if (statusFilters.size === 1) params.status = Array.from(statusFilters)[0];
+        if (billingTypeFilter) params.billingType = billingTypeFilter;
+        if (dateFrom) params.dateGe = dateFrom;
+        if (dateTo) params.dateLe = dateTo;
+        const res = await api.get('/payment-gateway/charges/asaas', { params });
+        setData(res.data);
+      }
     } catch { setData(null); }
     finally { setLoading(false); }
-  }, [statusFilters, billingTypeFilter, dateFrom, dateTo]);
+  }, [statusFilters, billingTypeFilter, dateFrom, dateTo, lawyerId]);
 
   useEffect(() => { fetchCharges(); }, [fetchCharges]);
 

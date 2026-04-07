@@ -88,27 +88,35 @@ export class PaymentGatewayController {
     }
   }
 
-  /** Lista cobranças locais (armazenadas no sistema) */
+  /** Lista cobranças locais (armazenadas no sistema), filtráveis por advogado */
   @Get('charges')
   async listLocalCharges(
     @Query('status') status: string | undefined,
     @Query('limit') limit: string | undefined,
     @Query('offset') offset: string | undefined,
+    @Query('lawyerId') lawyerId: string | undefined,
     @Req() req: any,
   ) {
     const tenantId = req.user?.tenant_id;
+    const where: any = {
+      ...(tenantId ? { tenant_id: tenantId } : {}),
+      ...(status ? { status } : {}),
+    };
+    // Filtrar por advogado: cobranças vinculadas a processos do advogado
+    if (lawyerId) {
+      where.honorario_payment = {
+        honorario: { legal_case: { lawyer_id: lawyerId } },
+      };
+    }
     return this.prisma.paymentGatewayCharge.findMany({
-      where: {
-        ...(tenantId ? { tenant_id: tenantId } : {}),
-        ...(status ? { status } : {}),
-      },
+      where,
       include: {
         honorario_payment: {
           include: {
             honorario: {
               include: {
                 legal_case: {
-                  select: { id: true, case_number: true, lead: { select: { id: true, name: true, phone: true } } },
+                  select: { id: true, case_number: true, lawyer_id: true, lead: { select: { id: true, name: true, phone: true } } },
                 },
               },
             },
