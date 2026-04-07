@@ -39,8 +39,8 @@ export default function PortalPage() {
           <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/landing/logo_andre_lustosa_transparente.png"
-              alt="André Lustosa Advogados"
+              src="/landing/lexcon-logo-v2.png"
+              alt="Lexcon Assessoria Contábil"
               className="h-8 w-auto"
             />
             <div className="hidden sm:block w-px h-6 bg-white/20" />
