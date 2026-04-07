@@ -49,6 +49,9 @@ export const SENSITIVE_KEYS = new Set([
   'asaas_webhook_token',
   'nfse_api_key',
   'GDRIVE_SERVICE_ACCOUNT_B64',
+  'GDRIVE_OAUTH_CLIENT_ID',
+  'GDRIVE_OAUTH_CLIENT_SECRET',
+  'GDRIVE_OAUTH_REFRESH_TOKEN',
 ]);
 
 export function isSensitiveKey(key: string): boolean {

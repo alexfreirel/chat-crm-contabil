@@ -3,22 +3,33 @@ import {
   Get,
   Post,
   Body,
+  Query,
+  Res,
   UseGuards,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { GoogleDriveService } from './google-drive.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { encryptValue, isSensitiveKey } from '../common/utils/crypto.util';
 
 @UseGuards(JwtAuthGuard)
 @Controller('google-drive')
 export class GoogleDriveController {
+  private readonly logger = new Logger(GoogleDriveController.name);
+
   constructor(
     private readonly driveService: GoogleDriveService,
     private readonly prisma: PrismaService,
   ) {}
+
+  // ═══════════════════════════════════════════════════════════════
+  //  Config — Service Account + Root Folder
+  // ═══════════════════════════════════════════════════════════════
 
   /** GET /google-drive/config — status da configuração (acessível a todos autenticados) */
   @Get('config')
@@ -33,7 +44,6 @@ export class GoogleDriveController {
     @Body() body: { serviceAccountJson?: string; rootFolderId?: string },
   ) {
     if (body.serviceAccountJson) {
-      // Validar que é JSON válido
       try {
         const parsed = JSON.parse(body.serviceAccountJson);
         if (!parsed.client_email || !parsed.private_key) {
@@ -46,7 +56,6 @@ export class GoogleDriveController {
         throw new BadRequestException('JSON da service account inválido');
       }
 
-      // Converter para base64 e salvar
       const b64 = Buffer.from(body.serviceAccountJson).toString('base64');
       const encryptedValue = isSensitiveKey('GDRIVE_SERVICE_ACCOUNT_B64')
         ? encryptValue(b64)
@@ -75,5 +84,113 @@ export class GoogleDriveController {
   @Roles('ADMIN')
   testConnection() {
     return this.driveService.testConnection();
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  OAuth2 — Fluxo de autorização (como o n8n faz)
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * POST /google-drive/oauth/config — salvar Client ID e Secret do OAuth2
+   * O admin precisa criar credenciais OAuth2 no Google Cloud Console.
+   */
+  @Post('oauth/config')
+  @Roles('ADMIN')
+  async saveOAuthConfig(
+    @Body() body: { clientId: string; clientSecret: string; redirectUri?: string },
+  ) {
+    if (!body.clientId || !body.clientSecret) {
+      throw new BadRequestException('clientId e clientSecret são obrigatórios');
+    }
+
+    // Salvar Client ID (criptografado)
+    const encClientId = isSensitiveKey('GDRIVE_OAUTH_CLIENT_ID')
+      ? encryptValue(body.clientId)
+      : body.clientId;
+    await this.prisma.globalSetting.upsert({
+      where: { key: 'GDRIVE_OAUTH_CLIENT_ID' },
+      update: { value: encClientId },
+      create: { key: 'GDRIVE_OAUTH_CLIENT_ID', value: encClientId },
+    });
+
+    // Salvar Client Secret (criptografado)
+    const encSecret = isSensitiveKey('GDRIVE_OAUTH_CLIENT_SECRET')
+      ? encryptValue(body.clientSecret)
+      : body.clientSecret;
+    await this.prisma.globalSetting.upsert({
+      where: { key: 'GDRIVE_OAUTH_CLIENT_SECRET' },
+      update: { value: encSecret },
+      create: { key: 'GDRIVE_OAUTH_CLIENT_SECRET', value: encSecret },
+    });
+
+    // Salvar Redirect URI (opcional)
+    if (body.redirectUri) {
+      await this.prisma.globalSetting.upsert({
+        where: { key: 'GDRIVE_OAUTH_REDIRECT_URI' },
+        update: { value: body.redirectUri },
+        create: { key: 'GDRIVE_OAUTH_REDIRECT_URI', value: body.redirectUri },
+      });
+    }
+
+    this.logger.log('Configuração OAuth2 salva');
+    return { ok: true, message: 'Configuração OAuth2 salva com sucesso' };
+  }
+
+  /**
+   * GET /google-drive/oauth/url — gera URL de autorização do Google.
+   * O admin será redirecionado para essa URL para conectar sua conta.
+   */
+  @Get('oauth/url')
+  @Roles('ADMIN')
+  async getOAuthUrl() {
+    const url = await this.driveService.getOAuthUrl();
+    return { url };
+  }
+
+  /**
+   * GET /google-drive/oauth/callback — callback do Google após autorização.
+   * Recebe o code, troca por refresh_token, e redireciona pro frontend.
+   */
+  @Public()
+  @Get('oauth/callback')
+  async handleOAuthCallback(
+    @Query('code') code: string,
+    @Query('error') error: string,
+    @Res() res: Response,
+  ) {
+    const frontendUrl = process.env.FRONTEND_URL
+      || process.env.NEXT_PUBLIC_API_URL?.replace('/api', '')
+      || 'https://andrelustosaadvogados.com.br';
+
+    const settingsPath = '/atendimento/settings/google-drive';
+
+    if (error) {
+      this.logger.warn(`OAuth2 callback error: ${error}`);
+      res.redirect(`${frontendUrl}${settingsPath}?oauth=error&message=${encodeURIComponent(error)}`);
+      return;
+    }
+
+    if (!code) {
+      res.redirect(`${frontendUrl}${settingsPath}?oauth=error&message=${encodeURIComponent('Código de autorização ausente')}`);
+      return;
+    }
+
+    try {
+      const { email } = await this.driveService.handleOAuthCallback(code);
+      res.redirect(`${frontendUrl}${settingsPath}?oauth=success&email=${encodeURIComponent(email)}`);
+    } catch (err: any) {
+      this.logger.error(`OAuth2 callback falhou: ${err.message}`);
+      res.redirect(`${frontendUrl}${settingsPath}?oauth=error&message=${encodeURIComponent(err.message)}`);
+    }
+  }
+
+  /**
+   * POST /google-drive/oauth/disconnect — desconectar OAuth2.
+   */
+  @Post('oauth/disconnect')
+  @Roles('ADMIN')
+  async disconnectOAuth() {
+    await this.driveService.disconnectOAuth();
+    return { ok: true, message: 'OAuth2 desconectado' };
   }
 }

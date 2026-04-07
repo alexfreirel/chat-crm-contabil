@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { decryptValue } from '../common/utils/crypto.util';
+import { decryptValue, encryptValue, isSensitiveKey } from '../common/utils/crypto.util';
 import { google, drive_v3, docs_v1 } from 'googleapis';
 
 @Injectable()
@@ -9,7 +9,9 @@ export class GoogleDriveService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  // ── Helpers ────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  //  Helpers — Settings
+  // ═══════════════════════════════════════════════════════════════
 
   private async getSetting(key: string): Promise<string | null> {
     const row = await this.prisma.globalSetting.findUnique({ where: { key } });
@@ -17,38 +19,205 @@ export class GoogleDriveService {
     return decryptValue(row.value);
   }
 
-  /** Verifica se o Google Drive está configurado */
-  async isConfigured(): Promise<boolean> {
-    const b64 = await this.getSetting('GDRIVE_SERVICE_ACCOUNT_B64');
-    const rootFolder = await this.getSetting('GDRIVE_ROOT_FOLDER_ID');
-    return !!(b64 && rootFolder);
+  private async setSetting(key: string, value: string): Promise<void> {
+    const finalValue = isSensitiveKey(key) ? encryptValue(value) : value;
+    await this.prisma.globalSetting.upsert({
+      where: { key },
+      update: { value: finalValue },
+      create: { key, value: finalValue },
+    });
   }
 
-  /** Retorna status da configuração */
+  // ═══════════════════════════════════════════════════════════════
+  //  Config — status da integração
+  // ═══════════════════════════════════════════════════════════════
+
+  async isConfigured(): Promise<boolean> {
+    const rootFolder = await this.getSetting('GDRIVE_ROOT_FOLDER_ID');
+    if (!rootFolder) return false;
+
+    // OAuth2 é o método principal (funciona com arquivos)
+    const hasOAuth = !!(await this.getSetting('GDRIVE_OAUTH_REFRESH_TOKEN'));
+    // Service Account é o fallback (só pastas)
+    const hasSA = !!(await this.getSetting('GDRIVE_SERVICE_ACCOUNT_B64'));
+
+    return hasOAuth || hasSA;
+  }
+
   async getConfig() {
     const b64 = await this.getSetting('GDRIVE_SERVICE_ACCOUNT_B64');
     const rootFolder = await this.getSetting('GDRIVE_ROOT_FOLDER_ID');
+    const oauthClientId = await this.getSetting('GDRIVE_OAUTH_CLIENT_ID');
+    const oauthRefreshToken = await this.getSetting('GDRIVE_OAUTH_REFRESH_TOKEN');
+    const oauthUserEmail = await this.getSetting('GDRIVE_OAUTH_USER_EMAIL');
+
     return {
-      configured: !!(b64 && rootFolder),
+      configured: !!(rootFolder && (oauthRefreshToken || b64)),
       hasServiceAccount: !!b64,
       hasRootFolder: !!rootFolder,
       rootFolderId: rootFolder || null,
+      hasOAuth: !!oauthRefreshToken,
+      oauthConfigured: !!(oauthClientId),
+      oauthConnected: !!oauthRefreshToken,
+      oauthUserEmail: oauthUserEmail || null,
     };
   }
 
-  /** Cria cliente autenticado do Google (Drive + Docs) */
-  private async getAuth() {
+  // ═══════════════════════════════════════════════════════════════
+  //  OAuth2 — Fluxo de autorização (como o n8n faz)
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Cria OAuth2Client com as credenciais armazenadas no banco.
+   * O n8n usa exatamente esse padrão: OAuth2 Client ID/Secret + refresh token.
+   */
+  private async getOAuth2Client() {
+    const clientId = await this.getSetting('GDRIVE_OAUTH_CLIENT_ID');
+    const clientSecret = await this.getSetting('GDRIVE_OAUTH_CLIENT_SECRET');
+    const redirectUri = await this.getSetting('GDRIVE_OAUTH_REDIRECT_URI');
+
+    if (!clientId || !clientSecret) {
+      throw new Error('OAuth2 não configurado: GDRIVE_OAUTH_CLIENT_ID e GDRIVE_OAUTH_CLIENT_SECRET são necessários');
+    }
+
+    // Redirect URI: usar a configurada, ou derivar do NEXT_PUBLIC_API_URL, ou fallback
+    const defaultRedirectUri = process.env.NEXT_PUBLIC_API_URL
+      ? `${process.env.NEXT_PUBLIC_API_URL}/google-drive/oauth/callback`
+      : 'https://andrelustosaadvogados.com.br/api/google-drive/oauth/callback';
+
+    const oauth2Client = new google.auth.OAuth2(
+      clientId,
+      clientSecret,
+      redirectUri || defaultRedirectUri,
+    );
+
+    // Se temos refresh token, definir credenciais
+    const refreshToken = await this.getSetting('GDRIVE_OAUTH_REFRESH_TOKEN');
+    if (refreshToken) {
+      oauth2Client.setCredentials({ refresh_token: refreshToken });
+    }
+
+    return oauth2Client;
+  }
+
+  /**
+   * Gera URL de autorização para o admin conectar sua conta Google.
+   * Escopos idênticos aos que o n8n usa para Google Docs/Drive.
+   */
+  async getOAuthUrl(): Promise<string> {
+    const oauth2Client = await this.getOAuth2Client();
+
+    const url = oauth2Client.generateAuthUrl({
+      access_type: 'offline',       // Obter refresh_token
+      prompt: 'consent',            // Forçar tela de consentimento (garante refresh_token)
+      scope: [
+        'https://www.googleapis.com/auth/drive',
+        'https://www.googleapis.com/auth/documents',
+        'https://www.googleapis.com/auth/userinfo.email',
+      ],
+    });
+
+    this.logger.log('URL de autorização OAuth2 gerada');
+    return url;
+  }
+
+  /**
+   * Troca o código de autorização pelo refresh_token e armazena no banco.
+   * Este é o passo final do fluxo OAuth2 — após o redirect do Google.
+   */
+  async handleOAuthCallback(code: string): Promise<{ email: string }> {
+    const oauth2Client = await this.getOAuth2Client();
+
+    const { tokens } = await oauth2Client.getToken(code);
+    this.logger.log('Tokens OAuth2 obtidos com sucesso');
+
+    if (!tokens.refresh_token) {
+      this.logger.warn('Google não retornou refresh_token. O usuário pode precisar revogar acesso e reconectar.');
+      throw new Error('Nenhum refresh_token retornado. Vá em myaccount.google.com/permissions, remova o app, e tente novamente.');
+    }
+
+    // Salvar refresh token (criptografado)
+    await this.setSetting('GDRIVE_OAUTH_REFRESH_TOKEN', tokens.refresh_token);
+
+    // Buscar email do usuário autenticado
+    oauth2Client.setCredentials(tokens);
+    let email = 'desconhecido';
+    try {
+      const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client as any });
+      const userInfo = await oauth2.userinfo.get();
+      email = userInfo.data.email || 'desconhecido';
+      await this.setSetting('GDRIVE_OAUTH_USER_EMAIL', email);
+      this.logger.log(`OAuth2 conectado: ${email}`);
+    } catch (err: any) {
+      this.logger.warn(`Não foi possível obter email do usuário: ${err.message}`);
+    }
+
+    return { email };
+  }
+
+  /**
+   * Desconecta OAuth2 — remove tokens armazenados.
+   */
+  async disconnectOAuth(): Promise<void> {
+    // Tentar revogar token no Google
+    try {
+      const refreshToken = await this.getSetting('GDRIVE_OAUTH_REFRESH_TOKEN');
+      if (refreshToken) {
+        const oauth2Client = await this.getOAuth2Client();
+        await oauth2Client.revokeToken(refreshToken);
+        this.logger.log('Token OAuth2 revogado no Google');
+      }
+    } catch (err: any) {
+      this.logger.warn(`Falha ao revogar token: ${err.message}`);
+    }
+
+    // Remover do banco
+    await this.prisma.globalSetting.deleteMany({
+      where: { key: { in: ['GDRIVE_OAUTH_REFRESH_TOKEN', 'GDRIVE_OAUTH_USER_EMAIL'] } },
+    });
+
+    this.logger.log('OAuth2 desconectado');
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  Auth — escolhe OAuth2 (preferencial) ou Service Account
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Retorna autenticação para operações de ARQUIVO (criar docs, etc).
+   * Prioridade: OAuth2 > Service Account.
+   *
+   * OAuth2 usa o storage do USUÁRIO real (funciona).
+   * Service Account tem 0 bytes de storage (falha para arquivos desde Abr/2025).
+   */
+  private async getAuthForFiles(): Promise<any> {
+    // 1. Tentar OAuth2 (funciona para arquivos porque usa storage do usuário)
+    const refreshToken = await this.getSetting('GDRIVE_OAUTH_REFRESH_TOKEN');
+    if (refreshToken) {
+      this.logger.debug('Usando OAuth2 para autenticação (storage do usuário)');
+      return this.getOAuth2Client();
+    }
+
+    // 2. Fallback: Service Account (pode falhar para criação de arquivos)
+    this.logger.warn('OAuth2 não disponível. Usando Service Account (pode falhar para criação de arquivos).');
+    return this.getServiceAccountAuth();
+  }
+
+  /**
+   * Retorna auth do Service Account para operações de PASTA (sempre funciona).
+   * Pastas não consomem storage, então Service Account funciona.
+   */
+  private async getServiceAccountAuth() {
     const b64 = await this.getSetting('GDRIVE_SERVICE_ACCOUNT_B64');
-    if (!b64) throw new Error('Google Drive não configurado: GDRIVE_SERVICE_ACCOUNT_B64 ausente');
+    if (!b64) throw new Error('Service Account não configurada: GDRIVE_SERVICE_ACCOUNT_B64 ausente');
 
     const credentialsJson = Buffer.from(b64, 'base64').toString('utf8');
     const creds = JSON.parse(credentialsJson);
 
+    // IMPORTANTE: passar credenciais COMPLETAS (não só client_email + private_key)
+    // A Docs API precisa de project_id, client_id, token_uri, etc.
     const auth = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: creds.client_email,
-        private_key: creds.private_key,
-      },
+      credentials: creds,
       scopes: [
         'https://www.googleapis.com/auth/drive',
         'https://www.googleapis.com/auth/documents',
@@ -58,24 +227,53 @@ export class GoogleDriveService {
     return auth;
   }
 
+  /**
+   * Retorna melhor auth disponível (OAuth2 preferencial).
+   */
+  private async getAuth() {
+    const refreshToken = await this.getSetting('GDRIVE_OAUTH_REFRESH_TOKEN');
+    if (refreshToken) {
+      return this.getOAuth2Client();
+    }
+    return this.getServiceAccountAuth();
+  }
+
   private async getDriveClient(): Promise<drive_v3.Drive> {
-    const auth = await this.getAuth();
+    const auth = await this.getAuth() as any;
     return google.drive({ version: 'v3', auth });
   }
 
   private async getDocsClient(): Promise<docs_v1.Docs> {
-    const auth = await this.getAuth();
+    const auth = await this.getAuth() as any;
     return google.docs({ version: 'v1', auth });
   }
 
-  // ── Pastas ─────────────────────────────────────────────────
+  /**
+   * Drive client autenticado com OAuth2 (para criar arquivos).
+   * Cai no Service Account se OAuth2 não disponível.
+   */
+  private async getDriveClientForFiles(): Promise<drive_v3.Drive> {
+    const auth = await this.getAuthForFiles() as any;
+    return google.drive({ version: 'v3', auth });
+  }
+
+  /**
+   * Docs client autenticado com OAuth2.
+   */
+  private async getDocsClientForFiles(): Promise<docs_v1.Docs> {
+    const auth = await this.getAuthForFiles() as any;
+    return google.docs({ version: 'v1', auth });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  Pastas — Service Account funciona (pastas não usam storage)
+  // ═══════════════════════════════════════════════════════════════
 
   /**
    * Cria ou retorna a pasta do Lead no Google Drive.
    * Formato: "Nome do Lead (últimos 4 dígitos do ID)"
    */
   async ensureLeadFolder(leadId: string, leadName: string): Promise<string> {
-    // Verificar se já existe no banco
     const lead = await this.prisma.lead.findUnique({
       where: { id: leadId },
       select: { google_drive_folder_id: true },
@@ -89,7 +287,7 @@ export class GoogleDriveService {
     const suffix = leadId.slice(-4);
     const folderName = `${leadName} (${suffix})`;
 
-    // Verificar se pasta já existe no Drive (por nome)
+    // Verificar se pasta já existe
     const existing = await drive.files.list({
       q: `name='${folderName.replace(/'/g, "\\'")}' and '${rootFolder}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
       fields: 'files(id,name)',
@@ -109,10 +307,9 @@ export class GoogleDriveService {
         fields: 'id',
       });
       folderId = res.data.id!;
-      this.logger.log(`Pasta do lead criada no Drive: ${folderName} (${folderId})`);
+      this.logger.log(`Pasta do lead criada: ${folderName} (${folderId})`);
     }
 
-    // Salvar no banco
     await this.prisma.lead.update({
       where: { id: leadId },
       data: { google_drive_folder_id: folderId },
@@ -123,21 +320,18 @@ export class GoogleDriveService {
 
   /**
    * Cria ou retorna a subpasta do caso dentro da pasta do Lead.
-   * Formato: "Área Jurídica - Número do Caso"
    */
   async ensureCaseFolder(
     caseId: string,
     leadId: string,
     label: string,
   ): Promise<string> {
-    // Verificar se já existe no banco
     const legalCase = await this.prisma.legalCase.findUnique({
       where: { id: caseId },
       select: { google_drive_folder_id: true },
     });
     if (legalCase?.google_drive_folder_id) return legalCase.google_drive_folder_id;
 
-    // Garantir que a pasta do lead existe
     const lead = await this.prisma.lead.findUnique({
       where: { id: leadId },
       select: { name: true },
@@ -146,7 +340,6 @@ export class GoogleDriveService {
 
     const drive = await this.getDriveClient();
 
-    // Verificar se subpasta já existe
     const existing = await drive.files.list({
       q: `name='${label.replace(/'/g, "\\'")}' and '${leadFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
       fields: 'files(id,name)',
@@ -166,10 +359,9 @@ export class GoogleDriveService {
         fields: 'id',
       });
       folderId = res.data.id!;
-      this.logger.log(`Pasta do caso criada no Drive: ${label} (${folderId})`);
+      this.logger.log(`Pasta do caso criada: ${label} (${folderId})`);
     }
 
-    // Salvar no banco
     await this.prisma.legalCase.update({
       where: { id: caseId },
       data: { google_drive_folder_id: folderId },
@@ -178,106 +370,76 @@ export class GoogleDriveService {
     return folderId;
   }
 
-  // ── Google Docs ────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  //  Google Docs — Criação via OAuth2 (storage do USUÁRIO)
+  // ═══════════════════════════════════════════════════════════════
 
   /**
    * Cria um Google Doc dentro da pasta especificada.
    *
-   * Estratégia: usa a Docs API (documents.create) para criar o doc e
-   * depois move para a pasta desejada via Drive API (files.update).
-   * Isso evita o erro "storageQuotaExceeded" que ocorre quando se usa
-   * drive.files.create com mimeType Google Doc em service accounts.
+   * Estratégia (idêntica ao n8n):
+   * - Usa drive.files.create com mimeType Google Docs e conversão
+   * - Autenticado via OAuth2 → arquivo pertence ao USUÁRIO (tem storage)
+   * - Service Accounts falhavam com storageQuotaExceeded desde Abr/2025
+   *   porque têm 0 bytes de storage
    *
-   * Após criação, compartilha com "anyone with link" para que
-   * o iframe embed funcione e os usuários do escritório possam editar.
+   * Após criação, compartilha com "anyone with link" para embed funcionar.
    */
   async createDoc(
     title: string,
     folderId: string,
     initialHtml?: string,
   ): Promise<{ docId: string; docUrl: string }> {
-    const docs = await this.getDocsClient();
-    const drive = await this.getDriveClient();
+    const drive = await this.getDriveClientForFiles();
 
     this.logger.log(`Criando Google Doc: "${title}" na pasta ${folderId}...`);
 
-    // 1. Criar doc via Docs API (cria na raiz do service account)
-    let docId: string;
-    try {
-      const docRes = await docs.documents.create({
-        requestBody: { title },
-      });
-      docId = docRes.data.documentId!;
-      this.logger.log(`Doc criado via Docs API: ${docId}`);
-    } catch (docsErr: any) {
-      const errDetails = docsErr?.response?.data?.error || docsErr.message;
-      this.logger.error(`Erro ao criar via Docs API: ${JSON.stringify(errDetails)}`);
+    // Criar doc via Drive API com conversão de HTML → Google Docs
+    // Este é o mesmo método que o n8n usa internamente
+    const { Readable } = await import('stream');
+    const htmlContent = initialHtml || '<html><body><p></p></body></html>';
 
-      // Fallback: tentar via Drive API (upload de conteúdo vazio com conversão)
-      this.logger.log(`Tentando fallback via Drive API com media upload...`);
-      try {
-        const { Readable } = await import('stream');
-        const driveRes = await drive.files.create({
-          requestBody: {
-            name: title,
-            parents: [folderId],
-            mimeType: 'application/vnd.google-apps.document',
-          },
-          media: {
-            mimeType: 'text/html',
-            body: Readable.from(initialHtml || '<html><body><p></p></body></html>'),
-          },
-          fields: 'id,webViewLink',
-        });
-        docId = driveRes.data.id!;
-        const docUrl = driveRes.data.webViewLink || `https://docs.google.com/document/d/${docId}/edit`;
-        this.logger.log(`Doc criado via Drive upload fallback: ${docId}`);
+    const res = await drive.files.create({
+      requestBody: {
+        name: title,
+        parents: [folderId],
+        mimeType: 'application/vnd.google-apps.document',
+      },
+      media: {
+        mimeType: 'text/html',
+        body: Readable.from(htmlContent),
+      },
+      fields: 'id,webViewLink',
+    });
 
-        // Compartilhar
-        await this.shareDocPublicly(drive, docId);
+    const docId = res.data.id!;
+    const docUrl = res.data.webViewLink || `https://docs.google.com/document/d/${docId}/edit`;
 
-        return { docId, docUrl };
-      } catch (driveErr: any) {
-        const drvDetails = driveErr?.response?.data?.error || driveErr.message;
-        this.logger.error(`Fallback Drive API também falhou: ${JSON.stringify(drvDetails)}`);
-        throw new Error(`Falha ao criar Google Doc: ${JSON.stringify(drvDetails)}`);
-      }
-    }
+    this.logger.log(`Google Doc criado: ${docId} - ${docUrl}`);
 
-    // 2. Mover doc da raiz do service account para a pasta desejada
-    try {
-      const fileInfo = await drive.files.get({
-        fileId: docId,
-        fields: 'parents',
-      });
-      const previousParents = (fileInfo.data.parents || []).join(',');
-
-      await drive.files.update({
-        fileId: docId,
-        addParents: folderId,
-        removeParents: previousParents,
-        fields: 'id,webViewLink',
-      });
-      this.logger.log(`Doc ${docId} movido para pasta ${folderId}`);
-    } catch (moveErr: any) {
-      this.logger.warn(`Não foi possível mover doc para pasta: ${moveErr.message}. Doc ficará na raiz.`);
-    }
-
-    const docUrl = `https://docs.google.com/document/d/${docId}/edit`;
-
-    // 3. Compartilhar com "anyone with link"
+    // Compartilhar com "anyone with link" para iframe embed funcionar
     await this.shareDocPublicly(drive, docId);
 
-    // 4. Se há conteúdo HTML inicial, inserir via Docs API
-    if (initialHtml) {
-      try {
-        await this.insertHtmlContent(docId, initialHtml);
-      } catch (contentErr: any) {
-        this.logger.warn(`Doc criado mas falha ao inserir conteúdo: ${contentErr.message}`);
+    // Se estamos usando OAuth2, também compartilhar com o service account
+    // para que operações de leitura/sync funcionem com ambas auths
+    try {
+      const b64 = await this.getSetting('GDRIVE_SERVICE_ACCOUNT_B64');
+      if (b64) {
+        const creds = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+        if (creds.client_email) {
+          await drive.permissions.create({
+            fileId: docId,
+            requestBody: { type: 'user', role: 'writer', emailAddress: creds.client_email },
+            sendNotificationEmail: false,
+          });
+          this.logger.debug(`Doc compartilhado com service account: ${creds.client_email}`);
+        }
       }
+    } catch (err: any) {
+      this.logger.debug(`Não foi possível compartilhar com SA: ${err.message}`);
     }
 
-    this.logger.log(`Google Doc finalizado: "${title}" (${docId}) - URL: ${docUrl}`);
+    this.logger.log(`Google Doc finalizado: "${title}" (${docId})`);
     return { docId, docUrl };
   }
 
@@ -292,7 +454,7 @@ export class GoogleDriveService {
       });
       this.logger.log(`Doc ${docId} compartilhado (anyone/writer)`);
     } catch (shareErr: any) {
-      this.logger.warn(`Não conseguiu writer: ${shareErr.message}. Tentando reader...`);
+      this.logger.warn(`Writer falhou: ${shareErr.message}. Tentando reader...`);
       try {
         await drive.permissions.create({
           fileId: docId,
@@ -300,48 +462,14 @@ export class GoogleDriveService {
         });
         this.logger.log(`Doc ${docId} compartilhado (anyone/reader - fallback)`);
       } catch (shareErr2: any) {
-        this.logger.warn(`Falha ao compartilhar doc ${docId}: ${shareErr2.message}`);
+        this.logger.warn(`Compartilhamento falhou: ${shareErr2.message}`);
       }
     }
   }
 
-  /**
-   * Insere conteúdo de texto no Google Doc.
-   * Converte HTML básico para requests da Docs API.
-   */
-  private async insertHtmlContent(docId: string, html: string) {
-    const docs = await this.getDocsClient();
-
-    // Extrair texto puro do HTML (strip tags simples)
-    const plainText = html
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/p>/gi, '\n\n')
-      .replace(/<\/h[1-6]>/gi, '\n\n')
-      .replace(/<\/li>/gi, '\n')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .trim();
-
-    if (!plainText) return;
-
-    await docs.documents.batchUpdate({
-      documentId: docId,
-      requestBody: {
-        requests: [
-          {
-            insertText: {
-              location: { index: 1 },
-              text: plainText,
-            },
-          },
-        ],
-      },
-    });
-  }
+  // ═══════════════════════════════════════════════════════════════
+  //  Google Docs — Leitura, Exportação, Sync
+  // ═══════════════════════════════════════════════════════════════
 
   /**
    * Lê o conteúdo de um Google Doc e retorna como texto.
@@ -353,7 +481,6 @@ export class GoogleDriveService {
     const body = doc.data.body;
     if (!body?.content) return '';
 
-    // Extrair texto de todos os elementos estruturais
     let text = '';
     for (const element of body.content) {
       if (element.paragraph) {
@@ -405,33 +532,28 @@ export class GoogleDriveService {
     this.logger.log(`Compartilhado ${fileId} com ${email} (${role})`);
   }
 
-  /**
-   * Garante que uma pasta ou arquivo seja acessível por "anyone with link".
-   * Útil quando o service account cria recursos que precisam ser visíveis no iframe.
-   */
-  private async ensureAnyoneAccess(fileId: string, role: 'reader' | 'writer' = 'writer'): Promise<void> {
-    try {
-      const drive = await this.getDriveClient();
-      await drive.permissions.create({
-        fileId,
-        requestBody: { type: 'anyone', role },
-      });
-    } catch (err: any) {
-      this.logger.warn(`Não foi possível definir acesso público para ${fileId}: ${err.message}`);
-    }
-  }
+  // ═══════════════════════════════════════════════════════════════
+  //  Teste de Conexão
+  // ═══════════════════════════════════════════════════════════════
 
-  // ── Teste de Conexão ───────────────────────────────────────
-
-  /**
-   * Testa a conexão com Google Drive: lê a pasta raiz e tenta criar/excluir um doc de teste.
-   */
   async testConnection(): Promise<{ ok: boolean; message: string; folderName?: string; details?: string[] }> {
     const details: string[] = [];
     try {
       const rootFolder = await this.getSetting('GDRIVE_ROOT_FOLDER_ID');
       if (!rootFolder) {
         return { ok: false, message: 'GDRIVE_ROOT_FOLDER_ID não configurado', details };
+      }
+
+      // Determinar método de autenticação em uso
+      const hasOAuth = !!(await this.getSetting('GDRIVE_OAUTH_REFRESH_TOKEN'));
+      const hasSA = !!(await this.getSetting('GDRIVE_SERVICE_ACCOUNT_B64'));
+
+      if (hasOAuth) {
+        details.push('Método de autenticação: OAuth2 (conta do usuário)');
+      } else if (hasSA) {
+        details.push('Método de autenticação: Service Account (limitado — sem criação de arquivos)');
+      } else {
+        return { ok: false, message: 'Nenhuma autenticação configurada (OAuth2 ou Service Account)', details };
       }
 
       const drive = await this.getDriveClient();
@@ -448,56 +570,62 @@ export class GoogleDriveService {
       }
       details.push(`✓ Pasta raiz: ${res.data.name}`);
 
-      // 2. Testar criação de Google Doc (via Docs API — mesmo método usado em produção)
-      details.push('Testando criação de Google Doc (Docs API)...');
+      // 2. Testar criação de Google Doc
+      details.push('Testando criação de Google Doc...');
       try {
-        const docs = await this.getDocsClient();
-        const docRes = await docs.documents.create({
-          requestBody: { title: '_teste_conexao_deletar' },
-        });
-        const testDocId = docRes.data.documentId;
-        details.push(`✓ Doc criado via Docs API: ${testDocId}`);
+        const driveForFiles = await this.getDriveClientForFiles();
+        const { Readable } = await import('stream');
 
-        // Mover para pasta raiz
-        details.push('Testando mover doc para pasta raiz...');
-        try {
-          const fileInfo = await drive.files.get({ fileId: testDocId!, fields: 'parents' });
-          const prevParents = (fileInfo.data.parents || []).join(',');
-          await drive.files.update({
-            fileId: testDocId!,
-            addParents: rootFolder,
-            removeParents: prevParents,
-          });
-          details.push('✓ Doc movido para pasta raiz');
-        } catch (moveErr: any) {
-          details.push(`⚠ Mover falhou: ${moveErr.message}`);
-        }
+        const docRes = await driveForFiles.files.create({
+          requestBody: {
+            name: '_teste_conexao_deletar',
+            parents: [rootFolder],
+            mimeType: 'application/vnd.google-apps.document',
+          },
+          media: {
+            mimeType: 'text/html',
+            body: Readable.from('<html><body><p>Teste de conexão</p></body></html>'),
+          },
+          fields: 'id,webViewLink',
+        });
+
+        const testDocId = docRes.data.id!;
+        details.push(`✓ Doc criado: ${testDocId}`);
 
         // 3. Testar compartilhamento
         details.push('Testando compartilhamento (anyone/writer)...');
         try {
-          await drive.permissions.create({
-            fileId: testDocId!,
+          await driveForFiles.permissions.create({
+            fileId: testDocId,
             requestBody: { type: 'anyone', role: 'writer' },
           });
           details.push('✓ Compartilhamento OK');
         } catch (shareErr: any) {
-          details.push(`⚠ Compartilhamento falhou: ${shareErr.message}. Docs podem não ser visíveis no iframe.`);
+          details.push(`⚠ Compartilhamento falhou: ${shareErr.message}`);
         }
 
-        // 4. Limpar — excluir doc de teste
+        // 4. Limpar
         try {
-          await drive.files.delete({ fileId: testDocId! });
+          await driveForFiles.files.delete({ fileId: testDocId });
           details.push('✓ Doc de teste excluído');
         } catch (delErr: any) {
           details.push(`⚠ Não foi possível excluir doc de teste: ${delErr.message}`);
         }
       } catch (createErr: any) {
         const errData = createErr?.response?.data?.error || createErr.message;
-        details.push(`✗ Falha ao criar Doc: ${JSON.stringify(errData)}`);
+        const errMsg = typeof errData === 'string' ? errData : JSON.stringify(errData);
+        details.push(`✗ Falha ao criar Doc: ${errMsg}`);
+
+        if (errMsg.includes('storageQuota') && !hasOAuth) {
+          details.push('');
+          details.push('⚠ DIAGNÓSTICO: Service Accounts têm 0 bytes de storage desde Abr/2025.');
+          details.push('⚠ Para criar arquivos, configure OAuth2 (mesma forma que o n8n funciona).');
+          details.push('⚠ Vá em "Conectar com Google" acima para autorizar via OAuth2.');
+        }
+
         return {
           ok: false,
-          message: `Pasta raiz OK, mas falha ao criar Google Doc: ${JSON.stringify(errData)}`,
+          message: `Pasta raiz OK, mas falha ao criar Google Doc: ${errMsg}`,
           folderName: res.data.name || undefined,
           details,
         };
@@ -511,9 +639,10 @@ export class GoogleDriveService {
       };
     } catch (err: any) {
       const errDetails = err?.response?.data?.error || err.message;
-      this.logger.error(`Teste de conexão Google Drive falhou: ${JSON.stringify(errDetails)}`);
-      details.push(`✗ Erro: ${JSON.stringify(errDetails)}`);
-      return { ok: false, message: `Erro: ${JSON.stringify(errDetails)}`, details };
+      const errMsg = typeof errDetails === 'string' ? errDetails : JSON.stringify(errDetails);
+      this.logger.error(`Teste de conexão falhou: ${errMsg}`);
+      details.push(`✗ Erro: ${errMsg}`);
+      return { ok: false, message: `Erro: ${errMsg}`, details };
     }
   }
 }
