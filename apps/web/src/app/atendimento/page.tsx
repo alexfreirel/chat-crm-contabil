@@ -236,10 +236,10 @@ export default function Dashboard() {
   const touchStartYRef = useRef<number>(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  // Unread message counts per conversation (persisted in sessionStorage to survive same-page navigation)
+  // Unread message counts per conversation (only tracks new messages arriving via socket during this session)
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>(() => {
-    if (typeof window === 'undefined') return {};
-    try { return JSON.parse(sessionStorage.getItem('unreadCounts') || '{}'); } catch { return {}; }
+    if (typeof window !== 'undefined') try { sessionStorage.removeItem('unreadCounts'); } catch {} // limpar dados antigos
+    return {};
   });
   // Current user ID decoded from JWT (lazy init, never changes)
   const [currentUserId] = useState<string | null>(() => {
@@ -330,9 +330,8 @@ export default function Dashboard() {
     return () => document.removeEventListener('mousedown', handler);
   }, [mobileMoreOpen]);
 
-  // Persist unreadCounts + broadcast total to Sidebar
+  // Broadcast unread total to Sidebar (no sessionStorage persistence to avoid stale counts)
   useEffect(() => {
-    try { sessionStorage.setItem('unreadCounts', JSON.stringify(unreadCounts)); } catch {}
     const total = Object.values(unreadCounts).reduce((sum, n) => sum + n, 0);
     window.dispatchEvent(new CustomEvent('unread_count_update', { detail: { total } }));
   }, [unreadCounts]);
@@ -869,20 +868,6 @@ export default function Dashboard() {
     fetchPendingTransfers(true);
     fetchSpecialists(true);
   }, [fetchConversations, fetchAdiadoConversations, fetchPendingTransfers, selectedInboxId, clientMode]);
-
-  // Sincronizar unreadCounts com o banco de dados ao carregar
-  useEffect(() => {
-    let cancelled = false;
-    api.get('/conversations/unread-counts')
-      .then(res => {
-        if (!cancelled && res.data) {
-          setUnreadCounts(res.data);
-        }
-      })
-      .catch(() => {}); // silencioso se falhar
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Polling de transferências pendentes (30s) — resiliência caso o socket perca o evento
   useEffect(() => {
