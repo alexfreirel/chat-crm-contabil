@@ -101,13 +101,17 @@ export default function NewContactModal({ onClose, onCreated }: {
         instance_name: 'whatsapp',
       });
 
-      // Atribuir atendente (quem cadastrou), advogado e área jurídica na conversa
-      const convUpdate: any = {};
-      if (userId) convUpdate.assigned_user_id = userId;
-      if (selectedLawyerId) convUpdate.assigned_lawyer_id = selectedLawyerId;
-      if (legalArea) convUpdate.legal_area = legalArea;
-      if (Object.keys(convUpdate).length > 0) {
-        await api.patch(`/conversations/${convR.data.id}/assign`, convUpdate).catch(() => {});
+      // Atribuir atendente (quem cadastrou)
+      await api.patch(`/conversations/${convR.data.id}/assign`).catch(() => {});
+
+      // Atribuir advogado responsável
+      if (selectedLawyerId) {
+        await api.patch(`/conversations/${convR.data.id}/assign-lawyer`, { lawyerId: selectedLawyerId }).catch(() => {});
+      }
+
+      // Definir área jurídica
+      if (legalArea) {
+        await api.patch(`/conversations/${convR.data.id}/legal-area`, { legalArea }).catch(() => {});
       }
 
       onCreated(convR.data.id);
