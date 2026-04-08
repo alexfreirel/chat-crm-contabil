@@ -497,7 +497,7 @@ export class FinanceiroService {
       honorarioWhere.honorario = { ...honorarioWhere.honorario, tenant_id: tenantId };
     }
 
-    const [totalRevenue, totalExpenses, totalReceivable, totalOverdue] = await Promise.all([
+    const [totalRevenue, totalExpenses, totalPayable, totalReceivable, totalOverdue] = await Promise.all([
       // Receita efetiva (regime de caixa: só PAGO)
       this.prisma.financialTransaction.aggregate({
         where: { ...where, type: 'RECEITA', status: 'PAGO' },
@@ -506,6 +506,11 @@ export class FinanceiroService {
       // Despesas pagas
       this.prisma.financialTransaction.aggregate({
         where: { ...where, type: 'DESPESA', status: 'PAGO' },
+        _sum: { amount: true },
+      }),
+      // Contas a pagar (despesas PENDENTE)
+      this.prisma.financialTransaction.aggregate({
+        where: { ...where, type: 'DESPESA', status: 'PENDENTE' },
         _sum: { amount: true },
       }),
       // A receber: parcelas de honorários pendentes (não transações)
@@ -525,12 +530,14 @@ export class FinanceiroService {
 
     const revenue = Number(totalRevenue._sum.amount || 0);
     const expenses = Number(totalExpenses._sum.amount || 0);
+    const payable = Number(totalPayable._sum.amount || 0);
     const receivable = Number(totalReceivable._sum.amount || 0);
     const overdue = Number(totalOverdue._sum.amount || 0);
 
     return {
       totalRevenue: revenue,
       totalExpenses: expenses,
+      totalPayable: payable,
       totalReceivable: receivable,
       totalOverdue: overdue,
       balance: revenue - expenses,

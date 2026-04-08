@@ -18,6 +18,7 @@ import { useRole } from '@/lib/useRole';
 interface FinancialSummary {
   totalRevenue: number;
   totalExpenses: number;
+  totalPayable: number;
   totalReceivable: number;
   totalOverdue: number;
   balance: number;
@@ -851,14 +852,21 @@ export default function FinanceiroPage() {
               />
             </div>
 
-            {/* KPI Grid — Despesas */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {/* KPI Grid — Despesas e Saldo */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <KpiCard
                 icon={TrendingDown}
                 label="Despesas Pagas"
                 value={fmt(summary.totalExpenses)}
                 color="text-orange-400"
                 bgColor="bg-orange-500/15"
+              />
+              <KpiCard
+                icon={Clock}
+                label="Contas a Pagar"
+                value={fmt(summary.totalPayable)}
+                color="text-rose-400"
+                bgColor="bg-rose-500/15"
               />
               <KpiCard
                 icon={Receipt}
@@ -870,7 +878,7 @@ export default function FinanceiroPage() {
               <KpiCard
                 icon={BarChart3}
                 label="Balanço Projetado"
-                value={fmt(summary.totalRevenue + summary.totalReceivable - summary.totalExpenses)}
+                value={fmt(summary.totalRevenue + summary.totalReceivable - summary.totalExpenses - summary.totalPayable)}
                 color="text-cyan-400"
                 bgColor="bg-cyan-500/15"
               />
