@@ -2553,6 +2553,23 @@ function CadastrarProcessoModal({
   const [newLeadPhone, setNewLeadPhone] = useState('');
   const [newLeadName, setNewLeadName] = useState('');
   const [newLeadEmail, setNewLeadEmail] = useState('');
+  const [phoneCheckResult, setPhoneCheckResult] = useState<{ exists: boolean; lead?: { id: string; name: string | null; phone: string } } | null>(null);
+  const [checkingPhone, setCheckingPhone] = useState(false);
+  const phoneCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const checkPhoneExists = (phone: string) => {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 8) { setPhoneCheckResult(null); return; }
+    if (phoneCheckTimer.current) clearTimeout(phoneCheckTimer.current);
+    phoneCheckTimer.current = setTimeout(async () => {
+      setCheckingPhone(true);
+      try {
+        const res = await api.get('/leads/check-phone', { params: { phone: digits } });
+        setPhoneCheckResult(res.data);
+      } catch { setPhoneCheckResult(null); }
+      finally { setCheckingPhone(false); }
+    }, 500);
+  };
 
   // ── Processo ──────────────────────────────────────────────────
   const [caseNumber, setCaseNumber] = useState('');
@@ -2613,6 +2630,7 @@ function CadastrarProcessoModal({
     if (!caseNumber.trim()) { setError('Informe o número do processo.'); return; }
     if (leadMode === 'existing' && !selectedLead) { setError('Selecione o cliente ou escolha "Novo cliente".'); return; }
     if (leadMode === 'new' && !newLeadPhone.replace(/\D/g,'')) { setError('Informe o telefone do novo cliente.'); return; }
+    if (leadMode === 'new' && phoneCheckResult?.exists) { setError('Este telefone já está cadastrado. Clique em "Usar este contato" para vincular ao cliente existente.'); return; }
 
     setSaving(true);
     setError('');
@@ -2775,11 +2793,38 @@ function CadastrarProcessoModal({
                     <input
                       type="tel"
                       value={newLeadPhone}
-                      onChange={e => setNewLeadPhone(e.target.value)}
-                      className={inputCls}
+                      onChange={e => { setNewLeadPhone(e.target.value); checkPhoneExists(e.target.value); }}
+                      className={`${inputCls} ${phoneCheckResult?.exists ? 'border-amber-500 ring-1 ring-amber-500/30' : ''}`}
                       placeholder="(00) 00000-0000"
                       autoFocus
                     />
+                    {checkingPhone && <p className="text-[10px] text-muted-foreground mt-1">Verificando...</p>}
+                    {phoneCheckResult?.exists && phoneCheckResult.lead && (
+                      <div className="mt-2 p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-2">
+                        <p className="text-[11px] text-amber-400 font-bold">⚠️ Este telefone já está cadastrado!</p>
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center text-primary text-[10px] font-bold">
+                            {phoneCheckResult.lead.name?.[0]?.toUpperCase() || '?'}
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-foreground">{phoneCheckResult.lead.name || 'Sem nome'}</p>
+                            <p className="text-[10px] text-muted-foreground">{phoneCheckResult.lead.phone}</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLeadMode('existing');
+                            setSelectedLead(phoneCheckResult.lead || null);
+                            setNewLeadPhone('');
+                            setPhoneCheckResult(null);
+                          }}
+                          className="w-full px-3 py-2 text-[11px] font-bold text-primary border border-primary/30 rounded-lg hover:bg-primary/10 transition-colors"
+                        >
+                          Usar este contato
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className={labelCls}>Nome do Cliente</label>
