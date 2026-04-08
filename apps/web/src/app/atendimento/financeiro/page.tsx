@@ -160,10 +160,12 @@ function StatusBadge({ status }: { status: string }) {
 /* ──────────────────────────────────────────────────────────────
    Quick-Add Form
 ────────────────────────────────────────────────────────────── */
-function QuickAddForm({ type, categories, onCreated }: {
+function QuickAddForm({ type, categories, onCreated, onManageCategories, allDbCategories }: {
   type: 'RECEITA' | 'DESPESA';
   categories: string[];
   onCreated: () => void;
+  onManageCategories?: () => void;
+  allDbCategories?: { id: string; type: string; name: string; icon: string | null }[];
 }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -171,8 +173,37 @@ function QuickAddForm({ type, categories, onCreated }: {
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState(categories[0]);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [showCatManager, setShowCatManager] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [savingCat, setSavingCat] = useState(false);
+  const [deletingCatId, setDeletingCatId] = useState<string | null>(null);
 
   const reset = () => { setDesc(''); setAmount(''); setCategory(categories[0]); setDate(new Date().toISOString().slice(0, 10)); };
+
+  const handleAddCategory = async () => {
+    if (!newCatName.trim()) return;
+    setSavingCat(true);
+    try {
+      await api.post('/financeiro/categories', { type, name: newCatName.trim() });
+      showSuccess(`Categoria "${newCatName.trim()}" adicionada`);
+      setNewCatName('');
+      onManageCategories?.();
+    } catch { showError('Erro ao criar categoria'); }
+    finally { setSavingCat(false); }
+  };
+
+  const handleDeleteCategory = async (catId: string) => {
+    if (!confirm('Excluir esta categoria?')) return;
+    setDeletingCatId(catId);
+    try {
+      await api.delete(`/financeiro/categories/${catId}`);
+      showSuccess('Categoria removida');
+      onManageCategories?.();
+    } catch { showError('Erro ao excluir'); }
+    finally { setDeletingCatId(null); }
+  };
+
+  const typeCats = (allDbCategories || []).filter(c => c.type === type);
 
   const handleSubmit = async () => {
     if (!desc.trim() || !amount) { showError('Preencha descricao e valor'); return; }
@@ -248,7 +279,13 @@ function QuickAddForm({ type, categories, onCreated }: {
           className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
       </div>
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => setShowCatManager(!showCatManager)}
+          className="text-[10px] text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+        >
+          <Pencil size={10} /> Gerenciar categorias
+        </button>
         <button
           onClick={handleSubmit}
           disabled={saving}
@@ -258,6 +295,38 @@ function QuickAddForm({ type, categories, onCreated }: {
           Salvar
         </button>
       </div>
+
+      {/* Gerenciar categorias */}
+      {showCatManager && (
+        <div className="border border-border rounded-xl p-4 space-y-3 bg-accent/5">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+            Categorias de {type === 'DESPESA' ? 'Despesas' : 'Receitas'}
+          </p>
+          <div className="space-y-1.5">
+            {typeCats.map(c => (
+              <div key={c.id} className="flex items-center justify-between px-3 py-2 bg-background border border-border rounded-lg">
+                <span className="text-xs text-foreground">{c.name}</span>
+                <button onClick={() => handleDeleteCategory(c.id)} disabled={deletingCatId === c.id}
+                  className="text-red-400 hover:bg-red-500/10 p-1 rounded transition-colors disabled:opacity-50">
+                  {deletingCatId === c.id ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
+                </button>
+              </div>
+            ))}
+            {typeCats.length === 0 && (
+              <p className="text-[10px] text-muted-foreground italic px-3 py-2">Nenhuma categoria cadastrada no banco</p>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <input value={newCatName} onChange={e => setNewCatName(e.target.value)} placeholder="Nova categoria..."
+              onKeyDown={e => e.key === 'Enter' && handleAddCategory()}
+              className="flex-1 px-3 py-2 text-xs bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40" />
+            <button onClick={handleAddCategory} disabled={savingCat || !newCatName.trim()}
+              className="px-3 py-2 text-xs bg-primary text-primary-foreground rounded-lg font-semibold hover:opacity-90 disabled:opacity-50 flex items-center gap-1">
+              {savingCat ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />} Adicionar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -436,6 +505,7 @@ export default function FinanceiroPage() {
   const [overdue, setOverdue] = useState<Transaction[]>([]);
   const [lawyers, setLawyers] = useState<{ id: string; name: string }[]>([]);
   const [filterLawyerId, setFilterLawyerId] = useState('');
+  const [dbCategories, setDbCategories] = useState<{ id: string; type: string; name: string; icon: string | null }[]>([]);
   const { isAdmin, isFinanceiro, userId } = useRole();
 
   /* ─── Auth guard + saldo Asaas + advogados ─── */
@@ -443,7 +513,7 @@ export default function FinanceiroPage() {
     const token = localStorage.getItem('token');
     if (!token) { router.push('/atendimento/login'); return; }
     api.get('/payment-gateway/balance').then(r => setAsaasBalance(r.data?.balance ?? r.data?.value ?? null)).catch(() => {});
-    // Lista de advogados (para filtro — só admin/financeiro)
+    api.get('/financeiro/categories').then(r => setDbCategories(r.data || [])).catch(() => {});
     if (isAdmin || isFinanceiro) {
       api.get('/users/lawyers').then(r => setLawyers(r.data || [])).catch(() => {});
     }
@@ -452,6 +522,16 @@ export default function FinanceiroPage() {
   /* ─── Fetch data ─── */
   // Advogado não-admin vê apenas seus dados
   const effectiveLawyerId = (isAdmin || isFinanceiro) ? filterLawyerId : (userId || '');
+
+  // Categorias dinâmicas do banco (com fallback para hardcoded)
+  const despesaCats = dbCategories.filter(c => c.type === 'DESPESA').map(c => c.name);
+  const receitaCats = dbCategories.filter(c => c.type === 'RECEITA').map(c => c.name);
+  const activeDespesaCats = despesaCats.length > 0 ? despesaCats : DESPESA_CATEGORIES;
+  const activeReceitaCats = receitaCats.length > 0 ? receitaCats : RECEITA_CATEGORIES;
+
+  const refreshCategories = () => {
+    api.get('/financeiro/categories').then(r => setDbCategories(r.data || [])).catch(() => {});
+  };
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -769,7 +849,7 @@ export default function FinanceiroPage() {
         {/* ─── TAB: Despesas ─── */}
         {tab === 'Despesas' && (
           <div className="space-y-4">
-            <QuickAddForm type="DESPESA" categories={DESPESA_CATEGORIES} onCreated={fetchData} />
+            <QuickAddForm type="DESPESA" categories={activeDespesaCats} onCreated={fetchData} onManageCategories={refreshCategories} allDbCategories={dbCategories} />
             <TransactionTable rows={despesas} onRefresh={fetchData} />
           </div>
         )}
