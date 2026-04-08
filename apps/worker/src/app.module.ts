@@ -10,6 +10,7 @@ import { ReminderModule } from './reminder/reminder.module';
 import { FollowupModule } from './followup/followup.module';
 import { PaymentAlertsModule } from './payment/payment-alerts.module';
 import { TaskAlertsModule } from './task/task-alerts.module';
+import { FinanceiroRecurringModule } from './financeiro/financeiro-recurring.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { TaskAlertsModule } from './task/task-alerts.module';
     FollowupModule,
     PaymentAlertsModule,
     TaskAlertsModule,
+    FinanceiroRecurringModule,
   ],
 })
 export class AppModule {}

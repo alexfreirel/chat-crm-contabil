@@ -1179,6 +1179,13 @@ model FinancialTransaction {
   notes                String?
   visible_to_lawyer    Boolean   @default(true) // Se false, advogado não vê esta despesa
 
+  // Recorrência
+  is_recurring          Boolean   @default(false)
+  recurrence_pattern    String?   // MENSAL, TRIMESTRAL, SEMESTRAL, ANUAL
+  recurrence_day        Int?      // Dia do mês para vencimento (1-31)
+  recurrence_end_date   DateTime? // Quando parar (null = indefinido)
+  parent_transaction_id String?   // Referência à transação mãe
+
   // Vínculos opcionais
   legal_case_id        String?
   lead_id              String?

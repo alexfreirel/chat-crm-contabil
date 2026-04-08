@@ -43,6 +43,9 @@ interface Transaction {
   notes?: string | null;
   interest_amount?: number;
   total_with_interest?: number;
+  is_recurring?: boolean;
+  recurrence_pattern?: string | null;
+  parent_transaction_id?: string | null;
   honorario_payment?: {
     id: string;
     honorario: { type: string; notes: string | null; sentence_value: string | null; success_percentage: string | null } | null;
@@ -179,12 +182,16 @@ function QuickAddForm({ type, categories, onCreated, onManageCategories, allDbCa
   const [paymentMethod, setPaymentMethod] = useState('');
   const [visibleToLawyer, setVisibleToLawyer] = useState(true);
   const [isPaid, setIsPaid] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrencePattern, setRecurrencePattern] = useState('MENSAL');
+  const [recurrenceDay, setRecurrenceDay] = useState('');
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
   const [showCatManager, setShowCatManager] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [savingCat, setSavingCat] = useState(false);
   const [deletingCatId, setDeletingCatId] = useState<string | null>(null);
 
-  const reset = () => { setDesc(''); setAmount(''); setCategory(categories[0]); setDate(new Date().toISOString().slice(0, 10)); setDueDate(''); setPaymentMethod(''); setVisibleToLawyer(true); setIsPaid(false); };
+  const reset = () => { setDesc(''); setAmount(''); setCategory(categories[0]); setDate(new Date().toISOString().slice(0, 10)); setDueDate(''); setPaymentMethod(''); setVisibleToLawyer(true); setIsPaid(false); setIsRecurring(false); setRecurrencePattern('MENSAL'); setRecurrenceDay(''); setRecurrenceEndDate(''); };
 
   const handleAddCategory = async () => {
     if (!newCatName.trim()) return;
@@ -228,6 +235,10 @@ function QuickAddForm({ type, categories, onCreated, onManageCategories, allDbCa
         status: isPaid ? 'PAGO' : 'PENDENTE',
         paid_at: isPaid ? new Date().toISOString() : undefined,
         visible_to_lawyer: type === 'DESPESA' ? visibleToLawyer : true,
+        is_recurring: isRecurring,
+        recurrence_pattern: isRecurring ? recurrencePattern : undefined,
+        recurrence_day: isRecurring && recurrenceDay ? parseInt(recurrenceDay) : undefined,
+        recurrence_end_date: isRecurring && recurrenceEndDate ? recurrenceEndDate : undefined,
       });
       showSuccess(`${type === 'RECEITA' ? 'Receita' : 'Despesa'} criada`);
       reset();
@@ -340,6 +351,48 @@ function QuickAddForm({ type, categories, onCreated, onManageCategories, allDbCa
               className="w-3.5 h-3.5 rounded border-border accent-primary" />
             <span className="text-xs text-muted-foreground">Ocultar do advogado</span>
           </label>
+        )}
+      </div>
+
+      {/* Recorrência */}
+      <div className="space-y-3">
+        <button
+          type="button"
+          onClick={() => setIsRecurring(!isRecurring)}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border transition-colors ${
+            isRecurring
+              ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-400'
+              : 'border-border bg-background text-muted-foreground hover:bg-accent/30'
+          }`}
+        >
+          <span className="text-sm">{isRecurring ? '🔄' : '↩️'}</span>
+          <span className="text-xs font-semibold">{isRecurring ? 'Despesa recorrente' : 'Avulsa (única)'}</span>
+        </button>
+
+        {isRecurring && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 border border-cyan-500/20 rounded-lg bg-cyan-500/5">
+            <div>
+              <label className="text-[10px] text-muted-foreground block mb-1">Frequência</label>
+              <select value={recurrencePattern} onChange={e => setRecurrencePattern(e.target.value)}
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none">
+                <option value="MENSAL">Mensal</option>
+                <option value="TRIMESTRAL">Trimestral</option>
+                <option value="SEMESTRAL">Semestral</option>
+                <option value="ANUAL">Anual</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-muted-foreground block mb-1">Dia do vencimento</label>
+              <input type="number" min="1" max="31" value={recurrenceDay} onChange={e => setRecurrenceDay(e.target.value)}
+                placeholder="Ex: 10"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none" />
+            </div>
+            <div>
+              <label className="text-[10px] text-muted-foreground block mb-1">Até quando (opcional)</label>
+              <input type="date" value={recurrenceEndDate} onChange={e => setRecurrenceEndDate(e.target.value)}
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none" />
+            </div>
+          </div>
         )}
       </div>
 
@@ -529,7 +582,11 @@ function TransactionTable({ rows, onRefresh, currentUserId, canManageAll }: { ro
               /* ── Modo visualização ── */
               <tr key={t.id} className="border-b border-border/50 hover:bg-accent/10 transition-colors">
                 <td className="px-4 py-3 text-foreground tabular-nums whitespace-nowrap">{fmtDate(t.date)}</td>
-                <td className="px-4 py-3 text-foreground max-w-[200px] truncate">{t.description}</td>
+                <td className="px-4 py-3 text-foreground max-w-[200px]">
+                  <span className="truncate block">{t.description}</span>
+                  {t.is_recurring && <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/20 mt-0.5 inline-block">🔄 Recorrente</span>}
+                  {t.parent_transaction_id && <span className="text-[9px] text-muted-foreground/50 ml-1">(auto)</span>}
+                </td>
                 <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{t.category}</td>
                 <td className={`px-4 py-3 text-right font-bold tabular-nums whitespace-nowrap ${t.type === 'RECEITA' ? 'text-emerald-400' : 'text-red-400'}`}>
                   {fmt(t.amount)}

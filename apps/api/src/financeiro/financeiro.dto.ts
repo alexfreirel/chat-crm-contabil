@@ -74,6 +74,22 @@ export class CreateTransactionDto {
   @IsOptional()
   @IsBoolean()
   visible_to_lawyer?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  is_recurring?: boolean;
+
+  @IsOptional()
+  @IsString()
+  recurrence_pattern?: string; // MENSAL, TRIMESTRAL, SEMESTRAL, ANUAL
+
+  @IsOptional()
+  @IsNumber()
+  recurrence_day?: number; // Dia do mês (1-31)
+
+  @IsOptional()
+  @IsString()
+  recurrence_end_date?: string;
 }
 
 export class UpdateTransactionDto {

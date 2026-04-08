@@ -219,6 +219,10 @@ export class FinanceiroService {
         reference_id: data.reference_id,
         notes: data.notes,
         visible_to_lawyer: data.visible_to_lawyer ?? true,
+        is_recurring: data.is_recurring ?? false,
+        recurrence_pattern: data.is_recurring ? data.recurrence_pattern : null,
+        recurrence_day: data.is_recurring ? data.recurrence_day : null,
+        recurrence_end_date: data.is_recurring && data.recurrence_end_date ? new Date(data.recurrence_end_date) : null,
       },
       include: {
         lead: { select: { id: true, name: true } },
