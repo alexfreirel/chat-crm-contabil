@@ -98,11 +98,15 @@ export class FinanceiroService {
     if (query.legalCaseId) where.legal_case_id = query.legalCaseId;
     if (query.leadId) where.lead_id = query.leadId;
     if (query.lawyerId) {
-      // Advogado vê: suas transações OU transações gerais visíveis (sem lawyer_id)
-      where.OR = [
-        { lawyer_id: query.lawyerId },
-        { lawyer_id: null, visible_to_lawyer: true },
-      ];
+      // Advogado vê: suas transações + despesas gerais visíveis (receitas só dele)
+      if (query.type === 'RECEITA') {
+        where.lawyer_id = query.lawyerId;
+      } else {
+        where.OR = [
+          { lawyer_id: query.lawyerId },
+          { lawyer_id: null, visible_to_lawyer: true },
+        ];
+      }
     }
 
     if (query.startDate || query.endDate) {
@@ -484,13 +488,6 @@ export class FinanceiroService {
   async getSummary(tenantId?: string, startDate?: string, endDate?: string, lawyerId?: string) {
     const where: any = {};
     if (tenantId) where.tenant_id = tenantId;
-    if (lawyerId) {
-      // Advogado vê: suas transações + transações gerais visíveis
-      where.OR = [
-        { lawyer_id: lawyerId },
-        { lawyer_id: null, visible_to_lawyer: true },
-      ];
-    }
     // Exclude cancelled from aggregation
     where.status = { not: 'CANCELADO' };
 
@@ -511,20 +508,26 @@ export class FinanceiroService {
       honorarioWhere.honorario = { ...honorarioWhere.honorario, tenant_id: tenantId };
     }
 
+    // Filtros específicos por tipo para advogado
+    const receitaWhere = lawyerId ? { ...where, lawyer_id: lawyerId } : where;
+    const despesaWhere = lawyerId
+      ? { ...where, OR: [{ lawyer_id: lawyerId }, { lawyer_id: null, visible_to_lawyer: true }] }
+      : where;
+
     const [totalRevenue, totalExpenses, totalPayable, totalReceivable, totalOverdue] = await Promise.all([
-      // Receita efetiva (regime de caixa: só PAGO)
+      // Receita efetiva (regime de caixa: só PAGO) — advogado só dele
       this.prisma.financialTransaction.aggregate({
-        where: { ...where, type: 'RECEITA', status: 'PAGO' },
+        where: { ...receitaWhere, type: 'RECEITA', status: 'PAGO' },
         _sum: { amount: true },
       }),
-      // Despesas pagas
+      // Despesas pagas — advogado vê dele + gerais visíveis
       this.prisma.financialTransaction.aggregate({
-        where: { ...where, type: 'DESPESA', status: 'PAGO' },
+        where: { ...despesaWhere, type: 'DESPESA', status: 'PAGO' },
         _sum: { amount: true },
       }),
       // Contas a pagar (despesas PENDENTE)
       this.prisma.financialTransaction.aggregate({
-        where: { ...where, type: 'DESPESA', status: 'PENDENTE' },
+        where: { ...despesaWhere, type: 'DESPESA', status: 'PENDENTE' },
         _sum: { amount: true },
       }),
       // A receber: parcelas de honorários pendentes (não transações)
