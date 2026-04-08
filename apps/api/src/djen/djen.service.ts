@@ -420,17 +420,29 @@ export class DjenService {
 
           */ // fim do bloco de auto-criação de tarefas desativado
 
-          // ─── Notificar lead via WhatsApp sobre nova movimentação ─────
-          this.notifyLeadAboutMovement(pub, legalCase, tipoComunicacao, numeroProcesso, dataDisp).catch(e =>
+          // ─── Analisar publicação com IA ANTES de notificar ─────────
+          let aiResumo: string | null = null;
+          let aiAnalysis: any = null;
+          try {
+            aiAnalysis = await this.analyzePublication(pub.id);
+            aiResumo = aiAnalysis?.resumo || null;
+          } catch (e: any) {
+            this.logger.warn(`[DJEN] Análise IA falhou (notificação seguirá sem resumo): ${e.message}`);
+          }
+
+          // ─── Notificar lead via WhatsApp com detalhes da movimentação ─────
+          this.notifyLeadAboutMovement(
+            pub, legalCase, tipoComunicacao, numeroProcesso, dataDisp,
+            assunto, aiResumo, aiAnalysis?.tipo_acao,
+          ).catch(e =>
             this.logger.warn(`[DJEN] Falha ao notificar lead: ${e.message}`),
           );
 
-          // ─── Atualizar memória da IA com a nova publicação ─────────
+          // ─── Atualizar memória da IA com a análise completa ─────────
           if (legalCase.lead?.id) {
-            this.saveAnalysisToMemory(legalCase.lead.id, pub, {
+            this.saveAnalysisToMemory(legalCase.lead.id, pub, aiAnalysis || {
               resumo: `${tipoComunicacao || 'Publicação'}${assunto ? ': ' + assunto : ''}`,
-              estagio_sugerido: null,
-              juizo: null,
+              estagio_sugerido: null, juizo: null,
               parte_autora: pub.parte_autora || null,
               parte_rea: pub.parte_rea || null,
               urgencia: 'NORMAL',
@@ -1127,6 +1139,9 @@ ${pub.conteudo.slice(0, 2000)}`;
     tipoComunicacao: string | null,
     numeroProcesso: string,
     dataDisp: Date,
+    assunto?: string | null,
+    aiResumo?: string | null,
+    tipoAcao?: string | null,
   ): Promise<void> {
     // Já notificou para esta publicação
     if (pub.client_notified_at) return;
@@ -1165,18 +1180,38 @@ ${pub.conteudo.slice(0, 2000)}`;
     const tipo = tipoComunicacao || 'Publicação';
     const processoFmt = numeroProcesso.length > 20 ? numeroProcesso.slice(0, 20) + '…' : numeroProcesso;
 
-    const message = [
+    const lines = [
       `⚖️ *Movimentação no seu processo*`,
       ``,
       `Olá ${nome}! Houve uma nova movimentação no seu processo nº ${processoFmt}.`,
       ``,
-      `📋 Tipo: ${tipo}`,
-      `📅 Data: ${dataFmt}`,
-      ``,
-      `Nosso advogado já foi notificado e vai analisar. Se tiver dúvidas, pode nos chamar aqui!`,
-      ``,
-      `André Lustosa Advogados`,
-    ].join('\n');
+      `📋 *Tipo:* ${tipo}`,
+    ];
+
+    if (assunto) {
+      lines.push(`📝 *Assunto:* ${assunto}`);
+    }
+
+    lines.push(`📅 *Data:* ${dataFmt}`);
+
+    // Incluir resumo da IA se disponível
+    if (aiResumo) {
+      lines.push(``);
+      lines.push(`📖 *O que aconteceu:*`);
+      lines.push(aiResumo);
+    }
+
+    if (tipoAcao) {
+      lines.push(``);
+      lines.push(`✅ *Próximo passo:* ${tipoAcao}`);
+    }
+
+    lines.push(``);
+    lines.push(`Nosso advogado já foi notificado e está acompanhando. Se tiver dúvidas, pode nos chamar aqui!`);
+    lines.push(``);
+    lines.push(`André Lustosa Advogados`);
+
+    const message = lines.join('\n');
 
     try {
       await this.whatsappService.sendText(lead.phone, message, instance);
