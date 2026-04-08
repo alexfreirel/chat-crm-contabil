@@ -37,6 +37,7 @@ interface Transaction {
   legal_case: { id: string; case_number: string; legal_area: string } | null;
   lead: { id: string; name: string; phone: string } | null;
   lawyer: { id: string; name: string } | null;
+  lawyer_id?: string | null;
   honorario_payment_id?: string | null;
   notes?: string | null;
   interest_amount?: number;
@@ -376,7 +377,7 @@ function QuickAddForm({ type, categories, onCreated, onManageCategories, allDbCa
 /* ──────────────────────────────────────────────────────────────
    Transaction Table
 ────────────────────────────────────────────────────────────── */
-function TransactionTable({ rows, onRefresh }: { rows: Transaction[]; onRefresh: () => void }) {
+function TransactionTable({ rows, onRefresh, currentUserId, canManageAll }: { rows: Transaction[]; onRefresh: () => void; currentUserId?: string; canManageAll?: boolean }) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDesc, setEditDesc] = useState('');
@@ -513,27 +514,38 @@ function TransactionTable({ rows, onRefresh }: { rows: Transaction[]; onRefresh:
                 <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{t.due_date ? fmtDate(t.due_date) : '--'}</td>
                 <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{t.payment_method || '--'}</td>
                 <td className="px-4 py-3 text-center">
-                  <div className="flex items-center justify-center gap-1">
-                    <button onClick={() => startEdit(t)}
-                      className="p-1.5 rounded-lg hover:bg-accent/30 transition-colors text-muted-foreground hover:text-primary" title="Editar">
-                      <Pencil size={14} />
-                    </button>
-                    <button
-                      onClick={() => handleTogglePago(t)}
-                      className="p-1.5 rounded-lg hover:bg-accent/30 transition-colors text-muted-foreground hover:text-emerald-400"
-                      title={t.status === 'PAGO' ? 'Reverter para pendente' : 'Marcar como pago'}
-                    >
-                      <Check size={14} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(t.id)}
-                      disabled={deleting === t.id}
-                      className="p-1.5 rounded-lg hover:bg-accent/30 transition-colors text-muted-foreground hover:text-red-400"
-                      title="Excluir"
-                    >
-                      {deleting === t.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                    </button>
-                  </div>
+                  {(() => {
+                    const canEdit = canManageAll || t.lawyer_id === currentUserId;
+                    return (
+                      <div className="flex items-center justify-center gap-1">
+                        {canEdit && (
+                          <button onClick={() => startEdit(t)}
+                            className="p-1.5 rounded-lg hover:bg-accent/30 transition-colors text-muted-foreground hover:text-primary" title="Editar">
+                            <Pencil size={14} />
+                          </button>
+                        )}
+                        {canEdit && (
+                          <button
+                            onClick={() => handleTogglePago(t)}
+                            className="p-1.5 rounded-lg hover:bg-accent/30 transition-colors text-muted-foreground hover:text-emerald-400"
+                            title={t.status === 'PAGO' ? 'Reverter para pendente' : 'Marcar como pago'}
+                          >
+                            <Check size={14} />
+                          </button>
+                        )}
+                        {canEdit && (
+                          <button
+                            onClick={() => handleDelete(t.id)}
+                            disabled={deleting === t.id}
+                            className="p-1.5 rounded-lg hover:bg-accent/30 transition-colors text-muted-foreground hover:text-red-400"
+                            title="Excluir"
+                          >
+                            {deleting === t.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </td>
               </tr>
               )
@@ -988,7 +1000,7 @@ export default function FinanceiroPage() {
         {tab === 'Despesas' && (
           <div className="space-y-4">
             <QuickAddForm type="DESPESA" categories={activeDespesaCats} onCreated={fetchData} onManageCategories={refreshCategories} allDbCategories={dbCategories} />
-            <TransactionTable rows={despesas} onRefresh={fetchData} />
+            <TransactionTable rows={despesas} onRefresh={fetchData} currentUserId={userId || undefined} canManageAll={isAdmin || isFinanceiro} />
           </div>
         )}
 
