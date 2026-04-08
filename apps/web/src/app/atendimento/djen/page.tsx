@@ -1039,7 +1039,7 @@ function PublicationCard({
           <div className="flex items-center gap-2 flex-wrap">
             {pub.legal_case_id && (
               <button
-                onClick={() => window.open('/atendimento/processos', '_self')}
+                onClick={() => window.open(`/atendimento/processos?openCase=${pub.legal_case_id}`, '_self')}
                 className="flex items-center gap-1 text-[10px] font-semibold text-primary px-2 py-1 rounded border border-primary/30 hover:bg-primary/5 transition-colors"
               >
                 <ExternalLink size={10} /> Ver Processo
