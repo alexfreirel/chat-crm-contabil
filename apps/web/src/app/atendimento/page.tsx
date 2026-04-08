@@ -2021,8 +2021,11 @@ export default function Dashboard() {
     }
     let result: ConversationSummary[];
     if (leadFilter === 'MINE') {
-      // Minhas conversas: atribuídas ao usuário atual, SEM IA ativa (IA tem aba própria "SophIA")
-      result = conversations.filter(c => c.assignedAgentId === currentUserId && !c.aiMode && c.status !== 'CLOSED');
+      // Minhas conversas: atribuídas ao usuário atual (como operador OU advogado), SEM IA ativa
+      result = conversations.filter(c =>
+        (c.assignedAgentId === currentUserId || c.assignedLawyerId === currentUserId) &&
+        !c.aiMode && c.status !== 'CLOSED'
+      );
     } else if (leadFilter === 'ACTIVE') {
       result = conversations.filter(myActiveConvs);
     } else if (leadFilter === 'BOT') {
