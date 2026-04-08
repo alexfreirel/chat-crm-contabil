@@ -460,7 +460,8 @@ function TransactionTable({ rows, onRefresh, currentUserId, canManageAll }: { ro
               <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Categoria</th>
               <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide text-right">Valor</th>
               <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Vencimento</th>
-              <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pagamento</th>
+              <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Forma Pgto</th>
+              <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide text-center">Status</th>
               <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide text-center">Acoes</th>
             </tr>
           </thead>
@@ -491,6 +492,7 @@ function TransactionTable({ rows, onRefresh, currentUserId, canManageAll }: { ro
                     <option value="DINHEIRO">Dinheiro</option><option value="TRANSFERENCIA">Transf.</option>
                   </select>
                 </td>
+                <td className="px-4 py-2 text-center"><StatusBadge status={t.status} /></td>
                 <td className="px-4 py-2 text-center">
                   <div className="flex items-center justify-center gap-1">
                     <button onClick={handleSaveEdit} disabled={savingEdit}
@@ -514,6 +516,7 @@ function TransactionTable({ rows, onRefresh, currentUserId, canManageAll }: { ro
                 </td>
                 <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{t.due_date ? fmtDate(t.due_date) : '--'}</td>
                 <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{t.payment_method || '--'}</td>
+                <td className="px-4 py-3 text-center"><StatusBadge status={t.status} /></td>
                 <td className="px-4 py-3 text-center">
                   {(() => {
                     const canEdit = canManageAll || t.lawyer_id === currentUserId;
@@ -528,10 +531,14 @@ function TransactionTable({ rows, onRefresh, currentUserId, canManageAll }: { ro
                         {canEdit && (
                           <button
                             onClick={() => handleTogglePago(t)}
-                            className="p-1.5 rounded-lg hover:bg-accent/30 transition-colors text-muted-foreground hover:text-emerald-400"
+                            className={`px-2 py-1 text-[10px] font-semibold rounded-md inline-flex items-center gap-1 transition-colors ${
+                              t.status === 'PAGO'
+                                ? 'text-amber-400 border border-amber-400/20 hover:bg-amber-400/10'
+                                : 'text-emerald-400 border border-emerald-400/20 hover:bg-emerald-400/10'
+                            }`}
                             title={t.status === 'PAGO' ? 'Reverter para pendente' : 'Marcar como pago'}
                           >
-                            <Check size={14} />
+                            {t.status === 'PAGO' ? 'Reverter' : 'Pagar'}
                           </button>
                         )}
                         {canEdit && (
