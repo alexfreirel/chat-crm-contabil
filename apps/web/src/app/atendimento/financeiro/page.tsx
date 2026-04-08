@@ -378,6 +378,37 @@ function QuickAddForm({ type, categories, onCreated, onManageCategories, allDbCa
 ────────────────────────────────────────────────────────────── */
 function TransactionTable({ rows, onRefresh }: { rows: Transaction[]; onRefresh: () => void }) {
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDesc, setEditDesc] = useState('');
+  const [editAmount, setEditAmount] = useState('');
+  const [editDueDate, setEditDueDate] = useState('');
+  const [editMethod, setEditMethod] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const startEdit = (t: Transaction) => {
+    setEditingId(t.id);
+    setEditDesc(t.description);
+    setEditAmount(String(t.amount));
+    setEditDueDate(t.due_date?.slice(0, 10) || '');
+    setEditMethod(t.payment_method || '');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingId) return;
+    setSavingEdit(true);
+    try {
+      await api.patch(`/financeiro/transactions/${editingId}`, {
+        description: editDesc.trim(),
+        amount: parseFloat(editAmount.replace(',', '.')),
+        due_date: editDueDate ? new Date(editDueDate + 'T12:00:00Z').toISOString() : null,
+        payment_method: editMethod || null,
+      });
+      showSuccess('Transação atualizada');
+      setEditingId(null);
+      onRefresh();
+    } catch { showError('Erro ao salvar'); }
+    finally { setSavingEdit(false); }
+  };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Excluir esta transacao?')) return;
@@ -425,29 +456,68 @@ function TransactionTable({ rows, onRefresh }: { rows: Transaction[]; onRefresh:
               <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Data</th>
               <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Descricao</th>
               <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Categoria</th>
-              <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Caso</th>
               <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide text-right">Valor</th>
-              <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide text-center">Status</th>
+              <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Vencimento</th>
+              <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pagamento</th>
               <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide text-center">Acoes</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((t) => (
+              editingId === t.id ? (
+              /* ── Modo edição inline ── */
+              <tr key={t.id} className="border-b border-border/50 bg-primary/5">
+                <td className="px-4 py-2 text-foreground tabular-nums whitespace-nowrap">{fmtDate(t.date)}</td>
+                <td className="px-4 py-2">
+                  <input value={editDesc} onChange={e => setEditDesc(e.target.value)}
+                    className="w-full px-2 py-1.5 text-xs bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                </td>
+                <td className="px-4 py-2 text-muted-foreground whitespace-nowrap">{t.category}</td>
+                <td className="px-4 py-2">
+                  <input value={editAmount} onChange={e => setEditAmount(e.target.value)}
+                    className="w-20 px-2 py-1.5 text-xs bg-background border border-border rounded-lg focus:outline-none text-right" />
+                </td>
+                <td className="px-4 py-2">
+                  <input type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)}
+                    className="px-2 py-1.5 text-xs bg-background border border-border rounded-lg focus:outline-none" />
+                </td>
+                <td className="px-4 py-2">
+                  <select value={editMethod} onChange={e => setEditMethod(e.target.value)}
+                    className="px-2 py-1.5 text-xs bg-background border border-border rounded-lg focus:outline-none">
+                    <option value="">-</option><option value="PIX">PIX</option><option value="CARTAO_CREDITO">Cartão Créd.</option>
+                    <option value="CARTAO_DEBITO">Cartão Déb.</option><option value="BOLETO">Boleto</option>
+                    <option value="DINHEIRO">Dinheiro</option><option value="TRANSFERENCIA">Transf.</option>
+                  </select>
+                </td>
+                <td className="px-4 py-2 text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    <button onClick={handleSaveEdit} disabled={savingEdit}
+                      className="p-1.5 rounded-lg hover:bg-emerald-500/15 text-emerald-400 transition-colors disabled:opacity-50" title="Salvar">
+                      {savingEdit ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                    </button>
+                    <button onClick={() => setEditingId(null)} className="p-1.5 rounded-lg hover:bg-accent/30 text-muted-foreground" title="Cancelar">
+                      <X size={14} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              ) : (
+              /* ── Modo visualização ── */
               <tr key={t.id} className="border-b border-border/50 hover:bg-accent/10 transition-colors">
                 <td className="px-4 py-3 text-foreground tabular-nums whitespace-nowrap">{fmtDate(t.date)}</td>
                 <td className="px-4 py-3 text-foreground max-w-[200px] truncate">{t.description}</td>
                 <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{t.category}</td>
-                <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                  {t.legal_case ? t.legal_case.case_number || '-' : '-'}
-                </td>
                 <td className={`px-4 py-3 text-right font-bold tabular-nums whitespace-nowrap ${t.type === 'RECEITA' ? 'text-emerald-400' : 'text-red-400'}`}>
                   {fmt(t.amount)}
                 </td>
-                <td className="px-4 py-3 text-center">
-                  <StatusBadge status={t.status} />
-                </td>
+                <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{t.due_date ? fmtDate(t.due_date) : '--'}</td>
+                <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{t.payment_method || '--'}</td>
                 <td className="px-4 py-3 text-center">
                   <div className="flex items-center justify-center gap-1">
+                    <button onClick={() => startEdit(t)}
+                      className="p-1.5 rounded-lg hover:bg-accent/30 transition-colors text-muted-foreground hover:text-primary" title="Editar">
+                      <Pencil size={14} />
+                    </button>
                     <button
                       onClick={() => handleTogglePago(t)}
                       className="p-1.5 rounded-lg hover:bg-accent/30 transition-colors text-muted-foreground hover:text-emerald-400"
@@ -466,6 +536,7 @@ function TransactionTable({ rows, onRefresh }: { rows: Transaction[]; onRefresh:
                   </div>
                 </td>
               </tr>
+              )
             ))}
           </tbody>
         </table>
