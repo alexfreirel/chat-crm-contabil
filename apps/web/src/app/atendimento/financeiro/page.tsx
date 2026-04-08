@@ -2100,6 +2100,7 @@ function PendingPaymentPanel({
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editDueDate, setEditDueDate] = useState(p.due_date?.slice(0, 10) || '');
+  const [noDueDate, setNoDueDate] = useState(!p.due_date);
   const [editAmount, setEditAmount] = useState(String(p.amount));
   const [editMethod, setEditMethod] = useState(p.payment_method || '');
   const [showPartial, setShowPartial] = useState(false);
@@ -2140,7 +2141,7 @@ function PendingPaymentPanel({
       await api.delete(`/honorarios/payments/${p.id}`);
       await api.post(`/honorarios/${p.honorario_id}/payments`, {
         amount: parseFloat(editAmount.replace(',', '.')),
-        due_date: editDueDate || undefined,
+        due_date: noDueDate ? undefined : (editDueDate || undefined),
         payment_method: editMethod || undefined,
       });
       showSuccess('Parcela atualizada');
@@ -2228,9 +2229,20 @@ function PendingPaymentPanel({
                 className="w-full px-3 py-2 text-xs bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40" />
             </div>
             <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Vencimento</label>
-              <input type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-background border border-border rounded-lg focus:outline-none" />
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] font-bold text-muted-foreground uppercase">Vencimento</label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" checked={noDueDate} onChange={e => { setNoDueDate(e.target.checked); if (e.target.checked) setEditDueDate(''); }}
+                    className="w-3 h-3 rounded border-border accent-primary" />
+                  <span className="text-[10px] text-muted-foreground">Sem vencimento</span>
+                </label>
+              </div>
+              {noDueDate ? (
+                <div className="px-3 py-2 text-xs text-muted-foreground/50 italic bg-accent/20 border border-border rounded-lg">Alvará judicial / sem data definida</div>
+              ) : (
+                <input type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-background border border-border rounded-lg focus:outline-none" />
+              )}
             </div>
             <div>
               <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Método</label>
@@ -2397,6 +2409,7 @@ function ReceitaDetailPanel({
   const [editDesc, setEditDesc] = useState(r.description);
   const [editAmount, setEditAmount] = useState(String(r.amount));
   const [editDueDate, setEditDueDate] = useState(r.due_date?.slice(0, 10) || '');
+  const [noDueDate, setNoDueDate] = useState(!r.due_date);
   const [editMethod, setEditMethod] = useState(r.payment_method || '');
   const [editNotes, setEditNotes] = useState(r.notes || '');
 
@@ -2413,7 +2426,7 @@ function ReceitaDetailPanel({
       await api.patch(`/financeiro/transactions/${r.id}`, {
         description: editDesc.trim(),
         amount: parseFloat(editAmount.replace(',', '.')),
-        due_date: editDueDate ? new Date(editDueDate + 'T12:00:00Z').toISOString() : null,
+        due_date: noDueDate ? null : (editDueDate ? new Date(editDueDate + 'T12:00:00Z').toISOString() : null),
         payment_method: editMethod || null,
         notes: editNotes.trim() || null,
       });
@@ -2525,9 +2538,20 @@ function ReceitaDetailPanel({
                 className="w-full px-3 py-2 text-xs bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40" />
             </div>
             <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Vencimento</label>
-              <input type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-background border border-border rounded-lg focus:outline-none" />
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] font-bold text-muted-foreground uppercase">Vencimento</label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" checked={noDueDate} onChange={e => { setNoDueDate(e.target.checked); if (e.target.checked) setEditDueDate(''); }}
+                    className="w-3 h-3 rounded border-border accent-primary" />
+                  <span className="text-[10px] text-muted-foreground">Sem vencimento</span>
+                </label>
+              </div>
+              {noDueDate ? (
+                <div className="px-3 py-2 text-xs text-muted-foreground/50 italic bg-accent/20 border border-border rounded-lg">Sem data definida</div>
+              ) : (
+                <input type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-background border border-border rounded-lg focus:outline-none" />
+              )}
             </div>
             <div>
               <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Forma pagamento</label>
