@@ -145,20 +145,21 @@ export class TaskAlertCronService {
       }
 
       for (const [userId, items] of byUser.entries()) {
-        for (const item of items.slice(0, 5)) {
+        // Emitir um ÚNICO batch com todas as tarefas vencidas (não individual)
+        const topItems = items.slice(0, 5).map(item => {
           const hoursAgo = Math.round((now.getTime() - item.date.getTime()) / 3600000);
-          this.emitAlert(userId, {
+          return {
             taskId: item.id,
             title: item.title,
-            level: hoursAgo >= 24 ? 'critical' : 'urgent',
+            level: hoursAgo >= 24 ? 'critical' as const : 'urgent' as const,
             message: hoursAgo >= 24 ? `${Math.round(hoursAgo / 24)}d de atraso` : `${hoursAgo}h de atraso`,
-          });
-        }
+          };
+        });
 
-        // Refresh notification center
+        // Emitir batch único ao invés de múltiplos eventos
         this.chatGateway.server
           .to(`user:${userId}`)
-          .emit('notification_update', { type: 'task_overdue', count: items.length });
+          .emit('task_overdue_batch', { items: topItems, total: items.length });
       }
     } catch (e: any) {
       this.logger.warn(`[TASK-PUSH] Erro overdue: ${e.message}`);

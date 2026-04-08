@@ -111,6 +111,34 @@ export function TaskDrawer({
     } catch { showError('Erro ao atualizar status'); }
   };
 
+  const handleMarkComplete = async () => {
+    if (!task) return;
+    try {
+      // Tentar como CalendarEvent primeiro, depois como Task
+      await api.patch(`/calendar/events/${task.id}/status`, { status: 'CONCLUIDO' }).catch(() =>
+        api.patch(`/tasks/${task.id}/status`, { status: 'CONCLUIDA' })
+      );
+      setTask(prev => prev ? { ...prev, status: 'CONCLUIDA' } : prev);
+      onStatusChange?.(task.id, 'CONCLUIDA');
+      showSuccess('Tarefa concluída!');
+    } catch { showError('Erro ao concluir tarefa'); }
+  };
+
+  const [deleting, setDeleting] = useState(false);
+  const handleDeleteTask = async () => {
+    if (!task || !confirm('Excluir esta tarefa permanentemente?')) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/calendar/events/${task.id}`).catch(() =>
+        api.delete(`/tasks/${task.id}`)
+      );
+      showSuccess('Tarefa excluída');
+      onClose();
+      onStatusChange?.(task.id, 'DELETED');
+    } catch { showError('Erro ao excluir tarefa'); }
+    finally { setDeleting(false); }
+  };
+
   const handleAddChecklistItem = async () => {
     if (!newItem.trim() || !task) return;
     setAddingItem(true);
@@ -249,6 +277,7 @@ export function TaskDrawer({
             <Loader2 size={28} className="animate-spin text-primary/40" />
           </div>
         ) : task ? (
+          <>
           <div className="flex-1 overflow-y-auto custom-scrollbar">
 
             {/* Meta */}
@@ -462,6 +491,39 @@ export function TaskDrawer({
             </div>
 
           </div>
+
+          {/* Footer com ações */}
+          {task.status !== 'CONCLUIDA' && task.status !== 'CANCELADA' ? (
+            <div className="shrink-0 border-t border-border px-5 py-3 flex items-center gap-2">
+              <button
+                onClick={handleMarkComplete}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 bg-emerald-500 text-white rounded-xl text-xs font-bold hover:opacity-90 transition-opacity"
+              >
+                <CheckCircle2 size={14} /> Concluir Tarefa
+              </button>
+              <button
+                onClick={handleDeleteTask}
+                disabled={deleting}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 border border-red-400/30 text-red-400 rounded-xl text-xs font-bold hover:bg-red-500/10 transition-colors disabled:opacity-50"
+              >
+                {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Excluir
+              </button>
+            </div>
+          ) : (
+            <div className="shrink-0 border-t border-border px-5 py-3 flex items-center gap-2">
+              <div className="flex-1 text-xs text-emerald-400 font-semibold flex items-center gap-1.5">
+                <CheckCircle2 size={14} /> Tarefa concluída
+              </div>
+              <button
+                onClick={handleDeleteTask}
+                disabled={deleting}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 border border-red-400/30 text-red-400 rounded-xl text-xs font-bold hover:bg-red-500/10 transition-colors disabled:opacity-50"
+              >
+                {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Excluir
+              </button>
+            </div>
+          )}
+          </>
         ) : (
           <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
             Tarefa não encontrada
