@@ -66,6 +66,8 @@ const PERIODS = [
   { label: 'Ano', value: 'ano' },
 ] as const;
 
+const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
 const RECEITA_CATEGORIES = ['Honorarios', 'Consultas', 'Acordos Extrajudiciais', 'Outros'];
 const DESPESA_CATEGORIES = ['Custas Judiciais', 'Pericias', 'Deslocamento', 'Material de Escritorio', 'Cartorio', 'Correios', 'Outros'];
 
@@ -90,7 +92,12 @@ function getPeriodRange(period: string): { startDate: string; endDate: string } 
   let start: Date;
   let end: Date;
 
-  switch (period) {
+  // Mês específico: "mes-0" (jan) a "mes-11" (dez)
+  if (period.startsWith('mes-')) {
+    const monthIdx = parseInt(period.split('-')[1]);
+    start = new Date(Date.UTC(y, monthIdx, 1));
+    end = new Date(Date.UTC(y, monthIdx + 1, 0, 23, 59, 59));
+  } else switch (period) {
     case 'hoje':
       start = new Date(Date.UTC(y, m, d));
       end = new Date(Date.UTC(y, m, d, 23, 59, 59));
@@ -110,9 +117,9 @@ function getPeriodRange(period: string): { startDate: string; endDate: string } 
       start = new Date(Date.UTC(y, 0, 1));
       end = new Date(Date.UTC(y, 11, 31, 23, 59, 59));
       break;
-    default: // mes — vai até o último dia do mês
+    default: // mes atual
       start = new Date(Date.UTC(y, m, 1));
-      end = new Date(Date.UTC(y, m + 1, 0, 23, 59, 59)); // dia 0 do próximo mês = último dia deste
+      end = new Date(Date.UTC(y, m + 1, 0, 23, 59, 59));
       break;
   }
 
@@ -868,20 +875,32 @@ export default function FinanceiroPage() {
           )}
 
           {/* Period Selector */}
-          <div className="flex items-center gap-1 bg-card border border-border rounded-xl p-1">
-            {PERIODS.map((p) => (
-              <button
-                key={p.value}
-                onClick={() => setPeriod(p.value)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                  period === p.value
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-accent/30'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 bg-card border border-border rounded-xl p-1">
+              {PERIODS.map((p) => (
+                <button
+                  key={p.value}
+                  onClick={() => setPeriod(p.value)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    period === p.value
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-accent/30'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <select
+              value={period.startsWith('mes-') ? period : ''}
+              onChange={e => { if (e.target.value) setPeriod(e.target.value); }}
+              className="px-3 py-2 text-xs bg-card border border-border rounded-xl text-foreground focus:outline-none"
+            >
+              <option value="">Mês...</option>
+              {MONTH_NAMES.map((name, idx) => (
+                <option key={idx} value={`mes-${idx}`}>{name}</option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -907,6 +926,22 @@ export default function FinanceiroPage() {
         </div>
 
         {/* ─── TAB: Resumo ─── */}
+        {/* Banner de vencidos */}
+        {(despesas.filter(d => d.status === 'PENDENTE' && d.due_date && new Date(d.due_date) < new Date()).length > 0) && (
+          <div className="flex items-center gap-3 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+            <AlertTriangle size={16} className="text-red-400 shrink-0" />
+            <div className="flex-1">
+              <span className="text-xs font-bold text-red-400">
+                {despesas.filter(d => d.status === 'PENDENTE' && d.due_date && new Date(d.due_date) < new Date()).length} despesa(s) vencida(s)
+              </span>
+              <span className="text-xs text-muted-foreground ml-2">
+                Total: {fmt(despesas.filter(d => d.status === 'PENDENTE' && d.due_date && new Date(d.due_date) < new Date()).reduce((s, d) => s + parseFloat(String(d.amount)), 0))}
+              </span>
+            </div>
+            <button onClick={() => setTab('Despesas')} className="text-[10px] font-bold text-red-400 hover:underline">Ver despesas</button>
+          </div>
+        )}
+
         {tab === 'Resumo' && summary && (
           <div className="space-y-5">
             {/* KPI Grid — Receitas */}

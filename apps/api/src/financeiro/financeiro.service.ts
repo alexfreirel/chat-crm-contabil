@@ -106,9 +106,22 @@ export class FinanceiroService {
     }
 
     if (query.startDate || query.endDate) {
-      where.date = {};
-      if (query.startDate) where.date.gte = new Date(query.startDate);
-      if (query.endDate) where.date.lte = new Date(query.endDate);
+      // Mostrar transações do período OU pendentes vencidas (dívidas de meses anteriores)
+      const dateFilter: any = {};
+      if (query.startDate) dateFilter.gte = new Date(query.startDate);
+      if (query.endDate) dateFilter.lte = new Date(query.endDate);
+
+      // OR: data no período OU (pendente com due_date vencida até o fim do período)
+      const existingOr = where.OR || [];
+      delete where.OR;
+      where.AND = [
+        ...(where.AND || []),
+        ...(existingOr.length > 0 ? [{ OR: existingOr }] : []),
+        { OR: [
+          { date: dateFilter },
+          { status: 'PENDENTE', due_date: { lt: query.endDate ? new Date(query.endDate) : new Date() } },
+        ]},
+      ];
     }
 
     const [data, total] = await Promise.all([
