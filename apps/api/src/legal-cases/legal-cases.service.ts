@@ -856,8 +856,12 @@ export class LegalCasesService {
       finalLeadId = data.lead_id;
 
     } else if (data.lead_phone) {
-      const normalizedPhone = data.lead_phone.replace(/\D/g, '');
+      let normalizedPhone = data.lead_phone.replace(/\D/g, '');
       if (!normalizedPhone) throw new BadRequestException('Telefone inválido.');
+      if (normalizedPhone.length <= 11) normalizedPhone = '55' + normalizedPhone;
+      if (normalizedPhone.length === 13 && normalizedPhone.startsWith('55') && normalizedPhone[4] === '9') {
+        normalizedPhone = normalizedPhone.slice(0, 4) + normalizedPhone.slice(5);
+      }
 
       // Verifica se já existe lead com esse telefone
       const byPhone = await this.prisma.lead.findFirst({
