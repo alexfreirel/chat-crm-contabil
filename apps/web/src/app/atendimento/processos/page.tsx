@@ -2522,13 +2522,19 @@ function CadastrarProcessoModal({
 }) {
   const { isAdmin } = useRole();
 
-  // ── Advogado (ADMIN only) ─────────────────────────────────────
+  // ── Advogado e Atendente (ADMIN only) ────────────────────────
   const [lawyers, setLawyers] = useState<{ id: string; name: string | null }[]>([]);
+  const [operators, setOperators] = useState<{ id: string; name: string | null }[]>([]);
   const [selectedLawyerId, setSelectedLawyerId] = useState('');
+  const [selectedOperatorId, setSelectedOperatorId] = useState('');
 
   useEffect(() => {
     if (!isAdmin) return;
     api.get('/users/lawyers').then(res => setLawyers(res.data || [])).catch(() => {});
+    api.get('/users?limit=100').then(res => {
+      const users = res.data?.data || res.data?.users || res.data || [];
+      setOperators(users.filter((u: any) => u.id && u.name));
+    }).catch(() => {});
   }, [isAdmin]);
 
   // ── Lead ──────────────────────────────────────────────────────
@@ -2630,6 +2636,7 @@ function CadastrarProcessoModal({
         lead_email: leadMode === 'new' ? newLeadEmail || undefined : undefined,
         // Advogado (ADMIN pode escolher; demais usam o próprio user via req.user.id no backend)
         lawyer_id: isAdmin && selectedLawyerId ? selectedLawyerId : undefined,
+        assigned_user_id: isAdmin && selectedOperatorId ? selectedOperatorId : undefined,
       });
       onSuccess();
       onClose();
@@ -2820,6 +2827,23 @@ function CadastrarProcessoModal({
               </select>
               <p className="text-[10px] text-muted-foreground mt-1.5">
                 Se não selecionado, o processo será atribuído a você.
+              </p>
+
+              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-3 mt-5">
+                👤 Atendente Responsável
+              </p>
+              <select
+                value={selectedOperatorId}
+                onChange={e => setSelectedOperatorId(e.target.value)}
+                className={inputCls}
+              >
+                <option value="">Sem atendente (opcional)</option>
+                {operators.map(u => (
+                  <option key={u.id} value={u.id}>{u.name || u.id}</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-muted-foreground mt-1.5">
+                Operador que atenderá o cliente no chat.
               </p>
             </div>
           )}

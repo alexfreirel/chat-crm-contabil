@@ -58,7 +58,7 @@ export class LegalCasesService {
       this.logger.warn(`[LEGAL] Falha ao pré-preencher caso com memória IA: ${e.message}`);
     }
 
-    return this.prisma.legalCase.create({
+    const legalCase = await this.prisma.legalCase.create({
       data: {
         lead_id: data.lead_id,
         conversation_id: data.conversation_id,
@@ -71,6 +71,25 @@ export class LegalCasesService {
       },
       include: { lead: true },
     });
+
+    // Converter lead em cliente ao criar processo
+    await this.prisma.lead.update({
+      where: { id: data.lead_id },
+      data: {
+        is_client: true,
+        became_client_at: new Date(),
+        stage: 'FINALIZADO',
+        stage_entered_at: new Date(),
+      },
+    }).catch(() => {});
+
+    // Atribuir advogado nas conversas do lead
+    await this.prisma.conversation.updateMany({
+      where: { lead_id: data.lead_id, assigned_lawyer_id: null },
+      data: { assigned_lawyer_id: data.lawyer_id },
+    }).catch(() => {});
+
+    return legalCase;
   }
 
   async findAll(lawyerId?: string, stage?: string, archived?: boolean, inTracking?: boolean, page?: number, limit?: number, tenantId?: string, leadId?: string, caseNumber?: string) {
@@ -633,6 +652,8 @@ export class LegalCasesService {
     lead_name?: string;
     lead_phone?: string;
     lead_email?: string;
+    // Atendente responsável (operador)
+    assigned_user_id?: string;
   }) {
     const VALID_TRACKING = TRACKING_STAGES.map(s => s.id) as string[];
     const trackingStage = (
@@ -736,6 +757,14 @@ export class LegalCasesService {
         loss_reason: null,
       },
     });
+
+    // Atribuir advogado e atendente nas conversas do lead
+    const convUpdate: any = { assigned_lawyer_id: effectiveLawyerId };
+    if (data.assigned_user_id) convUpdate.assigned_user_id = data.assigned_user_id;
+    await this.prisma.conversation.updateMany({
+      where: { lead_id: leadId },
+      data: convUpdate,
+    }).catch(() => {});
 
     try {
       this.chatGateway.emitNewLegalCase(effectiveLawyerId, {

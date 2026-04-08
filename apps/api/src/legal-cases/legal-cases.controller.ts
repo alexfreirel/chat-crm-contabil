@@ -136,6 +136,8 @@ export class LegalCasesController {
       lead_email?: string;
       // ADMIN pode escolher o advogado responsável
       lawyer_id?: string;
+      // ADMIN pode escolher o atendente responsável
+      assigned_user_id?: string;
     },
     @Request() req: any,
   ) {
@@ -144,6 +146,7 @@ export class LegalCasesController {
       ...body,
       lawyer_id: req.user.id,
       override_lawyer_id: isAdmin && body.lawyer_id ? body.lawyer_id : undefined,
+      assigned_user_id: isAdmin && body.assigned_user_id ? body.assigned_user_id : undefined,
       tenant_id: req.user.tenant_id,
     });
   }
