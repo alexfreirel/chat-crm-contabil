@@ -106,12 +106,11 @@ export class FinanceiroService {
     }
 
     if (query.startDate || query.endDate) {
-      // Mostrar transações do período OU pendentes vencidas (dívidas de meses anteriores)
       const dateFilter: any = {};
       if (query.startDate) dateFilter.gte = new Date(query.startDate);
       if (query.endDate) dateFilter.lte = new Date(query.endDate);
 
-      // OR: data no período OU (pendente com due_date vencida até o fim do período)
+      // Transações do período + vencidas de meses ANTERIORES (não do mesmo mês)
       const existingOr = where.OR || [];
       delete where.OR;
       where.AND = [
@@ -119,7 +118,11 @@ export class FinanceiroService {
         ...(existingOr.length > 0 ? [{ OR: existingOr }] : []),
         { OR: [
           { date: dateFilter },
-          { status: 'PENDENTE', due_date: { lt: query.endDate ? new Date(query.endDate) : new Date() } },
+          // Dívidas de meses anteriores: date ANTES do período + still PENDENTE
+          ...(query.startDate ? [{
+            status: 'PENDENTE',
+            date: { lt: new Date(query.startDate) },
+          }] : []),
         ]},
       ];
     }
