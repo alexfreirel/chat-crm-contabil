@@ -98,13 +98,10 @@ export class FinanceiroService {
     if (query.legalCaseId) where.legal_case_id = query.legalCaseId;
     if (query.leadId) where.lead_id = query.leadId;
     if (query.lawyerId) {
-      // Advogado vê: suas transações OU despesas gerais visíveis (sem lawyer_id)
-      where.AND = [
-        { visible_to_lawyer: true },
-        { OR: [
-          { lawyer_id: query.lawyerId },
-          { lawyer_id: null, type: 'DESPESA' }, // despesas gerais do escritório
-        ]},
+      // Advogado vê: suas transações OU transações gerais visíveis (sem lawyer_id)
+      where.OR = [
+        { lawyer_id: query.lawyerId },
+        { lawyer_id: null, visible_to_lawyer: true },
       ];
     }
 
@@ -468,13 +465,10 @@ export class FinanceiroService {
     const where: any = {};
     if (tenantId) where.tenant_id = tenantId;
     if (lawyerId) {
-      // Advogado vê: suas transações + despesas gerais visíveis
-      where.AND = [
-        { visible_to_lawyer: true },
-        { OR: [
-          { lawyer_id: lawyerId },
-          { lawyer_id: null, type: 'DESPESA' },
-        ]},
+      // Advogado vê: suas transações + transações gerais visíveis
+      where.OR = [
+        { lawyer_id: lawyerId },
+        { lawyer_id: null, visible_to_lawyer: true },
       ];
     }
     // Exclude cancelled from aggregation
