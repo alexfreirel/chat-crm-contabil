@@ -160,6 +160,16 @@ export class CalendarService {
       throw new BadRequestException(`Tipo invalido: ${data.type}. Use: ${EVENT_TYPES.join(', ')}`);
     }
 
+    // Auto-preencher lead_id a partir do processo vinculado, se não informado
+    let resolvedLeadId = data.lead_id;
+    if (!resolvedLeadId && data.legal_case_id) {
+      const legalCase = await this.prisma.legalCase.findUnique({
+        where: { id: data.legal_case_id },
+        select: { lead_id: true },
+      });
+      if (legalCase?.lead_id) resolvedLeadId = legalCase.lead_id;
+    }
+
     const event = await this.prisma.calendarEvent.create({
       data: {
         type: data.type,
@@ -172,7 +182,7 @@ export class CalendarService {
         priority: data.priority ?? 'NORMAL',
         color: data.color,
         location: data.location,
-        lead_id: data.lead_id,
+        lead_id: resolvedLeadId,
         conversation_id: data.conversation_id,
         legal_case_id: data.legal_case_id,
         assigned_user_id: data.assigned_user_id,
@@ -339,6 +349,15 @@ export class CalendarService {
     if (data.start_at) updateData.start_at = new Date(data.start_at);
     if (data.end_at) updateData.end_at = new Date(data.end_at);
     if (data.end_at === null) updateData.end_at = null;
+
+    // Auto-preencher lead_id a partir do processo vinculado, se legal_case_id mudou e lead_id não foi informado
+    if (data.legal_case_id && data.lead_id === undefined) {
+      const legalCase = await this.prisma.legalCase.findUnique({
+        where: { id: data.legal_case_id },
+        select: { lead_id: true },
+      });
+      if (legalCase?.lead_id) updateData.lead_id = legalCase.lead_id;
+    }
 
     // Carrega estado anterior para detectar mudanças relevantes na audiência
     const before = await this.prisma.calendarEvent.findUnique({
