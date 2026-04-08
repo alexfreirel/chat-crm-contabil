@@ -2321,6 +2321,7 @@ function ProcessoDetailPanel({
               {showEventModal && (
                 <EventModal
                   caseId={legalCase.id}
+                  leadId={legalCase.lead_id}
                   lawyerId={legalCase.lawyer_id}
                   users={allUsers}
                   interns={interns}
