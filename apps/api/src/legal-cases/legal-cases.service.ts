@@ -684,8 +684,14 @@ export class LegalCasesService {
 
     } else if (data.lead_phone) {
       // Caminho B: criar novo lead real com telefone/nome fornecidos
-      const normalizedPhone = data.lead_phone.replace(/\D/g, '');
+      let normalizedPhone = data.lead_phone.replace(/\D/g, '');
       if (!normalizedPhone) throw new BadRequestException('Telefone inválido para o cliente.');
+      // Auto-adicionar código do país (55) se não informado
+      if (normalizedPhone.length <= 11) normalizedPhone = '55' + normalizedPhone;
+      // Remover 9 extra (13 dígitos: 55 + DDD 2dig + 9 + 8dig → 55 + DDD + 8dig)
+      if (normalizedPhone.length === 13 && normalizedPhone.startsWith('55') && normalizedPhone[4] === '9') {
+        normalizedPhone = normalizedPhone.slice(0, 4) + normalizedPhone.slice(5);
+      }
 
       // Verifica se já existe lead com esse telefone
       const byPhone = await this.prisma.lead.findFirst({

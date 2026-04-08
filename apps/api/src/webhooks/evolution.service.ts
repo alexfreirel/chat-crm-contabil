@@ -452,6 +452,8 @@ export class EvolutionService {
           remote_jid: remoteJid,
           msg_id: externalMessageId,
           instance_name: instanceName,
+        }, {
+          delay: 3000, // 3s de delay para garantir que a mensagem foi commitada no banco
         });
       }
 

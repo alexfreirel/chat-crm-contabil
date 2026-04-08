@@ -80,12 +80,18 @@ export class MediaProcessor extends WorkerHost {
       // do commit da transação que criou a mensagem estar visível para esta conexão.
       let msgExists = await this.prisma.message.findUnique({ where: { id: message_id }, select: { id: true } });
       if (!msgExists) {
-        this.logger.warn(`[MEDIA] Mensagem ${message_id} não encontrada na 1ª tentativa — aguardando 2s para retry`);
-        await new Promise(r => setTimeout(r, 2000));
+        this.logger.warn(`[MEDIA] Mensagem ${message_id} não encontrada na 1ª tentativa — aguardando 5s para retry`);
+        await new Promise(r => setTimeout(r, 5000));
         msgExists = await this.prisma.message.findUnique({ where: { id: message_id }, select: { id: true } });
       }
       if (!msgExists) {
-        this.logger.warn(`[MEDIA] Mensagem ${message_id} não existe após retry — ignorando mídia`);
+        // 2ª tentativa com mais 5s
+        this.logger.warn(`[MEDIA] Mensagem ${message_id} não encontrada na 2ª tentativa — aguardando mais 5s`);
+        await new Promise(r => setTimeout(r, 5000));
+        msgExists = await this.prisma.message.findUnique({ where: { id: message_id }, select: { id: true } });
+      }
+      if (!msgExists) {
+        this.logger.warn(`[MEDIA] Mensagem ${message_id} não existe após 3 tentativas — ignorando mídia`);
         return;
       }
 
