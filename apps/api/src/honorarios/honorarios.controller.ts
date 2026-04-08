@@ -47,7 +47,7 @@ export class HonorariosController {
     },
     @Request() req: any,
   ) {
-    return this.service.create(caseId, body, req.user.tenant_id);
+    return this.service.create(caseId, body, req.user.tenant_id, req.user.id);
   }
 
   @Patch(':id')
@@ -92,7 +92,7 @@ export class HonorariosController {
     @Body() body: { payment_method?: string },
     @Request() req: any,
   ) {
-    return this.service.markPaid(paymentId, body, req.user.tenant_id);
+    return this.service.markPaid(paymentId, body, req.user.tenant_id, req.user.id);
   }
 
   @Delete('payments/:paymentId')

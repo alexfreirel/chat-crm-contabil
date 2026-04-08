@@ -132,6 +132,7 @@ export class HonorariosService {
       notes?: string;
     },
     tenantId?: string,
+    actorId?: string,
   ) {
     const lc = await this.verifyCaseAccess(caseId, tenantId);
 
@@ -213,6 +214,18 @@ export class HonorariosService {
       `Honorário criado: ${honorario.id} (${data.type}, R$ ${totalValue}, ${installmentCount} parcelas${data.success_percentage ? `, ${data.success_percentage}%` : ''})`,
     );
 
+    // Log de auditoria
+    const caseData = await this.prisma.legalCase.findUnique({
+      where: { id: caseId },
+      select: { case_number: true, legal_area: true, lawyer_id: true, lead: { select: { name: true } } },
+    });
+    await this.financeiroService.logAction(actorId || null, 'HONORARIO_CRIADO', honorario.id, {
+      tipo: data.type, valor: totalValue, parcelas: installmentCount,
+      processo: caseData?.case_number, area: caseData?.legal_area,
+      cliente: caseData?.lead?.name, lawyer_id: caseData?.lawyer_id,
+      sucumbencia_condenacao: sentenceValue, sucumbencia_pct: data.success_percentage,
+    });
+
     // Regime de caixa: NÃO cria FinancialTransaction ao cadastrar honorário.
     // Receita só é registrada quando o pagamento é efetivamente recebido (markPaid).
 
@@ -288,10 +301,15 @@ export class HonorariosService {
     paymentId: string,
     data: { payment_method?: string },
     tenantId?: string,
+    actorId?: string,
   ) {
     const payment = await this.prisma.honorarioPayment.findUnique({
       where: { id: paymentId },
-      include: { honorario: { select: { tenant_id: true } } },
+      include: {
+        honorario: {
+          select: { tenant_id: true, type: true, legal_case: { select: { case_number: true, lawyer_id: true, lead: { select: { name: true } } } } },
+        },
+      },
     });
     if (!payment) throw new NotFoundException('Parcela não encontrada');
     if (tenantId && payment.honorario.tenant_id && payment.honorario.tenant_id !== tenantId) {
@@ -313,6 +331,14 @@ export class HonorariosService {
     } catch (e: any) {
       this.logger.warn(`[HONORARIO] Falha ao atualizar transação financeira: ${e.message}`);
     }
+
+    const lc = (payment as any).honorario?.legal_case;
+    await this.financeiroService.logAction(actorId || null, 'PAGAMENTO_RECEBIDO', paymentId, {
+      valor: Number(payment.amount), metodo: data.payment_method,
+      tipo_honorario: (payment as any).honorario?.type,
+      processo: lc?.case_number, cliente: lc?.lead?.name,
+      lawyer_id: lc?.lawyer_id,
+    });
 
     return updated;
   }

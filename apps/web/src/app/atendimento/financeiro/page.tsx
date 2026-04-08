@@ -6,7 +6,7 @@ import {
   DollarSign, TrendingUp, TrendingDown, AlertTriangle, Clock,
   Plus, X, Search, Loader2, Phone, MessageSquare,
   ArrowUpDown, ChevronDown, Trash2, Pencil, Check,
-  BarChart3, Receipt, CreditCard, Ban, Users, Link2, Unlink, ExternalLink,
+  BarChart3, Receipt, CreditCard, Ban, Users, Link2, Unlink, ExternalLink, FileText,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { showError, showSuccess } from '@/lib/toast';
@@ -50,7 +50,7 @@ interface Transaction {
 /* ──────────────────────────────────────────────────────────────
    Constants
 ────────────────────────────────────────────────────────────── */
-const TABS = ['Resumo', 'Receitas', 'Despesas', 'Cobrancas', 'Processos', 'Clientes', 'Inadimplencia'] as const;
+const TABS = ['Resumo', 'Receitas', 'Despesas', 'Cobrancas', 'Processos', 'Clientes', 'Inadimplencia', 'Log'] as const;
 type Tab = typeof TABS[number];
 
 const PERIODS = [
@@ -497,6 +497,7 @@ export default function FinanceiroPage() {
     Processos: Receipt,
     Clientes: Users,
     Inadimplencia: AlertTriangle,
+    Log: FileText,
   };
 
   /* ─── Loading skeleton ─── */
@@ -848,7 +849,148 @@ export default function FinanceiroPage() {
             )}
           </div>
         )}
+
+        {/* ─── TAB: Log de Movimentações ─── */}
+        {tab === 'Log' && <AuditLogTab lawyerId={effectiveLawyerId} />}
       </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Componente: Log de Movimentações Financeiras
+══════════════════════════════════════════════════════════════ */
+
+const ACTION_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
+  HONORARIO_CRIADO: { label: 'Honorário cadastrado', color: 'text-blue-400 bg-blue-500/10 border-blue-500/20', icon: '📋' },
+  PAGAMENTO_RECEBIDO: { label: 'Pagamento recebido', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', icon: '✅' },
+  PAGAMENTO_PARCIAL: { label: 'Pagamento parcial', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20', icon: '💰' },
+  PARCELA_EDITADA: { label: 'Parcela editada', color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20', icon: '✏️' },
+  PARCELA_EXCLUIDA: { label: 'Parcela excluída', color: 'text-red-400 bg-red-500/10 border-red-500/20', icon: '🗑️' },
+  COBRANCA_GERADA: { label: 'Cobrança gerada', color: 'text-blue-400 bg-blue-500/10 border-blue-500/20', icon: '📄' },
+  COBRANCA_PAGA_ASAAS: { label: 'Cobrança paga (Asaas)', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', icon: '🏦' },
+  RECEITA_CRIADA: { label: 'Receita criada', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', icon: '📥' },
+  RECEITA_EDITADA: { label: 'Receita editada', color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20', icon: '✏️' },
+  RECEITA_EXCLUIDA: { label: 'Receita excluída', color: 'text-red-400 bg-red-500/10 border-red-500/20', icon: '🗑️' },
+  DESPESA_CRIADA: { label: 'Despesa criada', color: 'text-orange-400 bg-orange-500/10 border-orange-500/20', icon: '📤' },
+  DESPESA_EDITADA: { label: 'Despesa editada', color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20', icon: '✏️' },
+  DESPESA_EXCLUIDA: { label: 'Despesa excluída', color: 'text-red-400 bg-red-500/10 border-red-500/20', icon: '🗑️' },
+  DESPESA_PAGA: { label: 'Despesa paga', color: 'text-orange-400 bg-orange-500/10 border-orange-500/20', icon: '💸' },
+};
+
+function AuditLogTab({ lawyerId }: { lawyerId?: string }) {
+  const [logs, setLogs] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(0);
+  const limit = 30;
+
+  const fmtDateTime = (d: string) => {
+    const dt = new Date(d);
+    return dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+      ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const fmtCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+
+  const fetchLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params: any = { limit: String(limit), offset: String(page * limit) };
+      if (lawyerId) params.lawyerId = lawyerId;
+      const res = await api.get('/financeiro/audit-log', { params });
+      setLogs(res.data?.data || []);
+      setTotal(res.data?.total || 0);
+    } catch { setLogs([]); }
+    finally { setLoading(false); }
+  }, [lawyerId, page]);
+
+  useEffect(() => { fetchLogs(); }, [fetchLogs]);
+
+  const totalPages = Math.ceil(total / limit);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
+          <FileText size={16} className="text-primary" />
+          Log de Movimentações
+          <span className="text-xs text-muted-foreground font-normal">({total} registros)</span>
+        </h2>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12"><Loader2 size={20} className="animate-spin text-primary" /></div>
+      ) : logs.length === 0 ? (
+        <div className="bg-card border border-border rounded-xl p-12 text-center">
+          <FileText size={40} className="mx-auto text-muted-foreground/30 mb-3" />
+          <p className="text-sm text-muted-foreground font-medium">Nenhuma movimentação registrada</p>
+          <p className="text-xs text-muted-foreground mt-1">As operações financeiras serão registradas aqui automaticamente</p>
+        </div>
+      ) : (
+        <>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="divide-y divide-border/40">
+              {logs.map((log: any) => {
+                const config = ACTION_CONFIG[log.action] || { label: log.action, color: 'text-muted-foreground bg-accent/30 border-border', icon: '📌' };
+                const meta = log.meta_json || {};
+                return (
+                  <div key={log.id} className="px-5 py-3.5 hover:bg-accent/10 transition-colors flex items-start gap-4">
+                    {/* Ícone */}
+                    <div className="text-lg shrink-0 mt-0.5">{config.icon}</div>
+
+                    {/* Conteúdo */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-lg border ${config.color}`}>
+                          {config.label}
+                        </span>
+                        {meta.processo && (
+                          <span className="text-[10px] font-mono text-primary">{meta.processo}</span>
+                        )}
+                        {meta.tipo_honorario && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-400">{meta.tipo_honorario}</span>
+                        )}
+                        {meta.tipo && !meta.tipo_honorario && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent/40 text-muted-foreground">{meta.tipo}</span>
+                        )}
+                      </div>
+
+                      {/* Detalhes */}
+                      <div className="text-xs text-muted-foreground space-x-3">
+                        {meta.valor !== undefined && <span className="font-semibold text-foreground">{fmtCurrency(meta.valor)}</span>}
+                        {meta.valor_recebido !== undefined && <span className="text-emerald-400">Recebido: {fmtCurrency(meta.valor_recebido)}</span>}
+                        {meta.saldo_restante !== undefined && <span className="text-amber-400">Saldo: {fmtCurrency(meta.saldo_restante)}</span>}
+                        {meta.metodo && <span>via {meta.metodo}</span>}
+                        {meta.descricao && <span className="truncate max-w-[200px] inline-block align-bottom">{meta.descricao}</span>}
+                        {meta.cliente && <span>| {meta.cliente}</span>}
+                        {meta.categoria && <span>| {meta.categoria}</span>}
+                      </div>
+                    </div>
+
+                    {/* Ator + Hora */}
+                    <div className="text-right shrink-0">
+                      <p className="text-[11px] font-medium text-foreground">{log.actor?.name || 'Sistema'}</p>
+                      <p className="text-[10px] text-muted-foreground">{fmtDateTime(log.created_at)}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Paginação */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2">
+              <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
+                className="px-3 py-1.5 text-xs border border-border rounded-lg text-muted-foreground hover:bg-accent/30 disabled:opacity-30">Anterior</button>
+              <span className="text-xs text-muted-foreground">Página {page + 1} de {totalPages}</span>
+              <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
+                className="px-3 py-1.5 text-xs border border-border rounded-lg text-muted-foreground hover:bg-accent/30 disabled:opacity-30">Próxima</button>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

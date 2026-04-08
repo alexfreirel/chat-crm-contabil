@@ -67,6 +67,7 @@ export class FinanceiroController {
     return this.service.createTransaction({
       ...body,
       tenant_id: req.user.tenant_id,
+      actor_id: req.user.id,
     });
   }
 
@@ -76,7 +77,7 @@ export class FinanceiroController {
     @Body() body: UpdateTransactionDto,
     @Request() req: any,
   ) {
-    return this.service.updateTransaction(id, body, req.user.tenant_id);
+    return this.service.updateTransaction(id, body, req.user.tenant_id, req.user.id);
   }
 
   @Delete('transactions/:id')
@@ -84,7 +85,7 @@ export class FinanceiroController {
     @Param('id') id: string,
     @Request() req: any,
   ) {
-    return this.service.deleteTransaction(id, req.user.tenant_id);
+    return this.service.deleteTransaction(id, req.user.tenant_id, req.user.id);
   }
 
   @Post('transactions/:id/partial-payment')
@@ -93,7 +94,19 @@ export class FinanceiroController {
     @Body() body: { amount: number; payment_method?: string },
     @Request() req: any,
   ) {
-    return this.service.partialPayment(id, body.amount, body.payment_method, req.user.tenant_id);
+    return this.service.partialPayment(id, body.amount, body.payment_method, req.user.tenant_id, req.user.id);
+  }
+
+  @Get('audit-log')
+  getAuditLog(
+    @Query('lawyerId') lawyerId: string,
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Query('limit') limit: string,
+    @Query('offset') offset: string,
+    @Request() req: any,
+  ) {
+    return this.service.getAuditLog(lawyerId, startDate, endDate, parseInt(limit || '50'), parseInt(offset || '0'));
   }
 
   // ─── Summary & Cash Flow ───────────────────────────────

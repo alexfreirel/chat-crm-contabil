@@ -27,6 +27,24 @@ export class FinanceiroService {
 
   constructor(private prisma: PrismaService) {}
 
+  // ─── Audit Log ──────────────────────────────────────────
+
+  async logAction(userId: string | null, action: string, entityId: string, meta: Record<string, any>) {
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          actor_user_id: userId,
+          action,
+          entity: 'FINANCEIRO',
+          entity_id: entityId,
+          meta_json: meta,
+        },
+      });
+    } catch (e: any) {
+      this.logger.warn(`[AUDIT] Falha ao registrar log: ${e.message}`);
+    }
+  }
+
   // ─── Helpers ────────────────────────────────────────────
 
   private async verifyTransactionAccess(id: string, tenantId?: string) {
@@ -170,8 +188,8 @@ export class FinanceiroService {
     );
   }
 
-  async createTransaction(data: CreateTransactionDto & { tenant_id?: string }) {
-    return this.prisma.financialTransaction.create({
+  async createTransaction(data: CreateTransactionDto & { tenant_id?: string; actor_id?: string }) {
+    const tx = await this.prisma.financialTransaction.create({
       data: {
         tenant_id: data.tenant_id,
         type: data.type,
@@ -196,9 +214,19 @@ export class FinanceiroService {
         lawyer: { select: { id: true, name: true } },
       },
     });
+
+    const actionType = data.type === 'DESPESA' ? 'DESPESA_CRIADA' : 'RECEITA_CRIADA';
+    await this.logAction(data.actor_id || null, actionType, tx.id, {
+      tipo: data.type, categoria: data.category, descricao: data.description,
+      valor: data.amount, status: data.status || 'PENDENTE',
+      processo: tx.legal_case?.case_number, cliente: tx.lead?.name,
+      lawyer_id: data.lawyer_id,
+    });
+
+    return tx;
   }
 
-  async updateTransaction(id: string, data: UpdateTransactionDto, tenantId?: string) {
+  async updateTransaction(id: string, data: UpdateTransactionDto, tenantId?: string, actorId?: string) {
     await this.verifyTransactionAccess(id, tenantId);
 
     const updateData: any = {};
@@ -219,7 +247,7 @@ export class FinanceiroService {
     if (data.reference_id !== undefined) updateData.reference_id = data.reference_id;
     if (data.notes !== undefined) updateData.notes = data.notes;
 
-    return this.prisma.financialTransaction.update({
+    const updated = await this.prisma.financialTransaction.update({
       where: { id },
       data: updateData,
       include: {
@@ -228,12 +256,25 @@ export class FinanceiroService {
         lawyer: { select: { id: true, name: true } },
       },
     });
+
+    // Determinar tipo de ação para log
+    const isPago = data.status === 'PAGO';
+    const isDespesa = updated.type === 'DESPESA';
+    let actionType = isDespesa ? 'DESPESA_EDITADA' : 'RECEITA_EDITADA';
+    if (isPago) actionType = isDespesa ? 'DESPESA_PAGA' : 'PAGAMENTO_RECEBIDO';
+    await this.logAction(actorId || null, actionType, id, {
+      campos: Object.keys(updateData), valor: updated.amount ? Number(updated.amount) : undefined,
+      descricao: updated.description, status: updated.status,
+      metodo: updated.payment_method, lawyer_id: updated.lawyer_id,
+    });
+
+    return updated;
   }
 
   /**
    * Recebimento parcial: cria transação PAGO com o valor recebido e reduz o original.
    */
-  async partialPayment(id: string, amount: number, paymentMethod?: string, tenantId?: string) {
+  async partialPayment(id: string, amount: number, paymentMethod?: string, tenantId?: string, actorId?: string) {
     const original = await this.verifyTransactionAccess(id, tenantId);
 
     if (original.status === 'PAGO') {
@@ -283,11 +324,23 @@ export class FinanceiroService {
       });
     }
 
+    await this.logAction(actorId || null, 'PAGAMENTO_PARCIAL', id, {
+      valor_recebido: amount, saldo_restante: remaining,
+      metodo: paymentMethod, descricao: original.description,
+      lawyer_id: original.lawyer_id,
+    });
+
     return { partial: partialTx, remaining };
   }
 
-  async deleteTransaction(id: string, tenantId?: string) {
-    await this.verifyTransactionAccess(id, tenantId);
+  async deleteTransaction(id: string, tenantId?: string, actorId?: string) {
+    const tx = await this.verifyTransactionAccess(id, tenantId);
+
+    const actionType = tx.type === 'DESPESA' ? 'DESPESA_EXCLUIDA' : 'RECEITA_EXCLUIDA';
+    await this.logAction(actorId || null, actionType, id, {
+      descricao: tx.description, valor: Number(tx.amount),
+      tipo: tx.type, categoria: tx.category, lawyer_id: tx.lawyer_id,
+    });
 
     return this.prisma.financialTransaction.update({
       where: { id },
@@ -360,6 +413,38 @@ export class FinanceiroService {
         notes: honorario?.notes || payment.notes || null,
       },
     });
+  }
+
+  // ─── Audit Log ─────────────────────────────────────────
+
+  async getAuditLog(lawyerId?: string, startDate?: string, endDate?: string, limit = 50, offset = 0) {
+    const where: any = { entity: 'FINANCEIRO' };
+
+    if (startDate || endDate) {
+      where.created_at = {};
+      if (startDate) where.created_at.gte = new Date(startDate);
+      if (endDate) where.created_at.lte = new Date(endDate);
+    }
+
+    // Filtrar por advogado via meta_json (PostgreSQL JSONB)
+    if (lawyerId) {
+      where.meta_json = { path: ['lawyer_id'], equals: lawyerId };
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        include: {
+          actor: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { created_at: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    return { data, total };
   }
 
   // ─── Summary & Analytics ───────────────────────────────
