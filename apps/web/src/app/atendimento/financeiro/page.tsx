@@ -175,12 +175,13 @@ function QuickAddForm({ type, categories, onCreated, onManageCategories, allDbCa
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
+  const [visibleToLawyer, setVisibleToLawyer] = useState(true);
   const [showCatManager, setShowCatManager] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [savingCat, setSavingCat] = useState(false);
   const [deletingCatId, setDeletingCatId] = useState<string | null>(null);
 
-  const reset = () => { setDesc(''); setAmount(''); setCategory(categories[0]); setDate(new Date().toISOString().slice(0, 10)); setDueDate(''); setPaymentMethod(''); };
+  const reset = () => { setDesc(''); setAmount(''); setCategory(categories[0]); setDate(new Date().toISOString().slice(0, 10)); setDueDate(''); setPaymentMethod(''); setVisibleToLawyer(true); };
 
   const handleAddCategory = async () => {
     if (!newCatName.trim()) return;
@@ -222,6 +223,7 @@ function QuickAddForm({ type, categories, onCreated, onManageCategories, allDbCa
         due_date: dueDate ? new Date(dueDate + 'T12:00:00Z').toISOString() : new Date(date + 'T12:00:00Z').toISOString(),
         payment_method: paymentMethod || undefined,
         status: 'PENDENTE',
+        visible_to_lawyer: type === 'DESPESA' ? visibleToLawyer : true,
       });
       showSuccess(`${type === 'RECEITA' ? 'Receita' : 'Despesa'} criada`);
       reset();
@@ -310,6 +312,15 @@ function QuickAddForm({ type, categories, onCreated, onManageCategories, allDbCa
           />
         </div>
       </div>
+      {/* Visibilidade para advogado (só despesas) */}
+      {type === 'DESPESA' && (
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={!visibleToLawyer} onChange={e => setVisibleToLawyer(!e.target.checked)}
+            className="w-3.5 h-3.5 rounded border-border accent-primary" />
+          <span className="text-xs text-muted-foreground">Ocultar do advogado</span>
+        </label>
+      )}
+
       <div className="flex items-center justify-between">
         <button
           onClick={() => setShowCatManager(!showCatManager)}
@@ -725,7 +736,7 @@ export default function FinanceiroPage() {
         {/* ─── TAB: Resumo ─── */}
         {tab === 'Resumo' && summary && (
           <div className="space-y-5">
-            {/* KPI Grid */}
+            {/* KPI Grid — Receitas */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <KpiCard
                 icon={DollarSign}
@@ -754,6 +765,31 @@ export default function FinanceiroPage() {
                 value={fmt(summary.totalOverdue)}
                 color="text-red-400"
                 bgColor="bg-red-500/15"
+              />
+            </div>
+
+            {/* KPI Grid — Despesas */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <KpiCard
+                icon={TrendingDown}
+                label="Despesas Pagas"
+                value={fmt(summary.totalExpenses)}
+                color="text-orange-400"
+                bgColor="bg-orange-500/15"
+              />
+              <KpiCard
+                icon={Receipt}
+                label="Saldo"
+                value={fmt(summary.totalRevenue - summary.totalExpenses)}
+                color={summary.totalRevenue - summary.totalExpenses >= 0 ? 'text-emerald-400' : 'text-red-400'}
+                bgColor={summary.totalRevenue - summary.totalExpenses >= 0 ? 'bg-emerald-500/15' : 'bg-red-500/15'}
+              />
+              <KpiCard
+                icon={BarChart3}
+                label="Balanço Projetado"
+                value={fmt(summary.totalRevenue + summary.totalReceivable - summary.totalExpenses)}
+                color="text-cyan-400"
+                bgColor="bg-cyan-500/15"
               />
             </div>
 

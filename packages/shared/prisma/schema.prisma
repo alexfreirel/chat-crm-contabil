@@ -1177,6 +1177,7 @@ model FinancialTransaction {
   status               String    @default("PENDENTE") // PENDENTE, PAGO, CANCELADO
   reference_id         String? // ID externo (gateway, NFS-e, etc.)
   notes                String?
+  visible_to_lawyer    Boolean   @default(true) // Se false, advogado não vê esta despesa
 
   // Vínculos opcionais
   legal_case_id        String?

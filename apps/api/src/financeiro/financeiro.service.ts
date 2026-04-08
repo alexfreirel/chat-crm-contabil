@@ -92,7 +92,11 @@ export class FinanceiroService {
     if (query.status) where.status = query.status;
     if (query.legalCaseId) where.legal_case_id = query.legalCaseId;
     if (query.leadId) where.lead_id = query.leadId;
-    if (query.lawyerId) where.lawyer_id = query.lawyerId;
+    if (query.lawyerId) {
+      where.lawyer_id = query.lawyerId;
+      // Advogado não vê despesas ocultas
+      where.visible_to_lawyer = true;
+    }
 
     if (query.startDate || query.endDate) {
       where.date = {};
@@ -207,6 +211,7 @@ export class FinanceiroService {
         honorario_payment_id: data.honorario_payment_id,
         reference_id: data.reference_id,
         notes: data.notes,
+        visible_to_lawyer: data.visible_to_lawyer ?? true,
       },
       include: {
         lead: { select: { id: true, name: true } },

@@ -70,6 +70,10 @@ export class CreateTransactionDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  visible_to_lawyer?: boolean;
 }
 
 export class UpdateTransactionDto {
