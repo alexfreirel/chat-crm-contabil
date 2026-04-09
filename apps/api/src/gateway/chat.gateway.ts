@@ -40,6 +40,54 @@ export class ChatGateway {
       // Broadcast: usuário ficou online
       this.server?.emit('user_presence', { userId, online: true });
       this.logger.log(`[PRESENCE] User ${userId} ONLINE (${this.onlineUsers.get(userId)!.size} tab(s))`);
+      // Atribuir conversas pendentes que a IA estava atendendo (fire-and-forget)
+      this.assignPendingConversations(userId).catch(e =>
+        this.logger.warn(`[PRESENCE] Falha ao atribuir pendentes para ${userId}: ${e.message}`),
+      );
+    }
+  }
+
+  /**
+   * Quando um operador fica online, atribui conversas sem operador dos inboxes dele.
+   * Essas conversas estavam sendo atendidas pela IA enquanto ninguém estava online.
+   */
+  private async assignPendingConversations(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { inboxes: { select: { id: true } } },
+    });
+    if (!user?.inboxes?.length) return;
+
+    const inboxIds = user.inboxes.map((i: any) => i.id);
+
+    // Busca conversas sem operador nos inboxes desse user
+    const pending = await this.prisma.conversation.findMany({
+      where: {
+        assigned_user_id: null,
+        inbox_id: { in: inboxIds },
+        status: { notIn: ['FECHADO'] },
+        lead: { stage: { notIn: ['PERDIDO', 'FINALIZADO'] } },
+      },
+      select: { id: true, tenant_id: true },
+      orderBy: { last_message_at: 'asc' }, // Mais antiga primeiro
+    });
+
+    if (pending.length === 0) return;
+
+    this.logger.log(`[PRESENCE] User ${userId} online — atribuindo ${pending.length} conversa(s) pendente(s)`);
+
+    for (const conv of pending) {
+      await this.prisma.conversation.update({
+        where: { id: conv.id },
+        data: { assigned_user_id: userId },
+        // ai_mode NÃO é alterado: operador monitora, IA continua respondendo
+      });
+      this.logger.log(`[AUTO-ASSIGN] Conversa pendente ${conv.id} → operador online ${userId}`);
+    }
+
+    // Refresh sidebar de todos
+    if (pending[0]?.tenant_id) {
+      this.emitConversationsUpdate(pending[0].tenant_id);
     }
   }
 

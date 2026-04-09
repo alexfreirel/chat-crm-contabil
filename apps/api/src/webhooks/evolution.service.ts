@@ -302,26 +302,26 @@ export class EvolutionService {
       }
       // ──────────────────────────────────────────────────────────────────────
 
-      // Auto-assign via round-robin se conversa sem operador atribuído
+      // Auto-assign via round-robin — apenas entre operadores ONLINE
+      // Se ninguém online: IA atende sozinha (ai_mode permanece true, sem assigned_user_id)
+      // Quando o primeiro operador ficar online, as conversas pendentes serão atribuídas
+      // automaticamente via ChatGateway.assignPendingConversations()
       if (!conv.assigned_user_id) {
-        let nextUserId: string | null = inboxId
-          ? await this.inboxesService.getNextAssignee(inboxId)
+        const onlineUserIds = this.chatGateway.getOnlineUserIds();
+        const nextUserId: string | null = inboxId
+          ? await this.inboxesService.getNextAssignee(inboxId, onlineUserIds)
           : null;
-        // Fallback: atribui ao admin do tenant se nenhum operador disponível
-        if (!nextUserId) {
-          const admin = await this.prisma.user.findFirst({
-            where: { tenant_id: conv.tenant_id ?? undefined, roles: { has: 'ADMIN' } },
-            select: { id: true },
-          });
-          nextUserId = admin?.id || null;
-        }
+
         if (nextUserId) {
           conv = await this.prisma.conversation.update({
             where: { id: conv.id },
             data: { assigned_user_id: nextUserId },
             // ai_mode NÃO é alterado: operador monitora, IA continua respondendo
           });
-          this.logger.log(`[AUTO-ASSIGN] Conversa ${conv.id} → operador ${nextUserId}`);
+          this.logger.log(`[AUTO-ASSIGN] Conversa ${conv.id} → operador online ${nextUserId}`);
+        } else {
+          // Ninguém online → IA atende sozinha (ai_mode já é true por default)
+          this.logger.log(`[AUTO-ASSIGN] Nenhum operador online — IA atende conversa ${conv.id}`);
         }
       }
 

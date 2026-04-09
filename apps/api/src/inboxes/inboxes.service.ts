@@ -199,8 +199,11 @@ export class InboxesService {
    * Round-robin: retorna o ID do próximo operador do inbox.
    * Usa $transaction para evitar double-assign em chamadas paralelas.
    * Retorna null se o inbox não tiver operadores cadastrados.
+   *
+   * @param onlineUserIds Se fornecido, filtra apenas operadores online.
+   *                      Retorna null se nenhum operador online estiver no inbox.
    */
-  async getNextAssignee(inboxId: string): Promise<string | null> {
+  async getNextAssignee(inboxId: string, onlineUserIds?: string[]): Promise<string | null> {
     return (this.prisma as any).$transaction(async (tx: any) => {
       const inbox = await tx.inbox.findUnique({
         where: { id: inboxId },
@@ -209,7 +212,14 @@ export class InboxesService {
 
       if (!inbox?.users?.length) return null;
 
-      const users: { id: string }[] = inbox.users;
+      // Filtra por operadores online (se fornecido)
+      let users: { id: string }[] = inbox.users;
+      if (onlineUserIds) {
+        users = users.filter((u: any) => onlineUserIds.includes(u.id));
+        if (users.length === 0) return null; // Ninguém online neste inbox
+      }
+
+      // Round-robin sobre os operadores disponíveis
       const currentIdx = inbox.rr_pointer
         ? users.findIndex((u: any) => u.id === inbox.rr_pointer)
         : -1;
