@@ -107,6 +107,23 @@ const BLANK_FORM: SkillForm = {
   provider: 'openai',
 };
 
+const DEFAULT_DJEN_NOTIFY_TEMPLATE = `⚖️ *Movimentação no seu processo*
+
+Olá {{nome}}! Houve uma nova movimentação no seu processo nº {{processo}}.
+
+📋 *Tipo:* {{tipo}}
+📝 *Assunto:* {{assunto}}
+📅 *Data:* {{data}}
+
+📖 *O que aconteceu:*
+{{resumo}}
+
+✅ *Próximo passo:* {{proximo_passo}}
+
+Nosso advogado já foi notificado e está acompanhando. Se tiver dúvidas, pode nos chamar aqui!
+
+André Lustosa Advogados`;
+
 export default function AiSettingsPage() {
   // Config global
   const [apiKey, setApiKey] = useState('');
@@ -115,7 +132,7 @@ export default function AiSettingsPage() {
   const [djenModel, setDjenModel] = useState('gpt-4o-mini');
   const [djenPrompt, setDjenPrompt] = useState('');
   const [showDjenPrompt, setShowDjenPrompt] = useState(false);
-  const [djenNotifyTemplate, setDjenNotifyTemplate] = useState('');
+  const [djenNotifyTemplate, setDjenNotifyTemplate] = useState(DEFAULT_DJEN_NOTIFY_TEMPLATE);
   const [showDjenNotifyTemplate, setShowDjenNotifyTemplate] = useState(false);
   const [adminBotEnabled, setAdminBotEnabled] = useState(true);
   const [cooldownSeconds, setCooldownSeconds] = useState(8);
@@ -167,7 +184,7 @@ export default function AiSettingsPage() {
       setDefaultModel(configRes.data.defaultModel || 'gpt-4o-mini');
       setDjenModel(configRes.data.djenModel || 'gpt-4o-mini');
       setDjenPrompt(configRes.data.djenPrompt || '');
-      setDjenNotifyTemplate(configRes.data.djenNotifyTemplate || '');
+      setDjenNotifyTemplate(configRes.data.djenNotifyTemplate || DEFAULT_DJEN_NOTIFY_TEMPLATE);
       setAdminBotEnabled(configRes.data.adminBotEnabled ?? true);
       setCooldownSeconds(configRes.data.cooldownSeconds ?? 8);
       setSkills(skillsRes.data);
@@ -485,8 +502,7 @@ export default function AiSettingsPage() {
                     <textarea
                       value={djenNotifyTemplate}
                       onChange={(e) => setDjenNotifyTemplate(e.target.value)}
-                      rows={16}
-                      placeholder={`Deixe vazio para usar o template padrão. Variáveis disponíveis:\n\n{{nome}} — Primeiro nome do cliente\n{{processo}} — Número do processo\n{{tipo}} — Tipo de comunicação (Intimação, Citação, etc.)\n{{data}} — Data da publicação\n{{assunto}} — Assunto da publicação\n{{resumo}} — Resumo gerado pela IA\n{{proximo_passo}} — Próximo passo sugerido pela IA\n\nLinhas com variáveis vazias são removidas automaticamente.`}
+                      rows={18}
                       className="w-full bg-muted/50 border border-border rounded-xl px-3 py-2.5 text-xs font-mono outline-none focus:border-primary/50 transition-all resize-y"
                     />
                     <p className="text-[11px] text-muted-foreground">
@@ -500,10 +516,10 @@ export default function AiSettingsPage() {
                       <code className="text-[10px] bg-muted px-1 rounded">{'{{resumo}}'}</code>{' '}
                       <code className="text-[10px] bg-muted px-1 rounded">{'{{proximo_passo}}'}</code>
                     </p>
-                    {djenNotifyTemplate && (
+                    {djenNotifyTemplate !== DEFAULT_DJEN_NOTIFY_TEMPLATE && (
                       <button
                         type="button"
-                        onClick={() => setDjenNotifyTemplate('')}
+                        onClick={() => setDjenNotifyTemplate(DEFAULT_DJEN_NOTIFY_TEMPLATE)}
                         className="text-[11px] text-destructive hover:underline"
                       >
                         Restaurar template padrão
