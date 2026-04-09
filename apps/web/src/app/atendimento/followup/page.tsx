@@ -1231,6 +1231,7 @@ export default function FollowupPage() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingBroadcasts, setLoadingBroadcasts] = useState(false);
   const [dispatchingBroadcast, setDispatchingBroadcast] = useState(false);
+  const [broadcastType, setBroadcastType] = useState<'AUDIENCIA' | 'COMUNICADO'>('AUDIENCIA');
   const [broadcastDaysAhead, setBroadcastDaysAhead] = useState(7);
   const [broadcastInterval, setBroadcastInterval] = useState(10);
   const [broadcastCustomPrompt, setBroadcastCustomPrompt] = useState('');
@@ -1294,14 +1295,14 @@ export default function FollowupPage() {
   const fetchBroadcastPreview = useCallback(async () => {
     setLoadingPreview(true);
     try {
-      const data = await apiFetch(`/followup/broadcasts/preview?type=AUDIENCIA&days_ahead=${broadcastDaysAhead}`);
+      const data = await apiFetch(`/followup/broadcasts/preview?type=${broadcastType}&days_ahead=${broadcastDaysAhead}`);
       setBroadcastTargets(Array.isArray(data) ? data : []);
     } catch (err: unknown) {
       showError(err instanceof Error ? err.message : 'Erro ao carregar preview');
     } finally {
       setLoadingPreview(false);
     }
-  }, [broadcastDaysAhead]);
+  }, [broadcastType, broadcastDaysAhead]);
 
   const fetchBroadcasts = useCallback(async () => {
     setLoadingBroadcasts(true);
@@ -1317,13 +1318,16 @@ export default function FollowupPage() {
 
   const handleDispatchBroadcast = async () => {
     if (broadcastTargets.length === 0) { showError('Nenhum alvo encontrado'); return; }
-    if (!confirm(`Disparar ${broadcastTargets.length} mensagens com intervalo de ${broadcastInterval}s entre cada? As mensagens serão geradas por IA individualmente.`)) return;
+    const confirmMsg = broadcastType === 'COMUNICADO'
+      ? `Disparar comunicado para ${broadcastTargets.length} clientes com intervalo de ${broadcastInterval}s entre cada?`
+      : `Disparar ${broadcastTargets.length} mensagens com intervalo de ${broadcastInterval}s entre cada? As mensagens serão geradas por IA individualmente.`;
+    if (!confirm(confirmMsg)) return;
     setDispatchingBroadcast(true);
     try {
       const result = await apiFetch('/followup/broadcasts', {
         method: 'POST',
         body: JSON.stringify({
-          type: 'AUDIENCIA',
+          type: broadcastType,
           days_ahead: broadcastDaysAhead,
           interval_ms: broadcastInterval * 1000,
           custom_prompt: broadcastCustomPrompt || undefined,
@@ -2244,24 +2248,52 @@ export default function FollowupPage() {
                   <Radio size={16} className="text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-foreground">Novo Disparo — Lembrete de Audiência</h3>
-                  <p className="text-xs text-muted-foreground">Envie mensagens personalizadas por IA para clientes com audiências próximas</p>
+                  <h3 className="text-sm font-semibold text-foreground">
+                    {broadcastType === 'COMUNICADO' ? 'Novo Disparo — Comunicado Geral' : 'Novo Disparo — Lembrete de Audiência'}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    {broadcastType === 'COMUNICADO'
+                      ? 'Envie uma mensagem fixa para todos os clientes com processo ativo'
+                      : 'Envie mensagens personalizadas por IA para clientes com audiências próximas'}
+                  </p>
                 </div>
               </div>
 
+              {/* Seletor de tipo de disparo */}
+              <div className="flex rounded-xl border border-border overflow-hidden">
+                <button
+                  onClick={() => { setBroadcastType('AUDIENCIA'); setBroadcastTargets([]); setBroadcastCustomPrompt(''); }}
+                  className={`flex-1 py-2 text-xs font-semibold transition-colors ${broadcastType === 'AUDIENCIA' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'}`}
+                >
+                  📅 Lembrete de Audiência
+                </button>
+                <button
+                  onClick={() => {
+                    setBroadcastType('COMUNICADO');
+                    setBroadcastTargets([]);
+                    setBroadcastCustomPrompt(`⚖️ *André Lustosa Advogados — Comunicado Importante*\n\nOlá {{nome}}! Aqui é da equipe do escritório André Lustosa Advogados. 😊\n\nGostaríamos de compartilhar um alerta importante com você.\n\nInfelizmente, tem crescido em todo o Brasil uma prática criminosa conhecida como o *golpe do falso advogado*. Pessoas mal-intencionadas se passam por advogados ou funcionários de escritórios para pedir depósitos, dados bancários ou pagamentos por fora.\n\n🔒 *Para sua segurança, lembre-se:*\n\n✅ Nossos únicos números oficiais são:\n• (82) 99913-0127\n• (82) 99631-6935\n• (82) 99639-0799\n\n✅ Nosso endereço: Rua Francisco Rodrigues Viana, 242 — Baixa Grande, Arapiraca/AL\n\n⚠️ *Nós NUNCA pedimos:*\n• Depósitos ou PIX em contas de pessoa física\n• Senhas, dados bancários ou códigos por mensagem\n• Pagamentos por links desconhecidos\n\nSe alguém entrar em contato se passando pelo nosso escritório por um número diferente dos listados acima, *não faça nenhum pagamento* e nos avise imediatamente por um dos nossos canais oficiais.\n\nSua segurança é nossa prioridade. Estamos sempre à disposição para qualquer dúvida! 💛\n\nAndré Lustosa Advogados`);
+                  }}
+                  className={`flex-1 py-2 text-xs font-semibold transition-colors ${broadcastType === 'COMUNICADO' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'}`}
+                >
+                  📢 Comunicado Geral
+                </button>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className={labelCls()}>Próximos dias</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={90}
-                    className={inputCls()}
-                    value={broadcastDaysAhead}
-                    onChange={e => setBroadcastDaysAhead(Math.max(1, Number(e.target.value)))}
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">Audiências nos próximos X dias</p>
-                </div>
+                {broadcastType !== 'COMUNICADO' && (
+                  <div>
+                    <label className={labelCls()}>Próximos dias</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={90}
+                      className={inputCls()}
+                      value={broadcastDaysAhead}
+                      onChange={e => setBroadcastDaysAhead(Math.max(1, Number(e.target.value)))}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Audiências nos próximos X dias</p>
+                  </div>
+                )}
                 <div>
                   <label className={labelCls()}>Intervalo entre mensagens (seg)</label>
                   <input
@@ -2281,20 +2313,27 @@ export default function FollowupPage() {
                     className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground text-sm font-medium transition-all duration-200"
                   >
                     {loadingPreview ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
-                    Pré-visualizar
+                    {broadcastType === 'COMUNICADO' ? 'Carregar Clientes' : 'Pré-visualizar'}
                   </button>
                 </div>
               </div>
 
               <div>
-                <label className={labelCls()}>Instrução adicional para IA (opcional)</label>
+                <label className={labelCls()}>
+                  {broadcastType === 'COMUNICADO' ? 'Mensagem do comunicado' : 'Instrução adicional para IA (opcional)'}
+                </label>
                 <textarea
-                  className={inputCls('resize-none')}
-                  rows={2}
+                  className={inputCls('resize-none font-mono')}
+                  rows={broadcastType === 'COMUNICADO' ? 12 : 2}
                   value={broadcastCustomPrompt}
                   onChange={e => setBroadcastCustomPrompt(e.target.value)}
-                  placeholder="Ex: Mencionar que devem levar documentos originais, perguntar se precisam de transporte..."
+                  placeholder={broadcastType === 'COMUNICADO'
+                    ? 'Digite a mensagem do comunicado. Use {{nome}} para personalizar com o nome do cliente.'
+                    : 'Ex: Mencionar que devem levar documentos originais, perguntar se precisam de transporte...'}
                 />
+                {broadcastType === 'COMUNICADO' && (
+                  <p className="text-xs text-muted-foreground mt-1">Use <code className="text-[10px] bg-muted px-1 rounded">{'{{nome}}'}</code> para inserir o primeiro nome do cliente automaticamente.</p>
+                )}
               </div>
 
               {/* Preview de alvos */}

@@ -275,8 +275,15 @@ export class FollowupProcessor extends WorkerHost {
     }
 
     try {
-      // Generate personalized message with AI
-      const text = await this.generateBroadcastMessage(lead, event, broadcast.type, customPrompt);
+      // COMUNICADO: usa mensagem fixa do custom_prompt (sem IA)
+      // Outros tipos: gera mensagem personalizada com IA
+      let text: string;
+      if (broadcast.type === 'COMUNICADO' && customPrompt) {
+        const nome = lead.name?.split(' ')[0] || 'cliente';
+        text = customPrompt.replace(/\{\{nome\}\}/g, nome);
+      } else {
+        text = await this.generateBroadcastMessage(lead, event, broadcast.type, customPrompt);
+      }
 
       // Save generated text
       await this.prisma.broadcastItem.update({ where: { id: itemId }, data: { generated_text: text } });

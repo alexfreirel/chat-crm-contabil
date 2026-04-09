@@ -419,6 +419,43 @@ Gere APENAS o texto da mensagem, sem introduções ou explicações.`;
   // ─── Disparos em Massa (Broadcasts) ─────────────────────────────────────
 
   async previewBroadcast(type: string, daysAhead: number, tenantId?: string) {
+    // COMUNICADO: busca todos os clientes com processo ativo (não depende de CalendarEvent)
+    if (type === 'COMUNICADO') {
+      const cases = await this.prisma.legalCase.findMany({
+        where: {
+          archived: false,
+          lead: {
+            phone: { not: '' },
+            is_client: true,
+            ...(tenantId ? { tenant_id: tenantId } : {}),
+          },
+        },
+        include: {
+          lead: { select: { id: true, name: true, phone: true, stage: true } },
+        },
+        orderBy: { created_at: 'desc' },
+      });
+
+      // Deduplica por lead_id (um lead pode ter vários processos)
+      const seen = new Set<string>();
+      return cases
+        .filter(c => { if (seen.has(c.lead_id)) return false; seen.add(c.lead_id); return true; })
+        .map(c => ({
+          event_id: null,
+          event_title: null,
+          event_date: null,
+          event_location: null,
+          lead_id: c.lead!.id,
+          lead_name: c.lead!.name,
+          lead_phone: c.lead!.phone,
+          lead_stage: c.lead!.stage,
+          case_number: c.case_number,
+          case_type: c.action_type,
+          court: c.court,
+        }));
+    }
+
+    // Tipos com CalendarEvent (AUDIENCIA, PERICIA, PRAZO)
     const now = new Date();
     const until = new Date(Date.now() + daysAhead * 86400000);
 
@@ -459,7 +496,7 @@ Gere APENAS o texto da mensagem, sem introduções ou explicações.`;
     // Deduplicate by lead_id (same lead may have multiple events)
     const uniqueTargets = targets.filter((t, i, arr) => arr.findIndex(x => x.lead_id === t.lead_id) === i);
 
-    const typeLabels: Record<string, string> = { AUDIENCIA: 'Audiências', PERICIA: 'Perícias', PRAZO: 'Prazos' };
+    const typeLabels: Record<string, string> = { AUDIENCIA: 'Audiências', PERICIA: 'Perícias', PRAZO: 'Prazos', COMUNICADO: 'Comunicados' };
     const today = new Date().toLocaleDateString('pt-BR');
     const name = `Lembrete ${typeLabels[data.type] || data.type} — ${today}`;
 
@@ -478,7 +515,7 @@ Gere APENAS o texto da mensagem, sem introduções ou explicações.`;
         items: {
           create: uniqueTargets.map(t => ({
             lead_id: t.lead_id,
-            event_id: t.event_id,
+            ...(t.event_id ? { event_id: t.event_id } : {}),
             phone: t.lead_phone,
           })),
         },
