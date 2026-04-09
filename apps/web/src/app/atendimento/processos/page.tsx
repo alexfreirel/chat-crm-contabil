@@ -3821,6 +3821,7 @@ function ProcessosPageContent() {
           leadId={chatPopupCase.lead_id}
           leadName={chatPopupCase.lead?.name ?? null}
           conversationId={chatPopupCase.conversation_id}
+          caseNumber={chatPopupCase.case_number}
           onClose={() => setChatPopupCase(null)}
         />
       )}
