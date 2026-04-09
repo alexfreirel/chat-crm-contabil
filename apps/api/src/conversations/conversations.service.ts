@@ -666,13 +666,44 @@ export class ConversationsService {
 
   /**
    * Retorna a contagem real de mensagens não lidas por conversa (fonte: banco de dados).
+   *
+   * Regra de negócio:
+   *  - Lead:    badge apenas para o operador responsável (assigned_user_id)
+   *  - Cliente: badge para o operador (assigned_user_id) E para o advogado (assigned_lawyer_id)
+   *  - Sem ninguém atribuído: badge visível para todos os usuários do tenant
    */
-  async getUnreadCounts(tenantId?: string) {
+  async getUnreadCounts(tenantId?: string, userId?: string) {
+    let conversationIds: string[] | undefined;
+
+    if (userId) {
+      // Etapa 1: identifica quais conversas são relevantes para este usuário
+      const convs = await this.prisma.conversation.findMany({
+        where: {
+          ...(tenantId ? { tenant_id: tenantId } : {}),
+          OR: [
+            // Usuário é o operador responsável (leads e clientes)
+            { assigned_user_id: userId },
+            // Usuário é o advogado de um cliente (is_client = true)
+            { assigned_lawyer_id: userId, lead: { is_client: true } },
+            // Conversa sem ninguém atribuído: todos do tenant veem o badge
+            { assigned_user_id: null, assigned_lawyer_id: null },
+          ],
+        },
+        select: { id: true },
+      });
+      conversationIds = convs.map(c => c.id);
+    }
+
+    // Etapa 2: conta mensagens não lidas apenas nessas conversas
     const where: any = {
       direction: 'in',
       status: { in: ['recebido', 'entregue'] },
     };
-    if (tenantId) {
+
+    if (conversationIds !== undefined) {
+      where.conversation_id = { in: conversationIds };
+    } else if (tenantId) {
+      // Fallback sem userId (chamadas internas/admin sem contexto de usuário)
       where.conversation = { tenant_id: tenantId };
     }
 

@@ -188,16 +188,31 @@ export class ChatGateway {
 
   /**
    * Emit incoming message notification.
-   * Se a conversa tem operador atribuído → emite só para user:${assignedUserId}
-   * Se não tem (conversa sem operador) → emite para o tenant inteiro
+   *
+   * Regra de negócio:
+   *  - Lead com operador atribuído   → notifica SOMENTE o operador (assigned_user_id)
+   *  - Cliente com operador atribuído → notifica operador E advogado (assigned_lawyer_id), se distintos
+   *  - Sem operador atribuído        → notifica todo o tenant para alguém assumir
    */
-  emitIncomingMessageNotification(tenantId: string | null, assignedUserId: string | null, data: { conversationId: string; contactName?: string }) {
+  emitIncomingMessageNotification(
+    tenantId: string | null,
+    assignedUserId: string | null,
+    data: { conversationId: string; contactName?: string },
+    assignedLawyerId?: string | null,
+    isClient?: boolean,
+  ) {
     const payload = { ...data, assignedUserId };
 
     if (assignedUserId) {
-      // Conversa atribuída: notifica SOMENTE o operador responsável
+      // Notifica o operador responsável
       this.logger.log(`[SOCKET] incoming_message_notification → user:${assignedUserId}`);
       this.server.to(`user:${assignedUserId}`).emit('incoming_message_notification', payload);
+
+      // Para clientes: notifica também o advogado responsável (se diferente do operador)
+      if (isClient && assignedLawyerId && assignedLawyerId !== assignedUserId) {
+        this.logger.log(`[SOCKET] incoming_message_notification → lawyer:${assignedLawyerId} (cliente)`);
+        this.server.to(`user:${assignedLawyerId}`).emit('incoming_message_notification', payload);
+      }
     } else if (tenantId) {
       // Sem operador: notifica todos do tenant para alguém assumir
       this.logger.log(`[SOCKET] incoming_message_notification → tenant:${tenantId} (sem atribuicao)`);

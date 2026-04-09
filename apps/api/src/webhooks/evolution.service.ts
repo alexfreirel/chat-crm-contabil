@@ -428,10 +428,13 @@ export class EvolutionService {
 
       // Notify operator(s) about incoming message (sound + unread badge)
       if (!isOutgoing) {
-        this.chatGateway.emitIncomingMessageNotification(conv.tenant_id ?? null, conv.assigned_user_id || null, {
-          conversationId: conv.id,
-          contactName: lead.name || lead.phone,
-        });
+        this.chatGateway.emitIncomingMessageNotification(
+          conv.tenant_id ?? null,
+          conv.assigned_user_id || null,
+          { conversationId: conv.id, contactName: lead.name || lead.phone },
+          conv.assigned_lawyer_id || null,
+          lead.is_client,
+        );
 
         // ─── Response Listener: verifica se é resposta a um follow-up ─────
         // Roda de forma assíncrona (fire-and-forget) para não bloquear o webhook

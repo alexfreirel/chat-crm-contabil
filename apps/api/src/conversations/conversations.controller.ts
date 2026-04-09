@@ -30,7 +30,7 @@ export class ConversationsController {
 
   @Get('unread-counts')
   getUnreadCounts(@Request() req: any) {
-    return this.conversationsService.getUnreadCounts(req.user?.tenant_id);
+    return this.conversationsService.getUnreadCounts(req.user?.tenant_id, req.user?.id);
   }
 
   @Get('open-count')
