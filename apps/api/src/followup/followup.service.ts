@@ -555,7 +555,10 @@ Gere APENAS o texto da mensagem, sem introduções ou explicações.`;
     const broadcast = await this.prisma.broadcastJob.findUnique({
       where: { id },
       include: {
-        items: { orderBy: { created_at: 'asc' } },
+        items: {
+          orderBy: { created_at: 'asc' },
+          include: { lead: { select: { name: true } } },
+        },
         created_by: { select: { name: true } },
       },
     });

@@ -120,6 +120,7 @@ model Lead {
   financial_transactions    FinancialTransaction[]
   payment_gateway_customers PaymentGatewayCustomer[]
   notas_fiscais             NotaFiscal[]
+  broadcast_items           BroadcastItem[]
   cpf_cnpj                  String? // CPF ou CNPJ — facilita match com Asaas
 
   @@index([tenant_id, phone])
@@ -735,6 +736,7 @@ model BroadcastItem {
   created_at     DateTime     @default(now())
 
   broadcast      BroadcastJob @relation(fields: [broadcast_id], references: [id], onDelete: Cascade)
+  lead           Lead         @relation(fields: [lead_id], references: [id], onDelete: Cascade)
 
   @@index([broadcast_id, status])
   @@index([lead_id])

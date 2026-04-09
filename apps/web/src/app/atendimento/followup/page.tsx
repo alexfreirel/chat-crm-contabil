@@ -2574,7 +2574,8 @@ export default function FollowupPage() {
                                     <span className={itemStatusColors[item.status] ?? 'text-muted-foreground'}>
                                       {itemStatusIcons[item.status] ?? <Clock size={12} />}
                                     </span>
-                                    <span className="text-foreground font-mono">{item.phone}</span>
+                                    <span className="text-foreground font-medium min-w-[120px]">{(item as any).lead?.name || '—'}</span>
+                                    <span className="text-muted-foreground font-mono">{item.phone}</span>
                                     <Badge label={item.status} colorClass={`${itemStatusColors[item.status] ?? 'text-muted-foreground'} bg-muted/50`} />
                                     {item.sent_at && <span className="text-muted-foreground ml-auto">{formatDate(item.sent_at)}</span>}
                                     {item.error && <span className="text-red-400 truncate max-w-[200px]" title={item.error}>{item.error}</span>}
