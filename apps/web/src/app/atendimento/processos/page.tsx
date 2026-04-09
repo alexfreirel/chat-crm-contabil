@@ -14,6 +14,7 @@ import api from '@/lib/api';
 import { TRACKING_STAGES, findTrackingStage } from '@/lib/legalStages';
 import { useRole } from '@/lib/useRole';
 import { ClientPanel } from '@/components/ClientPanel';
+import { ChatPopup } from '@/components/ChatPopup';
 import { EventModal } from '@/components/EventModal';
 import TabHonorarios from '@/app/atendimento/workspace/[caseId]/components/TabHonorarios';
 
@@ -934,11 +935,13 @@ function ProcessoDetailPanel({
   onClose,
   onRefresh,
   onOpenClientPanel,
+  onOpenChat,
 }: {
   legalCase: LegalCase;
   onClose: () => void;
   onRefresh: () => void;
   onOpenClientPanel: (leadId: string) => void;
+  onOpenChat: (legalCase: LegalCase) => void;
 }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'info' | 'djen' | 'events' | 'tasks' | 'honorarios'>('info');
@@ -1329,6 +1332,13 @@ function ProcessoDetailPanel({
             >
               {stageInfo.emoji} {stageInfo.label}
             </span>
+            <button
+              onClick={() => onOpenChat(legalCase)}
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-green-600 hover:bg-green-500/10 transition-all"
+              title="Falar com o cliente"
+            >
+              <MessageSquare size={16} />
+            </button>
             <button
               onClick={() => onOpenClientPanel(legalCase.lead_id)}
               className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
@@ -3215,6 +3225,7 @@ function ProcessosPageContent() {
   const [selectedCase, setSelectedCase] = useState<LegalCase | null>(null);
   const [showCadastrarModal, setShowCadastrarModal] = useState(false);
   const [clientPanelLeadId, setClientPanelLeadId] = useState<string | null>(null);
+  const [chatPopupCase, setChatPopupCase] = useState<LegalCase | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const { isAdmin: currentUserIsAdmin } = useRole();
 
@@ -3800,6 +3811,17 @@ function ProcessosPageContent() {
           onClose={() => setSelectedCase(null)}
           onRefresh={() => { fetchCases(true); setSelectedCase(null); }}
           onOpenClientPanel={(leadId) => setClientPanelLeadId(leadId)}
+          onOpenChat={(lc) => setChatPopupCase(lc)}
+        />
+      )}
+
+      {/* Chat popup — falar com o cliente sem sair da tela */}
+      {chatPopupCase && (
+        <ChatPopup
+          leadId={chatPopupCase.lead_id}
+          leadName={chatPopupCase.lead?.name ?? null}
+          conversationId={chatPopupCase.conversation_id}
+          onClose={() => setChatPopupCase(null)}
         />
       )}
 
