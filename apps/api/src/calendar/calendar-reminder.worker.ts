@@ -348,19 +348,30 @@ export class CalendarReminderWorker extends WorkerHost {
         clientMsg = templateCliente(event, minutesBefore);
       }
 
-      // Busca a conversa ativa antes de enviar
+      // Busca a conversa ativa para salvar a mensagem
       const lastConvo = await this.prisma.conversation.findFirst({
         where: { lead_id: event.lead.id, status: { not: 'ENCERRADO' } },
         orderBy: { last_message_at: 'desc' },
         select: { id: true, instance_name: true },
       }).catch(() => null);
 
+      // instance_name: usa da conversa ativa; se não houver, busca em qualquer conversa
+      let reminderInstanceName: string | undefined = lastConvo?.instance_name ?? undefined;
+      if (!reminderInstanceName) {
+        const anyConvo = await this.prisma.conversation.findFirst({
+          where: { lead_id: event.lead.id, instance_name: { not: null } },
+          orderBy: { last_message_at: 'desc' },
+          select: { instance_name: true },
+        }).catch(() => null);
+        reminderInstanceName = anyConvo?.instance_name ?? undefined;
+      }
+
       let reminderSendResult: any;
       try {
         reminderSendResult = await this.whatsapp.sendText(
           clientPhone,
           clientMsg,
-          lastConvo?.instance_name ?? undefined,
+          reminderInstanceName,
         );
         // sendText() retorna objeto de erro em vez de lançar exceção em falhas HTTP
         if (!reminderSendResult || reminderSendResult?.statusCode >= 400 || reminderSendResult?.error) {
@@ -474,19 +485,34 @@ export class CalendarReminderWorker extends WorkerHost {
         : this.templateHearingScheduled(event, firstName);
     }
 
-    // Busca a conversa ativa antes de enviar (precisamos do ID para salvar a mensagem)
+    // Busca a conversa ativa para salvar a mensagem (visível ao operador)
     const lastConvo = await this.prisma.conversation.findFirst({
       where: { lead_id: leadId, status: { not: 'ENCERRADO' } },
       orderBy: { last_message_at: 'desc' },
       select: { id: true, ai_mode: true, instance_name: true },
     });
 
+    // instance_name: usa da conversa ativa; se não houver, busca em qualquer
+    // conversa do lead (inclusive encerradas) — evita fallback para instância errada
+    let instanceName: string | undefined = lastConvo?.instance_name ?? undefined;
+    if (!instanceName) {
+      const anyConvo = await this.prisma.conversation.findFirst({
+        where: { lead_id: leadId, instance_name: { not: null } },
+        orderBy: { last_message_at: 'desc' },
+        select: { instance_name: true },
+      });
+      instanceName = anyConvo?.instance_name ?? undefined;
+      if (instanceName) {
+        this.logger.log(`[HEARING-NOTIFY] Conversa ativa sem instance_name — usando da conversa anterior: ${instanceName}`);
+      }
+    }
+
     let sendResult: any;
     try {
       sendResult = await this.whatsapp.sendText(
         clientPhone,
         msg,
-        lastConvo?.instance_name ?? undefined,
+        instanceName,
       );
       // sendText() retorna objeto de erro em vez de lançar exceção em falhas HTTP
       if (!sendResult || sendResult?.statusCode >= 400 || sendResult?.error) {
