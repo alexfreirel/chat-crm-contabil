@@ -155,6 +155,7 @@ export class SettingsService {
     const defaultModel = (await this.get('OPENAI_DEFAULT_MODEL')) || 'gpt-4o-mini';
     const djenModel = (await this.get('DJEN_AI_MODEL')) || 'gpt-4o-mini';
     const djenPrompt = await this.get('DJEN_SYSTEM_PROMPT');
+    const djenNotifyTemplate = await this.get('DJEN_CLIENT_NOTIFY_TEMPLATE');
     const adminBotEnabledRaw = await this.get('ADMIN_BOT_ENABLED');
     const adminBotEnabled = adminBotEnabledRaw !== 'false';
     const cooldownRaw = await this.get('AI_COOLDOWN_SECONDS');
@@ -167,6 +168,7 @@ export class SettingsService {
       defaultModel,
       djenModel,
       djenPrompt: djenPrompt || null,
+      djenNotifyTemplate: djenNotifyTemplate || null,
       adminBotEnabled,
       cooldownSeconds: isNaN(cooldownSeconds) ? 8 : cooldownSeconds,
     };
@@ -206,6 +208,14 @@ export class SettingsService {
 
   async setDjenPrompt(prompt: string): Promise<void> {
     await this.set('DJEN_SYSTEM_PROMPT', prompt);
+  }
+
+  async getDjenNotifyTemplate(): Promise<string | null> {
+    return this.get('DJEN_CLIENT_NOTIFY_TEMPLATE');
+  }
+
+  async setDjenNotifyTemplate(template: string): Promise<void> {
+    await this.set('DJEN_CLIENT_NOTIFY_TEMPLATE', template);
   }
 
   async getAdminBotEnabled(): Promise<boolean> {

@@ -672,18 +672,21 @@ export class ConversationsService {
   /**
    * Retorna a contagem real de mensagens não lidas por conversa (fonte: banco de dados).
    *
-   * Regra de negócio (alinhada com findAll):
-   *  - ADMIN: vê todas as conversas do tenant
-   *  - ADVOGADO: assigned_lawyer_id + legal_cases.lawyer_id (clientes)
-   *  - OPERADOR: assigned_user_id + cs_user_id (clientes) + inbox membership (leads)
-   *  - Sem atribuição: badge apenas para usuários cujo inbox contém a conversa
-   *  - Exclui leads PERDIDO/FINALIZADO (não aparecem na lista)
+   * Regra de negócio (notificações — mais restritiva que visibilidade):
+   *  - ADMIN: badges apenas das conversas atribuídas a ele (assigned_user_id)
+   *  - ADVOGADO: badges apenas de clientes atribuídos a ele (assigned_lawyer_id)
+   *  - OPERADOR: badges apenas de leads/clientes atribuídos a ele (assigned_user_id)
+   *  - ADVOGADO+OPERADOR: combina ambos (clientes como advogado + leads como operador)
+   *  - Exclui leads PERDIDO/FINALIZADO
+   *
+   * Nota: findAll() controla VISIBILIDADE (o que aparece na lista).
+   *       getUnreadCounts() controla NOTIFICAÇÃO (o que mostra badge vermelho).
+   *       Admin pode ver todas as conversas mas só recebe badge das suas.
    */
   async getUnreadCounts(tenantId?: string, userId?: string) {
     let conversationIds: string[] | undefined;
 
     if (userId) {
-      // Carrega user com roles e inboxes (mesmo padrão do findAll)
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
         include: { inboxes: { select: { id: true } } },
@@ -692,58 +695,43 @@ export class ConversationsService {
       const userRoles: string[] = Array.isArray(user?.roles)
         ? user.roles
         : [effectiveRole(user?.roles ?? 'OPERADOR')];
-      const isAdminUser = userRoles.includes('ADMIN');
       const isAdvogadoUser = userRoles.includes('ADVOGADO');
       const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL');
-      const userInboxIds = (user?.inboxes ?? []).map((i: any) => i.id);
+      const isAdminUser = userRoles.includes('ADMIN');
 
-      // Filtro base: tenant + exclui leads PERDIDO/FINALIZADO (consistente com findAll)
+      // Filtro base: tenant + exclui leads PERDIDO/FINALIZADO
       const convWhere: any = {
         ...(tenantId ? { tenant_id: tenantId } : {}),
         lead: { stage: { notIn: ['PERDIDO', 'FINALIZADO'] } },
       };
 
-      if (isAdminUser) {
-        // Admin vê tudo — sem filtro adicional de acesso
-      } else {
-        const orConditions: any[] = [];
+      const orConditions: any[] = [];
 
-        // Visibilidade de ADVOGADO
+      // ADMIN: badge apenas das conversas atribuídas diretamente a ele
+      if (isAdminUser) {
+        orConditions.push({ assigned_user_id: userId });
+        // Admin que também é advogado: clientes atribuídos como advogado
         if (isAdvogadoUser) {
-          orConditions.push({ assigned_lawyer_id: userId });
-          orConditions.push({ lead: { is_client: true, legal_cases: { some: { lawyer_id: userId } } } });
+          orConditions.push({ assigned_lawyer_id: userId, lead: { is_client: true } });
+        }
+      } else {
+        // ADVOGADO: badge de clientes onde é advogado responsável
+        if (isAdvogadoUser) {
+          orConditions.push({ assigned_lawyer_id: userId, lead: { is_client: true } });
         }
 
-        // Visibilidade de OPERADOR (ou advogado com duplo papel)
+        // OPERADOR (ou advogado com duplo papel): badge de leads/clientes atribuídos como operador
         if (isOperadorUser || isAdvogadoUser) {
           orConditions.push({ assigned_user_id: userId });
-          orConditions.push({ lead: { is_client: true, cs_user_id: userId } });
         }
-
-        // Inboxes vinculados — apenas para leads (clientes são filtrados por atribuição)
-        if (userInboxIds.length > 0) {
-          orConditions.push({
-            inbox_id: { in: userInboxIds },
-            lead: { is_client: false },
-          });
-        }
-
-        // Conversas sem atribuição: visíveis apenas se pertencem a um inbox do user
-        if (userInboxIds.length > 0) {
-          orConditions.push({
-            assigned_user_id: null,
-            assigned_lawyer_id: null,
-            inbox_id: { in: userInboxIds },
-          });
-        }
-
-        // Fallback (estagiário puro, financeiro)
-        if (orConditions.length === 0) {
-          orConditions.push({ assigned_user_id: userId });
-        }
-
-        convWhere.OR = orConditions;
       }
+
+      // Fallback (estagiário puro, financeiro)
+      if (orConditions.length === 0) {
+        orConditions.push({ assigned_user_id: userId });
+      }
+
+      convWhere.OR = orConditions;
 
       const convs = await this.prisma.conversation.findMany({
         where: convWhere,

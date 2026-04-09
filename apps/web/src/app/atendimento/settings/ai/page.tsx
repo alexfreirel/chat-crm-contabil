@@ -115,6 +115,8 @@ export default function AiSettingsPage() {
   const [djenModel, setDjenModel] = useState('gpt-4o-mini');
   const [djenPrompt, setDjenPrompt] = useState('');
   const [showDjenPrompt, setShowDjenPrompt] = useState(false);
+  const [djenNotifyTemplate, setDjenNotifyTemplate] = useState('');
+  const [showDjenNotifyTemplate, setShowDjenNotifyTemplate] = useState(false);
   const [adminBotEnabled, setAdminBotEnabled] = useState(true);
   const [cooldownSeconds, setCooldownSeconds] = useState(8);
   const [isConfigured, setIsConfigured] = useState(false);
@@ -165,6 +167,7 @@ export default function AiSettingsPage() {
       setDefaultModel(configRes.data.defaultModel || 'gpt-4o-mini');
       setDjenModel(configRes.data.djenModel || 'gpt-4o-mini');
       setDjenPrompt(configRes.data.djenPrompt || '');
+      setDjenNotifyTemplate(configRes.data.djenNotifyTemplate || '');
       setAdminBotEnabled(configRes.data.adminBotEnabled ?? true);
       setCooldownSeconds(configRes.data.cooldownSeconds ?? 8);
       setSkills(skillsRes.data);
@@ -184,7 +187,7 @@ export default function AiSettingsPage() {
   const handleSaveConfig = async () => {
     setSavingConfig(true);
     try {
-      const payload: any = { defaultModel, djenModel, djenPrompt, adminBotEnabled, cooldownSeconds };
+      const payload: any = { defaultModel, djenModel, djenPrompt, djenNotifyTemplate, adminBotEnabled, cooldownSeconds };
       if (apiKey.trim())       payload.apiKey         = apiKey.trim();
       if (adminKey.trim())     payload.adminKey       = adminKey.trim();
       if (anthropicKey.trim()) payload.anthropicApiKey = anthropicKey.trim();
@@ -459,6 +462,51 @@ export default function AiSettingsPage() {
                         className="text-[11px] text-destructive hover:underline"
                       >
                         Restaurar prompt padrão
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Template de notificação ao cliente (DJEN) */}
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => setShowDjenNotifyTemplate((v) => !v)}
+                  className="flex items-center gap-2 text-xs font-bold text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors w-full text-left"
+                >
+                  <span>📱</span> Template de notificação ao cliente (DJEN)
+                  <span className="ml-auto text-[10px] font-normal text-primary">
+                    {showDjenNotifyTemplate ? '▲ fechar' : '▼ editar'}
+                  </span>
+                </button>
+                {showDjenNotifyTemplate && (
+                  <div className="space-y-1.5">
+                    <textarea
+                      value={djenNotifyTemplate}
+                      onChange={(e) => setDjenNotifyTemplate(e.target.value)}
+                      rows={16}
+                      placeholder={`Deixe vazio para usar o template padrão. Variáveis disponíveis:\n\n{{nome}} — Primeiro nome do cliente\n{{processo}} — Número do processo\n{{tipo}} — Tipo de comunicação (Intimação, Citação, etc.)\n{{data}} — Data da publicação\n{{assunto}} — Assunto da publicação\n{{resumo}} — Resumo gerado pela IA\n{{proximo_passo}} — Próximo passo sugerido pela IA\n\nLinhas com variáveis vazias são removidas automaticamente.`}
+                      className="w-full bg-muted/50 border border-border rounded-xl px-3 py-2.5 text-xs font-mono outline-none focus:border-primary/50 transition-all resize-y"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Mensagem enviada via WhatsApp ao cliente quando uma publicação DJEN é vinculada ao processo dele.<br />
+                      <strong>Variáveis:</strong>{' '}
+                      <code className="text-[10px] bg-muted px-1 rounded">{'{{nome}}'}</code>{' '}
+                      <code className="text-[10px] bg-muted px-1 rounded">{'{{processo}}'}</code>{' '}
+                      <code className="text-[10px] bg-muted px-1 rounded">{'{{tipo}}'}</code>{' '}
+                      <code className="text-[10px] bg-muted px-1 rounded">{'{{data}}'}</code>{' '}
+                      <code className="text-[10px] bg-muted px-1 rounded">{'{{assunto}}'}</code>{' '}
+                      <code className="text-[10px] bg-muted px-1 rounded">{'{{resumo}}'}</code>{' '}
+                      <code className="text-[10px] bg-muted px-1 rounded">{'{{proximo_passo}}'}</code>
+                    </p>
+                    {djenNotifyTemplate && (
+                      <button
+                        type="button"
+                        onClick={() => setDjenNotifyTemplate('')}
+                        className="text-[11px] text-destructive hover:underline"
+                      >
+                        Restaurar template padrão
                       </button>
                     )}
                   </div>

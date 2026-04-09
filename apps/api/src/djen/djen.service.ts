@@ -1232,44 +1232,73 @@ ${pub.conteudo.slice(0, 2000)}`;
     });
     const instance = lastConvo?.instance_name || process.env.EVOLUTION_INSTANCE_NAME || 'whatsapp';
 
-    // Montar mensagem
+    // Montar mensagem usando template customizável
     const nome = lead.name?.split(' ')[0] || 'cliente';
     const dataFmt = dataDisp.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const tipo = tipoComunicacao || 'Publicação';
     const processoFmt = numeroProcesso.length > 20 ? numeroProcesso.slice(0, 20) + '…' : numeroProcesso;
 
-    const lines = [
-      `⚖️ *Movimentação no seu processo*`,
-      ``,
-      `Olá ${nome}! Houve uma nova movimentação no seu processo nº ${processoFmt}.`,
-      ``,
-      `📋 *Tipo:* ${tipo}`,
-    ];
+    const customTemplate = await this.settings.getDjenNotifyTemplate();
 
-    if (assunto) {
-      lines.push(`📝 *Assunto:* ${assunto}`);
-    }
+    let message: string;
 
-    lines.push(`📅 *Data:* ${dataFmt}`);
+    if (customTemplate) {
+      // Template customizado: substituir variáveis e remover linhas com variáveis vazias
+      const vars: Record<string, string> = {
+        '{{nome}}': nome,
+        '{{processo}}': processoFmt,
+        '{{tipo}}': tipo,
+        '{{data}}': dataFmt,
+        '{{assunto}}': assunto || '',
+        '{{resumo}}': aiResumo || '',
+        '{{proximo_passo}}': tipoAcao || '',
+      };
 
-    // Incluir resumo da IA se disponível
-    if (aiResumo) {
+      message = customTemplate;
+      for (const [key, val] of Object.entries(vars)) {
+        message = message.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), val);
+      }
+      // Remove linhas que contêm apenas espaços em branco (resultado de variáveis vazias)
+      message = message
+        .split('\n')
+        .filter(line => line.trim() !== '' || line === '')
+        .join('\n')
+        // Colapsa 3+ quebras de linha consecutivas em 2
+        .replace(/\n{3,}/g, '\n\n');
+    } else {
+      // Template padrão (fallback hardcoded)
+      const lines = [
+        `⚖️ *Movimentação no seu processo*`,
+        ``,
+        `Olá ${nome}! Houve uma nova movimentação no seu processo nº ${processoFmt}.`,
+        ``,
+        `📋 *Tipo:* ${tipo}`,
+      ];
+
+      if (assunto) {
+        lines.push(`📝 *Assunto:* ${assunto}`);
+      }
+
+      lines.push(`📅 *Data:* ${dataFmt}`);
+
+      if (aiResumo) {
+        lines.push(``);
+        lines.push(`📖 *O que aconteceu:*`);
+        lines.push(aiResumo);
+      }
+
+      if (tipoAcao) {
+        lines.push(``);
+        lines.push(`✅ *Próximo passo:* ${tipoAcao}`);
+      }
+
       lines.push(``);
-      lines.push(`📖 *O que aconteceu:*`);
-      lines.push(aiResumo);
-    }
-
-    if (tipoAcao) {
+      lines.push(`Nosso advogado já foi notificado e está acompanhando. Se tiver dúvidas, pode nos chamar aqui!`);
       lines.push(``);
-      lines.push(`✅ *Próximo passo:* ${tipoAcao}`);
+      lines.push(`André Lustosa Advogados`);
+
+      message = lines.join('\n');
     }
-
-    lines.push(``);
-    lines.push(`Nosso advogado já foi notificado e está acompanhando. Se tiver dúvidas, pode nos chamar aqui!`);
-    lines.push(``);
-    lines.push(`André Lustosa Advogados`);
-
-    const message = lines.join('\n');
 
     try {
       await this.whatsappService.sendText(lead.phone, message, instance);
