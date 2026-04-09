@@ -82,12 +82,11 @@ export class ConversationsService {
       } else {
         const orConditions: any[] = [];
 
-        // Visibilidade de ADVOGADO: clientes atribuídos como advogada + processos
-        if (isAdvogadoUser) {
-          orConditions.push({ assigned_lawyer_id: userId });
-          if (clientMode === true) {
-            orConditions.push({ lead: { is_client: true, legal_cases: { some: { lawyer_id: userId } } } });
-          }
+        // Visibilidade de ADVOGADO: apenas CLIENTES atribuídos como advogada + processos
+        // Na aba Leads: advogado NÃO vê leads de outros operadores via assigned_lawyer_id
+        if (isAdvogadoUser && clientMode === true) {
+          orConditions.push({ assigned_lawyer_id: userId, lead: { is_client: true } });
+          orConditions.push({ lead: { is_client: true, legal_cases: { some: { lawyer_id: userId } } } });
         }
 
         // Conversas atribuídas diretamente ao usuário (qualquer role)
@@ -717,15 +716,13 @@ export class ConversationsService {
           orConditions.push({ assigned_lawyer_id: userId, lead: { is_client: true } });
         }
       } else {
-        // ADVOGADO: badge de clientes onde é advogado responsável
+        // ADVOGADO: badge apenas de CLIENTES onde é advogado responsável
         if (isAdvogadoUser) {
           orConditions.push({ assigned_lawyer_id: userId, lead: { is_client: true } });
         }
 
-        // OPERADOR (ou advogado com duplo papel): badge de leads/clientes atribuídos como operador
-        if (isOperadorUser || isAdvogadoUser) {
-          orConditions.push({ assigned_user_id: userId });
-        }
+        // Conversas atribuídas diretamente (qualquer role)
+        orConditions.push({ assigned_user_id: userId });
       }
 
       // Fallback (estagiário puro, financeiro)
