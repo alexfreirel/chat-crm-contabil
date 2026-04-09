@@ -82,7 +82,7 @@ export class ConversationsService {
       } else {
         const orConditions: any[] = [];
 
-        // Visibilidade de ADVOGADO
+        // Visibilidade de ADVOGADO: clientes atribuídos como advogada + processos
         if (isAdvogadoUser) {
           orConditions.push({ assigned_lawyer_id: userId });
           if (clientMode === true) {
@@ -90,22 +90,18 @@ export class ConversationsService {
           }
         }
 
-        // Visibilidade de OPERADOR
-        if (isOperadorUser || isAdvogadoUser) {
-          orConditions.push({ assigned_user_id: userId });
+        // Conversas atribuídas diretamente ao usuário (qualquer role)
+        orConditions.push({ assigned_user_id: userId });
+
+        // Visibilidade de OPERADOR: cs_user_id (clientes) + inbox membership (leads)
+        if (isOperadorUser) {
           if (clientMode === true) {
             orConditions.push({ lead: { ...(where.lead ?? {}), cs_user_id: userId } });
           }
-        }
-
-        // Se tiver inboxes vinculados (apenas no modo leads — clientes são filtrados por atribuição)
-        if (userInboxIds.length > 0 && clientMode !== true) {
-          orConditions.push({ inbox_id: { in: userInboxIds } });
-        }
-
-        // Se não é advogado nem operador (estagiário puro, financeiro)
-        if (orConditions.length === 0) {
-          orConditions.push({ assigned_user_id: userId });
+          // Inboxes vinculados — APENAS para operadores no modo leads
+          if (userInboxIds.length > 0 && clientMode !== true) {
+            orConditions.push({ inbox_id: { in: userInboxIds } });
+          }
         }
 
         where.OR = orConditions;
