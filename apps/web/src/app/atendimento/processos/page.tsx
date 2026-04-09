@@ -2540,8 +2540,11 @@ function CadastrarProcessoModal({
   const [selectedOperatorId, setSelectedOperatorId] = useState('');
 
   useEffect(() => {
-    if (!isAdmin) return;
-    api.get('/users/lawyers').then(res => setLawyers(res.data || [])).catch(() => {});
+    // Advogados: ADMIN pode escolher qualquer um
+    if (isAdmin) {
+      api.get('/users/lawyers').then(res => setLawyers(res.data || [])).catch(() => {});
+    }
+    // Atendentes: todos os usuários podem selecionar (inclusive ADVOGADO)
     api.get('/users?limit=100').then(res => {
       const users = res.data?.data || res.data?.users || res.data || [];
       setOperators(users.filter((u: any) => u.id && u.name));
@@ -2663,9 +2666,10 @@ function CadastrarProcessoModal({
         lead_phone: leadMode === 'new' ? newLeadPhone : undefined,
         lead_name: leadMode === 'new' ? newLeadName || undefined : undefined,
         lead_email: leadMode === 'new' ? newLeadEmail || undefined : undefined,
-        // Advogado (ADMIN pode escolher; demais usam o próprio user via req.user.id no backend)
+        // Advogado: apenas ADMIN pode substituir (demais usam o próprio user via req.user.id)
         lawyer_id: isAdmin && selectedLawyerId ? selectedLawyerId : undefined,
-        assigned_user_id: isAdmin && selectedOperatorId ? selectedOperatorId : undefined,
+        // Atendente: qualquer usuário pode indicar o responsável pelo atendimento no chat
+        assigned_user_id: selectedOperatorId || undefined,
       });
       onSuccess();
       onClose();
@@ -2865,27 +2869,33 @@ function CadastrarProcessoModal({
             )}
           </div>
 
-          {/* ── Seção: Advogado Responsável (ADMIN only) ─────── */}
-          {isAdmin && lawyers.length > 0 && (
-            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-3">
-                👨‍⚖️ Advogado Responsável
-              </p>
-              <select
-                value={selectedLawyerId}
-                onChange={e => setSelectedLawyerId(e.target.value)}
-                className={inputCls}
-              >
-                <option value="">Atribuir automaticamente (padrão)</option>
-                {lawyers.map(l => (
-                  <option key={l.id} value={l.id}>{l.name || l.id}</option>
-                ))}
-              </select>
-              <p className="text-[10px] text-muted-foreground mt-1.5">
-                Se não selecionado, o processo será atribuído a você.
-              </p>
+          {/* ── Seção: Responsáveis (Advogado: ADMIN; Atendente: todos) ─── */}
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-4">
+            {/* Advogado — apenas ADMIN pode escolher */}
+            {isAdmin && lawyers.length > 0 && (
+              <div>
+                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                  👨‍⚖️ Advogado Responsável
+                </p>
+                <select
+                  value={selectedLawyerId}
+                  onChange={e => setSelectedLawyerId(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="">Atribuir a mim (padrão)</option>
+                  {lawyers.map(l => (
+                    <option key={l.id} value={l.id}>{l.name || l.id}</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Se não selecionado, o processo será atribuído ao usuário logado.
+                </p>
+              </div>
+            )}
 
-              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-3 mt-5">
+            {/* Atendente — disponível para todos os perfis */}
+            <div>
+              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-2">
                 👤 Atendente Responsável
               </p>
               <select
@@ -2893,16 +2903,16 @@ function CadastrarProcessoModal({
                 onChange={e => setSelectedOperatorId(e.target.value)}
                 className={inputCls}
               >
-                <option value="">Sem atendente (opcional)</option>
+                <option value="">Atribuir automaticamente</option>
                 {operators.map(u => (
                   <option key={u.id} value={u.id}>{u.name || u.id}</option>
                 ))}
               </select>
-              <p className="text-[10px] text-muted-foreground mt-1.5">
-                Operador que atenderá o cliente no chat.
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Usuário responsável pelo atendimento no chat. Se não selecionado, será definido automaticamente.
               </p>
             </div>
-          )}
+          </div>
 
           {/* ── Seção: Processo ────────────────────────────────── */}
           <div className="space-y-4">

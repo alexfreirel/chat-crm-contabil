@@ -145,8 +145,10 @@ export class LegalCasesController {
     return this.service.createDirect({
       ...body,
       lawyer_id: req.user.id,
+      // Apenas ADMIN pode substituir o advogado responsável
       override_lawyer_id: isAdmin && body.lawyer_id ? body.lawyer_id : undefined,
-      assigned_user_id: isAdmin && body.assigned_user_id ? body.assigned_user_id : undefined,
+      // Qualquer usuário autenticado pode informar o atendente responsável
+      assigned_user_id: body.assigned_user_id || undefined,
       tenant_id: req.user.tenant_id,
     });
   }

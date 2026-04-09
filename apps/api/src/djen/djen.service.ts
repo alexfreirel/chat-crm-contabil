@@ -772,13 +772,60 @@ export class DjenService {
     });
 
     // Lead virou cliente (is_client=true, stage=FINALIZADO) → sai da aba Leads automaticamente.
-    // Conversas permanecem intactas — visibilidade controlada por lead.stage.
-    // Desligar IA e atribuir advogado responsável nas conversas do lead
+    // Garantir que exista ao menos uma conversa (clientes cadastrados só via DJEN podem não ter)
+    const djenConvo = await this.prisma.conversation.findFirst({
+      where: { lead_id: lead.id },
+      select: { id: true },
+    });
+    if (!djenConvo) {
+      await this.prisma.conversation.create({
+        data: {
+          lead_id: lead.id,
+          tenant_id: tenantId || null,
+          instance_name: process.env.EVOLUTION_INSTANCE_NAME || 'whatsapp',
+          status: 'ABERTO',
+          last_message_at: new Date(),
+        },
+      });
+      this.logger.log(`[DJEN] Conversa criada para lead ${lead.id} (cadastrado só via DJEN)`);
+    }
+
+    // Resolver atendente responsável:
+    // 1ª: OPERADOR/COMERCIAL → 2ª: ADVOGADO/ADMIN → 3ª: o próprio advogado do caso
+    let resolvedAttendantId: string | undefined;
+    try {
+      let candidates = await this.prisma.user.findMany({
+        where: {
+          roles: { hasSome: ['OPERADOR', 'COMERCIAL'] },
+          ...(tenantId ? { tenant_id: tenantId } : {}),
+        },
+        select: { id: true },
+      });
+      if (candidates.length === 0) {
+        candidates = await this.prisma.user.findMany({
+          where: {
+            roles: { hasSome: ['ADVOGADO', 'ADMIN'] },
+            ...(tenantId ? { tenant_id: tenantId } : {}),
+          },
+          select: { id: true },
+        });
+      }
+      resolvedAttendantId = candidates.length > 0
+        ? candidates[Math.floor(Math.random() * candidates.length)].id
+        : lawyerId; // fallback final: o próprio advogado
+      this.logger.log(`[DJEN] Atendente resolvido: ${resolvedAttendantId}`);
+    } catch {
+      resolvedAttendantId = lawyerId;
+    }
+
+    // Atualizar conversas: desligar IA, atribuir advogado, atendente e área jurídica
     await this.prisma.conversation.updateMany({
       where: { lead_id: lead.id },
       data: {
         ai_mode: false,
         assigned_lawyer_id: lawyerId,
+        assigned_user_id: resolvedAttendantId,
+        legal_area: resolvedLegalArea,
       },
     });
 

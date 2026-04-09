@@ -741,16 +741,21 @@ export class LegalCasesService {
       where: { lead_id: leadId },
       select: { id: true },
     });
-    if (!existingConvo) {
-      await this.prisma.conversation.create({
+    let linkedConversationId: string;
+    if (existingConvo) {
+      linkedConversationId = existingConvo.id;
+    } else {
+      const newConvo = await this.prisma.conversation.create({
         data: {
           lead_id: leadId,
           tenant_id: data.tenant_id || null,
           instance_name: process.env.EVOLUTION_INSTANCE_NAME || 'whatsapp',
-          status: 'OPEN',
+          status: 'ABERTO',
           last_message_at: new Date(),
         },
+        select: { id: true },
       });
+      linkedConversationId = newConvo.id;
       this.logger.log(`[LEGAL] Conversa criada para lead ${leadId} (sem WhatsApp prévio)`);
     }
 
@@ -761,6 +766,7 @@ export class LegalCasesService {
       data: {
         lead_id: leadId,
         lawyer_id: effectiveLawyerId,
+        conversation_id: linkedConversationId,
         tenant_id: data.tenant_id,
         case_number: data.case_number,
         legal_area: data.legal_area,
@@ -802,23 +808,38 @@ export class LegalCasesService {
       legal_area: data.legal_area || null,
     };
 
-    // Atendente: usar o informado ou sortear entre operadores disponíveis
+    // Atendente: usar o informado ou resolver automaticamente
     if (data.assigned_user_id) {
       convUpdate.assigned_user_id = data.assigned_user_id;
     } else {
-      // Sortear operador disponível (OPERADOR ou COMERCIAL)
+      // 1ª tentativa: OPERADOR ou COMERCIAL
+      // 2ª tentativa: ADVOGADO ou ADMIN (escritórios sem operadores dedicados)
+      // 3ª tentativa: usar o próprio advogado responsável pelo processo
       try {
-        const operators = await this.prisma.user.findMany({
+        let candidates = await this.prisma.user.findMany({
           where: {
             roles: { hasSome: ['OPERADOR', 'COMERCIAL'] },
             ...(data.tenant_id ? { tenant_id: data.tenant_id } : {}),
           },
           select: { id: true },
         });
-        if (operators.length > 0) {
-          const randomOp = operators[Math.floor(Math.random() * operators.length)];
-          convUpdate.assigned_user_id = randomOp.id;
-          this.logger.log(`[LEGAL] Atendente sorteado: ${randomOp.id} (de ${operators.length} disponíveis)`);
+        if (candidates.length === 0) {
+          candidates = await this.prisma.user.findMany({
+            where: {
+              roles: { hasSome: ['ADVOGADO', 'ADMIN'] },
+              ...(data.tenant_id ? { tenant_id: data.tenant_id } : {}),
+            },
+            select: { id: true },
+          });
+        }
+        if (candidates.length > 0) {
+          const picked = candidates[Math.floor(Math.random() * candidates.length)];
+          convUpdate.assigned_user_id = picked.id;
+          this.logger.log(`[LEGAL] Atendente resolvido: ${picked.id} (de ${candidates.length} candidatos)`);
+        } else {
+          // Fallback final: o próprio advogado do caso
+          convUpdate.assigned_user_id = effectiveLawyerId;
+          this.logger.log(`[LEGAL] Atendente fallback: advogado ${effectiveLawyerId}`);
         }
       } catch {}
     }
