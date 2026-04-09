@@ -861,6 +861,17 @@ export default function Dashboard() {
     };
   }, [fetchConversations, fetchAdiadoConversations]);
 
+  // Carrega contadores de não-lidos do servidor na montagem (badges persistem entre refreshes)
+  useEffect(() => {
+    api.get('/conversations/unread-counts', { _silent401: true } as any)
+      .then(r => {
+        if (r.data && typeof r.data === 'object' && !Array.isArray(r.data)) {
+          setUnreadCounts(r.data as Record<string, number>);
+        }
+      })
+      .catch(() => {}); // falha silenciosa — badges partem do zero se API indisponível
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Initial data load + refetch on inbox filter change or clientMode change
   useEffect(() => {
     fetchInboxes(true);
@@ -919,6 +930,10 @@ export default function Dashboard() {
       delete next[selectedId];
       return next;
     });
+    // Marcar mensagens como lidas no backend (atualiza status no BD + envia read receipt ao WhatsApp)
+    if (!selectedId.startsWith('demo-')) {
+      api.post(`/conversations/${selectedId}/mark-read`, {}, { _silent401: true } as any).catch(() => {});
+    }
     const conv = conversations.find(c => c.id === selectedId);
     if (conv?.leadId) {
       api.get(`/leads/${conv.leadId}`, { _silent401: true } as any)
