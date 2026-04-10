@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  DollarSign, TrendingUp, TrendingDown, AlertTriangle, Clock,
+  DollarSign, TrendingUp, TrendingDown, AlertTriangle, Clock, Target,
   Plus, X, Search, Loader2, Phone, MessageSquare,
   ArrowUpDown, ChevronDown, Trash2, Pencil, Check,
   BarChart3, Receipt, CreditCard, Ban, Users, Link2, Unlink, ExternalLink, FileText,
@@ -999,13 +999,18 @@ export default function FinanceiroPage() {
                 color={summary.totalRevenue - summary.totalExpenses >= 0 ? 'text-emerald-400' : 'text-red-400'}
                 bgColor={summary.totalRevenue - summary.totalExpenses >= 0 ? 'bg-emerald-500/15' : 'bg-red-500/15'}
               />
-              <KpiCard
-                icon={BarChart3}
-                label="Balanço Projetado"
-                value={fmt(summary.totalRevenue + summary.totalReceivable - summary.totalExpenses - summary.totalPayable)}
-                color="text-cyan-400"
-                bgColor="bg-cyan-500/15"
-              />
+              {(() => {
+                const projected = summary.totalRevenue + summary.totalReceivable - summary.totalExpenses - summary.totalPayable;
+                return (
+                  <KpiCard
+                    icon={Target}
+                    label="Total Projetado Mês"
+                    value={fmt(projected)}
+                    color={projected >= 0 ? 'text-violet-400' : 'text-red-400'}
+                    bgColor={projected >= 0 ? 'bg-violet-500/15' : 'bg-red-500/15'}
+                  />
+                );
+              })()}
             </div>
 
             {/* Info do advogado filtrado */}
