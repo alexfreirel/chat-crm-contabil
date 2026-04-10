@@ -1911,18 +1911,39 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
       }
 
       // 17. Salvar mensagem no banco com skill_id (texto limpo, sem assinatura)
-      // Usa o ID real da Evolution para que o echo do webhook seja deduplicado
-      const savedMsg = await this.prisma.message.create({
-        data: {
-          conversation_id: convo.id,
-          direction: 'out',
-          type: 'text',
-          text: finalText,
-          external_message_id: evolutionMsgId,
-          status: 'enviado',
-          skill_id: skill?.id || null,
-        },
-      });
+      // Usa o ID real da Evolution para que o echo do webhook seja deduplicado.
+      // Race condition: o echo da Evolution pode chegar antes do worker salvar,
+      // criando a mensagem sem skill_id. Nesse caso, capturamos P2002 e atualizamos.
+      let savedMsg: any;
+      try {
+        savedMsg = await this.prisma.message.create({
+          data: {
+            conversation_id: convo.id,
+            direction: 'out',
+            type: 'text',
+            text: finalText,
+            external_message_id: evolutionMsgId,
+            status: 'enviado',
+            skill_id: skill?.id || null,
+          },
+        });
+      } catch (createErr: any) {
+        if (createErr.code === 'P2002' && evolutionMsgId && !evolutionMsgId.startsWith('sys_ai_')) {
+          // Echo criou a mensagem primeiro — encontra e atualiza o skill_id
+          this.logger.warn(`[AI] P2002 em message.create — echo chegou antes do save. Atualizando skill_id em ${evolutionMsgId}`);
+          const existing = await this.prisma.message.findUnique({ where: { external_message_id: evolutionMsgId } });
+          if (existing) {
+            savedMsg = await this.prisma.message.update({
+              where: { id: existing.id },
+              data: { skill_id: skill?.id || null },
+            });
+          } else {
+            throw createErr;
+          }
+        } else {
+          throw createErr;
+        }
+      }
 
       // 18. Atualizar last_message_at
       await this.prisma.conversation.update({
