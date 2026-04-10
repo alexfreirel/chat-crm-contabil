@@ -230,10 +230,11 @@ export class EvolutionService {
             data: {
               status: 'ABERTO',
               last_message_at: new Date(),
+              assigned_user_id: null, // Reset para reatribuição via round-robin
               ...(inboxId && !closedConv.inbox_id ? { inbox_id: inboxId } : {}),
             },
           });
-          this.logger.log(`[REOPEN] Conversa ${conv.id} reaberta para lead ${lead.id}`);
+          this.logger.log(`[REOPEN] Conversa ${conv.id} reaberta para lead ${lead.id} (operador resetado)`);
         }
         // 2) Se não achou FECHADO, checar ADIADO — mantém status, só atualiza timestamp
         if (!conv) {

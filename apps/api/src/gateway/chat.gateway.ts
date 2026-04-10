@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service';
+import { InboxesService } from '../inboxes/inboxes.service';
 
 @Injectable()
 export class ChatGateway {
@@ -12,7 +13,11 @@ export class ChatGateway {
   // Map<userId, Set<socketId>> — um usuário pode ter múltiplas abas
   private onlineUsers = new Map<string, Set<string>>();
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => InboxesService))
+    private inboxesService: InboxesService,
+  ) {}
 
   handleConnection(client: Socket) {
     this.logger.log(`[SOCKET] Client connected: ${client.id} (transport: ${client.conn?.transport?.name})`);
@@ -48,8 +53,8 @@ export class ChatGateway {
   }
 
   /**
-   * Quando um operador fica online, atribui conversas sem operador dos inboxes dele.
-   * Essas conversas estavam sendo atendidas pela IA enquanto ninguém estava online.
+   * Quando um operador fica online, atribui conversas sem operador dos inboxes dele
+   * usando round-robin entre TODOS os operadores online (não só o que acabou de entrar).
    */
   private async assignPendingConversations(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -68,21 +73,29 @@ export class ChatGateway {
         status: { notIn: ['FECHADO'] },
         lead: { stage: { notIn: ['PERDIDO', 'FINALIZADO'] } },
       },
-      select: { id: true, tenant_id: true },
+      select: { id: true, tenant_id: true, inbox_id: true },
       orderBy: { last_message_at: 'asc' }, // Mais antiga primeiro
     });
 
     if (pending.length === 0) return;
 
-    this.logger.log(`[PRESENCE] User ${userId} online — atribuindo ${pending.length} conversa(s) pendente(s)`);
+    this.logger.log(`[PRESENCE] User ${userId} online — distribuindo ${pending.length} conversa(s) pendente(s) via round-robin`);
+
+    const onlineUserIds = this.getOnlineUserIds();
 
     for (const conv of pending) {
-      await this.prisma.conversation.update({
-        where: { id: conv.id },
-        data: { assigned_user_id: userId },
-        // ai_mode NÃO é alterado: operador monitora, IA continua respondendo
-      });
-      this.logger.log(`[AUTO-ASSIGN] Conversa pendente ${conv.id} → operador online ${userId}`);
+      // Round-robin por inbox — distribui entre todos os operadores online
+      const assigneeId = conv.inbox_id
+        ? await this.inboxesService.getNextAssignee(conv.inbox_id, onlineUserIds)
+        : userId; // Sem inbox → atribui ao que entrou
+
+      if (assigneeId) {
+        await this.prisma.conversation.update({
+          where: { id: conv.id },
+          data: { assigned_user_id: assigneeId },
+        });
+        this.logger.log(`[AUTO-ASSIGN] Conversa pendente ${conv.id} → operador online ${assigneeId}`);
+      }
     }
 
     // Refresh sidebar de todos
