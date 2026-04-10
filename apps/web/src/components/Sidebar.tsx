@@ -408,7 +408,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`${expanded ? 'w-[220px]' : 'w-[72px]'} flex flex-col items-center py-3 bg-card border-r border-border relative z-50 shrink-0 overflow-y-auto no-scrollbar transition-[width] duration-200 ease-in-out`}
+      className={`${expanded ? 'w-[220px]' : 'w-[72px]'} flex flex-col items-center py-3 bg-card border-r border-border relative z-50 shrink-0 h-full overflow-y-auto no-scrollbar transition-[width] duration-200 ease-in-out`}
     >
       {/* ─── Logo + Toggle ─────────────────────────────────────────── */}
       <div className={`flex items-center w-full px-3 mb-3 gap-2 ${expanded ? 'justify-between' : 'flex-col'}`}>
