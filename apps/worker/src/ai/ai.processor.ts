@@ -13,7 +13,7 @@ import { buildHandlerMap } from './tool-handlers';
 import { createLLMClient, calculateCost, type LLMProvider } from './llm-client';
 
 // Modelos com suporte a visão (imagens)
-const VISION_MODELS = ['gpt-4o', 'gpt-4.1', 'gpt-5'];
+const VISION_MODELS = ['gpt-4o', 'gpt-4.1', 'gpt-5', 'claude-'];
 
 // ─── Long Memory System Prompt (infraestrutura interna, não é skill) ───
 const LONG_MEMORY_SYSTEM_PROMPT = `Você é uma IA especializada em gerenciamento de memória de longo prazo (LONG MEMORY) de leads e casos jurídicos, multiárea.
@@ -1496,11 +1496,30 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
       }
 
       // 11. Montar histórico MULTI-TURN (memória natural do modelo)
-      // Cada mensagem vira um turn user/assistant real — muito mais eficaz que texto plano
-      const chatTurns: Array<{role: 'user' | 'assistant', content: string}> = [];
+      // Imagens do cliente são incluídas inline no turn correto (não descoladas no final).
+      const supportsVision = this.modelSupportsVision(model);
+      const chatTurns: Array<{role: 'user' | 'assistant', content: string | any[]}> = [];
       for (const m of chronological) {
         const isClient = (m as any).direction === 'in';
         const role: 'user' | 'assistant' = isClient ? 'user' : 'assistant';
+
+        // Imagem do cliente + modelo suporta visão → incluir inline no turn
+        if (isClient && (m as any).type === 'image' && (m as any).media?.s3_key && supportsVision) {
+          try {
+            const { buffer, contentType } = await this.s3.getObjectBuffer((m as any).media.s3_key);
+            const mimeBase = contentType.split(';')[0].trim();
+            const base64 = buffer.toString('base64');
+            const imageBlock = { type: 'image_url', image_url: { url: `data:${mimeBase};base64,${base64}` } };
+            const textBlock = { type: 'text', text: (m as any).text || '[imagem enviada pelo cliente]' };
+            // Imagens nunca são mescladas com outros turns — sempre novo turn
+            chatTurns.push({ role, content: [imageBlock, textBlock] });
+            this.logger.log(`[AI] Imagem ${(m as any).id} incluída inline no chatTurn (${(buffer.length / 1024).toFixed(0)}KB)`);
+            continue;
+          } catch (e: any) {
+            this.logger.warn(`[AI] Falha ao carregar imagem ${(m as any).id} inline: ${e.message}`);
+          }
+        }
+
         const content =
           (m as any).text ||
           ((m as any).type === 'audio'
@@ -1510,25 +1529,19 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
               : (m as any).type === 'document'
                 ? '[documento enviado]'
                 : '[mídia]');
-        // Prefixar mensagens de operadores humanos para distinguir da IA
         const isOperator = !isClient && !(m as any).external_message_id?.startsWith('sys_');
         const finalContent = isOperator ? `[Operador Humano]: ${content}` : content;
-        // Mesclar mensagens consecutivas do mesmo remetente (ex: cliente envia 3 msgs seguidas)
-        if (chatTurns.length > 0 && chatTurns[chatTurns.length - 1].role === role) {
-          chatTurns[chatTurns.length - 1].content += '\n' + finalContent;
+        // Mesclar mensagens de texto consecutivas do mesmo remetente
+        const last = chatTurns[chatTurns.length - 1];
+        if (last && last.role === role && typeof last.content === 'string') {
+          last.content += '\n' + finalContent;
         } else {
           chatTurns.push({ role, content: finalContent });
         }
       }
 
-      // Coletar imagens para visão (modelos com suporte)
-      let visionImages: { type: 'image_url'; image_url: { url: string } }[] = [];
-      if (this.modelSupportsVision(model)) {
-        visionImages = await this.collectVisionImages(convo.messages as any[]);
-        if (visionImages.length > 0) {
-          this.logger.log(`[AI] Visão ativa: ${visionImages.length} imagem(ns) incluída(s)`);
-        }
-      }
+      // visionImages não é mais necessário — imagens já estão inline nos turns acima
+      const visionImages: { type: 'image_url'; image_url: { url: string } }[] = [];
 
       // Instrução final para a IA (não aparece no chat do cliente)
       const instruction = `[INSTRUÇÃO INTERNA — não exiba ao cliente]\nResponda à última mensagem do cliente. Consulte o histórico completo acima e a MEMÓRIA DO LEAD no system prompt: NÃO repita perguntas já respondidas. Avance o roteiro para o próximo ponto que ainda não foi coberto. Atualize o status do funil conforme as regras de PROGRESSÃO DE ETAPAS.`;
