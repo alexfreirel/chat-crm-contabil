@@ -202,14 +202,14 @@ export class AiProcessor extends WorkerHost {
 
     try {
       const parsed = JSON.parse(raw);
-      if (parsed.reply) return extract(parsed);
+      if ('reply' in parsed) return extract(parsed);
     } catch {}
 
     const jsonMatch = raw.match(/```json?\s*([\s\S]*?)```/);
     if (jsonMatch) {
       try {
         const parsed = JSON.parse(jsonMatch[1].trim());
-        if (parsed.reply) return extract(parsed);
+        if ('reply' in parsed) return extract(parsed);
       } catch {}
     }
 
