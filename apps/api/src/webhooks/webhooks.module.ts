@@ -20,9 +20,8 @@ import { MediaModule } from '../media/media.module';
     WhatsappModule,
     AdminBotModule,
     MediaModule,
-    BullModule.registerQueue({
-      name: 'ai-jobs',
-    }),
+    BullModule.registerQueue({ name: 'media-jobs' }),
+    BullModule.registerQueue({ name: 'ai-jobs' }),
   ],
   controllers: [EvolutionController],
   providers: [EvolutionService, HmacGuard],
