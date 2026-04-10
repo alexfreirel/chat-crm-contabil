@@ -274,6 +274,7 @@ export default function Dashboard() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
   const lawyerDropdownRef = useRef<HTMLDivElement>(null);
+  const lawyerDropdownRef2 = useRef<HTMLDivElement>(null); // Segundo ref para sidebar (evita conflito com ChatHeader)
   const stageDropdownRef = useRef<HTMLDivElement>(null);
   const selectedInboxIdRef = useRef<string | null>(selectedInboxId);
   const selectedIdRef = useRef<string | null>(selectedId);
@@ -556,10 +557,14 @@ export default function Dashboard() {
   }, [showLegalAreaDropdown]);
 
   // Fechar dropdown de especialista ao clicar fora
+  // Checa ambos os refs (ChatHeader + sidebar) para evitar fechar prematuramente
   useEffect(() => {
     if (!showLawyerDropdown) return;
     const handler = (e: MouseEvent) => {
-      if (lawyerDropdownRef.current && !lawyerDropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const inRef1 = lawyerDropdownRef.current?.contains(target);
+      const inRef2 = lawyerDropdownRef2.current?.contains(target);
+      if (!inRef1 && !inRef2) {
         setShowLawyerDropdown(false);
       }
     };
@@ -2708,7 +2713,7 @@ export default function Dashboard() {
                       {selected.legalArea && (
                         <div className="flex justify-between items-center text-sm">
                           <span className="text-muted-foreground">Especialista</span>
-                          <div className="relative" ref={lawyerDropdownRef}>
+                          <div className="relative" ref={lawyerDropdownRef2}>
                             <button
                               onClick={() => setShowLawyerDropdown(v => !v)}
                               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border transition-colors hover:opacity-80 active:scale-95 ${selected.assignedLawyerName ? 'bg-primary/10 text-primary border-primary/20' : 'bg-muted/40 text-muted-foreground border-border'}`}
