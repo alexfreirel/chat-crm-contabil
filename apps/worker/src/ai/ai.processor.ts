@@ -1599,12 +1599,16 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
           content: t.content,
         }));
 
-        // Add instruction + vision as last user message
-        if (visionImages.length > 0) {
-          llmMessages.push({
-            role: 'user' as const,
-            content: [{ type: 'text', text: instruction }, ...visionImages],
-          });
+        // Add instruction as last user turn.
+        // Se o último turn já é 'user' (ex: imagem), mescla a instruction nele —
+        // Anthropic rejeita dois turns 'user' consecutivos (imagem + instruction).
+        const lastLlmMsg = llmMessages[llmMessages.length - 1];
+        if (lastLlmMsg && lastLlmMsg.role === 'user') {
+          if (Array.isArray(lastLlmMsg.content)) {
+            lastLlmMsg.content = [...lastLlmMsg.content, { type: 'text', text: instruction }];
+          } else {
+            lastLlmMsg.content = String(lastLlmMsg.content) + '\n\n' + instruction;
+          }
         } else {
           llmMessages.push({ role: 'user' as const, content: instruction });
         }
@@ -1692,9 +1696,14 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
           role: t.role as 'user' | 'assistant',
           content: t.content,
         }));
-        // Adicionar instrução final como último user message
-        if (visionImages.length > 0) {
-          legacyMessages.push({ role: 'user' as const, content: [{ type: 'text', text: instruction }, ...visionImages] });
+        // Mesclar instrução no último turn user — evita dois user consecutivos (Anthropic rejeita)
+        const lastLegacyMsg = legacyMessages[legacyMessages.length - 1];
+        if (lastLegacyMsg && lastLegacyMsg.role === 'user') {
+          if (Array.isArray(lastLegacyMsg.content)) {
+            lastLegacyMsg.content = [...lastLegacyMsg.content, { type: 'text', text: instruction }];
+          } else {
+            lastLegacyMsg.content = String(lastLegacyMsg.content) + '\n\n' + instruction;
+          }
         } else {
           legacyMessages.push({ role: 'user' as const, content: instruction });
         }
