@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { encryptValue, decryptValue, isSensitiveKey } from '../common/utils/crypto.util';
 
 // ── Tabela de preços OpenAI (USD por 1M tokens) ──────────────────────────────
-// Usa prefix-match: 'gpt-4o-mini' cobre 'gpt-4o-mini-2024-07-18', etc.
+// Usa prefix-match: 'gpt-4.1-mini' cobre 'gpt-4.1-mini-2025-04-14', etc.
 const OPENAI_PRICE: Record<string, { inp: number; out: number }> = {
   'gpt-4o-mini':   { inp: 0.15,  out: 0.60  },
   'gpt-4o':        { inp: 2.50,  out: 10.00 },
@@ -19,7 +19,7 @@ const OPENAI_PRICE: Record<string, { inp: number; out: number }> = {
 
 function estimateCostUsd(model: string, inputTk: number, outputTk: number): number {
   const entry = Object.entries(OPENAI_PRICE).find(([key]) => model.startsWith(key));
-  const p = entry ? entry[1] : { inp: 0.15, out: 0.60 }; // fallback: gpt-4o-mini
+  const p = entry ? entry[1] : { inp: 0.40, out: 1.60 }; // fallback: gpt-4.1-mini
   return (inputTk * p.inp + outputTk * p.out) / 1_000_000;
 }
 
@@ -152,8 +152,8 @@ export class SettingsService {
     const apiKey = await this.get('OPENAI_API_KEY');
     const adminKey = await this.get('OPENAI_ADMIN_KEY');
     const anthropicKey = await this.get('ANTHROPIC_API_KEY');
-    const defaultModel = (await this.get('OPENAI_DEFAULT_MODEL')) || 'gpt-4o-mini';
-    const djenModel = (await this.get('DJEN_AI_MODEL')) || 'gpt-4o-mini';
+    const defaultModel = (await this.get('OPENAI_DEFAULT_MODEL')) || 'gpt-4.1-mini';
+    const djenModel = (await this.get('DJEN_AI_MODEL')) || 'gpt-4.1-mini';
     const djenPrompt = await this.get('DJEN_SYSTEM_PROMPT');
     const djenNotifyTemplate = await this.get('DJEN_CLIENT_NOTIFY_TEMPLATE');
     const adminBotEnabledRaw = await this.get('ADMIN_BOT_ENABLED');
@@ -197,7 +197,7 @@ export class SettingsService {
   }
 
   async getDjenModel(): Promise<string> {
-    return (await this.get('DJEN_AI_MODEL')) || 'gpt-4o-mini';
+    return (await this.get('DJEN_AI_MODEL')) || 'gpt-4.1-mini';
   }
 
   async setDjenModel(model: string): Promise<void> {
@@ -2032,7 +2032,7 @@ Salvar em form_data. Não perguntar tudo de uma vez.`,
       name: s.name,
       area: s.area,
       systemPrompt: s.system_prompt,
-      model: s.model || 'gpt-4o-mini',
+      model: s.model || 'gpt-4.1-mini',
       maxTokens: s.max_tokens || 300,
       temperature: s.temperature ?? 0.7,
       handoffSignal: s.handoff_signal || null,

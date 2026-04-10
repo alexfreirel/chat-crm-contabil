@@ -31,7 +31,7 @@ export class SettingsService {
 
   async getDefaultModel(): Promise<string> {
     const row = await this.prisma.globalSetting.findUnique({ where: { key: 'OPENAI_DEFAULT_MODEL' } });
-    return row?.value || 'gpt-4o-mini';
+    return row?.value || 'gpt-4.1-mini';
   }
 
   async getActiveSkills(): Promise<any[]> {

@@ -579,7 +579,7 @@ export class CalendarReminderWorker extends WorkerHost {
 
   private async generateHearingScheduledMessage(event: any, context: string, firstName: string, isRescheduled = false): Promise<string> {
     const aiConfig = await this.settings.getAiConfig();
-    const model = aiConfig.defaultModel || 'gpt-4o-mini';
+    const model = aiConfig.defaultModel || 'gpt-4.1-mini';
     const isAnthropic = model.startsWith('claude');
     const dateStr = formatDateTime(event.start_at);
     const isPericia = event.type === 'PERICIA';
@@ -662,7 +662,7 @@ Gere APENAS a mensagem final para WhatsApp, sem explicações.`;
     context: string,
   ): Promise<string> {
     const aiConfig = await this.settings.getAiConfig();
-    const model = aiConfig.defaultModel || 'gpt-4o-mini';
+    const model = aiConfig.defaultModel || 'gpt-4.1-mini';
     const isAnthropic = model.startsWith('claude');
     const prazo = minutesLabel(minutesBefore);
     const firstName = (event.lead?.name || 'Cliente').split(' ')[0];

@@ -249,7 +249,7 @@ Gere APENAS o texto da mensagem final, sem introduções, sem "Aqui está a mens
 
     try {
       const completion = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4.1-mini',
         messages: [{ role: 'system', content: systemPrompt }],
         max_tokens: 700,
         temperature: 0.88,
@@ -321,7 +321,7 @@ Considere requer_humano=true se:
 
     try {
       const r = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4.1-mini',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 300, temperature: 0.3,
         response_format: { type: 'json_object' },

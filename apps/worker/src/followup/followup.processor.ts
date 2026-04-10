@@ -380,7 +380,7 @@ Gere APENAS o texto da mensagem, sem introduções.`;
     try {
       const openai = new (await import('openai')).default({ apiKey: process.env.OPENAI_API_KEY });
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4.1-mini',
         messages: [{ role: 'system', content: systemPrompt }],
         max_tokens: 500,
         temperature: 0.7,

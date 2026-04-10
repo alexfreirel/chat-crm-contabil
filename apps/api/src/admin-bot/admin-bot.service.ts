@@ -203,7 +203,7 @@ export class AdminBotService implements OnModuleInit, OnModuleDestroy {
 
     while (iterations++ < MAX_ITERATIONS) {
       const completion = await this.openai!.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4.1-mini',
         messages,
         tools: this.getTools(),
         tool_choice: 'auto',

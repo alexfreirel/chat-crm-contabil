@@ -1399,7 +1399,7 @@ FICHA TRABALHISTA: ${legalCase.lead?.ficha_trabalhista ? `${legalCase.lead.ficha
     const openai = new OpenAI({ apiKey });
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4.1-mini',
       temperature: 0.3,
       messages: [
         {
