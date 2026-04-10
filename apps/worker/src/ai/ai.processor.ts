@@ -194,23 +194,37 @@ export class AiProcessor extends WorkerHost {
     slots_to_offer?: { date: string; time: string; label: string }[];
   } {
     const extract = (parsed: any) => ({
-      reply: parsed.reply,
+      reply: parsed.reply ?? '',
       updates: parsed.updates || parsed.lead_update || {},
       scheduling_action: parsed.scheduling_action || undefined,
       slots_to_offer: parsed.slots_to_offer || undefined,
     });
 
+    // 1. JSON puro
     try {
       const parsed = JSON.parse(raw);
       if ('reply' in parsed) return extract(parsed);
     } catch {}
 
-    const jsonMatch = raw.match(/```json?\s*([\s\S]*?)```/);
+    // 2. Markdown ```json ... ``` (com ou sem fechamento)
+    const jsonMatch = raw.match(/```json?\s*([\s\S]*?)```/) ||
+                      raw.match(/```json?\s*([\s\S]+)/); // ```json sem fechar
     if (jsonMatch) {
       try {
         const parsed = JSON.parse(jsonMatch[1].trim());
         if ('reply' in parsed) return extract(parsed);
       } catch {}
+    }
+
+    // 3. Extrair "reply" via regex (fallback para JSON truncado/malformado)
+    const replyMatch = raw.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (replyMatch) {
+      const reply = replyMatch[1]
+        .replace(/\\n/g, '\n')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\');
+      this.logger.warn(`[AI] JSON malformado — reply extraído via regex (${reply.length} chars)`);
+      return { reply, updates: {} };
     }
 
     this.logger.warn('[AI] Resposta não é JSON válido — usando como texto puro');
@@ -1778,6 +1792,23 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
       );
       if (!updates.status && !updates.next_step && !updates.name) {
         this.logger.warn(`[AI] updates vazio após processamento — stage não será atualizado. convo=${conversation_id}`);
+      }
+
+      // 13b. Sanitização: se aiText contém JSON cru (IA retornou JSON em vez de texto),
+      // extrair apenas o campo reply para não enviar dados internos ao cliente.
+      if (aiText && (aiText.includes('```json') || aiText.trimStart().startsWith('{'))) {
+        const sanitized = this.parseAiResponse(aiText);
+        if (sanitized.reply !== aiText) {
+          this.logger.warn(`[AI] JSON cru detectado no aiText — extraindo reply (${aiText.length} chars → ${sanitized.reply.length} chars)`);
+          aiText = sanitized.reply;
+          // Mesclar updates extraídos se os atuais estão vazios
+          if (!updates.status && sanitized.updates?.status) updates.status = sanitized.updates.status;
+          if (!updates.name && sanitized.updates?.name) updates.name = sanitized.updates.name;
+          if (!updates.area && sanitized.updates?.area) updates.area = sanitized.updates.area;
+          if (!updates.lead_summary && sanitized.updates?.lead_summary) updates.lead_summary = sanitized.updates.lead_summary;
+          if (!updates.next_step && sanitized.updates?.next_step) updates.next_step = sanitized.updates.next_step;
+          if (!updates.notes && sanitized.updates?.notes) updates.notes = sanitized.updates.notes;
+        }
       }
 
       // 14. Verificar sinal de escalada (handoff para humano)
