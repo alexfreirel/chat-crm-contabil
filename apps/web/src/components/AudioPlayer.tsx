@@ -59,11 +59,11 @@ export function AudioPlayer({ src, duration, isOutgoing, messageId }: AudioPlaye
       try {
         const res = await fetch(src);
         if (!res.ok) {
-          // Media pode nao estar pronta ainda (worker processando) — retry
-          if (res.status === 404 && retryCount.current < 8) {
+          // Media pode nao estar pronta (fallback BullMQ processando) — retry
+          if (res.status === 404 && retryCount.current < 3) {
             retryCount.current++;
-            // Backoff progressivo: 2s, 2s, 3s, 3s, 4s, 4s, 5s, 5s
-            const delay = Math.min(2000 + Math.floor(retryCount.current / 2) * 1000, 5000);
+            // Backoff progressivo: 3s, 4s, 5s
+            const delay = Math.min(3000 + retryCount.current * 1000, 5000);
             setTimeout(() => { if (!cancelled) fetchAudio(); }, delay);
             return;
           }

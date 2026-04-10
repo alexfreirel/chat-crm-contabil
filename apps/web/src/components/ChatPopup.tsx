@@ -12,7 +12,7 @@
  *  • Lightbox de imagens
  *  • Preview de documentos
  *  • Scroll automático + botão "rolar para baixo"
- *  • Tempo real via Socket.io (newMessage, messageUpdate, mediaReady)
+ *  • Tempo real via Socket.io (newMessage, messageUpdate)
  *  • Link para abrir o chat completo em /atendimento
  *  • Fecha com Esc ou clique no overlay
  */
@@ -244,10 +244,6 @@ export function ChatPopup({ leadId, leadName, conversationId: initialConvId, cas
         setMessages((prev) => prev.map((m) => m.id === updated.id ? { ...m, ...updated } : m));
       });
 
-      socket.on('mediaReady', (updated: MessageItem) => {
-        if (updated.conversation_id !== convIdRef.current) return;
-        setMessages((prev) => prev.map((m) => m.id === updated.id ? { ...m, ...updated } : m));
-      });
     };
 
     init();

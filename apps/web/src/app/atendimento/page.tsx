@@ -1057,11 +1057,6 @@ export default function Dashboard() {
               }).catch(() => {});
             }, delay);
           });
-          socketRef.current.off('mediaReady');
-          socketRef.current.on('mediaReady', (updatedMsg: MessageItem) => {
-            console.log('[SOCKET] mediaReady received:', updatedMsg.id);
-            setMessages(prev => prev.map(m => m.id === updatedMsg.id ? updatedMsg : m));
-          });
           socketRef.current.off('messageUpdate');
           socketRef.current.on('messageUpdate', (updatedMsg: MessageItem) => {
             setMessages(prev => prev.map(m => m.id === updatedMsg.id ? { ...m, ...updatedMsg } : m));
@@ -1154,7 +1149,6 @@ export default function Dashboard() {
       // Cleanup listeners ao trocar de conversa (evita race condition)
       if (socketRef.current) {
         socketRef.current.off('newMessage');
-        socketRef.current.off('mediaReady');
         socketRef.current.off('messageUpdate');
         socketRef.current.off('contact_presence');
       }

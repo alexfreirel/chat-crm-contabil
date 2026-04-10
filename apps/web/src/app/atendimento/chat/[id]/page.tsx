@@ -524,10 +524,6 @@ export default function ChatPage({ params }: { params: { id: string } }) {
             setMessages(prev => prev.map((m: any) => m.id === updatedMsg.id ? { ...m, ...updatedMsg } : m));
           });
 
-          socketRef.current.on('mediaReady', (updatedMsg: any) => {
-            setMessages(prev => prev.map((m: any) => m.id === updatedMsg.id ? updatedMsg : m));
-          });
-
           socketRef.current.on('messageReaction', (data: { messageId: string; reactions: any[] }) => {
             setMessages(prev => prev.map((m: any) => m.id === data.messageId ? { ...m, reactions: data.reactions } : m));
           });
@@ -550,7 +546,6 @@ export default function ChatPage({ params }: { params: { id: string } }) {
         s.off('incoming_message_notification');
         s.off('newMessage');
         s.off('messageUpdate');
-        s.off('mediaReady');
         s.off('messageReaction');
         s.off('contact_presence');
         s.disconnect();

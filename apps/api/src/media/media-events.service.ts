@@ -70,9 +70,9 @@ export class MediaEventsService implements OnModuleInit, OnModuleDestroy {
           return;
         }
 
-        // Emite evento para o room da conversa
-        this.chatGateway.server?.to(conversationId).emit('mediaReady', message);
-        this.logger.log(`[WS] mediaReady emitido: msg=${messageId} conv=${conversationId}`);
+        // Emite evento para o room da conversa (fallback — usado quando download síncrono falhou)
+        this.chatGateway.server?.to(conversationId).emit('messageUpdate', message);
+        this.logger.log(`[WS] messageUpdate (media fallback) emitido: msg=${messageId} conv=${conversationId}`);
 
         // Auto-upload de documentos para Google Drive (se lead tem pasta)
         if (message.media && message.direction === 'in') {

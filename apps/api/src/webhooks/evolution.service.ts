@@ -9,6 +9,7 @@ import { InboxesService } from '../inboxes/inboxes.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { FollowupService } from '../followup/followup.service';
 import { AdminBotService } from '../admin-bot/admin-bot.service';
+import { MediaDownloadService } from '../media/media-download.service';
 
 interface EvolutionWebhookPayload {
   event: string;
@@ -85,6 +86,7 @@ export class EvolutionService {
     private whatsappService: WhatsappService,
     private moduleRef: ModuleRef,
     private adminBotService: AdminBotService,
+    private mediaDownloadService: MediaDownloadService,
   ) {}
 
   async handleMessagesUpsert(payload: EvolutionWebhookPayload) {
@@ -422,8 +424,57 @@ export class EvolutionService {
         data: { last_message_at: new Date() },
       });
 
-      // Emit real-time events via WebSocket
-      this.chatGateway.emitNewMessage(conv.id, msg);
+      // ─── 4. Mídia: download síncrono (estilo Chatwoot) ───────────────────
+      // Para mensagens com mídia, tenta baixar ANTES de emitir WebSocket.
+      // Se o download falhar, emite sem mídia e enfileira fallback no BullMQ.
+      let msgToEmit: any = msg;
+
+      if (msgType !== 'text') {
+        const mediaData = (data.message as any)?.[messageType];
+        try {
+          const mediaRecord = await this.mediaDownloadService.downloadAndStore({
+            messageId: msg.id,
+            conversationId: conv.id,
+            externalMessageId,
+            instanceName,
+            mediaData,
+          });
+
+          if (mediaRecord) {
+            // Busca mensagem completa com mídia para emitir via WebSocket
+            const fullMsg = await this.prisma.message.findUnique({
+              where: { id: msg.id },
+              include: { media: true, skill: { select: { id: true, name: true, area: true } } },
+            });
+            if (fullMsg) msgToEmit = fullMsg;
+          } else {
+            // Download retornou null — enfileira fallback no worker
+            this.logger.warn(`[MEDIA-SYNC] Fallback BullMQ para msg ${msg.id}`);
+            await this.mediaQueue.add('download_media', {
+              message_id: msg.id,
+              conversation_id: conv.id,
+              media_data: mediaData,
+              remote_jid: remoteJid,
+              msg_id: externalMessageId,
+              instance_name: instanceName,
+            }, { delay: 5000 });
+          }
+        } catch (err: any) {
+          // Erro inesperado — enfileira fallback
+          this.logger.error(`[MEDIA-SYNC] Erro inesperado para msg ${msg.id}: ${err.message}`);
+          await this.mediaQueue.add('download_media', {
+            message_id: msg.id,
+            conversation_id: conv.id,
+            media_data: (data.message as any)?.[messageType],
+            remote_jid: remoteJid,
+            msg_id: externalMessageId,
+            instance_name: instanceName,
+          }, { delay: 5000 });
+        }
+      }
+
+      // ─── 5. Emit WebSocket (com mídia se download foi OK) ─────────────
+      this.chatGateway.emitNewMessage(conv.id, msgToEmit);
       this.chatGateway.emitConversationsUpdate(conv.tenant_id ?? null);
 
       // Notify operator(s) about incoming message (sound + unread badge)
@@ -437,27 +488,11 @@ export class EvolutionService {
         );
 
         // ─── Response Listener: verifica se é resposta a um follow-up ─────
-        // Roda de forma assíncrona (fire-and-forget) para não bloquear o webhook
         if (messageContent && messageContent.length >= 3) {
           this.checkFollowupResponse(lead.id, messageContent).catch(e =>
             this.logger.warn(`[FOLLOWUP-LISTENER] ${e.message}`),
           );
         }
-      }
-
-      // 4. Se mídia, enfileira download
-      if (msgType !== 'text') {
-        const mediaData = (data.message as any)?.[messageType];
-        await this.mediaQueue.add('download_media', {
-          message_id: msg.id,
-          conversation_id: conv.id,
-          media_data: mediaData,
-          remote_jid: remoteJid,
-          msg_id: externalMessageId,
-          instance_name: instanceName,
-        }, {
-          delay: 3000, // 3s de delay para garantir que a mensagem foi commitada no banco
-        });
       }
 
       // 5. Se AI_Mode ativo e mensagem recebida (não enviada), agenda job para a IA responder

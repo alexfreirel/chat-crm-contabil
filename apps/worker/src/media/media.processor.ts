@@ -45,7 +45,7 @@ export class MediaProcessor extends WorkerHost {
       const downloadResponse = await axios.post(
         `${apiUrl}/chat/getBase64FromMediaMessage/${instance}`,
         { message: { key: { id: msg_id } } },
-        { headers: { apikey: apiKey } }
+        { headers: { apikey: apiKey }, timeout: 15000 }
       );
 
       const base64Data = downloadResponse.data.base64;
