@@ -559,6 +559,37 @@ export default function AgenteFiscalPage() {
               ))}
             </div>
 
+            {/* Armazenamento VPS — inline com stats */}
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+                <h3 className="text-xs font-semibold text-foreground flex items-center gap-2">
+                  <HardDrive size={14} className="text-primary" /> Armazenamento VPS
+                </h3>
+                <button onClick={fetchPeriodos} className="text-[10px] text-primary hover:underline font-medium">
+                  {loadingPeriodos ? 'Carregando...' : 'Atualizar'}
+                </button>
+              </div>
+              {periodos.length === 0 ? (
+                <div className="p-3 text-center">
+                  <button onClick={fetchPeriodos} disabled={loadingPeriodos} className="text-xs text-muted-foreground hover:text-foreground">
+                    {loadingPeriodos ? 'Carregando...' : 'Clique para ver periodos'}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2 p-3">
+                  {periodos.map(p => (
+                    <div key={p.mes} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/30 border border-border/50">
+                      <span className="text-xs font-medium text-foreground">{p.mes}</span>
+                      <span className="text-[10px] text-muted-foreground">{p.arquivos} arq &middot; {p.tamanho_mb}MB</span>
+                      <button onClick={() => deletePeriodo(p.mes, p.arquivos)} className="p-0.5 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-400">
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Quick actions */}
             <div>
               <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
@@ -618,47 +649,6 @@ export default function AgenteFiscalPage() {
               )}
             </div>
 
-            {/* Armazenamento VPS */}
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
-                <h3 className="text-xs font-semibold text-foreground flex items-center gap-2">
-                  <HardDrive size={14} className="text-primary" /> Armazenamento VPS
-                </h3>
-                <button onClick={fetchPeriodos} className="text-[10px] text-primary hover:underline font-medium">
-                  {loadingPeriodos ? 'Carregando...' : 'Atualizar'}
-                </button>
-              </div>
-              {periodos.length === 0 ? (
-                <div className="p-4 text-center">
-                  <button onClick={fetchPeriodos} disabled={loadingPeriodos} className="text-xs text-muted-foreground hover:text-foreground">
-                    {loadingPeriodos ? 'Carregando...' : 'Clique para ver periodos armazenados'}
-                  </button>
-                </div>
-              ) : (
-                <div className="p-2 space-y-1">
-                  {periodos.map(p => (
-                    <div key={p.mes} className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-muted/30">
-                      <div className="flex items-center gap-3">
-                        <div className="w-7 h-7 rounded-md bg-blue-500/10 flex items-center justify-center text-blue-400 text-xs font-bold">
-                          {p.mes.split('-')[1]}
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium text-foreground">{p.mes}</div>
-                          <div className="text-[10px] text-muted-foreground">{p.arquivos} arquivo(s) &middot; {p.empresas} empresa(s) &middot; {p.tamanho_mb} MB</div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => deletePeriodo(p.mes, p.arquivos)}
-                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400"
-                        title={`Apagar periodo ${p.mes}`}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
         )}
 
