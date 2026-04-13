@@ -1017,7 +1017,7 @@ export function HighConversionTemplate({
 
               <div className="relative w-full min-h-[450px] md:min-h-[650px] lg:min-h-[750px] overflow-hidden rounded-xl border border-[#A89048]/20 shadow-2xl bg-linear-to-b from-[#1a1a1a] to-[#0A0A0A]">
                 <Image
-                  src="/landing/Design-sem-nome-_34_.webp"
+                  src="/landing/Design-sem-nome-_34_.jpeg"
                   alt="Escritório André Lustosa Advogados"
                   fill
                   className="object-contain p-2 md:p-4 group-hover:scale-105 transition-transform duration-1000"
@@ -1133,7 +1133,7 @@ export function HighConversionTemplate({
                   {/* Glow overlay — masked by rotating conic-gradient */}
                   <span className="btn-premium-glow-overlay" />
                   <span className="relative z-10 flex items-center gap-2 md:gap-3">
-                    FALAR COM ADVOGADO
+                    FALAR COM CONTADOR
                     <ChevronRight size={20} className="hidden md:block" />
                     <ChevronRight size={18} className="md:hidden" />
                   </span>
@@ -1225,9 +1225,8 @@ export function HighConversionTemplate({
                 <h2 className="text-[clamp(1.5rem,2.8vw,2.75rem)] 2xl:text-[clamp(2rem,3.2vw,3.5rem)] font-black text-[#1A1A1A] leading-[1.1] uppercase wrap-break-word hyphens-auto mb-8" dangerouslySetInnerHTML={{ __html: sectionLabels.excellenceTitle }} />
               ) : (
                 <h2 className="text-[clamp(1.5rem,2.8vw,2.75rem)] 2xl:text-[clamp(2rem,3.2vw,3.5rem)] font-black text-[#1A1A1A] leading-[1.1] uppercase wrap-break-word hyphens-auto mb-8">
-                  O ESCRITÓRIO JURÍDICO <br />
-                  <span className="text-[#A89048]">ANDRÉ LUSTOSA</span> <br />
-                  <span className="text-[#A89048]">ADVOGADOS!</span>
+                  O ESCRITÓRIO CONTÁBIL <br />
+                  <span className="text-[#A89048]">LEXCON ASSESSORIA CONTÁBIL!</span>
                 </h2>
               )}
             </motion.div>
@@ -1239,7 +1238,7 @@ export function HighConversionTemplate({
               className="w-full"
             >
               <p className="text-[#444444] text-[clamp(1rem,1.1vw,1.125rem)] font-medium leading-relaxed max-w-2xl mx-auto">
-                Unimos tradição jurídica à inovação tecnológica para entregar
+                Unimos tradição contábil à inovação tecnológica para entregar
                 resultados excepcionais. Nossa estrutura é moldada para a
                 agilidade do mundo moderno e a máxima proteção dos seus
                 interesses.
@@ -1503,7 +1502,7 @@ export function HighConversionTemplate({
                     onClick={handleCtaClick}
                     className="bg-[#0B0B0B] hover:bg-slate-800 text-[#FAFAFA] font-black px-8 py-6 rounded-xl space-x-2 tracking-widest uppercase transition-all shadow-lg hover:shadow-xl shrink-0"
                   >
-                    <span>Falar com Advogado Agora</span>
+                    <span>Falar com Contador Agora</span>
                     <ChevronRight size={18} />
                   </Button>
                 </motion.div>

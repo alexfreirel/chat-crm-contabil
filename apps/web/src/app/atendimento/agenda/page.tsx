@@ -1128,7 +1128,7 @@ export default function AgendaPage() {
         {/* Filtro por advogado (admin) */}
         <div className="px-3 py-2">
           <div className="flex items-center justify-between mb-1.5">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Advogado</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Contador</p>
             <button
               onClick={() => setShowAllUsers(v => !v)}
               className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-colors ${
@@ -1147,7 +1147,7 @@ export default function AgendaPage() {
               onChange={e => setFilterUserId(e.target.value)}
               className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-background text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30"
             >
-              <option value="">Todos os advogados</option>
+              <option value="">Todos os contadores</option>
               {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           )}
@@ -1719,7 +1719,7 @@ export default function AgendaPage() {
 
               {/* Advogado */}
               <div>
-                <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1 block">Advogado / Responsavel</label>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1 block">Contador / Responsável</label>
                 <select
                   value={formData.assigned_user_id}
                   onChange={e => setFormData(f => ({ ...f, assigned_user_id: e.target.value }))}

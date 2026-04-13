@@ -13,7 +13,7 @@ import { buildHandlerMap } from './tool-handlers';
 import { createLLMClient, calculateCost, type LLMProvider } from './llm-client';
 
 // Modelos com suporte a visão (imagens)
-const VISION_MODELS = ['gpt-4o', 'gpt-4.1', 'gpt-5', 'claude-'];
+const VISION_MODELS = ['gpt-4o', 'gpt-4.1', 'gpt-5'];
 
 // ─── Long Memory System Prompt (infraestrutura interna, não é skill) ───
 const LONG_MEMORY_SYSTEM_PROMPT = `Você é uma IA especializada em gerenciamento de memória de longo prazo (LONG MEMORY) de leads e casos jurídicos, multiárea.
@@ -165,25 +165,15 @@ export class AiProcessor extends WorkerHost {
     return aliases[model] || model;
   }
 
-  // ─── Constrói header WAV para PCM raw (Gemini TTS retorna PCM 24kHz) ───
-  private buildWavHeader(dataSize: number, sampleRate: number, channels: number, bitsPerSample: number): Buffer {
-    const header = Buffer.alloc(44);
-    const byteRate = sampleRate * channels * (bitsPerSample / 8);
-    const blockAlign = channels * (bitsPerSample / 8);
-    header.write('RIFF', 0);
-    header.writeUInt32LE(36 + dataSize, 4);
-    header.write('WAVE', 8);
-    header.write('fmt ', 12);
-    header.writeUInt32LE(16, 16);
-    header.writeUInt16LE(1, 20); // PCM
-    header.writeUInt16LE(channels, 22);
-    header.writeUInt32LE(sampleRate, 24);
-    header.writeUInt32LE(byteRate, 28);
-    header.writeUInt16LE(blockAlign, 32);
-    header.writeUInt16LE(bitsPerSample, 34);
-    header.write('data', 36);
-    header.writeUInt32LE(dataSize, 40);
-    return header;
+  // ─── Substitui variáveis {{var}} no prompt ───
+  private injectVariables(
+    prompt: string,
+    vars: Record<string, string>,
+  ): string {
+    return prompt.replace(
+      /\{\{(\w+)\}\}/g,
+      (_, key) => vars[key] ?? `{{${key}}}`,
+    );
   }
 
   // ─── Parseia resposta JSON da IA com fallbacks robustos ───
@@ -191,43 +181,35 @@ export class AiProcessor extends WorkerHost {
     reply: string;
     updates: any;
     scheduling_action?: { action: string; date?: string; time?: string };
-    slots_to_offer?: { date: string; time: string; label: string }[];
   } {
-    const extract = (parsed: any) => ({
-      reply: parsed.reply ?? '',
-      updates: parsed.updates || parsed.lead_update || {},
-      scheduling_action: parsed.scheduling_action || undefined,
-      slots_to_offer: parsed.slots_to_offer || undefined,
-    });
-
-    // 1. JSON puro
     try {
       const parsed = JSON.parse(raw);
-      if ('reply' in parsed) return extract(parsed);
+      if (parsed.reply) {
+        return {
+          reply: parsed.reply,
+          updates: parsed.updates || parsed.lead_update || {},
+          scheduling_action: parsed.scheduling_action || undefined,
+        };
+      }
     } catch {}
 
-    // 2. Markdown ```json ... ``` (com ou sem fechamento)
-    const jsonMatch = raw.match(/```json?\s*([\s\S]*?)```/) ||
-                      raw.match(/```json?\s*([\s\S]+)/); // ```json sem fechar
+    const jsonMatch = raw.match(/```json?\s*([\s\S]*?)```/);
     if (jsonMatch) {
       try {
         const parsed = JSON.parse(jsonMatch[1].trim());
-        if ('reply' in parsed) return extract(parsed);
+        if (parsed.reply) {
+          return {
+            reply: parsed.reply,
+            updates: parsed.updates || parsed.lead_update || {},
+            scheduling_action: parsed.scheduling_action || undefined,
+          };
+        }
       } catch {}
     }
 
-    // 3. Extrair "reply" via regex (fallback para JSON truncado/malformado)
-    const replyMatch = raw.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-    if (replyMatch) {
-      const reply = replyMatch[1]
-        .replace(/\\n/g, '\n')
-        .replace(/\\"/g, '"')
-        .replace(/\\\\/g, '\\');
-      this.logger.warn(`[AI] JSON malformado — reply extraído via regex (${reply.length} chars)`);
-      return { reply, updates: {} };
-    }
-
-    this.logger.warn('[AI] Resposta não é JSON válido — usando como texto puro');
+    this.logger.warn(
+      '[AI] Resposta não é JSON válido — usando como texto puro',
+    );
     return { reply: raw, updates: {} };
   }
 
@@ -240,40 +222,24 @@ export class AiProcessor extends WorkerHost {
       // Só áudios recebidos do cliente sem transcrição
       if (msg.direction !== 'in' || msg.type !== 'audio' || msg.text) continue;
 
-      // Retry apenas para mensagens recentes (< 2 min). Mensagens antigas sem mídia
-      // são do sync-history e nunca terão registro no S3 — pular sem esperar.
+      // Retry: o media-job pode estar rodando em paralelo e ainda não ter salvo o registro
       let media = msg.media ?? null;
-      const msgAge = Date.now() - new Date(msg.created_at).getTime();
-      const isRecent = msgAge < 2 * 60 * 1000; // < 2 minutos
-
-      if (!media?.s3_key && isRecent) {
-        // Polling com duas fases:
-        // - Fase rápida (5×500ms = 2.5s): cobre download síncrono com pequeno atraso de commit
-        // - Fase lenta (12×2000ms = 24s): cobre fallback BullMQ processando áudios longos
-        const phases = [
-          { attempts: 5, delay: 500 },
-          { attempts: 12, delay: 2000 },
-        ];
-        outer: for (const phase of phases) {
-          for (let attempt = 1; attempt <= phase.attempts; attempt++) {
-            await new Promise((r) => setTimeout(r, phase.delay));
-            const found = await this.prisma.media.findFirst({
-              where: { message_id: msg.id },
-            });
-            if (found?.s3_key) {
-              media = found;
-              break outer;
-            }
-            this.logger.log(
-              `[AI] Aguardando mídia para msg ${msg.id} (delay=${phase.delay}ms tentativa ${attempt}/${phase.attempts})...`,
-            );
+      if (!media?.s3_key) {
+        for (let attempt = 1; attempt <= 5; attempt++) {
+          await new Promise((r) => setTimeout(r, 800));
+          const found = await this.prisma.media.findFirst({
+            where: { message_id: msg.id },
+          });
+          if (found?.s3_key) {
+            media = found;
+            break;
           }
+          this.logger.log(
+            `[AI] Aguardando mídia para msg ${msg.id} (tentativa ${attempt}/5)...`,
+          );
         }
       }
-      if (!media?.s3_key) {
-        msg.text = '[o cliente enviou um áudio mas não foi possível ouvir — peça educadamente para repetir por texto ou enviar outro áudio]';
-        continue;
-      }
+      if (!media?.s3_key) continue;
 
       try {
         const { buffer, contentType } = await this.s3.getObjectBuffer(
@@ -285,9 +251,8 @@ export class AiProcessor extends WorkerHost {
         const file = await toFile(buffer, `audio.${ext}`, { type: mimeBase });
         const result = await ai.audio.transcriptions.create({
           file,
-          model: 'gpt-4o-transcribe',
+          model: 'whisper-1',
           language: 'pt',
-          prompt: 'Transcrição de mensagem de voz do WhatsApp em português brasileiro. O cliente está conversando com um escritório de advocacia sobre questões jurídicas.',
         });
 
         const transcription = result.text?.trim() || '';
@@ -306,7 +271,7 @@ export class AiProcessor extends WorkerHost {
         this.logger.warn(
           `[AI] Falha ao transcrever áudio ${msg.id}: ${e.message}`,
         );
-        msg.text = '[o cliente enviou um áudio mas não foi possível ouvir — peça educadamente para repetir por texto ou enviar outro áudio]';
+        msg.text = '[áudio não transcrito]';
       }
     }
   }
@@ -368,7 +333,30 @@ export class AiProcessor extends WorkerHost {
         `[AI] Nome atualizado: "${updates.name}" → lead ${leadId}`,
       );
 
-      // Nome salvo no banco (Lead.name) — Evolution API não tem endpoint para renomear contatos
+      const { apiUrl, apiKey } = await this.settings.getEvolutionConfig();
+      if (apiUrl && instanceName) {
+        try {
+          await axios.post(
+            `${apiUrl}/contact/upsert/${instanceName}`,
+            {
+              contacts: [{ phone: leadPhone, fullName: updates.name }],
+            },
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                apikey: apiKey,
+              },
+            },
+          );
+          this.logger.log(
+            `[AI] Contato atualizado na Evolution: ${leadPhone} → "${updates.name}"`,
+          );
+        } catch (e: any) {
+          this.logger.warn(
+            `[AI] Falha ao atualizar contato na Evolution: ${e.message}`,
+          );
+        }
+      }
     }
 
     // b. Status → Lead.stage
@@ -526,7 +514,7 @@ export class AiProcessor extends WorkerHost {
           });
           const oldData = (ficha.data as Record<string, any>) || {};
           const merged = { ...oldData, ...cleanFields };
-          const totalFields = 76;
+          const totalFields = 72;
           const filled = Object.values(merged).filter(
             (v) => v !== null && v !== undefined && v !== '',
           ).length;
@@ -589,7 +577,7 @@ export class AiProcessor extends WorkerHost {
                 create: { lead_id: leadId, data: {} },
               });
               const merged = { ...(ficha.data as Record<string, any>), ...mappedData };
-              const totalFields = 76;
+              const totalFields = 72;
               const filled = Object.values(merged).filter((v) => v != null && v !== '').length;
               const pct = Math.min(100, Math.round((filled / totalFields) * 100));
 
@@ -884,11 +872,6 @@ export class AiProcessor extends WorkerHost {
 
     const { conversation_id } = job.data;
 
-    if (!conversation_id) {
-      this.logger.warn(`[AI] Job ${job.id} sem conversation_id — ignorando (payload: ${JSON.stringify(job.data).slice(0, 100)})`);
-      return;
-    }
-
     try {
       // 2. Buscar conversa + lead + últimas 20 mensagens com mídia incluída
       // orderBy desc para pegar as mais RECENTES; invertemos abaixo para ordem cronológica
@@ -910,7 +893,8 @@ export class AiProcessor extends WorkerHost {
       // 3a. Mesmo sem ai_mode, atualiza Long Memory para conversas do operador humano.
       // Isso garante que o "Resumo dos Fatos" seja atualizado mesmo quando um humano atende.
       if (!convo.ai_mode) {
-        if (convo.messages.length > 0) {
+        const inboundTotal = convo.messages.filter((m) => m.direction === 'in').length;
+        if (inboundTotal > 0) {
           try {
             const aiForMemory = new OpenAI({ apiKey: openAiKey });
             const chronologicalMemory = [...convo.messages].reverse();
@@ -993,30 +977,15 @@ export class AiProcessor extends WorkerHost {
           if (leadParts.length) parts.push(`👤 Dados do Lead: ${leadParts.join(' | ')}`);
         }
         // Caso
-        // Suporte a múltiplos processos (facts.cases[]) + backward compat (facts.case)
-        const allCases: any[] = factsJson?.cases || (factsJson?.case ? [factsJson.case] : []);
-        if (allCases.length === 1) {
-          const c = allCases[0];
+        if (factsJson?.case) {
+          const c = factsJson.case;
           const caseParts: string[] = [];
-          if (c.case_number) caseParts.push(`Nº: ${c.case_number}`);
           if (c.area) caseParts.push(`Área: ${c.area}`);
-          if (c.tracking_stage) caseParts.push(`Estágio: ${c.tracking_stage}`);
+          if (c.subarea) caseParts.push(`Subárea: ${c.subarea}`);
           if (c.status) caseParts.push(`Status: ${c.status}`);
           if (c.summary) caseParts.push(`Resumo: ${c.summary}`);
-          if (c.opposing_party) caseParts.push(`Parte contrária: ${c.opposing_party}`);
-          if (c.subarea) caseParts.push(`Subárea: ${c.subarea}`);
           if (c.tags?.length) caseParts.push(`Tags: ${c.tags.join(', ')}`);
-          if (caseParts.length) parts.push(`⚖️ Processo: ${caseParts.join(' | ')}`);
-        } else if (allCases.length > 1) {
-          const caseLines = allCases.map((c: any, i: number) => {
-            const p: string[] = [];
-            if (c.case_number) p.push(`Nº: ${c.case_number}`);
-            if (c.area) p.push(c.area);
-            if (c.tracking_stage) p.push(`Estágio: ${c.tracking_stage}`);
-            if (c.opposing_party) p.push(`vs ${c.opposing_party}`);
-            return `  ${i + 1}. ${p.join(' | ')}`;
-          });
-          parts.push(`⚖️ Processos (${allCases.length}):\n${caseLines.join('\n')}`);
+          if (caseParts.length) parts.push(`⚖️ Caso: ${caseParts.join(' | ')}`);
         }
         // Partes
         if (factsJson?.parties) {
@@ -1118,26 +1087,6 @@ export class AiProcessor extends WorkerHost {
       // 8. Carregar skills ativas (com tools e assets inclusos)
       const activeSkills = await this.settings.getActiveSkills();
 
-      // 8.5 Detectar se é CLIENTE com processo ativo → forçar skill Acompanhamento
-      let isActiveClient = false;
-      let activeCases: any[] = [];
-      try {
-        const lead = await (this.prisma as any).lead.findUnique({
-          where: { id: convo.lead_id },
-          select: { is_client: true, stage: true },
-        });
-        if (lead?.is_client) {
-          activeCases = await (this.prisma as any).legalCase.findMany({
-            where: { lead_id: convo.lead_id, archived: false },
-            select: { id: true, case_number: true, legal_area: true, tracking_stage: true, in_tracking: true, stage: true, opposing_party: true },
-            orderBy: { stage_changed_at: 'desc' },
-          });
-          if (activeCases.length > 0) isActiveClient = true;
-        }
-      } catch (e: any) {
-        this.logger.warn(`[AI] Falha ao verificar status de cliente: ${e.message}`);
-      }
-
       // 9. Selecionar skill — via Router inteligente ou fallback area-matching
       const legalArea = (convo as any).legal_area || null;
       const nextStep = (convo as any).next_step || null;
@@ -1146,16 +1095,7 @@ export class AiProcessor extends WorkerHost {
       let routerReason = '';
       let routerTokens = 0;
 
-      // Se é cliente com processo ativo, forçar skill de Acompanhamento
-      if (isActiveClient) {
-        skill = activeSkills.find((s: any) => s.area === 'Acompanhamento') || null;
-        if (skill) {
-          routerReason = `cliente ativo com ${activeCases.length} processo(s) — skill Acompanhamento`;
-          this.logger.log(`[AI] Cliente ativo detectado (lead=${convo.lead_id}), usando skill Acompanhamento`);
-        }
-      }
-
-      if (!skill && routerConfig.enabled && activeSkills.length > 1) {
+      if (routerConfig.enabled && activeSkills.length > 1) {
         try {
           const routerApiKey = routerConfig.provider === 'anthropic'
             ? await this.settings.getAnthropicKey()
@@ -1260,74 +1200,6 @@ export class AiProcessor extends WorkerHost {
         }
       }
 
-      // ── Próximos eventos do calendário do lead — perícias, audiências, prazos ──
-      let upcomingEventsBlock = '';
-      try {
-        const upcomingEvents = await this.prisma.calendarEvent.findMany({
-          where: {
-            lead_id: convo.lead_id,
-            start_at: { gte: new Date() },
-            status: { notIn: ['CANCELADO', 'CONCLUIDO'] },
-          },
-          orderBy: { start_at: 'asc' },
-          take: 5,
-          select: { type: true, title: true, start_at: true, location: true, description: true },
-        });
-        if (upcomingEvents.length > 0) {
-          const TYPE_LABEL: Record<string, string> = {
-            AUDIENCIA: '⚖️ Audiência', PERICIA: '🔬 Perícia', PRAZO: '⏰ Prazo',
-            CONSULTA: '📞 Consulta', TAREFA: '✅ Tarefa', OUTRO: '📅 Evento',
-          };
-          const lines = upcomingEvents.map(e => {
-            const dt = e.start_at;
-            const dateStr = `${String(dt.getUTCDate()).padStart(2,'0')}/${String(dt.getUTCMonth()+1).padStart(2,'0')}/${dt.getUTCFullYear()} ${String(dt.getUTCHours()).padStart(2,'0')}:${String(dt.getUTCMinutes()).padStart(2,'0')}`;
-            const label = TYPE_LABEL[e.type] || e.type;
-            return `- ${label}: ${e.title} | ${dateStr}${e.location ? ` | Local: ${e.location}` : ''}${e.description ? ` | ${e.description.slice(0,100)}` : ''}`;
-          });
-          upcomingEventsBlock =
-            `\n═══════════════════════════════════════════════════\n` +
-            `📅 PRÓXIMOS EVENTOS DO CLIENTE (use para responder dúvidas sobre data/horário):\n` +
-            lines.join('\n') + '\n' +
-            `═══════════════════════════════════════════════════\n`;
-        }
-      } catch (e: any) {
-        this.logger.warn(`[AI] Falha ao buscar próximos eventos: ${e.message}`);
-      }
-
-      // ── Notas internas dos operadores (ConversationNote) — visíveis para a IA ──
-      let operatorNotesBlock = '';
-      try {
-        const opNotes = await (this.prisma as any).conversationNote.findMany({
-          where: { conversation_id: convo.id },
-          orderBy: { created_at: 'desc' },
-          take: 10,
-          include: { user: { select: { name: true } } },
-        });
-        if (opNotes.length > 0) {
-          const lines = opNotes.reverse().map((n: any) => {
-            const date = new Date(n.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-            return `- [${n.user?.name || 'Operador'}, ${date}]: ${n.text}`;
-          });
-          operatorNotesBlock =
-            `\n═══════════════════════════════════════════════════\n` +
-            `📝 NOTAS INTERNAS DOS OPERADORES (instruções da equipe — OBEDEÇA):\n` +
-            lines.join('\n') + '\n' +
-            `═══════════════════════════════════════════════════\n`;
-        }
-      } catch (e: any) {
-        this.logger.warn(`[AI] Falha ao carregar notas internas: ${e.message}`);
-      }
-
-      // ── ai_notes — observações da própria IA sobre o lead ──
-      let aiNotesBlock = '';
-      if ((convo as any).ai_notes) {
-        aiNotesBlock =
-          `\n═══════════════════════════════════════════════════\n` +
-          `🤖 SUAS ANOTAÇÕES ANTERIORES (você escreveu isso):\n` +
-          `${(convo as any).ai_notes}\n` +
-          `═══════════════════════════════════════════════════\n`;
-      }
-
       // ── Reminder context — injeta aviso se cliente está respondendo a um lembrete recente ──
       let reminderContextBlock = '';
       const reminderCtx = (convo as any).reminder_context as any;
@@ -1353,35 +1225,6 @@ export class AiProcessor extends WorkerHost {
         }
       }
 
-      // Montar info de processos ativos (para clientes com caso em andamento)
-      let activeCasesInfoBlock = '';
-      if (isActiveClient && activeCases.length > 0) {
-        const TRACKING_LABELS: Record<string, string> = {
-          DISTRIBUIDO: 'Distribuído', CITACAO: 'Citação', CONTESTACAO: 'Contestação',
-          REPLICA: 'Réplica', PERICIA_AGENDADA: 'Perícia Agendada', INSTRUCAO: 'Audiência/Instrução',
-          ALEGACOES_FINAIS: 'Alegações Finais', AGUARDANDO_SENTENCA: 'Aguardando Sentença',
-          JULGAMENTO: 'Julgamento', RECURSO: 'Recurso', TRANSITADO: 'Transitado em Julgado',
-          EXECUCAO: 'Execução', ENCERRADO: 'Encerrado',
-        };
-        const PREP_LABELS: Record<string, string> = {
-          VIABILIDADE: 'Análise de Viabilidade', DOCUMENTACAO: 'Coleta de Documentos',
-          PETICAO: 'Petição Inicial', REVISAO: 'Revisão', PROTOCOLO: 'Protocolo',
-        };
-        const caseLines = activeCases.map((c: any) => {
-          const stageLabel = c.in_tracking
-            ? (TRACKING_LABELS[c.tracking_stage] || c.tracking_stage || 'Em acompanhamento')
-            : (PREP_LABELS[c.stage] || c.stage || 'Em preparação');
-          return `  - Nº ${c.case_number || 'Sem número'} | ${c.legal_area || 'Área não definida'} | Estágio: ${stageLabel}${c.opposing_party ? ` | vs ${c.opposing_party}` : ''}`;
-        });
-        activeCasesInfoBlock = `═══════════════════════════════════════════════════
-⚖️ PROCESSOS ATIVOS DO CLIENTE (${activeCases.length}):
-${caseLines.join('\n')}
-
-IMPORTANTE: Este é um CLIENTE já contratado. NÃO faça triagem, NÃO investigue fatos, NÃO pergunte dados pessoais. Responda sobre o andamento do processo.
-═══════════════════════════════════════════════════
-`;
-      }
-
       const vars: Record<string, string> = {
         lead_name: convo.lead.name || 'Desconhecido',
         lead_phone: convo.lead.phone || '',
@@ -1403,10 +1246,6 @@ IMPORTANTE: Este é um CLIENTE já contratado. NÃO faça triagem, NÃO investig
         ficha_status: fichaStatus,
         available_slots: availableSlots,
         reminder_context: reminderContextBlock,
-        upcoming_events: upcomingEventsBlock,
-        operator_notes: operatorNotesBlock,
-        ai_notes: aiNotesBlock,
-        active_cases_info: activeCasesInfoBlock,
       };
 
       // Cabeçalho fixo de capacidades — injetado antes de qualquer skill prompt
@@ -1417,66 +1256,279 @@ IMPORTANTE: Este é um CLIENTE já contratado. NÃO faça triagem, NÃO investig
 
 `;
 
-      // CORE_RULES: regras técnicas imutáveis injetadas em TODO prompt.
-      // O conteúdo de personalidade, roteiro e comportamento está no skill.system_prompt (editável no admin).
-      const CORE_RULES = `DATA E HORA ATUAL: {{data_hoje}} (fuso horário de Maceió/AL).
+      // Regras comportamentais injetadas em TODOS os prompts (skill ou fallback).
+      // Garantem conversa natural e não revelam que a IA está respondendo.
+      const BEHAVIOR_RULES = `DATA E HORA ATUAL: {{data_hoje}} (fuso horário de Maceió/AL).
+Use essa data para referências temporais e para saber os valores vigentes (ex: salário mínimo atual).
 
 ═══════════════════════════════════════════════════
 MEMÓRIA DO LEAD (tudo que já foi coletado sobre este cliente):
 {{lead_memory}}
 ═══════════════════════════════════════════════════
-{{operator_notes}}
-{{ai_notes}}
 {{reminder_context}}
-{{upcoming_events}}
-{{active_cases_info}}
-REGRAS DE TOM E FORMATO (INVIOLÁVEIS):
-- MÁXIMO 2 frases curtas por mensagem. Se passar disso, CORTE.
-- NUNCA pular linha na mensagem. Tudo em bloco só.
-- NUNCA usar: "Opa", "Beleza", "Caramba", "Show", "Top", "Legal", "Massa", "Dahora"
-- NUNCA usar: "Ótima pergunta", "Boa pergunta", "Excelente pergunta"
-- NUNCA usar: "Entendi.", "Ok.", "Certo.", "Vou anotar", "Anotei"
-- NUNCA comentar o que o lead disse: nada de "isso é sério", "é pesado mesmo", "complicado"
-- NUNCA ser MAIS informal que o lead. O lead define o tom. Se ele escreve formal, responda formal.
-- Vá DIRETO para a próxima pergunta. Sem preâmbulos.
-
-PROIBIDO REPETIR PERGUNTAS:
-- O histórico COMPLETO da conversa está nos turns acima (user/assistant). LEIA TUDO.
-- A MEMÓRIA DO LEAD contém TODOS os fatos já extraídos.
+REGRA CRÍTICA — PROIBIDO REPETIR PERGUNTAS:
+- O histórico COMPLETO da conversa está nos turns acima (user/assistant). LEIA TUDO antes de responder.
+- A MEMÓRIA DO LEAD acima contém TODOS os fatos já extraídos de conversas anteriores.
 - ANTES de perguntar algo, verifique SE a informação já foi dita no histórico OU na memória.
-- Se perceber que repetiu, reconheça e avance.
+- Se nome, empresa, problema, datas, valores, função, jornada etc. já foram mencionados → NÃO pergunte de novo.
+- Avance SEMPRE para o próximo ponto do roteiro que AINDA NÃO foi coberto.
+- Se perceber que repetiu algo sem querer, reconheça ("Desculpe, já temos essa informação.") e avance.
 
-HORÁRIOS DISPONÍVEIS DO ADVOGADO (use SOMENTE estes — NUNCA invente datas ou horários):
+PRIMEIRA MENSAGEM — APRESENTAÇÃO OBRIGATÓRIA:
+Se não houver nenhuma mensagem sua (assistant) no histórico, esta é a primeira mensagem do cliente.
+Nesse caso, você DEVE:
+1. Cumprimentar com "Bom dia", "Boa tarde" ou "Boa noite" conforme o horário atual ({{data_hoje}}).
+2. Apresentar-se: "Me chamo Sophia, atendente do Escritório André Lustosa Advogados."
+3. Perguntar o nome do cliente.
+NÃO mencione que é IA. Seja breve e natural, estilo WhatsApp.
+Exemplo: "Olá! Boa tarde 😊 Me chamo Sophia, atendente do Escritório André Lustosa Advogados. Qual é o seu nome?"
+
+PROGRESSÃO DE ETAPAS DO FUNIL — OBRIGATÓRIA:
+Atualize o status do lead assim que a situação mudar. NÃO espere o atendimento terminar.
+- status = "QUALIFICANDO": assim que o cliente informar o motivo do contato (primeira informação sobre o caso). Mude IMEDIATAMENTE nessa resposta.
+- status = "AGUARDANDO_FORM": ao enviar link do formulário.
+- status = "AGUARDANDO_DOCS": ao solicitar documentos.
+- status = "AGUARDANDO_PROC": ao solicitar procuração.
+- status = "REUNIAO_AGENDADA": quando o cliente confirmar horário de reunião.
+- status = "FINALIZADO": quando o cliente contratar o escritório.
+- status = "PERDIDO": quando o cliente desistir ou caso for inviável.
+
+REGRAS DE ATENDIMENTO — OBRIGATÓRIAS:
+1. FAÇA SOMENTE UMA PERGUNTA POR MENSAGEM. Nunca envie duas ou mais perguntas juntas.
+2. Quando o cliente responder uma pergunta sua, RECONHEÇA BREVEMENTE com uma palavra ("Entendi.", "Ok.", "Perfeito.") e só então faça a próxima pergunta. NUNCA diga "vou anotar", "anotei", "estou anotando", "vou registrar" ou qualquer variação — isso soa como robô. Apenas processe internamente e continue.
+3. NUNCA explique leis, artigos, jurisprudências ou dê parecer jurídico A NÃO SER que o cliente pergunte EXPLICITAMENTE ("tenho direito?", "o que a lei diz?", "pode me explicar?"). Se o cliente apenas relatar um fato, registre e continue coletando.
+4. Aja como um atendente humano. Não mencione que é IA, robô ou assistente virtual. Linguagem simples, direta e natural — como em um WhatsApp entre pessoas.
+5. Mensagens curtas: máximo 4 linhas por resposta. WhatsApp não é e-mail.
+6. Se o cliente fizer uma pergunta jurídica diretamente, responda em no máximo 2 linhas e volte imediatamente à coleta de informações.
+
+AVALIAÇÃO DE VIABILIDADE DO CASO — OBRIGATÓRIA ANTES DE COLETAR DADOS:
+Antes de iniciar qualquer coleta de ficha ou formulário, avalie se o caso tem viabilidade econômica e jurídica.
+
+CASOS CLARAMENTE INVIÁVEIS → use next_step="perdido" + loss_reason e encerre gentilmente:
+- Atraso de pagamento de APENAS 1 a 3 dias sem outros problemas (ex: "salário pago com 1 dia de atraso, mas foi pago")
+- Valor em discussão irrisório (ex: "diferença de R$ 10" em situação pontual, sem recorrência)
+- Situação que já foi resolvida pelo próprio cliente sem prejuízo
+- Caso sem violação real de direito (ex: desconto autorizado em contrato, situação normal de trabalho)
+- Reclamação sobre algo subjetivo sem base legal (ex: "não gostei do chefe")
+
+AO ENCERRAR POR INVIABILIDADE:
+1. Explique brevemente (1-2 linhas) por que aquele ponto específico pode não justificar uma ação judicial.
+2. Pergunte se há OUTROS problemas no vínculo de trabalho (horas extras, FGTS, verbas rescisórias, acidente etc.).
+3. Só use next_step="perdido" + loss_reason se NÃO houver nenhum outro direito a investigar.
+4. Se houver outros problemas além do inviável → continue a triagem normalmente focando nos problemas viáveis.
+
+Exemplo de resposta para atraso de 1 dia de salário:
+"Entendi! Um atraso de apenas 1 dia geralmente não justifica uma ação judicial, pois os custos do processo costumam ser bem maiores que o que seria obtido. Mas me conta: além desse atraso, teve algum outro problema — como horas extras não pagas, FGTS em aberto, verbas rescisórias devidas ou qualquer outra situação?"
+
+FICHA TRABALHISTA (apenas quando area = Trabalhista):
+Quando a área for TRABALHISTA e o caso for VIÁVEL, você DEVE coletar ATIVAMENTE todos os campos da ficha através de perguntas.
+- Ao iniciar as perguntas da ficha (após confirmar viabilidade), use next_step = "entrevista".
+- NÃO envie o link do formulário até ter coletado todos os campos essenciais. O formulário serve para REVISÃO, não para preenchimento.
+- Siga o ROTEIRO DE COLETA no final do prompt. Inclua "form_data" no JSON a cada resposta. Se NÃO for trabalhista: form_data: null.
+
+═══════════════════════════════════════════════════
+HORÁRIOS DISPONÍVEIS DO ADVOGADO:
 {{available_slots}}
-REGRAS DE AGENDAMENTO: sábado e domingo NÃO são dias úteis. NUNCA ofereça fim de semana. Use {{data_hoje}} para calcular dias da semana corretamente.
+═══════════════════════════════════════════════════
 
-STATUS DA FICHA:
-{{ficha_status}}
+AGENDAMENTO DE REUNIÃO:
+Quando o next_step for "reuniao" ou o cliente quiser agendar uma reunião/consulta:
+1. Consulte os HORÁRIOS DISPONÍVEIS DO ADVOGADO listados acima.
+2. Ofereça ao cliente 3-5 opções de horário (data + hora), de forma natural e amigável.
+3. Aguarde o cliente escolher um horário.
+4. Quando o cliente CONFIRMAR o horário, inclua no JSON:
+   "scheduling_action": { "action": "confirm_slot", "date": "YYYY-MM-DD", "time": "HH:MM" }
+   E defina status = "REUNIAO_AGENDADA".
+5. Se nenhum horário servir ao cliente, pergunte outra data.
+NUNCA agende sem confirmação do cliente. SEMPRE mostre opções primeiro.
+Se não houver horários disponíveis, informe que entrará em contato quando houver vagas.
+
+DESISTÊNCIA DO CLIENTE:
+Quando o cliente EXPLICITAMENTE disser que não quer mais continuar, que não tem interesse, que vai resolver com outro escritório, ou que não deseja prosseguir:
+- Use next_step = "perdido" (NUNCA "encerrado" nesses casos)
+- Use status = "PERDIDO"
+- Inclua loss_reason resumido em português (ex: "Sem interesse", "Vai resolver sozinho", "Contratou outro escritório", "Não respondeu mais")
+- Encerre gentilmente: agradeça, deixe a porta aberta para retornar
+
+Use next_step = "encerrado" + status = "FINALIZADO" APENAS quando o processo foi concluído com SUCESSO (cliente assinou, contratou o escritório, caso entregue ao advogado).
+
 `;
 
 
-      if (skill) {
-        // Injetar references (SkillAssets com inject_mode=full_text) no prompt via PromptBuilder
-        const references = (skill.assets || [])
-          .filter((a: any) => a.inject_mode === 'full_text' && a.content_text)
-          .map((a: any) => ({ name: a.name, content: a.content_text }));
+      // Instrução de form_data injetada APÓS o prompt da skill (sobrescreve o JSON schema da skill)
+      const FORM_DATA_INJECTION = `
 
-        systemPrompt = this.promptBuilder.buildSystemPrompt({
-          mediaCapabilities: MEDIA_CAPABILITIES_HEADER,
-          behaviorRules: CORE_RULES,
-          skillPrompt: skill.system_prompt,
-          references,
-          maxContextTokens: skill.max_context_tokens || 4000,
-          vars,
-        });
+═══════════════════════════════════════════════════
+FICHA TRABALHISTA — ROTEIRO DE COLETA COMPLETO
+═══════════════════════════════════════════════════
+
+STATUS ATUAL DA FICHA NO BANCO:
+{{ficha_status}}
+
+⚠️ ATENÇÃO: A coleta da ficha (FASE 5 e 6 abaixo) só deve começar APÓS:
+  1. Todas as dúvidas do lead terem sido esclarecidas (FASE 1 do roteiro)
+  2. Triagem de viabilidade concluída (FASE 2)
+  3. Lead decidir reunião ou continuar pelo WhatsApp (FASE 3)
+  4. Lead informar se quer link ou perguntas pelo WhatsApp (FASE 4)
+  NUNCA peça CPF, RG, endereço ou dados pessoais antes dessas 4 fases estarem completas.
+
+─────────────────────────────────────────────────
+FASE 5 — DOCUMENTOS (ANTES de qualquer pergunta de dado pessoal):
+─────────────────────────────────────────────────
+Solicite os documentos:
+"Antes de começar, me envia seus documentos pessoais para eu já adiantar o preenchimento:
+📄 RG ou CNH (frente e verso)
+🏠 Comprovante de residência
+Pode mandar foto ou PDF aqui mesmo."
+
+⚠️ EXTRAÇÃO SILENCIOSA DOS DOCUMENTOS: Quando os documentos chegarem, extraia automaticamente para o form_data (sem avisar o lead):
+- nome_completo (do RG/CNH)
+- cpf (do RG/CNH)
+- rg (do RG, se disponível)
+- data_nascimento (do RG/CNH, salvar YYYY-MM-DD)
+- cidade + estado_uf (do comprovante de residência)
+- endereco completo (do comprovante, se disponível)
+Continue naturalmente para a FASE 6 com as perguntas que ainda faltam.
+
+─────────────────────────────────────────────────
+FASE 6 — PERGUNTAS DA FICHA (apenas campos não extraídos dos documentos):
+─────────────────────────────────────────────────
+ROTEIRO (siga na ordem, UMA pergunta por vez, PULE campos já preenchidos pelos documentos):
+
+BLOCO A — Dados Pessoais Complementares (o que não veio dos documentos):
+- nome_mae: "Qual o nome completo da sua mãe?"
+- estado_civil: "Qual o seu estado civil?" (Solteiro/Casado/Divorciado/Viúvo/União Estável)
+- profissao: "Qual a sua profissão?"
+- email: "Qual o seu e-mail para contato?"
+
+BLOCO B — Empregador e Contrato (FOCO PRINCIPAL):
+- nome_empregador: "Qual o nome da empresa onde trabalhou (ou trabalha)?" (DIFERENTE de nome_completo)
+- funcao: "Qual era a sua função/cargo na empresa?"
+- data_admissao: "Quando você começou a trabalhar lá? (data aproximada)" (salvar YYYY-MM-DD)
+- situacao_atual: "Qual a sua situação? Ainda trabalha lá ou já saiu?" (Empregado/Demitido sem justa causa/Demitido por justa causa/Pediu demissão/Acordo/Contrato encerrado)
+- salario: "Qual era o seu último salário?" (usar EXATAMENTE o que o cliente disse — NUNCA calcular o valor do salário mínimo)
+- ctps_assinada_corretamente: "A sua carteira de trabalho foi assinada corretamente?" (Sim/Não/Parcialmente)
+- atividades_realizadas: "Quais atividades você exercia no dia a dia?"
+
+BLOCO C — Jornada de Trabalho:
+- horario_entrada: "A que horas você entrava no trabalho?"
+- horario_saida: "E saía a que horas?"
+- tempo_intervalo: "Quanto tempo de intervalo/almoço tinha?"
+- dias_trabalhados: "Quais dias da semana trabalhava?" (ex: Seg a Sex, Seg a Sáb)
+- fazia_horas_extras: "Fazia horas extras?" (Sim/Não/Às vezes)
+
+BLOCO D — FGTS e Verbas Rescisórias:
+- fgts_depositado: "O FGTS era depositado corretamente?" (Sim/Não/Parcialmente/Não sei)
+- fgts_sacado: "Conseguiu sacar o FGTS?" (Sim/Não/Parcialmente/Não se aplica)
+- tem_ferias_pendentes: "Tem férias pendentes que não recebeu?" (Sim/Não/Não sei)
+- tem_decimo_terceiro_pendente: "Tem 13º salário pendente?" (Sim/Não/Não sei)
+
+BLOCO E — Testemunhas e Provas:
+- possui_testemunhas: "Possui alguma testemunha que possa confirmar os fatos?" (Sim/Não)
+- possui_provas_documentais: "Possui provas como mensagens, fotos, documentos, etc.?" (Sim/Não)
+
+BLOCO F — Resumo (automático, não perguntar):
+- motivos_reclamacao: Inferir dos fatos coletados. NÃO perguntar — montar a partir de tudo que o cliente relatou.
+
+CAMPOS OPCIONAIS (pergunte apenas se relevantes ao caso específico):
+- data_saida(YYYY-MM-DD), motivo_saida, telefone (já temos do WhatsApp)
+- qtd_horas_extras_dia, horas_extras_pagas_corretamente, tipo_controle_ponto
+- recebia_por_fora, outro_valor_por_fora, recebia_vale_transporte
+- premio_comissao, valor_comissao, valor_premio
+- ambiente_insalubre_perigoso, forneciam_epis
+- sofreu_acidente, detalhes_acidente, sofreu_assedio_moral, detalhes_assedio_moral
+- cnpjcpf_empregador, periodo_sem_carteira, detalhes_verbas_pendentes
+- detalhes_testemunhas, detalhes_provas_documentais
+
+─────────────────────────────────────────────────
+APÓS FASE 6 COMPLETA → FASE 7 (HONORÁRIOS):
+─────────────────────────────────────────────────
+Quando todos os campos essenciais estiverem preenchidos, avance para a negociação de honorários.
+next_step = "honorarios"
+Mensagem: "Com base no que você me relatou, temos um bom caso. Quanto aos honorários, o escritório trabalha no modelo de êxito: você não paga nada agora. O pagamento é feito somente se ganharmos a causa, sendo 30% do proveito econômico obtido — incluindo sobre as parcelas do seguro-desemprego. Está de acordo?"
+
+─────────────────────────────────────────────────
+APÓS HONORÁRIOS CONFIRMADOS → FASE 8 (CONTRATO):
+─────────────────────────────────────────────────
+1. Enviar cópia do contrato e aguardar confirmação do lead.
+2. Enviar link ClickSign para assinatura do contrato.
+3. Enviar link para assinatura da procuração.
+next_step = "procuracao"
+
+─────────────────────────────────────────────────
+APÓS PROCURAÇÃO → FASE 9 (DOCUMENTOS PROBATÓRIOS):
+─────────────────────────────────────────────────
+Solicite UMA CATEGORIA POR VEZ, analisando o contexto da conversa:
+- Contracheques / holerites dos últimos meses
+- Extrato do FGTS (app CAIXA Tem)
+- Termo de rescisão (TRCT) se demitido
+- Foto das páginas de registro da CTPS
+- Comprovantes de pagamentos fora do holerite (se mencionado)
+- Prints/screenshots de mensagens relevantes
+- Atestados médicos (se acidente ou doença)
+- Outros documentos específicos do caso
+next_step = "documentos"
+Quando esgotar os documentos → FASE 10: transferir para atendente humano.
+next_step = "encerrado" + status = "FINALIZADO"
+
+─────────────────────────────────────────────────
+REGRAS GERAIS DE COLETA:
+─────────────────────────────────────────────────
+1. Consulte o STATUS ATUAL DA FICHA acima — pergunte SOMENTE os campos que faltam.
+2. A cada resposta, inclua no form_data TODOS os campos coletados (novos + anteriores da memória).
+3. NUNCA envie form_data vazio ou null quando a área é Trabalhista.
+4. nome_completo = nome DO CLIENTE (NÃO é o empregador).
+5. nome_empregador = nome da EMPRESA (DIFERENTE do nome_completo).
+6. Salário: use EXATAMENTE o que o cliente disse. NUNCA calcule valores.
+
+LINK DO FORMULÁRIO: {{form_url}}
+O link do formulário serve para o cliente REVISAR os dados preenchidos, não para preencher do zero.
+Quando next_step = "formulario", inclua na reply:
+"Preenchi a ficha com o que você me informou. Acesse o link para conferir e finalizar: {{form_url}}"
+
+FORMATO DO JSON:
+{"reply":"texto","updates":{"name":"João","status":"QUALIFICANDO","area":"Trabalhista","lead_summary":"resumo","next_step":"duvidas","notes":"","loss_reason":null,"form_data":{"nome_completo":"João da Silva","nome_empregador":"Empresa X","funcao":"Operador","salario":"2000","fazia_horas_extras":"Sim"}},"scheduling_action":null}
+
+Valores válidos para updates.next_step:
+  - "duvidas": esclarecendo dúvidas ou fazendo triagem (FASES 1 e 2)
+  - "triagem_concluida": viabilidade confirmada, oferta de reunião feita (FASE 3)
+  - "reuniao": agendamento de reunião confirmado
+  - "entrevista": coletando documentos ou campos da ficha (FASES 5 e 6)
+  - "honorarios": negociando honorários (FASE 7)
+  - "formulario": ficha concluída, link de revisão enviado
+  - "documentos": coletando documentos probatórios (FASE 9)
+  - "procuracao": contrato/procuração enviados para assinatura (FASE 8)
+  - "encerrado": atendimento concluído com sucesso (FASE 10)
+  - "perdido": lead desistiu ou caso inviável/prescrito
+
+updates.loss_reason: motivo da perda em português (ex: "Sem interesse"). Obrigatório quando next_step="perdido". Null nos demais casos.
+
+scheduling_action: Use SOMENTE quando agendar reunião.
+- Para confirmar horário: {"action":"confirm_slot","date":"2026-03-10","time":"09:00"}
+- Quando não for agendamento: null
+`;
+
+      if (skill) {
+        // FORM_DATA_INJECTION contém o roteiro Trabalhista completo (fases 5-9, form, honorários, etc.)
+        // Injetar SOMENTE no skill Trabalhista — outros skills (SDR, Consumidor, etc.) ficam sem ele
+        const formInjection = skill.area === 'Trabalhista'
+          ? this.injectVariables(FORM_DATA_INJECTION, vars)
+          : '';
+        systemPrompt = MEDIA_CAPABILITIES_HEADER + this.injectVariables(BEHAVIOR_RULES, vars) + this.injectVariables(skill.system_prompt, vars) + formInjection;
         model = this.normalizeModelId(skill.model || (await this.settings.getDefaultModel()));
-        maxTokens = Math.max(skill.max_tokens || 500, 800);
+        // Trabalhista precisa de mais tokens para o form_data completo; outros usam o padrão do skill
+        maxTokens = skill.area === 'Trabalhista'
+          ? Math.max(skill.max_tokens || 500, 1500)
+          : (skill.max_tokens || 500);
         temperature = skill.temperature ?? 0.7;
         this.logger.log(
           `[AI] Usando skill: "${skill.name}" (area=${skill.area}, model=${model})`,
         );
       } else {
-        const fallbackSkillPrompt = `Você é Sophia, assistente de pré-atendimento do escritório André Lustosa Advogados.
+        systemPrompt =
+          MEDIA_CAPABILITIES_HEADER +
+          this.injectVariables(BEHAVIOR_RULES, vars) +
+          `Você é Sophia, assistente de pré-atendimento do escritório André Lustosa Advogados.
 Seu objetivo é coletar informações sobre o caso do cliente para o advogado conseguir avaliar.
 
 ROTEIRO (siga na ordem, UMA pergunta por vez):
@@ -1493,15 +1545,7 @@ Valores válidos para updates.next_step: duvidas | triagem_concluida | entrevist
 updates.loss_reason: motivo da perda em português (ex: "Sem interesse"). Obrigatório quando next_step="perdido". Null nos demais casos.
 form_data: objeto com campos trabalhistas extraídos (só quando area=Trabalhista). Null quando não se aplica.
 scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} quando confirmar agendamento. Null quando não se aplica.`;
-        systemPrompt = this.promptBuilder.buildSystemPrompt({
-          mediaCapabilities: MEDIA_CAPABILITIES_HEADER,
-          behaviorRules: CORE_RULES,
-          skillPrompt: fallbackSkillPrompt,
-          references: [],
-          maxContextTokens: 4000,
-          vars,
-        });
-        model = await this.settings.getDefaultModel();
+        model = this.normalizeModelId(await this.settings.getDefaultModel());
         maxTokens = 1500;
         temperature = 0.7;
         this.logger.warn(
@@ -1510,61 +1554,11 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
       }
 
       // 11. Montar histórico MULTI-TURN (memória natural do modelo)
-      // Imagens do cliente são incluídas inline no turn correto (não descoladas no final).
-      const supportsVision = this.modelSupportsVision(model);
-      const chatTurns: Array<{role: 'user' | 'assistant', content: string | any[]}> = [];
+      // Cada mensagem vira um turn user/assistant real — muito mais eficaz que texto plano
+      const chatTurns: Array<{role: 'user' | 'assistant', content: string}> = [];
       for (const m of chronological) {
         const isClient = (m as any).direction === 'in';
         const role: 'user' | 'assistant' = isClient ? 'user' : 'assistant';
-
-        // Imagem do cliente + modelo suporta visão → incluir inline no turn
-        // Se media ainda não chegou (race condition com media job), aguarda com polling.
-        if (isClient && (m as any).type === 'image' && supportsVision) {
-          let mediaRecord = (m as any).media ?? null;
-
-          if (!mediaRecord?.s3_key) {
-            const msgAge = Date.now() - new Date((m as any).created_at).getTime();
-            const isRecent = msgAge < 2 * 60 * 1000;
-            if (isRecent) {
-              // Polling: fase rápida (5×500ms) + fase lenta (6×2000ms) = até 14.5s
-              const phases = [
-                { attempts: 5, delay: 500 },
-                { attempts: 6, delay: 2000 },
-              ];
-              outer: for (const phase of phases) {
-                for (let attempt = 1; attempt <= phase.attempts; attempt++) {
-                  await new Promise((r) => setTimeout(r, phase.delay));
-                  const found = await this.prisma.media.findFirst({
-                    where: { message_id: (m as any).id },
-                  });
-                  if (found?.s3_key) {
-                    mediaRecord = found;
-                    break outer;
-                  }
-                  this.logger.log(
-                    `[AI] Aguardando mídia de imagem para msg ${(m as any).id} (delay=${phase.delay}ms tentativa ${attempt}/${phase.attempts})...`,
-                  );
-                }
-              }
-            }
-          }
-
-          if (mediaRecord?.s3_key) {
-            try {
-              const { buffer, contentType } = await this.s3.getObjectBuffer(mediaRecord.s3_key);
-              const mimeBase = contentType.split(';')[0].trim();
-              const base64 = buffer.toString('base64');
-              const imageBlock = { type: 'image_url', image_url: { url: `data:${mimeBase};base64,${base64}` } };
-              const textBlock = { type: 'text', text: (m as any).text || '[imagem enviada pelo cliente]' };
-              chatTurns.push({ role, content: [imageBlock, textBlock] });
-              this.logger.log(`[AI] Imagem ${(m as any).id} incluída inline no chatTurn (${(buffer.length / 1024).toFixed(0)}KB)`);
-              continue;
-            } catch (e: any) {
-              this.logger.warn(`[AI] Falha ao carregar imagem ${(m as any).id} inline: ${e.message}`);
-            }
-          }
-        }
-
         const content =
           (m as any).text ||
           ((m as any).type === 'audio'
@@ -1574,19 +1568,25 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
               : (m as any).type === 'document'
                 ? '[documento enviado]'
                 : '[mídia]');
+        // Prefixar mensagens de operadores humanos para distinguir da IA
         const isOperator = !isClient && !(m as any).external_message_id?.startsWith('sys_');
         const finalContent = isOperator ? `[Operador Humano]: ${content}` : content;
-        // Mesclar mensagens de texto consecutivas do mesmo remetente
-        const last = chatTurns[chatTurns.length - 1];
-        if (last && last.role === role && typeof last.content === 'string') {
-          last.content += '\n' + finalContent;
+        // Mesclar mensagens consecutivas do mesmo remetente (ex: cliente envia 3 msgs seguidas)
+        if (chatTurns.length > 0 && chatTurns[chatTurns.length - 1].role === role) {
+          chatTurns[chatTurns.length - 1].content += '\n' + finalContent;
         } else {
           chatTurns.push({ role, content: finalContent });
         }
       }
 
-      // visionImages não é mais necessário — imagens já estão inline nos turns acima
-      const visionImages: { type: 'image_url'; image_url: { url: string } }[] = [];
+      // Coletar imagens para visão (modelos com suporte)
+      let visionImages: { type: 'image_url'; image_url: { url: string } }[] = [];
+      if (this.modelSupportsVision(model)) {
+        visionImages = await this.collectVisionImages(convo.messages as any[]);
+        if (visionImages.length > 0) {
+          this.logger.log(`[AI] Visão ativa: ${visionImages.length} imagem(ns) incluída(s)`);
+        }
+      }
 
       // Instrução final para a IA (não aparece no chat do cliente)
       const instruction = `[INSTRUÇÃO INTERNA — não exiba ao cliente]\nResponda à última mensagem do cliente. Consulte o histórico completo acima e a MEMÓRIA DO LEAD no system prompt: NÃO repita perguntas já respondidas. Avance o roteiro para o próximo ponto que ainda não foi coberto. Atualize o status do funil conforme as regras de PROGRESSÃO DE ETAPAS.`;
@@ -1615,14 +1615,11 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
       let aiText = '';
       let updates: any = {};
       let scheduling_action: any = null;
-      let slotsToOffer: any[] | null = null;
       let toolCallLogs: any[] = [];
 
       if (useToolCalling) {
         // ─── PATH NOVO: Function Calling com Tool Executor ───
-        // Auto-detectar provider pelo nome do modelo (evita inconsistência model/provider)
-        const isClaudeModel = model.startsWith('claude-');
-        const provider: LLMProvider = isClaudeModel ? 'anthropic' : (skill.provider || 'openai');
+        const provider: LLMProvider = skill.provider || 'openai';
         const apiKeyForSkill = provider === 'anthropic'
           ? await this.settings.getAnthropicKey()
           : await this.settings.getOpenAiKey();
@@ -1644,16 +1641,12 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
           content: t.content,
         }));
 
-        // Add instruction as last user turn.
-        // Se o último turn já é 'user' (ex: imagem), mescla a instruction nele —
-        // Anthropic rejeita dois turns 'user' consecutivos (imagem + instruction).
-        const lastLlmMsg = llmMessages[llmMessages.length - 1];
-        if (lastLlmMsg && lastLlmMsg.role === 'user') {
-          if (Array.isArray(lastLlmMsg.content)) {
-            lastLlmMsg.content = [...lastLlmMsg.content, { type: 'text', text: instruction }];
-          } else {
-            lastLlmMsg.content = String(lastLlmMsg.content) + '\n\n' + instruction;
-          }
+        // Add instruction + vision as last user message
+        if (visionImages.length > 0) {
+          llmMessages.push({
+            role: 'user' as const,
+            content: [{ type: 'text', text: instruction }, ...visionImages],
+          });
         } else {
           llmMessages.push({ role: 'user' as const, content: instruction });
         }
@@ -1689,7 +1682,6 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
           aiText = respondCall.input.reply || '';
           updates = respondCall.input.updates || {};
           scheduling_action = respondCall.input.scheduling_action || null;
-          slotsToOffer = respondCall.input.slots_to_offer || null;
         } else if (toolResult.response.content) {
           // Fallback: parse content as JSON (hybrid mode) ou texto puro
           const parsed = this.parseAiResponse(toolResult.response.content);
@@ -1725,66 +1717,30 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
 
       } else {
         // ─── PATH LEGADO: JSON mode (sem tools) ───
-        const isClaudeModelLegacy = model.startsWith('claude-');
-        const legacyProvider: LLMProvider = isClaudeModelLegacy ? 'anthropic' : 'openai';
-        const legacyApiKey = isClaudeModelLegacy
-          ? await this.settings.getAnthropicKey()
-          : openAiKey;
-
-        if (!legacyApiKey) {
-          this.logger.error(`[AI] API key não encontrada para provider "${legacyProvider}" (legacy path)`);
-          return;
-        }
-
-        const legacyClient = createLLMClient(legacyProvider, legacyApiKey);
-        const legacyMessages = chatTurns.map((t: any) => ({
-          role: t.role as 'user' | 'assistant',
-          content: t.content,
-        }));
-        // Mesclar instrução no último turn user — evita dois user consecutivos (Anthropic rejeita)
-        const lastLegacyMsg = legacyMessages[legacyMessages.length - 1];
-        if (lastLegacyMsg && lastLegacyMsg.role === 'user') {
-          if (Array.isArray(lastLegacyMsg.content)) {
-            lastLegacyMsg.content = [...lastLegacyMsg.content, { type: 'text', text: instruction }];
-          } else {
-            lastLegacyMsg.content = String(lastLegacyMsg.content) + '\n\n' + instruction;
-          }
-        } else {
-          legacyMessages.push({ role: 'user' as const, content: instruction });
-        }
-
-        const legacyResult = await legacyClient.chat({
+        const completion = await ai.chat.completions.create({
           model,
-          systemPrompt,
-          messages: legacyMessages,
-          maxTokens,
+          messages: openAiMessages,
+          ...this.tokenParam(model, maxTokens),
           temperature,
-          jsonMode: true,
-        });
-
-        const completion = { choices: [{ message: { content: legacyResult.content } }] } as any;
-        // Salvar usage com dados reais
-        await this.saveUsage({
-          conversation_id,
-          skill_id: skill?.id ?? null,
-          model,
-          call_type: 'chat',
-          usage: {
-            prompt_tokens: legacyResult.usage.promptTokens,
-            completion_tokens: legacyResult.usage.completionTokens,
-            total_tokens: legacyResult.usage.totalTokens,
-          },
+          response_format: { type: 'json_object' },
         });
 
         const rawResponse =
           completion.choices[0]?.message?.content ||
           '{"reply":"Desculpe, estou com instabilidade no momento."}';
 
+        await this.saveUsage({
+          conversation_id: conversation_id,
+          skill_id: skill?.id ?? null,
+          model,
+          call_type: 'chat',
+          usage: completion.usage,
+        });
+
         const parsed = this.parseAiResponse(rawResponse);
         aiText = parsed.reply;
         updates = parsed.updates;
         scheduling_action = parsed.scheduling_action;
-        slotsToOffer = parsed.slots_to_offer || null;
       }
 
       this.logger.log(
@@ -1792,23 +1748,6 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
       );
       if (!updates.status && !updates.next_step && !updates.name) {
         this.logger.warn(`[AI] updates vazio após processamento — stage não será atualizado. convo=${conversation_id}`);
-      }
-
-      // 13b. Sanitização: se aiText contém JSON cru (IA retornou JSON em vez de texto),
-      // extrair apenas o campo reply para não enviar dados internos ao cliente.
-      if (aiText && (aiText.includes('```json') || aiText.trimStart().startsWith('{'))) {
-        const sanitized = this.parseAiResponse(aiText);
-        if (sanitized.reply !== aiText) {
-          this.logger.warn(`[AI] JSON cru detectado no aiText — extraindo reply (${aiText.length} chars → ${sanitized.reply.length} chars)`);
-          aiText = sanitized.reply;
-          // Mesclar updates extraídos se os atuais estão vazios
-          if (!updates.status && sanitized.updates?.status) updates.status = sanitized.updates.status;
-          if (!updates.name && sanitized.updates?.name) updates.name = sanitized.updates.name;
-          if (!updates.area && sanitized.updates?.area) updates.area = sanitized.updates.area;
-          if (!updates.lead_summary && sanitized.updates?.lead_summary) updates.lead_summary = sanitized.updates.lead_summary;
-          if (!updates.next_step && sanitized.updates?.next_step) updates.next_step = sanitized.updates.next_step;
-          if (!updates.notes && sanitized.updates?.notes) updates.notes = sanitized.updates.notes;
-        }
       }
 
       // 14. Verificar sinal de escalada (handoff para humano)
@@ -1825,15 +1764,6 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
         this.logger.log(
           `[AI] Sinal de escalada detectado ("${handoffSignal}") — ai_mode desativado para ${conversation_id}`,
         );
-      }
-
-      // 14a. Reply vazio = conversa encerrada — IA decidiu não responder
-      // (ex: cliente disse "obrigado" após despedida, loop detectado)
-      if (!finalText || !finalText.trim()) {
-        this.logger.log(`[AI] Reply vazio — conversa encerrada, IA não responde (conv ${conversation_id})`);
-        // Ainda aplica updates e salva log, mas não envia mensagem
-        await this.applyAiUpdates(updates, convo.id, convo.lead.id, convo.lead.phone, convo.instance_name || null);
-        return;
       }
 
       // 14b. Salvar log de execução da skill (observabilidade)
@@ -1930,75 +1860,33 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
 
       // Captura o ID real da mensagem retornado pela Evolution API
       // para que o webhook echo seja corretamente deduplicado e não gere registro duplicado.
-      let evolutionMsgId = `sys_ai_${Date.now()}`;
-      // Pré-calcular se vai enviar áudio (para pular texto nesse caso)
-      // Buscar a última mensagem inbound (mais recente = primeiro do array desc)
-      const _lastIn = convo.messages.find((m: any) => m.direction === 'in');
-      const _tts = await this.settings.getTtsConfig();
-      const _willAudio = _tts.enabled && _tts.googleApiKey && !_tts.googleApiKey.startsWith('enc:') && _lastIn?.type === 'audio';
-
-      this.logger.debug(`[TTS-CHECK] enabled=${_tts.enabled} keyLen=${_tts.googleApiKey?.length || 0} keyEnc=${_tts.googleApiKey?.startsWith('enc:')} lastInType=${_lastIn?.type} willAudio=${_willAudio}`);
-
-      if (_willAudio) {
-        this.logger.log('[AI] Lead enviou áudio — resposta será apenas por voz (sem texto)');
-      }
-
-      try {
-        let sendResult: any;
-        const evoHeaders = { 'Content-Type': 'application/json', apikey: apiKey };
-
-        // Se vai enviar áudio, pula o texto
-        if (_willAudio) {
-          // Não envia texto — será enviado apenas áudio no passo 18 (TTS)
-        } else {
-          // sendList (listas interativas) não funciona via Baileys —
-          // WhatsApp deprecou para conexões não-oficiais (só Cloud API).
-          // Slots de agendamento já vêm formatados no finalText pela IA.
-          sendResult = await axios.post(
-            `${apiUrl}/message/sendText/${instanceName}`,
-            { number: convo.lead.phone, text: textToSend },
-            { headers: evoHeaders, timeout: 30000 },
-          );
-        }
-        if (sendResult) evolutionMsgId = sendResult.data?.key?.id || evolutionMsgId;
-      } catch (sendErr: any) {
-        this.logger.error(`[AI] Falha ao enviar via Evolution (${sendErr.response?.status || sendErr.message}): ${JSON.stringify(sendErr.response?.data || {}).slice(0, 200)}`);
-      }
+      const sendResult = await axios.post(
+        `${apiUrl}/message/sendText/${instanceName}`,
+        {
+          number: convo.lead.phone,
+          text: textToSend,
+        },
+        {
+          headers: { 'Content-Type': 'application/json', apikey: apiKey },
+          timeout: 30000,
+        },
+      );
+      const evolutionMsgId: string =
+        sendResult.data?.key?.id || `sys_ai_${Date.now()}`;
 
       // 17. Salvar mensagem no banco com skill_id (texto limpo, sem assinatura)
-      // Usa o ID real da Evolution para que o echo do webhook seja deduplicado.
-      // Race condition: o echo da Evolution pode chegar antes do worker salvar,
-      // criando a mensagem sem skill_id. Nesse caso, capturamos P2002 e atualizamos.
-      let savedMsg: any;
-      try {
-        savedMsg = await this.prisma.message.create({
-          data: {
-            conversation_id: convo.id,
-            direction: 'out',
-            type: 'text',
-            text: finalText,
-            external_message_id: evolutionMsgId,
-            status: 'enviado',
-            skill_id: skill?.id || null,
-          },
-        });
-      } catch (createErr: any) {
-        if (createErr.code === 'P2002' && evolutionMsgId && !evolutionMsgId.startsWith('sys_ai_')) {
-          // Echo criou a mensagem primeiro — encontra e atualiza o skill_id
-          this.logger.warn(`[AI] P2002 em message.create — echo chegou antes do save. Atualizando skill_id em ${evolutionMsgId}`);
-          const existing = await this.prisma.message.findUnique({ where: { external_message_id: evolutionMsgId } });
-          if (existing) {
-            savedMsg = await this.prisma.message.update({
-              where: { id: existing.id },
-              data: { skill_id: skill?.id || null },
-            });
-          } else {
-            throw createErr;
-          }
-        } else {
-          throw createErr;
-        }
-      }
+      // Usa o ID real da Evolution para que o echo do webhook seja deduplicado
+      const savedMsg = await this.prisma.message.create({
+        data: {
+          conversation_id: convo.id,
+          direction: 'out',
+          type: 'text',
+          text: finalText,
+          external_message_id: evolutionMsgId,
+          status: 'enviado',
+          skill_id: skill?.id || null,
+        },
+      });
 
       // 18. Atualizar last_message_at
       await this.prisma.conversation.update({
@@ -2007,73 +1895,46 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
       });
 
       this.logger.log(
-        `[AI] Resposta enviada para ${convo.lead.phone} (model=${model}, skill=${skill?.name || 'NULL — badge não aparecerá'}, skill_id=${skill?.id || 'null'}, evoId=${evolutionMsgId})`,
+        `[AI] Resposta enviada para ${convo.lead.phone} (model=${model}, skill=${skill?.name || 'fallback'})`,
       );
-      if (!skill?.id) {
-        this.logger.warn(`[AI] skill_id=null para conv ${convo.id} — verifique se as skills estão ativas nas configurações de IA`);
-      }
 
-      // 18. TTS — reutiliza _willAudio calculado antes do envio de texto
-      const ttsConfig = _tts; // reutiliza config já carregado
-      if (_willAudio) {
-        this.logger.log(`[TTS] Chave OK (len=${ttsConfig.googleApiKey.length}), voz=${ttsConfig.voice}`);
+      // 18. TTS — enviar áudio da resposta via Google TTS (se habilitado)
+      const ttsConfig = await this.settings.getTtsConfig();
+      if (ttsConfig.enabled && ttsConfig.googleApiKey) {
+        // Debug: mostra primeiros chars da chave para verificar se foi descriptografada
+        const keyPreview = ttsConfig.googleApiKey.slice(0, 6) + '...' + ttsConfig.googleApiKey.slice(-4);
+        this.logger.log(`[TTS] Usando chave: ${keyPreview} (len=${ttsConfig.googleApiKey.length}), voz=${ttsConfig.voice}`);
         try {
-          // Remove formatação markdown do texto
+          // Remove formatação markdown do texto (negrito, itálico) antes de enviar ao TTS
           const ttsText = finalText
             .replace(/\*\*(.*?)\*\*/g, '$1')
             .replace(/\*(.*?)\*/g, '$1')
             .trim();
 
-          // Detectar se é voz Gemini ou Google Cloud TTS legado
-          const isGeminiVoice = !ttsConfig.voice?.startsWith('pt-BR');
-          const voiceName = isGeminiVoice ? (ttsConfig.voice || 'Kore') : 'Kore';
-
-          if (!isGeminiVoice) {
-            this.logger.log(`[TTS] Voz legada ${ttsConfig.voice} detectada — usando Gemini com voz Kore`);
-          }
-
-          // Instrução de estilo para voz natural e adaptativa
-          const styledText = `Mulher profissional, voz serena e confiante. Fala com clareza e empatia. Adapta automaticamente o tom conforme o conteúdo da mensagem. Atendimento ao cliente jurídico via áudio. O cliente pode estar ansioso, aliviado, inadimplente ou aguardando notícias do processo. A voz deve espelhar o momento emocional do conteúdo narrado. Português brasileiro padrão, dicção clara. REGRAS DE ADAPTAÇÃO: mensagem de prazo ou urgência, ritmo mais acelerado com ênfase nas datas e valores; mensagem de atualização processual, tom informativo com pausas após termos jurídicos; mensagem de boas notícias, voz mais leve com leve sorriso perceptível; mensagem de cobrança, tom sério e respeitoso sem agressividade; mensagem de situação delicada, voz mais suave com ritmo lento; mensagem de boas-vindas, tom acolhedor e animado; mensagem informativa, tom neutro e preciso. Agora diga: ${ttsText}`;
-
-          // Gemini 2.5 Flash TTS
-          const geminiModel = 'gemini-2.5-flash-preview-tts';
           const ttsRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${ttsConfig.googleApiKey}`,
+            `https://texttospeech.googleapis.com/v1/text:synthesize?key=${ttsConfig.googleApiKey}`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                contents: [{ parts: [{ text: styledText }] }],
-                generationConfig: {
-                  responseModalities: ['AUDIO'],
-                  speechConfig: {
-                    voiceConfig: {
-                      prebuiltVoiceConfig: { voiceName },
-                    },
-                  },
-                },
+                input:       { text: ttsText },
+                voice:       { languageCode: ttsConfig.language, name: ttsConfig.voice },
+                audioConfig: { audioEncoding: 'OGG_OPUS' },
               }),
-              signal: AbortSignal.timeout(30000),
+              signal: AbortSignal.timeout(20000),
             },
           );
 
           if (!ttsRes.ok) {
             const errText = await ttsRes.text().catch(() => '');
-            this.logger.warn(`[TTS] Gemini TTS retornou ${ttsRes.status}: ${errText.slice(0, 300)}`);
+            this.logger.warn(`[TTS] Google TTS retornou ${ttsRes.status}: ${errText.slice(0, 200)}`);
           } else {
-            const ttsData = await ttsRes.json();
-            const audioB64 = ttsData?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-            if (!audioB64) {
-              this.logger.warn('[TTS] Gemini TTS não retornou áudio');
-            } else {
-              // Gemini retorna PCM 24kHz 16-bit — converter para WAV
-              const pcmBuffer = Buffer.from(audioB64, 'base64');
-              const wavHeader = this.buildWavHeader(pcmBuffer.length, 24000, 1, 16);
-              const audioBuffer = Buffer.concat([wavHeader, pcmBuffer]);
+            const ttsData = (await ttsRes.json()) as { audioContent: string };
+            const audioBuffer = Buffer.from(ttsData.audioContent, 'base64');
 
             // Upload do áudio para S3
-            const audioKey = `tts/${convo.id}/${savedMsg.id}.wav`;
-            await this.s3.uploadBuffer(audioKey, audioBuffer, 'audio/wav');
+            const audioKey = `tts/${convo.id}/${savedMsg.id}.ogg`;
+            await this.s3.uploadBuffer(audioKey, audioBuffer, 'audio/ogg');
 
             // Cria registro de mensagem de áudio no banco
             const audioMsg = await this.prisma.message.create({
@@ -2092,44 +1953,25 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
               data: {
                 message_id: audioMsg.id,
                 s3_key:     audioKey,
-                mime_type:  'audio/wav',
+                mime_type:  'audio/ogg',
                 size:       audioBuffer.length,
               },
             });
 
-            // Envia via Evolution API como áudio base64 puro
-            const audioBase64 = audioBuffer.toString('base64');
-            const ttsEvoResult = await axios.post(
+            // Envia via Evolution API como áudio de WhatsApp
+            const publicApiUrl = process.env.PUBLIC_API_URL || '';
+            const audioUrl     = `${publicApiUrl}/messages/${audioMsg.id}/media`;
+
+            await axios.post(
               `${apiUrl}/message/sendWhatsAppAudio/${instanceName}`,
-              { number: convo.lead.phone, audio: audioBase64 },
+              { number: convo.lead.phone, audio: audioUrl },
               { headers: { 'Content-Type': 'application/json', apikey: apiKey }, timeout: 30000 },
             );
 
-            // Salvar external_message_id para deduplicação do echo da Evolution
-            const ttsEvoId = ttsEvoResult.data?.key?.id;
-            if (ttsEvoId) {
-              await this.prisma.message.update({
-                where: { id: audioMsg.id },
-                data: { external_message_id: ttsEvoId },
-              });
-            }
-
-            this.logger.log(`[TTS] Áudio Gemini enviado para ${convo.lead.phone} (${audioBuffer.length} bytes, voz=${voiceName}, evoId=${ttsEvoId || 'N/A'})`);
-            }
+            this.logger.log(`[TTS] Áudio enviado para ${convo.lead.phone} (${audioBuffer.length} bytes)`);
           }
         } catch (ttsErr: any) {
-          this.logger.warn(`[TTS] Falha ao gerar/enviar áudio: ${ttsErr.message} — enviando texto como fallback`);
-          // Fallback: envia texto quando TTS falha (créditos esgotados, erro de API, etc.)
-          try {
-            await axios.post(
-              `${apiUrl}/message/sendText/${instanceName}`,
-              { number: convo.lead.phone, text: textToSend },
-              { headers: { 'Content-Type': 'application/json', apikey: apiKey }, timeout: 30000 },
-            );
-            this.logger.log('[TTS] Fallback texto enviado com sucesso');
-          } catch (fallbackErr: any) {
-            this.logger.error(`[TTS] Fallback texto também falhou: ${fallbackErr.message}`);
-          }
+          this.logger.warn(`[TTS] Falha ao enviar áudio (não-fatal): ${ttsErr.message}`);
         }
       }
 

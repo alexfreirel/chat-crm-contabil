@@ -2428,8 +2428,8 @@ export default function Dashboard() {
               }}
             >
               <div className="pointer-events-none select-none absolute inset-0 flex items-center justify-center z-0">
-                <Image src="/landing/LOGO SEM FUNDO 01.png" alt="" width={883} height={453}
-                  style={{ width: '620px', height: 'auto', opacity: 0.13 }} aria-hidden />
+                <Image src="/landing/lexcon-logo-v2.png" alt="" width={436} height={123}
+                  style={{ width: '400px', height: 'auto', opacity: 0.13 }} aria-hidden />
               </div>
               {/* Botão scroll-to-bottom: aparece quando há novas mensagens e usuário está acima */}
               {newMsgsWhileScrolled > 0 && (
@@ -3180,9 +3180,9 @@ export default function Dashboard() {
           <div className="flex-1 flex flex-col items-center justify-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/landing/LOGO SEM FUNDO 01.png"
-              alt="André Lustosa Advogados"
-              style={{ width: '620px', height: 'auto', opacity: 0.85 }}
+              src="/landing/lexcon-logo-v2.png"
+              alt="Lexcon Assessoria Contábil"
+              style={{ width: '400px', height: 'auto', opacity: 0.85 }}
               className="select-none pointer-events-none"
               draggable={false}
             />

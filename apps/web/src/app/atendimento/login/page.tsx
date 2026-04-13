@@ -104,8 +104,8 @@ export default function LoginPage() {
             <div className="hidden flex-col justify-center lg:flex">
               <div className="mb-12">
                 <Image
-                  src="/logo_andre_lustosa.png"
-                  alt="André Lustosa Advogados"
+                  src="/landing/lexcon-logo-v2.png"
+                  alt="Lexcon Assessoria Contábil"
                   width={320}
                   height={100}
                   className="h-20 w-auto object-contain"
@@ -115,19 +115,19 @@ export default function LoginPage() {
               <h1 className="mb-6 text-5xl font-black leading-tight text-white uppercase tracking-tight">
                 Excelência em <br />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#e3c788] via-[#d4b568] to-[#c8aa62]">
-                  Justiça Digital
+                  Contabilidade Digital
                 </span>
               </h1>
 
               <p className="mb-10 text-lg text-slate-400 font-medium leading-relaxed max-w-md">
                 Acesse sua plataforma exclusiva de gestão estratégica.
-                Tecnologia de ponta a serviço do seu direito.
+                Tecnologia de ponta a serviço da sua contabilidade.
               </p>
 
               <div className="space-y-5">
                 {[
                   'Gestão Estratégica de Processos',
-                  'Inteligência Jurídica Avançada',
+                  'Inteligência Contábil Avançada',
                   'Ambiente Seguro e Privativo',
                   'Atendimento Nacional Digital',
                 ].map((feature, i) => (
@@ -149,8 +149,8 @@ export default function LoginPage() {
                   {/* Mobile logo */}
                   <div className="mb-10 flex flex-col items-center justify-center lg:hidden">
                     <Image
-                      src="/logo_andre_lustosa.png"
-                      alt="André Lustosa Advogados"
+                      src="/landing/lexcon-logo-v2.png"
+                      alt="Lexcon Assessoria Contábil"
                       width={200}
                       height={60}
                       className="h-12 w-auto object-contain"
