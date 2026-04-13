@@ -478,7 +478,7 @@ export default function AgenteFiscalPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col h-screen overflow-hidden">
       {/* ── Toasts ──────────────────────────────────────────────────────── */}
       <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
         {toasts.map(t => (
@@ -534,7 +534,7 @@ export default function AgenteFiscalPage() {
       </div>
 
       {/* ── Content ────────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto scrollbar-thin p-6">
 
         {/* ── Dashboard ──────────────────────────────────────────────── */}
         {activeTab === 'dashboard' && (
