@@ -773,7 +773,7 @@ export default function AgenteFiscalPage() {
               {empresas.length === 0 ? (
                 <div className="p-12 text-center text-muted-foreground text-sm">Nenhuma empresa cadastrada ainda</div>
               ) : (
-                <div className="overflow-y-auto scrollbar-thin">
+                <div className="max-h-[calc(100vh-220px)] overflow-y-auto scrollbar-thin">
                 <table className="w-full">
                   <thead className="sticky top-0 bg-card z-10">
                     <tr className="text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
