@@ -556,38 +556,33 @@ export default function AgenteFiscalPage() {
               </div>
             </div>
 
-            {/* Empresas table */}
+            {/* Empresas — grid compacto */}
             <div className="bg-card border border-border rounded-xl overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
-                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                  <Building2 size={15} className="text-primary" /> Empresas Cadastradas ({empresas.length})
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+                <h3 className="text-xs font-semibold text-foreground flex items-center gap-2">
+                  <Building2 size={14} className="text-primary" /> Empresas ({empresas.length})
                 </h3>
-                <button onClick={() => { setActiveTab('empresas'); setTimeout(openAddModal, 100); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90">
-                  <Plus size={14} /> Adicionar
+                <button onClick={() => setActiveTab('empresas')} className="text-[10px] text-primary hover:underline font-medium">
+                  Ver todas
                 </button>
               </div>
               {empresas.length === 0 ? (
-                <div className="p-8 text-center text-muted-foreground text-sm">Nenhuma empresa cadastrada</div>
+                <div className="p-6 text-center text-muted-foreground text-xs">Nenhuma empresa cadastrada</div>
               ) : (
-                <div className="max-h-[400px] overflow-y-auto scrollbar-thin">
-                <table className="w-full">
-                  <thead className="sticky top-0 bg-card z-10">
-                    <tr className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                      <th className="px-5 py-3 text-left font-semibold">Nome</th>
-                      <th className="px-5 py-3 text-left font-semibold">CNPJ</th>
-                      <th className="px-5 py-3 text-left font-semibold">Usuario</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {empresas.map(e => (
-                      <tr key={e.cnpj} className="border-t border-border/50 hover:bg-muted/30">
-                        <td className="px-5 py-3 text-sm text-foreground font-medium">{e.nome}</td>
-                        <td className="px-5 py-3 text-sm text-muted-foreground font-mono">{fmtCnpj(e.cnpj)}</td>
-                        <td className="px-5 py-3 text-sm text-muted-foreground">{e.usuario}</td>
-                      </tr>
+                <div className="max-h-[280px] overflow-y-auto scrollbar-thin p-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                    {empresas.map((e, i) => (
+                      <div key={e.cnpj} className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-muted/30 transition-colors">
+                        <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center text-primary text-[10px] font-bold shrink-0">
+                          {i + 1}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-medium text-foreground truncate">{e.nome}</div>
+                          <div className="text-[10px] text-muted-foreground font-mono">{fmtCnpj(e.cnpj)}</div>
+                        </div>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
                 </div>
               )}
             </div>
