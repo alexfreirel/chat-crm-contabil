@@ -13,7 +13,6 @@ import {
   Facebook,
   Linkedin,
   Shield,
-  Scale,
   Calculator,
   ChevronRight,
   ChevronLeft,
@@ -56,6 +55,7 @@ export function HomeTemplate({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isShining, setIsShining] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
+  const [bgIndex, setBgIndex] = useState(0);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Common Premium Journey Data
@@ -126,6 +126,14 @@ export function HomeTemplate({
       (prev) => (prev - 1 + displaySteps.length) % displaySteps.length
     );
 
+  // Background slideshow
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setBgIndex((prev) => (prev === 0 ? 1 : 0));
+    }, 10000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Toggle shine effect on scroll (for mobile engagement)
   useEffect(() => {
     const handleScroll = () => {
@@ -158,7 +166,7 @@ export function HomeTemplate({
   };
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans overflow-x-hidden">
+    <div className="min-h-screen bg-white text-slate-900 font-sans overflow-x-hidden" data-version="lexcon-v1">
       <nav className="absolute top-0 left-0 right-0 z-50 pointer-events-none transition-all duration-300">
         <div className="mx-auto w-[90vw] lg:w-[min(90rem,80vw)] px-4 sm:px-6 lg:px-8 flex items-center justify-between pointer-events-auto pt-6">
           {/* Desktop & Tablet: Full Unified Bar */}
@@ -170,8 +178,8 @@ export function HomeTemplate({
               aria-label="Voltar para o topo"
             >
               <Image
-                src="/landing/logo_andre_lustosa_transparente.png"
-                alt="André Lustosa Advogado"
+                src="/landing/lexcon-logo-v2.png"
+                alt="Lexcon Assessoria Contábil"
                 width={220}
                 height={60}
                 className="h-10 lg:h-12 w-auto object-contain"
@@ -313,28 +321,30 @@ export function HomeTemplate({
         id="about"
         className="relative h-dvh min-h-[600px] w-full flex items-center bg-black group/hero overflow-hidden"
       >
-        {/* Background com Imagem de Biblioteca/Escritório com Overlay Escuro */}
+        {/* Background Slideshow */}
         <div className="absolute inset-0 z-0 overflow-hidden">
-          {/* Desktop Background */}
-          <div className="hidden md:block absolute inset-0">
-            <Image
-              src="/landing/Design sem nome (35).png"
-              alt="Fundo Escritório Desktop"
-              fill
-              className="object-cover object-top"
-              priority
-            />
-          </div>
-          {/* Mobile Background */}
-          <div className="md:hidden absolute inset-0">
-            <Image
-              src="/landing/Design sem nome (26).png"
-              alt="Fundo Escritório Mobile"
-              fill
-              className="object-cover object-top"
-              priority
-            />
-          </div>
+          {[
+            { src: "/landing/login-bg-1.jpg", alt: "Equipe apresentando resultados contábeis", kb: "animate-kenburns-a" },
+            { src: "/landing/login-bg-2.jpg", alt: "Equipe de contabilidade reunida", kb: "animate-kenburns-b" },
+          ].map((img, idx) => (
+            <div
+              key={img.src}
+              className={`absolute inset-0 transition-opacity duration-[2000ms] ease-in-out ${
+                idx === bgIndex ? "opacity-100" : "opacity-0"
+              }`}
+            >
+              <div className={`absolute inset-0 ${idx === bgIndex ? img.kb : ""}`}>
+                <Image
+                  src={img.src}
+                  alt={img.alt}
+                  fill
+                  className="object-cover object-center"
+                  priority={idx === 0}
+                  quality={90}
+                />
+              </div>
+            </div>
+          ))}
 
           {/* Premium Gradient Overlay - Lighter Version */}
           <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/40 to-transparent z-10 pointer-events-none" />
@@ -349,7 +359,7 @@ export function HomeTemplate({
             <div className="flex lg:hidden flex-wrap justify-center gap-3 mb-6">
               <div className="flex items-center gap-2 bg-slate-900/40 backdrop-blur-xl border border-[#A89048]/30 rounded-lg px-4 py-2">
                 <div className="bg-[#A89048]/10 p-1.5 rounded-full">
-                  <Scale size={14} className="text-[#A89048]" />
+                  <Calculator size={14} className="text-[#A89048]" />
                 </div>
                 <div className="flex flex-col text-left">
                   <span className="text-[#A89048] text-[8px] font-bold uppercase tracking-widest leading-tight">
@@ -387,11 +397,11 @@ export function HomeTemplate({
 
             {/* Título Monumental - Elegante */}
             <h1 className="text-[clamp(2.25rem,4.5vw,3.75rem)] 2xl:text-[clamp(2.5rem,4vw,4.5rem)] font-medium text-[#FAFAFA] leading-tight tracking-normal font-[family-name:var(--font-playfair)] drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)]">
-              {hero.title.split(/(LEXCON ASSESSORIA E CONSULTORIA TRIBUTARIA)/g).map((part, i) => (
+              {hero.title.split(/(Lexcon Assessoria Contábil)/g).map((part, i) => (
                 <span
                   key={i}
                   className={
-                    part === "LEXCON ASSESSORIA E CONSULTORIA TRIBUTARIA"
+                    part === "Lexcon Assessoria Contábil"
                       ? "text-[#A89048] drop-shadow-[0_0_20px_rgba(168,144,72,0.5)]"
                       : ""
                   }
@@ -439,7 +449,7 @@ export function HomeTemplate({
             <div className="hidden lg:flex absolute top-[25%] left-[5%] z-20 pointer-events-auto animate-in fade-in slide-in-from-left duration-1000 delay-500">
               <div className="flex items-center gap-3 bg-slate-900/40 backdrop-blur-xl border border-[#A89048]/30 rounded-lg px-6 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.4)] transition-all duration-500 hover:scale-105 hover:border-[#A89048]/60 hover:shadow-[0_0_20px_rgba(168,144,72,0.2)] group cursor-default">
                 <div className="bg-[#A89048]/10 p-2 rounded-full">
-                  <Scale size={18} className="text-[#A89048]" />
+                  <Calculator size={18} className="text-[#A89048]" />
                 </div>
                 <div className="flex flex-col">
                   <span className="text-[#A89048] text-[10px] font-bold uppercase tracking-[0.2em] leading-tight">
@@ -507,14 +517,16 @@ export function HomeTemplate({
             {[...Array(20)].map((_, i) => (
               <div
                 key={i}
-                className="relative h-[65px] w-[220px] mx-0.5 shrink-0"
+                className="flex items-center gap-3 mx-6 shrink-0"
               >
                 <Image
-                  src="/landing/logo_andre_lustosa_transparente.png"
-                  alt="André Lustosa Logo"
-                  fill
-                  className="object-contain"
+                  src="/landing/lexcon-logo-v2.png"
+                  alt="Lexcon"
+                  width={120}
+                  height={28}
+                  className="h-6 w-auto object-contain opacity-90"
                 />
+                <span className="text-[#A89048]/40 text-lg">✦</span>
               </div>
             ))}
           </div>
@@ -545,9 +557,9 @@ export function HomeTemplate({
               <span className="text-[#A89048]">Todo o Brasil</span>
             </h2>
             <p className="text-[clamp(1rem,1.1vw,1.125rem)] 2xl:text-[clamp(1.125rem,1.5vw,1.375rem)] text-[#9a9a9a] max-w-3xl mx-auto leading-relaxed">
-              Somos um escritório de advocacia com atendimento &quot;FULL
+              Somos um escritório de contabilidade com atendimento &quot;FULL
               SERVICE&quot;, e estamos comprometidos com a excelência na atuação
-              em diferentes áreas do direito.
+              em diferentes áreas da contabilidade.
             </p>
           </div>
 
@@ -679,8 +691,8 @@ export function HomeTemplate({
             {/* Left Title */}
             <div className="lg:w-1/3 text-center lg:text-left">
               <h3 className="text-[clamp(1.5rem,4vw,2rem)] lg:text-[clamp(1.25rem,2vw,1.75rem)] 2xl:text-[clamp(1.5rem,2.5vw,2rem)] font-black text-slate-800 leading-snug md:leading-tight">
-                Referência em <span className="text-[#A89048]">Direito</span> e Alta
-                Performance Jurídica
+                Referência em <span className="text-[#A89048]">Contabilidade Gerencial</span> e Alta
+                Performance Contábil
               </h3>
             </div>
 
@@ -705,7 +717,7 @@ export function HomeTemplate({
                   </h4>
                 </div>
                 <p className="text-slate-500 text-sm md:text-xs leading-loose md:leading-relaxed font-medium">
-                  Agilidade e suporte de advogados prontos para atuar com
+                  Agilidade e suporte de contadores prontos para atuar com
                   rapidez, conforto e profissionalismo.
                 </p>
               </div>
@@ -713,14 +725,14 @@ export function HomeTemplate({
               <div className="space-y-4 flex flex-col items-center lg:items-start text-center lg:text-left">
                 <div className="flex flex-col lg:flex-row items-center justify-center lg:justify-start gap-3 w-full">
                   <div className="w-10 h-10 rounded-full bg-[#A89048]/10 flex items-center justify-center shrink-0">
-                    <Scale className="w-5 h-5 text-[#A89048]" />
+                    <Calculator className="w-5 h-5 text-[#A89048]" />
                   </div>
                   <h4 className="font-bold text-slate-900 text-base md:text-sm uppercase tracking-wider">
                     Profissionais experientes
                   </h4>
                 </div>
                 <p className="text-slate-500 text-sm md:text-xs leading-loose md:leading-relaxed font-medium">
-                  Confiança de ter sua ação conduzida pelos melhores Advogados.
+                  Confiança de ter sua empresa conduzida pelos melhores Contadores.
                 </p>
               </div>
 
@@ -730,12 +742,12 @@ export function HomeTemplate({
                     <Award className="w-5 h-5 text-[#A89048]" />
                   </div>
                   <h4 className="font-bold text-slate-900 text-base md:text-sm uppercase tracking-wider">
-                    Advocacia de excelência
+                    Contabilidade de excelência
                   </h4>
                 </div>
                 <p className="text-slate-500 text-sm md:text-xs leading-loose md:leading-relaxed font-medium">
-                  Escritório de advocacia com reputação sólida, confiável e
-                  referência no meio jurídico.
+                  Escritório de contabilidade com reputação sólida, confiável e
+                  referência no meio contábil.
                 </p>
               </div>
             </div>
@@ -771,16 +783,16 @@ export function HomeTemplate({
                 <div className="space-y-4 text-[clamp(1.125rem,2vw,1.25rem)] lg:text-[clamp(0.9rem,1.1vw,1.125rem)] text-slate-400 font-medium max-w-2xl lg:max-w-none">
                   <p>
                     <span className="text-[#FAFAFA] font-bold">
-                      A equipe André Lustosa Advogados
+                      A equipe Lexcon Assessoria Contábil
                     </span>{" "}
-                    tem atuação destacada em diversas áreas do direito, e ao longo de seus 10 anos de experiência, consolidou-se como referência jurídica em todo o território nacional.
+                    tem atuação destacada em diversas áreas da contabilidade, e ao longo de seus 10 anos de experiência, consolidou-se como referência contábil em todo o território nacional.
                   </p>
                   <p>
                     Contamos com uma infraestrutura moderna e acolhedora,
                     projetada para garantir o máximo de sigilo e conforto
                     durante as consultas presenciais. Além disso, operamos com
                     um sistema 100% digital, permitindo que você resolva seus
-                    problemas jurídicos sem sair de casa, com a mesma segurança
+                    problemas contábeis sem sair de casa, com a mesma segurança
                     e proximidade.
                   </p>
                 </div>
@@ -839,7 +851,7 @@ export function HomeTemplate({
 
               <div className="relative w-full min-h-[450px] md:min-h-[650px] lg:min-h-[750px] overflow-hidden rounded-xl border border-[#A89048]/20 shadow-2xl bg-linear-to-b from-[#1a1a1a] to-[#0A0A0A]">
                 <Image
-                  src="/landing/Design-sem-nome-_34_.webp"
+                  src="/landing/Design-sem-nome-_34_.jpeg"
                   alt="Escritório André Lustosa Advogados"
                   fill
                   className="object-contain p-2 md:p-4 group-hover:scale-105 transition-transform duration-1000"
@@ -854,7 +866,7 @@ export function HomeTemplate({
                       </span>
                     </div>
                     <p className="text-slate-400 text-sm italic font-serif">
-                      Excelência jurídica com alcance nacional e atendimento digital personalizado.
+                      Excelência contábil com alcance nacional e atendimento digital personalizado.
                     </p>
                   </div>
                 </div>
@@ -934,7 +946,7 @@ export function HomeTemplate({
                   </div>
                   <div className="flex flex-col sm:flex-row items-center sm:items-start gap-2 p-2 rounded-xl bg-white/5 border border-white/10 hover:border-[#A89048]/30 transition-colors text-center sm:text-left">
                     <div className="p-1.5 rounded-lg bg-[#A89048]/20 text-[#A89048]">
-                      <Scale size={16} />
+                      <Calculator size={16} />
                     </div>
                     <div>
                       <h4 className="text-[#FAFAFA] font-bold text-xs mb-0.5">
@@ -954,7 +966,7 @@ export function HomeTemplate({
                   {/* Glow overlay — masked by rotating conic-gradient */}
                   <span className="btn-premium-glow-overlay" />
                   <span className="relative z-10 flex items-center gap-2 md:gap-3">
-                    FALAR COM ADVOGADO
+                    FALAR COM CONTADOR
                     <ChevronRight size={20} className="hidden md:block" />
                     <ChevronRight size={18} className="md:hidden" />
                   </span>
@@ -1014,7 +1026,6 @@ export function HomeTemplate({
           </div>
         </div>
       </section>
-
       {/* COMO FUNCIONA — Interactive Journey Navigator */}
       <section
         id="steps"
@@ -1240,6 +1251,8 @@ export function HomeTemplate({
               </div>
             </div>
       </section>
+
+
       {/* PREMIUM CREATIVE FOOTER */}
       <footer className="relative bg-[#111111] text-slate-300 py-[clamp(3rem,6vw,6rem)] w-full overflow-hidden font-ubuntu border-t border-[#A89048]/20">
         
@@ -1264,8 +1277,8 @@ export function HomeTemplate({
           {/* BRAND & INFO (5 cols) */}
           <div className="md:col-span-5 flex flex-col items-center md:items-start text-center md:text-left">
             <Image
-              src="/landing/logo_andre_lustosa_transparente.png"
-              alt="André Lustosa Advogados"
+              src="/landing/lexcon-logo-v2.png"
+              alt="Lexcon Assessoria Contábil"
               width={240}
               height={65}
               className="h-20 lg:h-24 w-auto object-contain mb-6 drop-shadow-[0_2px_10px_rgba(255,255,255,0.1)]"
