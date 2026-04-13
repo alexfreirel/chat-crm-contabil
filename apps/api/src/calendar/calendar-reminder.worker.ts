@@ -67,6 +67,18 @@ function templateAdvogado(event: any, minutesBefore: number): string {
       `\n_Lembrete automático do CRM Jurídico_`
     );
   }
+  if (tipo === 'PERICIA') {
+    return (
+      `🔬 *Lembrete de Perícia — ${prazo} antes*\n\n` +
+      `Olá, ${advNome}!\n\n` +
+      `📋 *Processo:* ${caseNum}\n` +
+      `📅 *Data/Hora:* ${dateStr}\n` +
+      (event.location ? `📍 *Local:* ${event.location}\n` : '') +
+      (event.lead?.name ? `👤 *Cliente:* ${event.lead.name}\n` : '') +
+      (event.description ? `📝 *Obs:* ${event.description}\n` : '') +
+      `\n_Lembrete automático do CRM Jurídico_`
+    );
+  }
   if (tipo === 'PRAZO') {
     return (
       `⏰ *Lembrete de Prazo — ${prazo} restantes*\n\n` +
@@ -200,9 +212,12 @@ export class CalendarReminderWorker extends WorkerHost {
     private readonly settings: SettingsService,
   ) {
     super();
+    this.logger.log('✅ CalendarReminderWorker registrado na fila calendar-reminders (API container)');
   }
 
   async process(job: Job<any>) {
+    this.logger.log(`[WORKER-API] Processando job ${job.name} (id: ${job.id})`);
+
     // ── Notificação imediata de audiência agendada ────────────────────────────
     if (job.name === 'notify-hearing-scheduled') {
       return this.processHearingScheduled(job.data.eventId, false);
@@ -283,7 +298,7 @@ export class CalendarReminderWorker extends WorkerHost {
   // ─── Orquestra os envios ──────────────────────────────────────────────────
 
   private async sendWhatsAppReminders(event: any, minutesBefore: number) {
-    const isAudiencia = event.type === 'AUDIENCIA';
+    const isAudiencia = event.type === 'AUDIENCIA' || event.type === 'PERICIA';
 
     // Carrega contexto adicional do cliente (memória + ficha + publicações DJEN)
     const leadId = event.lead?.id;
@@ -333,23 +348,33 @@ export class CalendarReminderWorker extends WorkerHost {
         clientMsg = templateCliente(event, minutesBefore);
       }
 
-      // Busca a conversa ativa antes de enviar
+      // Busca a conversa ativa para salvar a mensagem
       const lastConvo = await this.prisma.conversation.findFirst({
         where: { lead_id: event.lead.id, status: { not: 'ENCERRADO' } },
         orderBy: { last_message_at: 'desc' },
         select: { id: true, instance_name: true },
       }).catch(() => null);
 
+      // Resolve instância WhatsApp em 4 níveis: conversa ativa → encerrada → banco → env
+      // Cobre clientes sem histórico no chat (cadastrados via processos/DJEN)
+      const reminderInstanceName = await this.resolveInstanceName(event.lead.id);
+
       let reminderSendResult: any;
       try {
         reminderSendResult = await this.whatsapp.sendText(
           clientPhone,
           clientMsg,
-          lastConvo?.instance_name ?? undefined,
+          reminderInstanceName,
         );
+        // sendText() retorna objeto de erro em vez de lançar exceção em falhas HTTP
+        if (!reminderSendResult || reminderSendResult?.statusCode >= 400 || reminderSendResult?.error) {
+          throw new Error(`Evolution API error ${reminderSendResult?.statusCode}: ${reminderSendResult?.error}`);
+        }
         this.logger.log(`[REMINDER] WhatsApp enviado para cliente ${clientPhone}`);
       } catch (e: any) {
         this.logger.warn(`[REMINDER] Erro ao enviar para cliente ${clientPhone}: ${e.message}`);
+        // Não salva mensagem se envio falhou
+        reminderSendResult = undefined;
       }
 
       // ── Salva mensagem e contexto na conversa (visível para operador) ──
@@ -453,24 +478,33 @@ export class CalendarReminderWorker extends WorkerHost {
         : this.templateHearingScheduled(event, firstName);
     }
 
-    // Busca a conversa ativa antes de enviar (precisamos do ID para salvar a mensagem)
+    // Busca a conversa ativa para salvar a mensagem (visível ao operador)
     const lastConvo = await this.prisma.conversation.findFirst({
       where: { lead_id: leadId, status: { not: 'ENCERRADO' } },
       orderBy: { last_message_at: 'desc' },
       select: { id: true, ai_mode: true, instance_name: true },
-    });
+    }).catch(() => null);
+
+    // Resolve instância WhatsApp em 4 níveis: conversa ativa → encerrada → banco → env
+    // Cobre clientes sem histórico no chat (cadastrados via processos/DJEN)
+    const instanceName = await this.resolveInstanceName(leadId);
 
     let sendResult: any;
     try {
       sendResult = await this.whatsapp.sendText(
         clientPhone,
         msg,
-        lastConvo?.instance_name ?? undefined,
+        instanceName,
       );
-      this.logger.log(`[HEARING-NOTIFY] WhatsApp enviado para ${clientPhone} sobre audiência ${eventId}`);
+      // sendText() retorna objeto de erro em vez de lançar exceção em falhas HTTP
+      if (!sendResult || sendResult?.statusCode >= 400 || sendResult?.error) {
+        throw new Error(`Evolution API error ${sendResult?.statusCode}: ${sendResult?.error}`);
+      }
+      this.logger.log(`[HEARING-NOTIFY] WhatsApp enviado para ${clientPhone} sobre ${event.type} ${eventId}`);
     } catch (e: any) {
       this.logger.warn(`[HEARING-NOTIFY] Erro ao enviar para ${clientPhone}: ${e.message}`);
-      return;
+      // Lança para que o BullMQ faça retry (attempts: 3)
+      throw e;
     }
 
     // Salva mensagem na conversa (visível para o operador no chat)
@@ -494,7 +528,7 @@ export class CalendarReminderWorker extends WorkerHost {
             last_message_at: new Date(),
             ai_mode: true, // reativa IA para responder dúvidas do cliente
             reminder_context: {
-              type: 'AUDIENCIA_AGENDADA',
+              type: event.type === 'PERICIA' ? 'PERICIA_AGENDADA' : 'AUDIENCIA_AGENDADA',
               event_title: event.title,
               event_date: formatDateTime(event.start_at),
               event_date_iso: event.start_at.toISOString(),
@@ -513,13 +547,14 @@ export class CalendarReminderWorker extends WorkerHost {
 
   private templateHearingRescheduled(event: any, firstName: string): string {
     const dateStr = formatDateTime(event.start_at);
+    const isPericia = event.type === 'PERICIA';
     return (
-      `📅 *Audiência Remarcada*\n\n` +
+      `${isPericia ? '🔬' : '📅'} *${isPericia ? 'Perícia' : 'Audiência'} Remarcada*\n\n` +
       `Olá, ${firstName}!\n\n` +
-      `Informamos que sua audiência foi *remarcada* para uma nova data:\n\n` +
+      `Informamos que sua ${isPericia ? 'perícia' : 'audiência'} foi *remarcada* para uma nova data:\n\n` +
       `📅 *Nova Data/Hora:* ${dateStr}\n` +
       (event.location ? `📍 *Local:* ${event.location}\n` : '') +
-      `\nPor favor, anote a nova data. Chegue com *30 minutos de antecedência*.\n` +
+      `\nPor favor, anote a nova data.${isPericia ? ' Lembre-se de levar documentos pessoais e laudos médicos, se houver.' : ' Chegue com *30 minutos de antecedência*.'}\n` +
       `Qualquer dúvida, é só responder esta mensagem.\n\n` +
       `_André Lustosa Advogados_`
     );
@@ -527,13 +562,16 @@ export class CalendarReminderWorker extends WorkerHost {
 
   private templateHearingScheduled(event: any, firstName: string): string {
     const dateStr = formatDateTime(event.start_at);
+    const isPericia = event.type === 'PERICIA';
     return (
-      `⚖️ *Audiência Agendada*\n\n` +
+      `${isPericia ? '🔬' : '⚖️'} *${isPericia ? 'Perícia Agendada' : 'Audiência Agendada'}*\n\n` +
       `Olá, ${firstName}!\n\n` +
-      `Gostaríamos de informar que sua audiência foi agendada:\n\n` +
+      `Gostaríamos de informar que sua ${isPericia ? 'perícia' : 'audiência'} foi agendada:\n\n` +
       `📅 *Data/Hora:* ${dateStr}\n` +
       (event.location ? `📍 *Local:* ${event.location}\n` : '') +
-      `\nRecomendamos chegar com *30 minutos de antecedência*.\n` +
+      (isPericia
+        ? `\nLembre-se de levar documentos pessoais e laudos médicos, se houver. Chegue com *15 minutos de antecedência* e coopere plenamente com o perito.\n`
+        : `\nRecomendamos chegar com *30 minutos de antecedência*.\n`) +
       `Qualquer dúvida, estamos à disposição.\n\n` +
       `_André Lustosa Advogados_`
     );
@@ -541,12 +579,14 @@ export class CalendarReminderWorker extends WorkerHost {
 
   private async generateHearingScheduledMessage(event: any, context: string, firstName: string, isRescheduled = false): Promise<string> {
     const aiConfig = await this.settings.getAiConfig();
-    const model = aiConfig.defaultModel || 'gpt-4o-mini';
+    const model = aiConfig.defaultModel || 'gpt-4.1-mini';
     const isAnthropic = model.startsWith('claude');
     const dateStr = formatDateTime(event.start_at);
+    const isPericia = event.type === 'PERICIA';
+    const tipoEvento = isPericia ? 'perícia' : 'audiência';
 
     const systemPrompt = `Você é o assistente do escritório de advocacia André Lustosa Advogados.
-Sua tarefa é enviar uma mensagem via WhatsApp informando ao cliente que sua audiência foi agendada.
+Sua tarefa é enviar uma mensagem via WhatsApp informando ao cliente que sua ${tipoEvento} foi ${isRescheduled ? 'remarcada' : 'agendada'}.
 
 REGRAS:
 - Escreva em português brasileiro natural e acolhedor
@@ -554,17 +594,18 @@ REGRAS:
 - Use formatação WhatsApp (*negrito*) com moderação
 - Personalize com base no histórico/contexto do caso quando relevante
 - NÃO invente informações — use apenas o contexto fornecido
-- Se o caso for trabalhista, reforce brevemente a importância da audiência
-- Oriente a chegar com 30 minutos de antecedência
+${isPericia
+  ? '- Para perícia: oriente a levar documentos pessoais e laudos médicos, se houver; chegar 15 min antes; cooperar plenamente com o perito'
+  : '- Se o caso for trabalhista, reforce brevemente a importância da audiência\n- Oriente a chegar com 30 minutos de antecedência'}
 - Deixe claro que pode tirar dúvidas respondendo esta mensagem
 - Limite: máximo 200 palavras
 - Finalize com "_André Lustosa Advogados_"`;
 
     const userPrompt = isRescheduled
-      ? `Crie uma mensagem informando ao cliente que a audiência foi *remarcada* para uma nova data.
+      ? `Crie uma mensagem informando ao cliente que a ${tipoEvento} foi *remarcada* para uma nova data.
 Deixe claro que é uma remarcação (não um novo agendamento).
 
-DADOS DA NOVA AUDIÊNCIA:
+DADOS DA NOVA ${tipoEvento.toUpperCase()}:
 Data/Hora: ${dateStr}
 ${event.location ? `Local: ${event.location}` : 'Local: a confirmar'}
 
@@ -574,9 +615,9 @@ ${context}
 Nome do cliente: "${firstName}"
 
 Gere APENAS a mensagem final para WhatsApp, sem explicações.`
-      : `Crie uma mensagem informando ao cliente que a audiência foi agendada.
+      : `Crie uma mensagem informando ao cliente que a ${tipoEvento} foi agendada.
 
-DADOS DA AUDIÊNCIA:
+DADOS DA ${tipoEvento.toUpperCase()}:
 Data/Hora: ${dateStr}
 ${event.location ? `Local: ${event.location}` : 'Local: a confirmar'}
 ${event.title ? `Título: ${event.title}` : ''}
@@ -621,11 +662,12 @@ Gere APENAS a mensagem final para WhatsApp, sem explicações.`;
     context: string,
   ): Promise<string> {
     const aiConfig = await this.settings.getAiConfig();
-    const model = aiConfig.defaultModel || 'gpt-4o-mini';
+    const model = aiConfig.defaultModel || 'gpt-4.1-mini';
     const isAnthropic = model.startsWith('claude');
     const prazo = minutesLabel(minutesBefore);
     const firstName = (event.lead?.name || 'Cliente').split(' ')[0];
 
+    const isPericia = event.type === 'PERICIA';
     const systemPrompt = `Você é o assistente virtual do escritório de advocacia André Lustosa Advogados.
 Sua função é enviar lembretes personalizados e humanizados via WhatsApp para os clientes.
 
@@ -636,9 +678,10 @@ REGRAS IMPORTANTES:
 - Personalize com base no histórico e contexto do caso
 - NÃO invente informações — use apenas o que está no contexto fornecido
 - NÃO mencione valores monetários a menos que estejam explicitamente no contexto
-- Se o caso for trabalhista, mencione a importância da audiência para o direito do cliente
+${isPericia
+  ? '- Para perícia: oriente o cliente a chegar com 15 min de antecedência, levar documentos pessoais e laudos médicos se houver, e cooperar plenamente com o perito'
+  : '- Se o caso for trabalhista, mencione a importância da audiência para o direito do cliente\n- Sempre oriente a chegar com antecedência (30 min)'}
 - Sempre indique o horário e local de forma clara
-- Sempre oriente a chegar com antecedência (30 min)
 - Finalize sinalizando disponibilidade para dúvidas
 - Limite: máximo 250 palavras
 - NÃO use assinatura longa — apenas "_André Lustosa Advogados_" no final`;
@@ -680,5 +723,57 @@ Gere APENAS a mensagem final formatada para WhatsApp, sem explicações adiciona
       });
       return (completion.choices[0]?.message?.content || '').trim();
     }
+  }
+
+  // ─── Resolução da instância WhatsApp (4 níveis de fallback) ──────────────────
+  //
+  //  1. Conversa ativa do lead (status ≠ ENCERRADO)
+  //  2. Qualquer conversa do lead (inclusive encerradas)
+  //  3. Primeira instância WhatsApp cadastrada no banco
+  //     → cobre clientes sem histórico no chat (cadastrados via processos/DJEN)
+  //  4. Variável de ambiente EVOLUTION_INSTANCE_NAME
+  //
+  // Ao retornar undefined o sendText() usará a instância padrão configurada
+  // no WhatsappService — envio ainda pode funcionar em instâncias single-tenant.
+
+  private async resolveInstanceName(leadId: string): Promise<string | undefined> {
+    // Nível 1: conversa ativa
+    const activeConvo = await this.prisma.conversation.findFirst({
+      where: { lead_id: leadId, status: { not: 'ENCERRADO' } },
+      orderBy: { last_message_at: 'desc' },
+      select: { instance_name: true },
+    }).catch(() => null);
+    if (activeConvo?.instance_name) return activeConvo.instance_name;
+
+    // Nível 2: qualquer conversa (inclusive encerradas)
+    const anyConvo = await this.prisma.conversation.findFirst({
+      where: { lead_id: leadId, instance_name: { not: null } },
+      orderBy: { last_message_at: 'desc' },
+      select: { instance_name: true },
+    }).catch(() => null);
+    if (anyConvo?.instance_name) {
+      this.logger.log(`[INSTANCE] Lead ${leadId} sem conversa ativa — usando instância de conversa anterior: ${anyConvo.instance_name}`);
+      return anyConvo.instance_name;
+    }
+
+    // Nível 3: primeira instância WhatsApp cadastrada no banco
+    const dbInstance = await this.prisma.instance.findFirst({
+      where: { type: 'whatsapp' },
+      select: { name: true },
+    }).catch(() => null);
+    if (dbInstance?.name) {
+      this.logger.log(`[INSTANCE] Lead ${leadId} sem conversas — usando instância do banco: ${dbInstance.name}`);
+      return dbInstance.name;
+    }
+
+    // Nível 4: variável de ambiente
+    const envInstance = process.env.EVOLUTION_INSTANCE_NAME;
+    if (envInstance) {
+      this.logger.log(`[INSTANCE] Lead ${leadId} sem instância no banco — usando env EVOLUTION_INSTANCE_NAME: ${envInstance}`);
+      return envInstance;
+    }
+
+    this.logger.warn(`[INSTANCE] Lead ${leadId}: nenhuma instância WhatsApp encontrada. Envio pode falhar.`);
+    return undefined;
   }
 }

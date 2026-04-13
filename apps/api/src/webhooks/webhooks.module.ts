@@ -9,6 +9,7 @@ import { SettingsModule } from '../settings/settings.module';
 import { HmacGuard } from './guards/hmac.guard';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { AdminBotModule } from '../admin-bot/admin-bot.module';
+import { MediaModule } from '../media/media.module';
 
 @Module({
   imports: [
@@ -18,12 +19,9 @@ import { AdminBotModule } from '../admin-bot/admin-bot.module';
     SettingsModule,
     WhatsappModule,
     AdminBotModule,
-    BullModule.registerQueue({
-      name: 'media-jobs',
-    }),
-    BullModule.registerQueue({
-      name: 'ai-jobs',
-    }),
+    MediaModule,
+    BullModule.registerQueue({ name: 'media-jobs' }),
+    BullModule.registerQueue({ name: 'ai-jobs' }),
   ],
   controllers: [EvolutionController],
   providers: [EvolutionService, HmacGuard],

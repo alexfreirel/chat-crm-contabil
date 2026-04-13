@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ChevronDown,
   ChevronUp,
@@ -18,8 +18,12 @@ import {
   FileText,
   Bot,
   Search,
+  Mic,
+  MicOff,
+  Sparkles,
 } from 'lucide-react';
-import { FICHA_SECTIONS, type FichaField, getEmptyFormData } from '@/lib/fichaTrabalhistaFields';
+import Image from 'next/image';
+import { FICHA_SECTIONS, REQUIRED_FIELD_KEYS, type FichaField, getEmptyFormData } from '@/lib/fichaTrabalhistaFields';
 import api, { API_BASE_URL } from '@/lib/api';
 
 // ─── Formatters ─────────────────────────────────────────────────
@@ -82,6 +86,7 @@ interface FichaTrabalhistaProps {
   leadId: string;
   readOnly?: boolean;
   isPublic?: boolean;
+  embedded?: boolean; // true = dentro do chat/inbox (barra fixa, sem sticky)
   onFinalize?: () => void;
 }
 
@@ -89,6 +94,7 @@ export default function FichaTrabalhista({
   leadId,
   readOnly = false,
   isPublic = false,
+  embedded = false,
   onFinalize,
 }: FichaTrabalhistaProps) {
   const [formData, setFormData] = useState<Record<string, string>>(getEmptyFormData());
@@ -105,6 +111,66 @@ export default function FichaTrabalhista({
   const [loadingCep, setLoadingCep] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // ─── Speech-to-text (por campo) ──────────────────────────────
+  const [listeningField, setListeningField] = useState<string | null>(null);
+  const [correctingField, setCorrectingField] = useState<string | null>(null);
+  const recognitionRef = useRef<any>(null);
+
+  // Campos que aceitam ditado por voz
+  const VOICE_FIELDS = new Set([
+    'motivo_saida', 'atividades_realizadas', 'detalhes_acidente',
+    'detalhes_assedio_moral', 'detalhes_verbas_pendentes',
+    'detalhes_testemunhas', 'detalhes_provas_documentais', 'motivos_reclamacao',
+  ]);
+
+  const toggleFieldListening = useCallback((fieldKey: string) => {
+    // Se já está gravando este campo, para
+    if (listeningField === fieldKey) {
+      recognitionRef.current?.stop();
+      setListeningField(null);
+      return;
+    }
+    // Se está gravando outro campo, para antes
+    if (listeningField) {
+      recognitionRef.current?.stop();
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) { setSaveError('Seu navegador não suporta reconhecimento de voz.'); return; }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'pt-BR';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onresult = (event: any) => {
+      let interim = '';
+      let newFinal = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          newFinal += event.results[i][0].transcript + ' ';
+        } else {
+          interim += event.results[i][0].transcript;
+        }
+      }
+      setFormData(prev => {
+        const base = (prev[fieldKey] || '').replace(/\u200B.*$/, '').trimEnd();
+        const withFinal = newFinal ? (base ? base + ' ' : '') + newFinal.trimEnd() : base;
+        return { ...prev, [fieldKey]: interim ? withFinal + '\u200B' + interim : withFinal };
+      });
+    };
+    recognition.onerror = () => setListeningField(null);
+    recognition.onend = () => setListeningField(null);
+    recognitionRef.current = recognition;
+    recognition.start();
+    setListeningField(fieldKey);
+  }, [listeningField]);
+
+  // Cleanup recognition on unmount
+  useEffect(() => {
+    return () => { recognitionRef.current?.stop(); };
+  }, []);
 
   // ─── Fetch initial data ───────────────────────────────────────
 
@@ -183,7 +249,7 @@ export default function FichaTrabalhista({
 
   const handleAutoSave = useCallback(
     async (field: string, value: string) => {
-      if (readOnly || finalizado) return;
+      if (readOnly) return;
       // Don't auto-save CEP (handled by lookup)
       if (field === 'cep') return;
 
@@ -224,6 +290,45 @@ export default function FichaTrabalhista({
     },
     [leadId, isPublic, readOnly, finalizado, completionPct],
   );
+
+  // ─── Correção automática por IA ──────────────────────────────
+  const correctWithAI = useCallback(async (fieldKey: string) => {
+    const raw = (formData[fieldKey] || '').replace(/\u200B/g, '').trim();
+    if (!raw || raw.length < 10) return;
+
+    setCorrectingField(fieldKey);
+    try {
+      const endpoint = isPublic
+        ? `${API_BASE_URL}/ficha-trabalhista/${leadId}/public/correct`
+        : `/ficha-trabalhista/${leadId}/correct`;
+
+      const body = { field: fieldKey, text: raw };
+      let corrected: string;
+
+      if (isPublic) {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error('Erro na correção');
+        const data = await res.json();
+        corrected = data.corrected;
+      } else {
+        const res = await api.post(endpoint, body);
+        corrected = res.data.corrected;
+      }
+
+      if (corrected && corrected !== raw) {
+        handleChange(fieldKey, corrected);
+        handleAutoSave(fieldKey, corrected);
+      }
+    } catch {
+      // Silencioso — não bloqueia o uso se a correção falhar
+    } finally {
+      setCorrectingField(null);
+    }
+  }, [formData, leadId, isPublic, handleChange, handleAutoSave]);
 
   // ─── CEP Lookup ───────────────────────────────────────────────
 
@@ -283,6 +388,32 @@ export default function FichaTrabalhista({
 
   const handleFinalize = useCallback(async () => {
     if (finalizado || finalizing) return;
+
+    // Validar campos obrigatórios antes de finalizar
+    const missing: { key: string; label: string; sectionId: string }[] = [];
+    for (const section of FICHA_SECTIONS) {
+      for (const field of section.fields) {
+        if (field.required) {
+          const val = formData[field.key];
+          if (!val || val.trim() === '') {
+            missing.push({ key: field.key, label: field.label, sectionId: section.id });
+          }
+        }
+      }
+    }
+
+    if (missing.length > 0) {
+      // Abrir seções com campos faltantes para o usuário ver
+      const sectionsToOpen: Record<string, boolean> = {};
+      missing.forEach((m) => { sectionsToOpen[m.sectionId] = true; });
+      setOpenSections((prev) => ({ ...prev, ...sectionsToOpen }));
+
+      const fieldNames = missing.slice(0, 5).map((m) => m.label).join(', ');
+      const extra = missing.length > 5 ? ` e mais ${missing.length - 5} campo(s)` : '';
+      setSaveError(`Preencha os campos obrigatórios antes de finalizar: ${fieldNames}${extra}`);
+      return;
+    }
+
     setFinalizing(true);
     setSaveError(null);
     try {
@@ -318,7 +449,7 @@ export default function FichaTrabalhista({
     } finally {
       setFinalizing(false);
     }
-  }, [leadId, isPublic, finalizado, finalizing, onFinalize]);
+  }, [leadId, isPublic, finalizado, finalizing, onFinalize, formData]);
 
   // ─── Toggle sections ─────────────────────────────────────────
 
@@ -331,7 +462,7 @@ export default function FichaTrabalhista({
   const renderField = (field: FichaField) => {
     const value = formData[field.key] || '';
     const isAiFilled = aiFilledFields.has(field.key) && value !== '';
-    const disabled = readOnly || finalizado;
+    const disabled = readOnly;
 
     const baseClasses =
       'w-full bg-background border border-border rounded-lg px-3 text-foreground focus:border-amber-500 outline-none transition-colors placeholder-muted-foreground text-sm';
@@ -366,19 +497,66 @@ export default function FichaTrabalhista({
         );
         break;
 
-      case 'textarea':
+      case 'textarea': {
+        const hasVoice = VOICE_FIELDS.has(field.key);
+        const isFieldListening = listeningField === field.key;
+        const isCorrecting = correctingField === field.key;
         input = (
-          <textarea
-            value={value}
-            onChange={(e) => handleChange(field.key, e.target.value)}
-            onBlur={onBlur}
-            disabled={disabled}
-            rows={3}
-            placeholder={field.placeholder}
-            className={`${baseClasses} py-2 resize-none`}
-          />
+          <div className="relative">
+            <textarea
+              value={value.replace(/\u200B/g, '')}
+              onChange={(e) => handleChange(field.key, e.target.value)}
+              onBlur={() => {
+                const clean = value.replace(/\u200B/g, '').trim();
+                handleAutoSave(field.key, clean);
+                // Corrigir automaticamente com IA ao sair do campo (se tiver conteúdo ditado)
+                if (hasVoice && clean.length >= 10) {
+                  correctWithAI(field.key);
+                }
+              }}
+              disabled={disabled}
+              rows={3}
+              placeholder={isFieldListening ? 'Fale agora...' : field.placeholder}
+              className={`${baseClasses} py-2 resize-none ${hasVoice ? 'pr-20' : ''} ${
+                isFieldListening ? 'border-red-500/50 bg-red-500/5' : ''
+              }`}
+            />
+            {hasVoice && !disabled && (
+              <div className="absolute right-2 top-2 flex items-center gap-1">
+                {isCorrecting && (
+                  <span className="flex items-center gap-1 text-[10px] text-blue-400 mr-1">
+                    <Sparkles size={10} className="animate-pulse" />
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => toggleFieldListening(field.key)}
+                  title={isFieldListening ? 'Parar gravação' : 'Ditar por voz'}
+                  className={`p-1.5 rounded-lg transition-colors ${
+                    isFieldListening
+                      ? 'text-red-400 bg-red-500/20 animate-pulse'
+                      : 'text-muted-foreground hover:text-amber-400 hover:bg-amber-500/10'
+                  }`}
+                >
+                  {isFieldListening ? <MicOff size={14} /> : <Mic size={14} />}
+                </button>
+                {!isFieldListening && value.replace(/\u200B/g, '').trim().length >= 10 && (
+                  <button
+                    type="button"
+                    onClick={() => correctWithAI(field.key)}
+                    disabled={isCorrecting}
+                    title="Corrigir com IA"
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 transition-colors disabled:opacity-50"
+                  >
+                    <Sparkles size={14} />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         );
         break;
+      }
 
       case 'cpf':
         input = (
@@ -519,32 +697,54 @@ export default function FichaTrabalhista({
   // ─── Main render ──────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Progress bar */}
-      <div className="flex items-center gap-3">
-        <div className="flex-1 h-2 bg-border rounded-full overflow-hidden">
-          <div
-            className="h-full bg-amber-500 rounded-full transition-all duration-500"
-            style={{ width: `${completionPct}%` }}
-          />
+    <div className="relative flex flex-col gap-4">
+      {/* Logo de fundo */}
+      <div className="pointer-events-none fixed inset-0 z-0 flex items-center justify-center opacity-[0.04]">
+        <Image
+          src="/landing/LOGO SEM FUNDO 01.png"
+          alt=""
+          width={500}
+          height={500}
+          className="select-none"
+          priority={false}
+        />
+      </div>
+
+      {/* Progress bar — sticky na página completa, estática quando embedded no chat */}
+      <div className={embedded ? 'py-2' : 'sticky top-[73px] z-30 -mx-4 px-4 sm:-mx-6 sm:px-6 py-2 bg-zinc-950/95 backdrop-blur-sm'}>
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-2 bg-border rounded-full overflow-hidden">
+            <div
+              className="h-full bg-amber-500 rounded-full transition-all duration-500"
+              style={{ width: `${completionPct}%` }}
+            />
+          </div>
+          <span className="text-xs font-mono text-muted-foreground shrink-0">
+            {completionPct}%
+          </span>
+          {saving && (
+            <span className="flex items-center gap-1 text-xs text-amber-500">
+              <Loader2 size={12} className="animate-spin" /> Salvando...
+            </span>
+          )}
+          {!saving && lastSaved && (
+            <span className="flex items-center gap-1 text-xs text-emerald-500">
+              <CheckCircle2 size={12} /> Salvo
+            </span>
+          )}
         </div>
-        <span className="text-xs font-mono text-muted-foreground shrink-0">
-          {completionPct}%
-        </span>
-        {saving && (
-          <span className="flex items-center gap-1 text-xs text-amber-500">
-            <Loader2 size={12} className="animate-spin" /> Salvando...
-          </span>
-        )}
-        {!saving && lastSaved && (
-          <span className="flex items-center gap-1 text-xs text-emerald-500">
-            <CheckCircle2 size={12} /> Salvo
-          </span>
-        )}
       </div>
 
       {/* Finalized banner */}
-      {finalizado && (
+      {finalizado && !readOnly && (
+        <div className="flex items-center gap-2 px-4 py-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+          <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
+          <span className="text-[13px] font-semibold text-emerald-500">
+            Ficha finalizada — você pode editar os campos se necessário
+          </span>
+        </div>
+      )}
+      {finalizado && readOnly && (
         <div className="flex items-center gap-2 px-4 py-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
           <CheckCircle2 size={16} className="text-emerald-500" />
           <span className="text-[13px] font-semibold text-emerald-500">
@@ -614,7 +814,7 @@ export default function FichaTrabalhista({
       {!readOnly && !finalizado && (
         <button
           onClick={handleFinalize}
-          disabled={finalizing || completionPct < 10}
+          disabled={finalizing}
           className="w-full py-4 sm:py-3 rounded-xl font-bold text-base sm:text-[14px] transition-colors flex items-center justify-center gap-2
             bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
         >

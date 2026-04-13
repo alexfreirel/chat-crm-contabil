@@ -38,17 +38,61 @@ export class LegalCasesService {
     legal_area?: string;
     tenant_id?: string;
   }) {
-    return this.prisma.legalCase.create({
+    // Pré-preencher com dados da memória da IA (Sophia já coletou durante atendimento)
+    let opposing_party: string | null = null;
+    let notes: string | null = null;
+    let resolvedArea = data.legal_area || null;
+
+    try {
+      const memory = await this.prisma.aiMemory.findUnique({ where: { lead_id: data.lead_id } });
+      if (memory) {
+        const facts: any = (typeof memory.facts_json === 'string' ? JSON.parse(memory.facts_json as string) : memory.facts_json) || {};
+        const caseData = facts.cases?.[0] || facts.case || {};
+        const parties = facts.parties || {};
+
+        opposing_party = parties.counterparty_name || null;
+        if (!resolvedArea && caseData.area) resolvedArea = caseData.area;
+        if (memory.summary) notes = memory.summary.slice(0, 500);
+      }
+    } catch (e: any) {
+      this.logger.warn(`[LEGAL] Falha ao pré-preencher caso com memória IA: ${e.message}`);
+    }
+
+    const legalCase = await this.prisma.legalCase.create({
       data: {
         lead_id: data.lead_id,
         conversation_id: data.conversation_id,
         lawyer_id: data.lawyer_id,
-        legal_area: data.legal_area,
+        legal_area: resolvedArea,
         tenant_id: data.tenant_id,
         stage: 'VIABILIDADE',
+        opposing_party,
+        notes,
       },
       include: { lead: true },
     });
+
+    // Converter lead em cliente ao criar processo
+    await this.prisma.lead.update({
+      where: { id: data.lead_id },
+      data: {
+        is_client: true,
+        became_client_at: new Date(),
+        stage: 'FINALIZADO',
+        stage_entered_at: new Date(),
+      },
+    }).catch(() => {});
+
+    // Atribuir advogado nas conversas do lead
+    await this.prisma.conversation.updateMany({
+      where: { lead_id: data.lead_id, assigned_lawyer_id: null },
+      data: { assigned_lawyer_id: data.lawyer_id },
+    }).catch(() => {});
+
+    // Vincular publicações DJEN existentes com o mesmo número de processo
+    await this.reconcileDjenPublications(legalCase.id, (legalCase as any).case_number);
+
+    return legalCase;
   }
 
   async findAll(lawyerId?: string, stage?: string, archived?: boolean, inTracking?: boolean, page?: number, limit?: number, tenantId?: string, leadId?: string, caseNumber?: string) {
@@ -78,10 +122,9 @@ export class LegalCasesService {
           name: true,
         },
       },
-      // Audiências (próximas ou até 30 dias no passado)
+      // Próximos eventos (audiências, perícias, prazos, tarefas — últimos 30d ou futuros)
       calendar_events: {
         where: {
-          type: 'AUDIENCIA',
           start_at: { gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) },
           status: { notIn: ['CANCELADO', 'CONCLUIDO'] },
         },
@@ -89,9 +132,21 @@ export class LegalCasesService {
         take: 5,
         select: {
           id: true,
+          type: true,
           start_at: true,
           title: true,
           location: true,
+        },
+      },
+      // Resumo financeiro para badge no kanban
+      honorarios: {
+        where: { status: 'ATIVO' },
+        select: {
+          total_value: true,
+          type: true,
+          payments: {
+            select: { amount: true, status: true },
+          },
         },
       },
       _count: {
@@ -169,10 +224,14 @@ export class LegalCasesService {
     const conversations = await this.prisma.conversation.findMany({
       where: {
         assigned_lawyer_id: lawyerId,
-        status: 'ABERTO',
-        ...(existingLeadIds.length > 0
-          ? { lead_id: { notIn: existingLeadIds } }
-          : {}),
+        // Apenas leads FINALIZADOS (convertidos em cliente) que ainda não têm caso aberto
+        lead: {
+          stage: 'FINALIZADO',
+          is_client: true,
+          ...(existingLeadIds.length > 0
+            ? { id: { notIn: existingLeadIds } }
+            : {}),
+        },
       },
       include: {
         lead: {
@@ -208,8 +267,13 @@ export class LegalCasesService {
     const updated = await this.prisma.legalCase.update({
       where: { id },
       data: { stage: newStage, stage_changed_at: new Date() },
-      include: { lead: { select: { name: true } } },
+      include: { lead: { select: { name: true, id: true } } },
     });
+
+    // Auto-criar tarefa para o novo estágio
+    this.createStageTask(updated.id, newStage, updated.lawyer_id, updated.tenant_id, updated.lead?.id).catch(e =>
+      this.logger.warn(`[LEGAL] Falha ao criar tarefa automática para ${newStage}: ${e.message}`),
+    );
 
     try {
       this.chatGateway.emitLegalCaseUpdate(updated.lawyer_id, {
@@ -220,6 +284,99 @@ export class LegalCasesService {
     } catch {}
 
     return updated;
+  }
+
+  // ─── AUTO-TASK POR ESTÁGIO ─────────────────────────────────────
+
+  private static readonly STAGE_TASKS: Record<string, { title: string; description: string; dueDays: number; priority: string }> = {
+    DOCUMENTACAO: {
+      title: 'Coletar documentos do caso',
+      description: 'Solicitar e reunir todos os documentos necessários para o caso (contratos, comprovantes, laudos, fotos, etc).',
+      dueDays: 5,
+      priority: 'NORMAL',
+    },
+    PETICAO: {
+      title: 'Redigir petição inicial',
+      description: 'Elaborar a petição inicial com base nos fatos e documentos coletados.',
+      dueDays: 10,
+      priority: 'NORMAL',
+    },
+    REVISAO: {
+      title: 'Revisar petição antes de protocolar',
+      description: 'Revisar a petição inicial: verificar fundamentação, pedidos, provas e formatação.',
+      dueDays: 3,
+      priority: 'URGENTE',
+    },
+    PROTOCOLO: {
+      title: 'Protocolar processo no tribunal',
+      description: 'Protocolar a petição inicial no sistema do tribunal e obter o número do processo.',
+      dueDays: 2,
+      priority: 'URGENTE',
+    },
+  };
+
+  private async createStageTask(caseId: string, stage: string, lawyerId: string, tenantId: string | null, leadId?: string | null): Promise<void> {
+    const taskDef = LegalCasesService.STAGE_TASKS[stage];
+    if (!taskDef) return; // VIABILIDADE ou estágio sem tarefa
+
+    // Deduplica: não criar se já existe tarefa idêntica nos últimos 7 dias
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const existing = await this.prisma.calendarEvent.findFirst({
+      where: {
+        legal_case_id: caseId,
+        title: taskDef.title,
+        created_at: { gte: sevenDaysAgo },
+      },
+      select: { id: true },
+    });
+    if (existing) return;
+
+    // Calcular data de vencimento (dias úteis)
+    const dueAt = this.addBusinessDays(new Date(), taskDef.dueDays);
+
+    await this.calendarService.create({
+      type: 'TAREFA',
+      title: taskDef.title,
+      description: taskDef.description,
+      start_at: dueAt.toISOString(),
+      end_at: new Date(dueAt.getTime() + 30 * 60000).toISOString(),
+      priority: taskDef.priority,
+      legal_case_id: caseId,
+      assigned_user_id: lawyerId,
+      created_by_id: lawyerId,
+      lead_id: leadId || undefined,
+      tenant_id: tenantId || undefined,
+    });
+
+    this.logger.log(`[LEGAL] Tarefa automática criada: "${taskDef.title}" para caso ${caseId} (prazo: ${taskDef.dueDays} dias úteis)`);
+  }
+
+  private addBusinessDays(date: Date, days: number): Date {
+    const d = new Date(date);
+    let added = 0;
+    while (added < days) {
+      d.setDate(d.getDate() + 1);
+      const dow = d.getDay();
+      if (dow !== 0 && dow !== 6) added++;
+    }
+    return d;
+  }
+
+  // ─── CONCLUIR TAREFAS DO ESTÁGIO ──────────────────────────────
+
+  /** Marca todas as tarefas pendentes de um caso como CONCLUIDO */
+  async completeStageTasks(caseId: string, tenantId?: string): Promise<number> {
+    await this.verifyTenantOwnership(caseId, tenantId);
+    const result = await this.prisma.calendarEvent.updateMany({
+      where: {
+        legal_case_id: caseId,
+        type: 'TAREFA',
+        status: { in: ['AGENDADO', 'CONFIRMADO'] },
+      },
+      data: { status: 'CONCLUIDO' },
+    });
+    this.logger.log(`[LEGAL] ${result.count} tarefa(s) concluída(s) para caso ${caseId}`);
+    return result.count;
   }
 
   // ─── ARCHIVE / UNARCHIVE ───────────────────────────────────────
@@ -267,6 +424,28 @@ export class LegalCasesService {
       this.logger.log(`[ARCHIVE] Lead ${legalCase.lead_id} marcado como encerrado`);
     }
 
+    // Limpar memória da IA: marcar caso como arquivado em facts.cases[]
+    try {
+      const memory = await this.prisma.aiMemory.findUnique({ where: { lead_id: legalCase.lead_id } });
+      if (memory) {
+        const facts: any = (typeof memory.facts_json === 'string' ? JSON.parse(memory.facts_json as string) : memory.facts_json) || {};
+        const cases: any[] = facts.cases || (facts.case ? [facts.case] : []);
+        const caseToArchive = cases.find((c: any) => c.case_number === legalCase.case_number);
+        if (caseToArchive) {
+          caseToArchive.status = 'arquivado';
+          caseToArchive.archive_reason = reason;
+        }
+        facts.cases = cases;
+        facts.case = cases.find((c: any) => c.status !== 'arquivado') || cases[0] || null;
+        await this.prisma.aiMemory.update({
+          where: { lead_id: legalCase.lead_id },
+          data: { facts_json: facts, last_updated_at: new Date() },
+        });
+      }
+    } catch (e: any) {
+      this.logger.warn(`[ARCHIVE] Falha ao limpar memória IA: ${e.message}`);
+    }
+
     return legalCase;
   }
 
@@ -294,6 +473,33 @@ export class LegalCasesService {
     }
 
     return legalCase;
+  }
+
+  // ─── RENOUNCE (renúncia — advogado não atua mais) ──────────
+
+  async renounce(id: string, tenantId?: string) {
+    await this.verifyTenantOwnership(id, tenantId);
+    const legalCase = await this.prisma.legalCase.update({
+      where: { id },
+      data: { renounced: true, renounced_at: new Date() },
+    });
+
+    // Auto-arquivar publicações DJEN existentes desse caso
+    const archived = await this.prisma.djenPublication.updateMany({
+      where: { legal_case_id: id, archived: false },
+      data: { archived: true, viewed_at: new Date() },
+    });
+
+    this.logger.log(`[RENOUNCE] Caso ${id} marcado como renunciado — ${archived.count} publicação(ões) arquivada(s)`);
+    return legalCase;
+  }
+
+  async unrenounce(id: string, tenantId?: string) {
+    await this.verifyTenantOwnership(id, tenantId);
+    return this.prisma.legalCase.update({
+      where: { id },
+      data: { renounced: false, renounced_at: null },
+    });
   }
 
   async findPendingClosure(tenantId?: string) {
@@ -424,31 +630,34 @@ export class LegalCasesService {
     conversationId?: string,
     tenantId?: string,
   ) {
-    // Verifica se já existe um caso para este lead + advogado
-    const existing = await this.prisma.legalCase.findFirst({
-      where: { lead_id: leadId, lawyer_id: lawyerId },
-    });
-    if (existing) return existing; // já existe, não duplica
-
-    const created = await this.create({
-      lead_id: leadId,
-      conversation_id: conversationId,
-      lawyer_id: lawyerId,
-      tenant_id: tenantId,
-    });
-
-    try {
-      const lead = await this.prisma.lead.findUnique({
-        where: { id: leadId },
-        select: { name: true },
+    // Transação para evitar race condition (duplicatas se chamado 2x rapidamente)
+    return this.prisma.$transaction(async (tx) => {
+      // Verifica se já existe um caso para este lead + advogado (dentro da transação)
+      const existing = await tx.legalCase.findFirst({
+        where: { lead_id: leadId, lawyer_id: lawyerId },
       });
-      this.chatGateway.emitNewLegalCase(lawyerId, {
-        caseId: created.id,
-        leadName: lead?.name || 'Contato',
-      });
-    } catch {}
+      if (existing) return existing; // já existe, não duplica
 
-    return created;
+      const created = await this.create({
+        lead_id: leadId,
+        conversation_id: conversationId,
+        lawyer_id: lawyerId,
+        tenant_id: tenantId,
+      });
+
+      try {
+        const lead = await tx.lead.findUnique({
+          where: { id: leadId },
+          select: { name: true },
+        });
+        this.chatGateway.emitNewLegalCase(lawyerId, {
+          caseId: created.id,
+          leadName: lead?.name || 'Contato',
+        });
+      } catch {}
+
+      return created;
+    });
   }
 
   // ─── CADASTRO DIRETO (processo já em andamento, sem WhatsApp) ──
@@ -473,6 +682,8 @@ export class LegalCasesService {
     lead_name?: string;
     lead_phone?: string;
     lead_email?: string;
+    // Atendente responsável (operador)
+    assigned_user_id?: string;
   }) {
     const VALID_TRACKING = TRACKING_STAGES.map(s => s.id) as string[];
     const trackingStage = (
@@ -503,8 +714,14 @@ export class LegalCasesService {
 
     } else if (data.lead_phone) {
       // Caminho B: criar novo lead real com telefone/nome fornecidos
-      const normalizedPhone = data.lead_phone.replace(/\D/g, '');
+      let normalizedPhone = data.lead_phone.replace(/\D/g, '');
       if (!normalizedPhone) throw new BadRequestException('Telefone inválido para o cliente.');
+      // Auto-adicionar código do país (55) se não informado
+      if (normalizedPhone.length <= 11) normalizedPhone = '55' + normalizedPhone;
+      // Remover 9 extra (13 dígitos: 55 + DDD 2dig + 9 + 8dig → 55 + DDD + 8dig)
+      if (normalizedPhone.length === 13 && normalizedPhone.startsWith('55') && normalizedPhone[4] === '9') {
+        normalizedPhone = normalizedPhone.slice(0, 4) + normalizedPhone.slice(5);
+      }
 
       // Verifica se já existe lead com esse telefone
       const byPhone = await this.prisma.lead.findFirst({
@@ -514,7 +731,19 @@ export class LegalCasesService {
 
       if (byPhone) {
         leadId = byPhone.id;
-        leadDisplayName = byPhone.name || normalizedPhone;
+        // Atualizar nome/email se o lead existente não tem e foram informados
+        if (data.lead_name && (!byPhone.name || byPhone.name.startsWith('[Processo]'))) {
+          await this.prisma.lead.update({
+            where: { id: byPhone.id },
+            data: {
+              name: data.lead_name,
+              ...(data.lead_email && { email: data.lead_email }),
+            },
+          });
+          leadDisplayName = data.lead_name;
+        } else {
+          leadDisplayName = byPhone.name || normalizedPhone;
+        }
       } else {
         const newLead = await this.prisma.lead.create({
           data: {
@@ -531,28 +760,30 @@ export class LegalCasesService {
       }
 
     } else {
-      // Caminho C: fallback — lead placeholder (retrocompatibilidade)
-      const placeholderPhone = `PROC_${data.case_number.replace(/\D/g, '')}`;
-      leadDisplayName = data.opposing_party
-        ? `[Processo] ${data.opposing_party}`
-        : `[Processo] ${data.case_number}`;
+      throw new BadRequestException('Informe o cliente (lead_id ou telefone) para criar o processo.');
+    }
 
-      let lead = await this.prisma.lead.findFirst({
-        where: { phone: placeholderPhone },
+    // Garantir que o lead tenha pelo menos uma conversa (para aparecer no chat)
+    const existingConvo = await this.prisma.conversation.findFirst({
+      where: { lead_id: leadId },
+      select: { id: true },
+    });
+    let linkedConversationId: string;
+    if (existingConvo) {
+      linkedConversationId = existingConvo.id;
+    } else {
+      const newConvo = await this.prisma.conversation.create({
+        data: {
+          lead_id: leadId,
+          tenant_id: data.tenant_id || null,
+          instance_name: process.env.EVOLUTION_INSTANCE_NAME || 'whatsapp',
+          status: 'ABERTO',
+          last_message_at: new Date(),
+        },
         select: { id: true },
       });
-      if (!lead) {
-        lead = await this.prisma.lead.create({
-          data: {
-            phone: placeholderPhone,
-            name: leadDisplayName,
-            tenant_id: data.tenant_id,
-            origin: 'CADASTRO_DIRETO',
-          },
-          select: { id: true },
-        });
-      }
-      leadId = lead.id;
+      linkedConversationId = newConvo.id;
+      this.logger.log(`[LEGAL] Conversa criada para lead ${leadId} (sem WhatsApp prévio)`);
     }
 
     // Se ADMIN passou override_lawyer_id, usa ele; caso contrário usa o usuário logado
@@ -562,6 +793,7 @@ export class LegalCasesService {
       data: {
         lead_id: leadId,
         lawyer_id: effectiveLawyerId,
+        conversation_id: linkedConversationId,
         tenant_id: data.tenant_id,
         case_number: data.case_number,
         legal_area: data.legal_area,
@@ -597,6 +829,53 @@ export class LegalCasesService {
       },
     });
 
+    // Atribuir advogado, atendente e área jurídica nas conversas do lead
+    const convUpdate: any = {
+      assigned_lawyer_id: effectiveLawyerId,
+      legal_area: data.legal_area || null,
+    };
+
+    // Atendente: usar o informado ou resolver automaticamente
+    if (data.assigned_user_id) {
+      convUpdate.assigned_user_id = data.assigned_user_id;
+    } else {
+      // 1ª tentativa: OPERADOR ou COMERCIAL
+      // 2ª tentativa: ADVOGADO ou ADMIN (escritórios sem operadores dedicados)
+      // 3ª tentativa: usar o próprio advogado responsável pelo processo
+      try {
+        let candidates = await this.prisma.user.findMany({
+          where: {
+            roles: { hasSome: ['OPERADOR', 'COMERCIAL'] },
+            ...(data.tenant_id ? { tenant_id: data.tenant_id } : {}),
+          },
+          select: { id: true },
+        });
+        if (candidates.length === 0) {
+          candidates = await this.prisma.user.findMany({
+            where: {
+              roles: { hasSome: ['ADVOGADO', 'ADMIN'] },
+              ...(data.tenant_id ? { tenant_id: data.tenant_id } : {}),
+            },
+            select: { id: true },
+          });
+        }
+        if (candidates.length > 0) {
+          const picked = candidates[Math.floor(Math.random() * candidates.length)];
+          convUpdate.assigned_user_id = picked.id;
+          this.logger.log(`[LEGAL] Atendente resolvido: ${picked.id} (de ${candidates.length} candidatos)`);
+        } else {
+          // Fallback final: o próprio advogado do caso
+          convUpdate.assigned_user_id = effectiveLawyerId;
+          this.logger.log(`[LEGAL] Atendente fallback: advogado ${effectiveLawyerId}`);
+        }
+      } catch {}
+    }
+
+    await this.prisma.conversation.updateMany({
+      where: { lead_id: leadId },
+      data: convUpdate,
+    }).catch(() => {});
+
     try {
       this.chatGateway.emitNewLegalCase(effectiveLawyerId, {
         caseId: legalCase.id,
@@ -604,7 +883,43 @@ export class LegalCasesService {
       });
     } catch {}
 
+    // Vincular publicações DJEN existentes com o mesmo número de processo
+    await this.reconcileDjenPublications(legalCase.id, data.case_number);
+
     return legalCase;
+  }
+
+  // ─── Vincular publicações DJEN ao processo recém-criado ─────────
+
+  private async reconcileDjenPublications(caseId: string, caseNumber?: string) {
+    if (!caseNumber) return;
+    try {
+      const result = await this.prisma.djenPublication.updateMany({
+        where: {
+          legal_case_id: null,
+          numero_processo: caseNumber.replace(/[.\-]/g, ''), // normalizar para comparação
+        },
+        data: { legal_case_id: caseId },
+      });
+
+      // Tentar também com o número formatado (com pontos e traços)
+      if (result.count === 0) {
+        const result2 = await this.prisma.djenPublication.updateMany({
+          where: {
+            legal_case_id: null,
+            numero_processo: caseNumber,
+          },
+          data: { legal_case_id: caseId },
+        });
+        if (result2.count > 0) {
+          this.logger.log(`[LEGAL] ${result2.count} publicação(ões) DJEN vinculadas ao processo ${caseId}`);
+        }
+      } else {
+        this.logger.log(`[LEGAL] ${result.count} publicação(ões) DJEN vinculadas ao processo ${caseId}`);
+      }
+    } catch (e: any) {
+      this.logger.warn(`[LEGAL] Falha ao reconciliar DJEN: ${e.message}`);
+    }
   }
 
   // ─── REPARO: promove leads com processo ativo para is_client ────
@@ -664,8 +979,12 @@ export class LegalCasesService {
       finalLeadId = data.lead_id;
 
     } else if (data.lead_phone) {
-      const normalizedPhone = data.lead_phone.replace(/\D/g, '');
+      let normalizedPhone = data.lead_phone.replace(/\D/g, '');
       if (!normalizedPhone) throw new BadRequestException('Telefone inválido.');
+      if (normalizedPhone.length <= 11) normalizedPhone = '55' + normalizedPhone;
+      if (normalizedPhone.length === 13 && normalizedPhone.startsWith('55') && normalizedPhone[4] === '9') {
+        normalizedPhone = normalizedPhone.slice(0, 4) + normalizedPhone.slice(5);
+      }
 
       // Verifica se já existe lead com esse telefone
       const byPhone = await this.prisma.lead.findFirst({
@@ -747,20 +1066,61 @@ export class LegalCasesService {
     return updated;
   }
 
-  async updateTrackingStage(id: string, trackingStage: string, tenantId?: string) {
+  async updateTrackingStage(
+    id: string,
+    trackingStage: string,
+    tenantId?: string,
+    sentenceData?: { sentence_value?: number; sentence_date?: string; sentence_type?: string },
+  ) {
     await this.verifyTenantOwnership(id, tenantId);
     const valid = TRACKING_STAGES.find(s => s.id === trackingStage);
     if (!valid) throw new BadRequestException(`Stage inválido: ${trackingStage}`);
 
     const current = await this.prisma.legalCase.findUnique({
       where: { id },
-      select: { tracking_stage: true, lead_id: true, case_number: true, legal_area: true },
+      select: { tracking_stage: true, lead_id: true, case_number: true, legal_area: true, in_tracking: true },
     });
+
+    if (!current?.in_tracking) {
+      throw new BadRequestException('Este caso ainda não foi enviado para acompanhamento. Use "Enviar para Processos" primeiro.');
+    }
+
+    // Dados adicionais para EXECUCAO: valor da condenação + sentença
+    const extraData: any = {};
+    if (trackingStage === 'EXECUCAO' && sentenceData) {
+      if (sentenceData.sentence_value !== undefined && sentenceData.sentence_value !== null) {
+        extraData.sentence_value = sentenceData.sentence_value;
+      }
+      if (sentenceData.sentence_date) {
+        extraData.sentence_date = new Date(sentenceData.sentence_date);
+      }
+      if (sentenceData.sentence_type) {
+        extraData.sentence_type = sentenceData.sentence_type;
+      }
+    }
 
     const result = await this.prisma.legalCase.update({
       where: { id },
-      data: { tracking_stage: trackingStage, stage_changed_at: new Date() },
+      data: { tracking_stage: trackingStage, stage_changed_at: new Date(), ...extraData },
     });
+
+    // Recalcular honorários de êxito quando sentence_value é preenchido
+    if (extraData.sentence_value) {
+      try {
+        const exitoHonorarios = await this.prisma.caseHonorario.findMany({
+          where: { legal_case_id: id, type: { in: ['EXITO', 'MISTO'] }, success_percentage: { not: null }, status: 'ATIVO' },
+        });
+        const sentenceValue = Number(extraData.sentence_value);
+        for (const h of exitoHonorarios) {
+          const percentage = Number(h.success_percentage);
+          const calculatedValue = Math.round(sentenceValue * percentage) / 100;
+          await this.prisma.caseHonorario.update({ where: { id: h.id }, data: { calculated_value: calculatedValue } });
+          this.logger.log(`[EXECUCAO] Êxito recalculado: ${h.id} | ${percentage}% de R$ ${sentenceValue} = R$ ${calculatedValue}`);
+        }
+      } catch (e: any) {
+        this.logger.warn(`[EXECUCAO] Falha ao recalcular êxito: ${e.message}`);
+      }
+    }
 
     if (current?.lead_id) {
       this.appendCaseStageToMemory(current.lead_id, current.tracking_stage, trackingStage, valid.label, current.case_number, current.legal_area).catch(err =>
@@ -900,10 +1260,10 @@ export class LegalCasesService {
 
     const lawyer = await this.prisma.user.findUnique({
       where: { id: lawyerId },
-      select: { id: true, name: true, role: true },
+      select: { id: true, name: true, roles: true },
     });
     if (!lawyer) throw new BadRequestException('Advogado não encontrado.');
-    if (!['ADMIN', 'ADVOGADO'].includes(lawyer.role)) {
+    if (!lawyer.roles?.some((r: string) => ['ADMIN', 'ADVOGADO'].includes(r))) {
       throw new BadRequestException('Usuário não tem perfil de advogado.');
     }
 
@@ -1039,7 +1399,7 @@ FICHA TRABALHISTA: ${legalCase.lead?.ficha_trabalhista ? `${legalCase.lead.ficha
     const openai = new OpenAI({ apiKey });
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4.1-mini',
       temperature: 0.3,
       messages: [
         {

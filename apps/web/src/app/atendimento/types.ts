@@ -31,6 +31,8 @@ export interface ConversationSummary {
   stageEnteredAt?: string | null;
   nextStep?: string | null;
   activeTask?: ActiveTask | null;
+  hasNotes?: boolean;
+  isClient?: boolean;
 }
 
 export interface MessageReaction {
@@ -56,4 +58,14 @@ export interface MessageItem {
   media?: { original_url?: string; mime_type?: string; duration?: number | null; original_name?: string | null } | null;
   reactions?: MessageReaction[];
   skill?: { id: string; name: string; area: string } | null;
+}
+
+export interface ConversationNoteItem {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  text: string;
+  created_at: string;
+  updated_at: string;
+  user: { id: string; name: string };
 }

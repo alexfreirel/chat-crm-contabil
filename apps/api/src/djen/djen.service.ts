@@ -1,8 +1,9 @@
-import { Injectable, Logger, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ConflictException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { CalendarService } from '../calendar/calendar.service';
+import { WhatsappService } from '../whatsapp/whatsapp.service';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -168,6 +169,7 @@ export class DjenService {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly calendarService: CalendarService,
+    @Inject(forwardRef(() => WhatsappService)) private readonly whatsappService: WhatsappService,
   ) {}
 
   /** Cron diário às 8h — sincroniza publicações de ontem e hoje */
@@ -216,6 +218,12 @@ export class DjenService {
     let errors = 0;
     let tasksCreated = 0;
 
+    // Carregar processos ignorados (renúncia) — 1 query antes do loop
+    const ignoredRows = await this.prisma.djenIgnoredProcess.findMany({
+      select: { numero_processo: true },
+    });
+    const ignoredSet = new Set(ignoredRows.map((r: any) => r.numero_processo));
+
     for (const item of items) {
       try {
         const comunicacaoId = item.id ?? item.idComunicacao ?? item.comunicacaoId;
@@ -229,12 +237,15 @@ export class DjenService {
 
         // Tenta vincular ao LegalCase pelo número do processo
         let legalCaseId: string | null = null;
-        let legalCase: { id: string; lawyer_id: string; tenant_id: string | null } | null = null;
+        let legalCase: { id: string; lawyer_id: string; tenant_id: string | null; renounced: boolean; lead?: { id: string; name: string | null; phone: string } | null } | null = null;
 
         if (numeroProcesso) {
           legalCase = await this.prisma.legalCase.findFirst({
             where: { case_number: numeroProcesso, in_tracking: true },
-            select: { id: true, lawyer_id: true, tenant_id: true },
+            select: {
+              id: true, lawyer_id: true, tenant_id: true, renounced: true,
+              lead: { select: { id: true, name: true, phone: true } },
+            },
           });
           if (legalCase) legalCaseId = legalCase.id;
         }
@@ -265,8 +276,23 @@ export class DjenService {
         });
         saved++;
 
-        // ─── Auto-criar tarefa/audiência ao vincular publicação a um processo ─────
-        if (legalCase && pub) {
+        // Auto-arquivar publicações de processos renunciados ou ignorados
+        const shouldAutoArchive =
+          (legalCase?.renounced) || ignoredSet.has(numeroProcesso);
+        if (shouldAutoArchive && !pub.archived) {
+          await this.prisma.djenPublication.update({
+            where: { id: pub.id },
+            data: { archived: true, viewed_at: pub.viewed_at || new Date() },
+          });
+          this.logger.log(`[DJEN] Publicação ${pub.id} auto-arquivada (processo renunciado/ignorado: ${numeroProcesso})`);
+        }
+
+        // ─── Notificações e memória ─────
+        if (legalCase && pub && !shouldAutoArchive) {
+          /*
+           * Auto-criação de tarefas DESATIVADA — o advogado cria manualmente.
+           * Para reativar, descomentar o bloco abaixo.
+           *
           const classification = classifyPublication(tipoComunicacao, assunto, conteudo);
           if (classification) {
             try {
@@ -408,6 +434,45 @@ export class DjenService {
               this.logger.warn(`[DJEN] Falha ao criar tarefa automática: ${e.message}`);
             }
           }
+
+          */ // fim do bloco de auto-criação de tarefas desativado
+
+          // ─── Garantir que a conversa do lead tenha advogado atribuído ─────
+          if (legalCase.lead?.id && legalCase.lawyer_id) {
+            await this.prisma.conversation.updateMany({
+              where: { lead_id: legalCase.lead.id, assigned_lawyer_id: null },
+              data: { assigned_lawyer_id: legalCase.lawyer_id },
+            });
+          }
+
+          // ─── Analisar publicação com IA ANTES de notificar ─────────
+          let aiResumo: string | null = null;
+          let aiAnalysis: any = null;
+          try {
+            aiAnalysis = await this.analyzePublication(pub.id);
+            aiResumo = aiAnalysis?.resumo || null;
+          } catch (e: any) {
+            this.logger.warn(`[DJEN] Análise IA falhou (notificação seguirá sem resumo): ${e.message}`);
+          }
+
+          // ─── Notificar lead via WhatsApp com detalhes da movimentação ─────
+          this.notifyLeadAboutMovement(
+            pub, legalCase, tipoComunicacao, numeroProcesso, dataDisp,
+            assunto, aiAnalysis,
+          ).catch(e =>
+            this.logger.warn(`[DJEN] Falha ao notificar lead: ${e.message}`),
+          );
+
+          // ─── Atualizar memória da IA com a análise completa ─────────
+          if (legalCase.lead?.id) {
+            this.saveAnalysisToMemory(legalCase.lead.id, pub, aiAnalysis || {
+              resumo: `${tipoComunicacao || 'Publicação'}${assunto ? ': ' + assunto : ''}`,
+              estagio_sugerido: null, juizo: null,
+              parte_autora: pub.parte_autora || null,
+              parte_rea: pub.parte_rea || null,
+              urgencia: 'NORMAL',
+            }).catch(e => this.logger.warn(`[DJEN] Falha ao atualizar memória do lead: ${e.message}`));
+          }
         }
       } catch (e) {
         this.logger.error(`[DJEN] Erro ao salvar publicação: ${e}`);
@@ -510,6 +575,7 @@ export class DjenService {
               case_number: true,
               legal_area: true,
               tracking_stage: true,
+              renounced: true,
               lead: { select: { name: true } },
             },
           },
@@ -522,10 +588,21 @@ export class DjenService {
     ]);
 
     const unreadCount = await this.prisma.djenPublication.count({
-      where: { viewed_at: null, archived: false },
+      where: { viewed_at: null, archived: false, data_disponibilizacao: { gte: since } },
     });
 
-    return { items, total, page, limit, unreadCount };
+    // Enriquecer com flag "ignored" para publicações de processos na lista de ignorados
+    const ignoredRows = await this.prisma.djenIgnoredProcess.findMany({
+      select: { numero_processo: true },
+    });
+    const ignoredSet = new Set(ignoredRows.map((r: any) => r.numero_processo));
+
+    const enrichedItems = items.map((item: any) => ({
+      ...item,
+      ignored: ignoredSet.has(item.numero_processo) || (item.legal_case as any)?.renounced === true,
+    }));
+
+    return { items: enrichedItems, total, page, limit, unreadCount };
   }
 
   async findByCase(legalCaseId: string) {
@@ -649,6 +726,27 @@ export class DjenService {
       ? trackingStage
       : 'DISTRIBUIDO';
 
+    // Extrair dados da análise IA que já estão salvos na publicação ou no raw_json
+    // Se a publicação já foi analisada, parte_autora/parte_rea/etc estão preenchidos
+    // Senão, tenta extrair do conteúdo via regex básico
+    const parteRea = pub.parte_rea || null;
+    const rawAnalysis = (pub as any).raw_json || {};
+
+    // Tentar extrair juízo do conteúdo (ex: "1ª Vara do Trabalho", "2ª Vara Cível")
+    let court: string | null = null;
+    const conteudo = pub.conteudo || '';
+    const courtMatch = conteudo.match(/(\d+ª?\s*Vara\s+[\w\s]+?)(?:\s*[-–]|\s*de\s+\w)/i);
+    if (courtMatch) court = courtMatch[1].trim();
+
+    // Tentar extrair valor da causa (ex: "R$ 50.000,00")
+    let claimValue: number | null = null;
+    const valorMatch = conteudo.match(/(?:valor\s+(?:da\s+)?causa|valor\s+(?:do\s+)?débito|valor\s+exequ?endo)[:\s]*R?\$?\s*([\d.,]+)/i);
+    if (valorMatch) {
+      const cleanVal = valorMatch[1].replace(/\./g, '').replace(',', '.');
+      const parsed = parseFloat(cleanVal);
+      if (!isNaN(parsed) && parsed > 0) claimValue = parsed;
+    }
+
     const legalCase = await this.prisma.legalCase.create({
       data: {
         lead_id: lead.id,
@@ -661,6 +759,10 @@ export class DjenService {
         filed_at: pub.data_disponibilizacao,
         legal_area: resolvedLegalArea,
         stage_changed_at: new Date(),
+        // Campos pré-preenchidos pela análise IA
+        opposing_party: parteRea,
+        court: court,
+        claim_value: claimValue,
       },
     });
 
@@ -697,6 +799,76 @@ export class DjenService {
         stage_entered_at: new Date(),
       },
     });
+
+    // Lead virou cliente (is_client=true, stage=FINALIZADO) → sai da aba Leads automaticamente.
+    // Garantir que exista ao menos uma conversa (clientes cadastrados só via DJEN podem não ter)
+    const djenConvo = await this.prisma.conversation.findFirst({
+      where: { lead_id: lead.id },
+      select: { id: true },
+    });
+    if (!djenConvo) {
+      await this.prisma.conversation.create({
+        data: {
+          lead_id: lead.id,
+          tenant_id: tenantId || null,
+          instance_name: process.env.EVOLUTION_INSTANCE_NAME || 'whatsapp',
+          status: 'ABERTO',
+          last_message_at: new Date(),
+        },
+      });
+      this.logger.log(`[DJEN] Conversa criada para lead ${lead.id} (cadastrado só via DJEN)`);
+    }
+
+    // Resolver atendente responsável:
+    // 1ª: OPERADOR/COMERCIAL → 2ª: ADVOGADO/ADMIN → 3ª: o próprio advogado do caso
+    let resolvedAttendantId: string | undefined;
+    try {
+      let candidates = await this.prisma.user.findMany({
+        where: {
+          roles: { hasSome: ['OPERADOR', 'COMERCIAL'] },
+          ...(tenantId ? { tenant_id: tenantId } : {}),
+        },
+        select: { id: true },
+      });
+      if (candidates.length === 0) {
+        candidates = await this.prisma.user.findMany({
+          where: {
+            roles: { hasSome: ['ADVOGADO', 'ADMIN'] },
+            ...(tenantId ? { tenant_id: tenantId } : {}),
+          },
+          select: { id: true },
+        });
+      }
+      resolvedAttendantId = candidates.length > 0
+        ? candidates[Math.floor(Math.random() * candidates.length)].id
+        : lawyerId; // fallback final: o próprio advogado
+      this.logger.log(`[DJEN] Atendente resolvido: ${resolvedAttendantId}`);
+    } catch {
+      resolvedAttendantId = lawyerId;
+    }
+
+    // Atualizar conversas: desligar IA, atribuir advogado, atendente e área jurídica
+    await this.prisma.conversation.updateMany({
+      where: { lead_id: lead.id },
+      data: {
+        ai_mode: false,
+        assigned_lawyer_id: lawyerId,
+        assigned_user_id: resolvedAttendantId,
+        legal_area: resolvedLegalArea,
+      },
+    });
+
+    // ─── Atualizar memória da IA com dados do processo e publicação ─────────
+    this.initializeProcessMemory(lead.id, {
+      caseNumber: pub.numero_processo,
+      legalArea: resolvedLegalArea,
+      trackingStage: finalTrackingStage,
+      tipoComunicacao: pub.tipo_comunicacao,
+      assunto: pub.assunto,
+      parteAutora: pub.parte_autora,
+      parteRea: pub.parte_rea,
+      dataDisponibilizacao: pub.data_disponibilizacao,
+    }).catch(e => this.logger.warn(`[DJEN] Falha ao inicializar memória do lead ${lead.id}: ${e.message}`));
 
     this.logger.log(
       `[DJEN] Processo ${legalCase.id} criado a partir da publicação ${id} | ` +
@@ -742,31 +914,53 @@ export class DjenService {
       'INSTRUCAO', 'JULGAMENTO', 'RECURSO', 'TRANSITADO', 'EXECUCAO', 'ENCERRADO',
     ];
 
-    const DEFAULT_DJEN_PROMPT = `Você é um assistente jurídico especializado em análise de publicações do DJEN (Diário da Justiça Eletrônico) brasileiro. Analise a publicação e retorne um JSON com os campos abaixo. Extraia as informações DIRETAMENTE do texto da publicação quando disponíveis — não invente dados.
+    const DEFAULT_DJEN_PROMPT = `Você é um advogado sênior analisando publicações do DJEN. Seu trabalho é ler o conteúdo COMPLETO da publicação e retornar um JSON que permita ao advogado entender tudo sem precisar ler o texto original.
 
-Campos obrigatórios:
-- resumo: string (máx 3 frases, PT-BR, linguagem direta para o advogado)
+CAMPOS PARA O ADVOGADO:
+
+- resumo: string — Resumo COMPLETO e detalhado da publicação. Inclua: o que foi decidido/determinado, fundamentação legal citada, valores mencionados, prazos, consequências práticas. O advogado NÃO vai ler o texto original — seu resumo é a única fonte. Mínimo 5 frases, sem limite máximo. Linguagem técnica.
+
 - urgencia: "URGENTE" | "NORMAL" | "BAIXA"
-- tipo_acao: string (ação concreta que o advogado deve tomar)
-- prazo_dias: number (prazo em dias ÚTEIS)
+
+- tipo_acao: string — Ação CONCRETA e ESPECÍFICA que o advogado deve tomar. NÃO escreva "verificar publicação" ou "analisar sentença". Escreva exatamente o que fazer:
+  Exemplos BONS: "Interpor recurso inominado no prazo de 10 dias úteis", "Apresentar contrarrazões em 15 dias", "Nenhuma ação necessária — sentença favorável, aguardar trânsito em julgado", "Peticionar habilitação do crédito na execução", "Agendar perícia e preparar quesitos"
+  Exemplos RUINS: "Analisar sentença", "Verificar publicação", "Tomar providências"
+
+- prazo_dias: number (dias ÚTEIS para a ação)
 - estagio_sugerido: string | null (um de: ${STAGES.join(', ')})
-- tarefa_titulo: string (título curto da tarefa)
-- tarefa_descricao: string (descrição da tarefa, máx 200 chars)
-- orientacoes: string (observações estratégicas, máx 300 chars)
-- event_type: "AUDIENCIA" | "PRAZO" | "TAREFA" (AUDIENCIA se há audiência/sessão/julgamento com data marcada no texto; PRAZO se há prazo processual para o advogado cumprir; TAREFA para outros casos)
+- tarefa_titulo: string (título curto e específico da tarefa)
+- tarefa_descricao: string (o que fazer concretamente, máx 200 chars)
 
-Campos de extração (null se não encontrado no texto):
-- parte_autora: string | null (nome do autor/requerente/exequente)
-- parte_rea: string | null (nome do réu/requerido/executado)
-- juizo: string | null (vara, juízo ou tribunal onde tramita)
-- area_juridica: string | null (ex: "Trabalhista", "Cível", "Previdenciário", "Criminal", "Consumidor", "Família", "Tributário")
-- valor_causa: string | null (valor da causa se mencionado, formato "R$ X.XXX,XX")
-- data_audiencia: string | null (data e hora da audiência/sessão/perícia se mencionada EXPLICITAMENTE NO TEXTO, formato ISO "YYYY-MM-DDTHH:MM:00". IMPORTANTE: se a publicação for de perícia previdenciária (INSS) e não constar data no texto, retorne null — NÃO calcule nem invente data. Retorne null também se não for publicação de audiência ou perícia.)
-- data_prazo: string | null (data limite do prazo processual se mencionada NO TEXTO, formato ISO "YYYY-MM-DDTHH:MM:00", null se não houver prazo com data explícita)
+- orientacoes: string — Observações ESTRATÉGICAS para o advogado tomar decisão. Inclua:
+  • Análise do mérito (decisão foi favorável ou desfavorável? parcialmente?)
+  • Recomendação clara: recorrer, aceitar, negociar acordo, aguardar
+  • Fundamentos para a recomendação (ex: "sentença seguiu jurisprudência consolidada do TST, recurso tem baixa chance de êxito")
+  • Riscos de não agir (ex: "perda do prazo recursal implica trânsito em julgado")
+  • Se houver valores, comentar se são razoáveis
+  Mínimo 3 frases. Seja direto e opinativo — o advogado quer sua análise, não uma repetição da publicação.
 
-Critérios de urgência: URGENTE = citação/intimação com prazo curto (≤15 dias), sentença, audiência marcada, perícia designada. NORMAL = contestação, manifestação, despacho de rotina. BAIXA = distribuição, informativo, arquivamento.
-Critérios de estágio: citação→CITACAO, contestação→CONTESTACAO, réplica→REPLICA, perícia/laudo/perito designado→PERICIA_AGENDADA, audiência/instrução→INSTRUCAO, sentença/julgamento→JULGAMENTO, recurso→RECURSO, trânsito em julgado→TRANSITADO, execução→EXECUCAO, distribuição→DISTRIBUIDO, encerramento/extinção→ENCERRADO.
-Critérios de event_type: use AUDIENCIA apenas se houver data/hora explícita no texto para audiência ou sessão. Para perícia sem data explícita no texto use TAREFA. Para prazos com data explícita use PRAZO. Nos demais casos use TAREFA.`;
+- event_type: "AUDIENCIA" | "PRAZO" | "TAREFA"
+
+CAMPOS PARA O CLIENTE (linguagem acessível — enviados via WhatsApp):
+- resumo_cliente: string (explicação completa para leigo, sem termos jurídicos. Máx 5 frases.)
+- proximo_passo_cliente: string | null (o que o cliente precisa saber/fazer)
+- fase_processo_cliente: string | null (em que fase o processo está, para leigo)
+- orientacao_cliente: string | null (orientações práticas)
+- prazo_cliente: string | null (prazo em linguagem acessível)
+- local_evento: string | null (endereço/link se aplicável)
+
+CAMPOS DE EXTRAÇÃO (null se não encontrado):
+- parte_autora: string | null
+- parte_rea: string | null
+- juizo: string | null
+- area_juridica: string | null
+- valor_causa: string | null (formato "R$ X.XXX,XX")
+- data_audiencia: string | null (ISO "YYYY-MM-DDTHH:MM:00". Se perícia INSS sem data, retorne null.)
+- data_prazo: string | null (ISO "YYYY-MM-DDTHH:MM:00")
+
+Critérios de urgência: URGENTE = citação/intimação com prazo ≤15 dias, sentença, audiência marcada, perícia designada. NORMAL = contestação, manifestação, despacho. BAIXA = distribuição, informativo, arquivamento.
+Critérios de estágio: citação→CITACAO, contestação→CONTESTACAO, réplica→REPLICA, perícia→PERICIA_AGENDADA, audiência→INSTRUCAO, sentença→JULGAMENTO, recurso→RECURSO, trânsito→TRANSITADO, execução→EXECUCAO, distribuição→DISTRIBUIDO, encerramento→ENCERRADO.
+Critérios de event_type: AUDIENCIA = data/hora explícita para audiência. PRAZO = data explícita de prazo. TAREFA = demais casos.`;
 
     // Usa prompt customizado do banco (se existir) ou o prompt padrão
     const customPrompt = await this.settings.getDjenPrompt();
@@ -781,7 +975,7 @@ Classe processual: ${pub.classe_processual || 'Não informado'}
 ${pub.legal_case ? `Processo vinculado: ${pub.legal_case.lead?.name || ''} — ${pub.legal_case.legal_area || ''} — Estágio atual: ${pub.legal_case.tracking_stage || ''}` : 'Processo: Não vinculado'}
 
 CONTEÚDO COMPLETO:
-${pub.conteudo.slice(0, 2000)}`;
+${pub.conteudo.slice(0, 6000)}`;
 
     // Resolve modelo configurado
     const configuredModel = await this.settings.getDjenModel();
@@ -796,7 +990,7 @@ ${pub.conteudo.slice(0, 2000)}`;
       const client = new Anthropic({ apiKey: anthropicKey });
       const message = await client.messages.create({
         model: configuredModel,
-        max_tokens: 1024,
+        max_tokens: 2048,
         temperature: 0.2,
         system: systemPrompt + '\n\nResponda APENAS com JSON válido, sem markdown ou explicações extras.',
         messages: [{ role: 'user', content: userPrompt }],
@@ -813,6 +1007,7 @@ ${pub.conteudo.slice(0, 2000)}`;
       const completion = await openai.chat.completions.create({
         model: configuredModel,
         temperature: 0.2,
+        max_tokens: 2048,
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: systemPrompt },
@@ -918,6 +1113,285 @@ ${pub.conteudo.slice(0, 2000)}`;
       });
     }
     this.logger.log(`[DJEN] Análise salva na memória do lead ${leadId}`);
+  }
+
+  // ─── Inicializar/atualizar memória da IA com dados do processo ────────────
+
+  /**
+   * Atualiza a AiMemory do lead com informações do processo DJEN.
+   * Preenche campos estruturados (case, parties, facts.timeline, djen_publications)
+   * para que a Sophia tenha contexto sobre o processo do cliente.
+   */
+  private async initializeProcessMemory(leadId: string, data: {
+    caseNumber: string;
+    legalArea: string;
+    trackingStage: string;
+    tipoComunicacao?: string | null;
+    assunto?: string | null;
+    parteAutora?: string | null;
+    parteRea?: string | null;
+    dataDisponibilizacao?: Date | null;
+  }): Promise<void> {
+    const existing = await this.prisma.aiMemory.findUnique({ where: { lead_id: leadId } });
+    let facts: any = {};
+    try {
+      facts = existing?.facts_json
+        ? (typeof existing.facts_json === 'string' ? JSON.parse(existing.facts_json as string) : existing.facts_json)
+        : {};
+    } catch { facts = {}; }
+
+    // ─── Migrar facts.case (singular) para facts.cases (array) se necessário ──
+    if (facts.case && !facts.cases) {
+      facts.cases = [facts.case];
+      delete facts.case;
+    }
+    facts.cases = facts.cases || [];
+
+    // Verificar se este processo já existe na memória (evitar duplicata)
+    const existingCase = facts.cases.find((c: any) => c.case_number === data.caseNumber);
+    if (existingCase) {
+      // Atualizar processo existente
+      existingCase.tracking_stage = data.trackingStage;
+      existingCase.status = 'processo_ativo';
+      if (data.parteRea && !existingCase.opposing_party) existingCase.opposing_party = data.parteRea;
+    } else {
+      // Adicionar novo processo
+      facts.cases.push({
+        case_number: data.caseNumber,
+        area: this.normalizeAreaForMemory(data.legalArea),
+        status: 'processo_ativo',
+        tracking_stage: data.trackingStage,
+        summary: `Processo nº ${data.caseNumber} — ${this.normalizeAreaForMemory(data.legalArea)}`,
+        opposing_party: data.parteRea || null,
+        client_role: data.parteAutora ? 'Parte autora' : null,
+      });
+    }
+
+    // Manter compatibilidade: facts.case aponta para o mais recente (IA legada)
+    facts.case = facts.cases[facts.cases.length - 1];
+
+    // Atualizar partes do caso mais recente
+    if (data.parteAutora || data.parteRea) {
+      facts.parties = facts.parties || {};
+      if (data.parteAutora && !facts.parties.client_role) facts.parties.client_role = 'Parte autora';
+      if (data.parteRea && !facts.parties.counterparty_name) facts.parties.counterparty_name = data.parteRea;
+    }
+
+    // Adicionar timeline
+    facts.facts = facts.facts || {};
+    facts.facts.timeline = facts.facts.timeline || [];
+    const dateStr = data.dataDisponibilizacao
+      ? new Date(data.dataDisponibilizacao).toISOString().slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
+    facts.facts.timeline.push({
+      date: dateStr,
+      event: `Processo ${data.caseNumber} cadastrado via DJEN — ${data.tipoComunicacao || 'publicação'}${data.assunto ? ': ' + data.assunto : ''}`,
+      origin: 'DJEN',
+    });
+    if (facts.facts.timeline.length > 20) facts.facts.timeline = facts.facts.timeline.slice(-20);
+
+    // Adicionar à lista de publicações DJEN
+    const djenHistory: any[] = facts.djen_publications || [];
+    const pubEntry = {
+      date: dateStr,
+      tipo: data.tipoComunicacao || 'Publicação',
+      assunto: data.assunto || null,
+      resumo: `Processo ${data.caseNumber} cadastrado — ${this.normalizeAreaForMemory(data.legalArea)}`,
+      estagio: data.trackingStage,
+      parte_autora: data.parteAutora || null,
+      parte_rea: data.parteRea || null,
+      urgencia: 'NORMAL',
+    };
+    djenHistory.unshift(pubEntry);
+    if (djenHistory.length > 15) djenHistory.splice(15);
+    facts.djen_publications = djenHistory;
+
+    // Montar summary
+    const casesCount = facts.cases.length;
+    const summaryLine = casesCount > 1
+      ? `[${dateStr}] ${casesCount} processos ativos. Último: ${data.caseNumber} (${this.normalizeAreaForMemory(data.legalArea)}) — ${data.trackingStage}.`
+      : `[${dateStr}] Processo ${data.caseNumber} (${this.normalizeAreaForMemory(data.legalArea)}) cadastrado via DJEN. Estágio: ${data.trackingStage}.`;
+    const prevSummary = existing?.summary || '';
+    const newSummary = (summaryLine + (prevSummary ? '\n\n' + prevSummary : '')).slice(0, 2000);
+
+    if (existing) {
+      await this.prisma.aiMemory.update({
+        where: { lead_id: leadId },
+        data: { summary: newSummary, facts_json: facts, last_updated_at: new Date() },
+      });
+    } else {
+      await this.prisma.aiMemory.create({
+        data: { lead_id: leadId, summary: newSummary, facts_json: facts },
+      });
+    }
+    this.logger.log(`[DJEN] Memória da IA atualizada para lead ${leadId} — ${facts.cases.length} processo(s), último: ${data.caseNumber}`);
+  }
+
+  /** Normaliza área jurídica para formato legível */
+  private normalizeAreaForMemory(area: string): string {
+    const map: Record<string, string> = {
+      'CIVIL': 'Cível', 'TRABALHISTA': 'Trabalhista', 'PREVIDENCIARIO': 'Previdenciário',
+      'TRIBUTARIO': 'Tributário', 'FAMILIA': 'Família', 'CRIMINAL': 'Criminal',
+      'CONSUMIDOR': 'Consumidor', 'EMPRESARIAL': 'Empresarial', 'ADMINISTRATIVO': 'Administrativo',
+    };
+    return map[area.toUpperCase()] || area;
+  }
+
+  // ─── Notificação WhatsApp ao lead sobre movimentação ──────────────────────
+
+  /**
+   * Envia notificação WhatsApp ao lead quando publicação é vinculada a seu processo.
+   * Usa campos orientados ao cliente gerados pela IA (resumo_cliente, proximo_passo_cliente, etc.)
+   * Controles: horário comercial, deduplica por publicação, setting habilitável.
+   */
+  private async notifyLeadAboutMovement(
+    pub: { id: string; client_notified_at?: Date | null },
+    legalCase: { id: string; lead?: { id: string; name: string | null; phone: string } | null; tenant_id: string | null },
+    tipoComunicacao: string | null,
+    numeroProcesso: string,
+    dataDisp: Date,
+    assunto?: string | null,
+    aiAnalysis?: any | null,
+  ): Promise<void> {
+    // Já notificou para esta publicação
+    if (pub.client_notified_at) return;
+
+    // Lead deve existir e ter telefone
+    const lead = legalCase.lead;
+    if (!lead?.phone) return;
+
+    // Verificar setting (default: habilitado)
+    const notifyEnabled = await this.settings.get('DJEN_NOTIFY_CLIENT');
+    if (notifyEnabled === 'false') return;
+
+    // Horário comercial (Maceió/AL — UTC-3): 8h–20h, seg–sex
+    const now = new Date();
+    const maceioOffset = -3;
+    const maceioHour = (now.getUTCHours() + maceioOffset + 24) % 24;
+    const maceioDay = new Date(now.getTime() + maceioOffset * 3600000).getDay();
+    const isBusinessHours = maceioDay >= 1 && maceioDay <= 5 && maceioHour >= 8 && maceioHour < 20;
+
+    if (!isBusinessHours) {
+      this.logger.log(`[DJEN] Notificação adiada (fora do horário comercial) para lead ${lead.id}`);
+      return;
+    }
+
+    // Buscar instância WhatsApp do lead (da última conversa)
+    const lastConvo = await this.prisma.conversation.findFirst({
+      where: { lead_id: lead.id },
+      orderBy: { last_message_at: 'desc' },
+      select: { instance_name: true },
+    });
+    const instance = lastConvo?.instance_name || process.env.EVOLUTION_INSTANCE_NAME || 'whatsapp';
+
+    // Extrair campos da análise IA
+    const nome = lead.name?.split(' ')[0] || 'cliente';
+    const dataFmt = dataDisp.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const tipo = tipoComunicacao || 'Publicação';
+    const processoFmt = numeroProcesso.length > 20 ? numeroProcesso.slice(0, 20) + '…' : numeroProcesso;
+
+    // Campos orientados ao CLIENTE (gerados pela IA)
+    const resumoCliente = aiAnalysis?.resumo_cliente || aiAnalysis?.resumo || '';
+    const proximoPassoCliente = aiAnalysis?.proximo_passo_cliente || '';
+    const faseProcessoCliente = aiAnalysis?.fase_processo_cliente || '';
+    const orientacaoCliente = aiAnalysis?.orientacao_cliente || '';
+    const prazoCliente = aiAnalysis?.prazo_cliente || '';
+    const localEvento = aiAnalysis?.local_evento || '';
+
+    const customTemplate = await this.settings.getDjenNotifyTemplate();
+
+    let message: string;
+
+    if (customTemplate) {
+      // Template customizado: substituir variáveis
+      const vars: Record<string, string> = {
+        '{{nome}}': nome,
+        '{{processo}}': processoFmt,
+        '{{tipo}}': tipo,
+        '{{data}}': dataFmt,
+        '{{assunto}}': assunto || '',
+        '{{resumo}}': resumoCliente,
+        '{{proximo_passo}}': proximoPassoCliente,
+        '{{fase_processo}}': faseProcessoCliente,
+        '{{orientacao}}': orientacaoCliente,
+        '{{prazo}}': prazoCliente,
+        '{{local_evento}}': localEvento,
+      };
+
+      message = customTemplate;
+      for (const [key, val] of Object.entries(vars)) {
+        message = message.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), val);
+      }
+      // Remove linhas com variáveis vazias e colapsa quebras consecutivas
+      message = message
+        .split('\n')
+        .filter(line => line.trim() !== '' || line === '')
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n');
+    } else {
+      // Template padrão (fallback) — orientado ao cliente
+      const lines = [
+        `⚖️ *Movimentação no seu processo*`,
+        ``,
+        `Olá ${nome}! Houve uma nova movimentação no seu processo nº ${processoFmt}.`,
+        ``,
+        `📋 *Tipo:* ${tipo}`,
+      ];
+
+      if (assunto) lines.push(`📝 *Assunto:* ${assunto}`);
+      lines.push(`📅 *Data:* ${dataFmt}`);
+
+      if (resumoCliente) {
+        lines.push(``);
+        lines.push(`📖 *O que aconteceu:*`);
+        lines.push(resumoCliente);
+      }
+
+      if (faseProcessoCliente) {
+        lines.push(``);
+        lines.push(`📊 *Fase atual do processo:*`);
+        lines.push(faseProcessoCliente);
+      }
+
+      if (prazoCliente) {
+        lines.push(``);
+        lines.push(`⏰ *Prazo:* ${prazoCliente}`);
+      }
+
+      if (localEvento) {
+        lines.push(`📍 *Local:* ${localEvento}`);
+      }
+
+      if (proximoPassoCliente) {
+        lines.push(``);
+        lines.push(`✅ *Próximo passo:* ${proximoPassoCliente}`);
+      }
+
+      if (orientacaoCliente) {
+        lines.push(``);
+        lines.push(`💡 *Orientação:* ${orientacaoCliente}`);
+      }
+
+      lines.push(``);
+      lines.push(`Nosso advogado já foi notificado e está acompanhando. Se tiver dúvidas, pode nos chamar aqui!`);
+      lines.push(``);
+      lines.push(`André Lustosa Advogados`);
+
+      message = lines.join('\n');
+    }
+
+    try {
+      await this.whatsappService.sendText(lead.phone, message, instance);
+
+      await this.prisma.djenPublication.update({
+        where: { id: pub.id },
+        data: { client_notified_at: new Date() },
+      });
+
+      this.logger.log(`[DJEN] ✅ Lead ${lead.id} notificado sobre movimentação no processo ${numeroProcesso}`);
+    } catch (e: any) {
+      this.logger.warn(`[DJEN] Falha ao enviar WhatsApp para lead ${lead.id}: ${e.message}`);
+    }
   }
 
   // ─── Suggest Leads — Match automático por nome das partes ─────────────────
@@ -1026,5 +1500,43 @@ ${pub.conteudo.slice(0, 2000)}`;
       is_client: r.is_client,
       score: Number(r.score),
     }));
+  }
+
+  // ─── Ignorar processo (auto-arquivar publicações futuras) ─────
+
+  async ignoreProcess(numeroProcesso: string, tenantId?: string, reason?: string) {
+    const record = await this.prisma.djenIgnoredProcess.upsert({
+      where: { numero_processo: numeroProcesso },
+      update: { reason: reason || null },
+      create: {
+        numero_processo: numeroProcesso,
+        tenant_id: tenantId || null,
+        reason: reason || null,
+      },
+    });
+
+    // Auto-arquivar publicações existentes desse número
+    const archived = await this.prisma.djenPublication.updateMany({
+      where: { numero_processo: numeroProcesso, archived: false },
+      data: { archived: true, viewed_at: new Date() },
+    });
+
+    this.logger.log(`[DJEN] Processo ${numeroProcesso} ignorado — ${archived.count} publicação(ões) arquivada(s)`);
+    return { ...record, archivedCount: archived.count };
+  }
+
+  async unignoreProcess(numeroProcesso: string) {
+    await this.prisma.djenIgnoredProcess.delete({
+      where: { numero_processo: numeroProcesso },
+    }).catch(() => null); // Ignora se não existir
+    this.logger.log(`[DJEN] Processo ${numeroProcesso} removido da lista de ignorados`);
+    return { ok: true };
+  }
+
+  async listIgnoredProcesses(tenantId?: string) {
+    return this.prisma.djenIgnoredProcess.findMany({
+      where: tenantId ? { tenant_id: tenantId } : {},
+      orderBy: { created_at: 'desc' },
+    });
   }
 }

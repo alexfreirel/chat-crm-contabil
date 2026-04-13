@@ -24,6 +24,11 @@ export class CreateLeadDto {
   origin?: string;
 
   @IsOptional()
+  @IsString()
+  @IsIn(VALID_STAGES)
+  stage?: string;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
@@ -37,6 +42,10 @@ export class UpdateLeadDto {
   @IsOptional()
   @IsEmail({}, { message: 'Email invalido' })
   email?: string;
+
+  @IsOptional()
+  @IsString()
+  cpf_cnpj?: string;
 
   @IsOptional()
   @IsArray()

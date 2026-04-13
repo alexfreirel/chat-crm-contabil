@@ -6,6 +6,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { GoogleDriveService } from '../google-drive/google-drive.service';
+import { ChatGateway } from '../gateway/chat.gateway';
 
 const VALID_TYPES = [
   'INICIAL', 'CONTESTACAO', 'REPLICA', 'EMBARGOS',
@@ -27,7 +29,11 @@ const STATUS_TRANSITIONS: Record<string, string[]> = {
 export class PetitionsService {
   private readonly logger = new Logger(PetitionsService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private googleDrive: GoogleDriveService,
+    private gateway: ChatGateway,
+  ) {}
 
   // ─── Helpers ────────────────────────────────────────────
 
@@ -68,9 +74,14 @@ export class PetitionsService {
         type: true,
         status: true,
         template_id: true,
+        google_doc_id: true,
+        google_doc_url: true,
+        deadline_at: true,
+        review_notes: true,
         created_at: true,
         updated_at: true,
         created_by: { select: { id: true, name: true } },
+        reviewed_by: { select: { id: true, name: true } },
         _count: { select: { versions: true } },
       },
       orderBy: { updated_at: 'desc' },
@@ -85,6 +96,8 @@ export class PetitionsService {
       template_id?: string;
       content_json?: any;
       content_html?: string;
+      create_google_doc?: boolean;
+      deadline_at?: string;
     },
     userId: string,
     tenantId?: string,
@@ -110,6 +123,52 @@ export class PetitionsService {
       }
     }
 
+    // Google Drive: criar Doc se configurado e solicitado
+    let googleDocId: string | null = null;
+    let googleDocUrl: string | null = null;
+
+    if (data.create_google_doc !== false) {
+      try {
+        const configured = await this.googleDrive.isConfigured();
+        if (configured) {
+          this.logger.log(`Google Drive configurado. Criando Doc para petição "${data.title}" no caso ${caseId}...`);
+          const legalCase = await this.prisma.legalCase.findUnique({
+            where: { id: caseId },
+            select: { lead_id: true, legal_area: true, case_number: true },
+          });
+          if (legalCase) {
+            const caseLabel = [legalCase.legal_area, legalCase.case_number || 'Novo Caso']
+              .filter(Boolean)
+              .join(' - ');
+
+            this.logger.log(`Criando pasta do caso: ${caseLabel}`);
+            const folderId = await this.googleDrive.ensureCaseFolder(
+              caseId,
+              legalCase.lead_id,
+              caseLabel,
+            );
+            this.logger.log(`Pasta do caso OK: ${folderId}. Criando Google Doc...`);
+
+            const doc = await this.googleDrive.createDoc(
+              data.title,
+              folderId,
+              contentHtml || undefined,
+            );
+            googleDocId = doc.docId;
+            googleDocUrl = doc.docUrl;
+            this.logger.log(`Google Doc criado com sucesso: ${googleDocId} - ${googleDocUrl}`);
+          } else {
+            this.logger.warn(`Caso ${caseId} não encontrado para criar Google Doc`);
+          }
+        }
+      } catch (err: any) {
+        // Log detalhado do erro para diagnóstico
+        const errDetails = err?.response?.data || err?.message || err;
+        this.logger.error(`ERRO ao criar Google Doc: ${JSON.stringify(errDetails)}`, err.stack);
+        // Não re-throw — a petição será criada sem Google Doc (editor local como fallback)
+      }
+    }
+
     const petition = await this.prisma.casePetition.create({
       data: {
         legal_case_id: caseId,
@@ -120,6 +179,9 @@ export class PetitionsService {
         content_json: contentJson,
         content_html: contentHtml,
         template_id: data.template_id || null,
+        deadline_at: data.deadline_at ? new Date(data.deadline_at) : null,
+        google_doc_id: googleDocId,
+        google_doc_url: googleDocUrl,
       },
       include: {
         created_by: { select: { id: true, name: true } },
@@ -135,6 +197,7 @@ export class PetitionsService {
       where: { id: petitionId },
       include: {
         created_by: { select: { id: true, name: true } },
+        reviewed_by: { select: { id: true, name: true } },
         template: { select: { id: true, name: true } },
         _count: { select: { versions: true } },
       },
@@ -148,7 +211,14 @@ export class PetitionsService {
 
   async update(
     petitionId: string,
-    data: { content_json?: any; content_html?: string; title?: string },
+    data: {
+      content_json?: any;
+      content_html?: string;
+      title?: string;
+      deadline_at?: string;
+      google_doc_url?: string;
+      google_doc_id?: string;
+    },
     tenantId?: string,
   ) {
     await this.verifyPetitionAccess(petitionId, tenantId);
@@ -157,6 +227,9 @@ export class PetitionsService {
     if (data.content_json !== undefined) updateData.content_json = data.content_json;
     if (data.content_html !== undefined) updateData.content_html = data.content_html;
     if (data.title) updateData.title = data.title;
+    if (data.deadline_at !== undefined) updateData.deadline_at = data.deadline_at ? new Date(data.deadline_at) : null;
+    if (data.google_doc_url !== undefined) updateData.google_doc_url = data.google_doc_url || null;
+    if (data.google_doc_id !== undefined) updateData.google_doc_id = data.google_doc_id || null;
 
     return this.prisma.casePetition.update({
       where: { id: petitionId },
@@ -201,7 +274,44 @@ export class PetitionsService {
       );
     }
 
+    // WebSocket: notificar advogado quando petição enviada para revisão
+    if (newStatus === 'EM_REVISAO') {
+      this.notifyPetitionStatusChange(petition, newStatus, petition.status).catch(() => {});
+    }
+
     return result;
+  }
+
+  /** Notifica via WebSocket os envolvidos sobre mudança de status */
+  private async notifyPetitionStatusChange(
+    petition: any,
+    newStatus: string,
+    previousStatus: string,
+    reviewNotes?: string,
+  ) {
+    const legalCase = await this.prisma.legalCase.findUnique({
+      where: { id: petition.legal_case_id },
+      select: { lawyer_id: true },
+    });
+
+    const data = {
+      petitionId: petition.id,
+      title: petition.title,
+      status: newStatus,
+      previousStatus,
+      caseId: petition.legal_case_id,
+      reviewNotes,
+    };
+
+    // Notificar advogado (quando estagiário envia para revisão)
+    if (newStatus === 'EM_REVISAO' && legalCase?.lawyer_id) {
+      this.gateway.emitPetitionStatusChange(legalCase.lawyer_id, data);
+    }
+
+    // Notificar estagiário (quando advogado aprova ou devolve)
+    if ((newStatus === 'APROVADA' || newStatus === 'RASCUNHO') && petition.created_by_id) {
+      this.gateway.emitPetitionStatusChange(petition.created_by_id, { ...data, reviewNotes });
+    }
   }
 
   private async appendPetitionToMemory(petition: any, newStatus: string): Promise<void> {
@@ -234,6 +344,64 @@ export class PetitionsService {
     } else {
       await this.prisma.aiMemory.create({ data: { lead_id: legalCase.lead_id, summary: newSummary, facts_json: facts } });
     }
+  }
+
+  /**
+   * Review de petição pelo advogado: aprovar ou devolver com notas.
+   */
+  async reviewPetition(
+    petitionId: string,
+    action: 'APROVAR' | 'DEVOLVER',
+    notes: string | undefined,
+    reviewerId: string,
+    tenantId?: string,
+  ) {
+    const petition = await this.verifyPetitionAccess(petitionId, tenantId);
+
+    if (action === 'APROVAR') {
+      if (petition.status !== 'EM_REVISAO') {
+        throw new BadRequestException('Só é possível aprovar petições em revisão');
+      }
+      const result = await this.prisma.casePetition.update({
+        where: { id: petitionId },
+        data: {
+          status: 'APROVADA',
+          review_notes: notes || null,
+          reviewed_by_id: reviewerId,
+          reviewed_at: new Date(),
+        },
+        select: { id: true, status: true, review_notes: true, updated_at: true },
+      });
+
+      this.appendPetitionToMemory(petition, 'APROVADA').catch(err =>
+        this.logger.warn(`[MEMORY] Falha ao registrar petição na memória: ${err}`),
+      );
+
+      // WebSocket: notificar estagiário que petição foi aprovada
+      this.notifyPetitionStatusChange(petition, 'APROVADA', 'EM_REVISAO', notes).catch(() => {});
+
+      return result;
+    }
+
+    // DEVOLVER
+    if (petition.status !== 'EM_REVISAO') {
+      throw new BadRequestException('Só é possível devolver petições em revisão');
+    }
+    const devolvido = await this.prisma.casePetition.update({
+      where: { id: petitionId },
+      data: {
+        status: 'RASCUNHO',
+        review_notes: notes || null,
+        reviewed_by_id: reviewerId,
+        reviewed_at: new Date(),
+      },
+      select: { id: true, status: true, review_notes: true, updated_at: true },
+    });
+
+    // WebSocket: notificar estagiário que petição foi devolvida
+    this.notifyPetitionStatusChange(petition, 'RASCUNHO', 'EM_REVISAO', notes).catch(() => {});
+
+    return devolvido;
   }
 
   async saveVersion(
@@ -286,6 +454,52 @@ export class PetitionsService {
       },
       orderBy: { version: 'desc' },
     });
+  }
+
+  /**
+   * Sincroniza conteúdo do Google Doc para o banco de dados.
+   */
+  async syncFromGoogleDoc(petitionId: string, tenantId?: string) {
+    const petition = await this.verifyPetitionAccess(petitionId, tenantId);
+
+    if (!petition.google_doc_id) {
+      throw new BadRequestException('Petição não possui Google Doc vinculado');
+    }
+
+    const content = await this.googleDrive.getDocContent(petition.google_doc_id);
+
+    const updated = await this.prisma.casePetition.update({
+      where: { id: petitionId },
+      data: {
+        content_html: content,
+        updated_at: new Date(),
+      },
+      select: {
+        id: true,
+        title: true,
+        content_html: true,
+        google_doc_id: true,
+        google_doc_url: true,
+        updated_at: true,
+      },
+    });
+
+    this.logger.log(`Petição ${petitionId} sincronizada do Google Doc ${petition.google_doc_id}`);
+    return updated;
+  }
+
+  /**
+   * Exporta petição como PDF via Google Docs.
+   */
+  async exportPdf(petitionId: string, tenantId?: string) {
+    const petition = await this.verifyPetitionAccess(petitionId, tenantId);
+
+    if (!petition.google_doc_id) {
+      throw new BadRequestException('Petição não possui Google Doc vinculado');
+    }
+
+    const buffer = await this.googleDrive.exportAsPdf(petition.google_doc_id);
+    return { buffer, filename: `${petition.title}.pdf` };
   }
 
   async remove(petitionId: string, tenantId?: string) {

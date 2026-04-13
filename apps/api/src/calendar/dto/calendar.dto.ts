@@ -10,7 +10,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-const EVENT_TYPES = ['CONSULTA', 'TAREFA', 'AUDIENCIA', 'PRAZO', 'OUTRO'] as const;
+const EVENT_TYPES = ['CONSULTA', 'TAREFA', 'AUDIENCIA', 'PERICIA', 'PRAZO', 'OUTRO'] as const;
 const EVENT_STATUSES = ['AGENDADO', 'CONFIRMADO', 'CONCLUIDO', 'CANCELADO', 'ADIADO'] as const;
 
 // ─── Reminder sub-DTO ─────────────────────────────────
@@ -135,6 +135,12 @@ export class UpdateEventDto {
 
   @IsOptional() @IsString()
   appointment_type_id?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ReminderDto)
+  reminders?: ReminderDto[];
 }
 
 // ─── Appointment Types ────────────────────────────────

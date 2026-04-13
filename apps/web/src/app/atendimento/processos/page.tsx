@@ -14,7 +14,9 @@ import api from '@/lib/api';
 import { TRACKING_STAGES, findTrackingStage } from '@/lib/legalStages';
 import { useRole } from '@/lib/useRole';
 import { ClientPanel } from '@/components/ClientPanel';
+import { ChatPopup } from '@/components/ChatPopup';
 import { EventModal } from '@/components/EventModal';
+import TabHonorarios from '@/app/atendimento/workspace/[caseId]/components/TabHonorarios';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -54,9 +56,15 @@ interface LegalCase {
   } | null;
   calendar_events?: {
     id: string;
+    type: string;
     start_at: string;
     title: string;
     location: string | null;
+  }[];
+  honorarios?: {
+    total_value: string;
+    type: string;
+    payments: { amount: string; status: string }[];
   }[];
   _count?: { tasks: number; events: number; djen_publications: number };
 }
@@ -85,7 +93,7 @@ interface AiAnalysis {
   tarefa_titulo: string;
   tarefa_descricao: string;
   orientacoes: string;
-  event_type: 'AUDIENCIA' | 'PRAZO' | 'TAREFA';
+  event_type: 'AUDIENCIA' | 'PERICIA' | 'PRAZO' | 'TAREFA';
   data_audiencia: string | null;
   data_prazo: string | null;
 }
@@ -166,11 +174,12 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string; borderColo
 };
 
 const EVENT_TYPES = [
-  { id: 'PUBLICACAO', label: 'Publicação', color: '#3b82f6' },
-  { id: 'DESPACHO', label: 'Despacho', color: '#8b5cf6' },
-  { id: 'DECISAO', label: 'Decisão', color: '#ef4444' },
-  { id: 'AUDIENCIA', label: 'Audiência', color: '#f59e0b' },
-  { id: 'NOTA', label: 'Nota Interna', color: '#6b7280' },
+  { id: 'PUBLICACAO', label: 'Publicação',        color: '#3b82f6' },
+  { id: 'DESPACHO',   label: 'Despacho',          color: '#8b5cf6' },
+  { id: 'DECISAO',    label: 'Decisão',           color: '#ef4444' },
+  { id: 'AUDIENCIA',  label: 'Audiência',         color: '#f59e0b' },
+  { id: 'PERICIA',    label: 'Perícia',           color: '#0ea5e9' },
+  { id: 'NOTA',       label: 'Nota Interna',      color: '#6b7280' },
 ];
 
 const TASK_STATUSES = [
@@ -215,6 +224,18 @@ function ProcessoCard({
   const djenCount = legalCase._count?.djen_publications ?? 0;
   const taskCount = legalCase._count?.tasks ?? 0;
   const eventCount = legalCase._count?.events ?? 0;
+
+  // Resumo financeiro
+  const fin = (legalCase.honorarios || []).reduce((acc, h) => {
+    acc.contracted += parseFloat(h.total_value) || 0;
+    h.payments.forEach(p => {
+      const amt = parseFloat(p.amount) || 0;
+      if (p.status === 'PAGO') acc.received += amt;
+      else if (p.status === 'ATRASADO') acc.overdue += amt;
+      else acc.pending += amt;
+    });
+    return acc;
+  }, { contracted: 0, received: 0, pending: 0, overdue: 0 });
   const days = daysInStage(legalCase.stage_changed_at || legalCase.updated_at);
   const priority = PRIORITY_CONFIG[legalCase.priority] ?? PRIORITY_CONFIG.NORMAL;
   const isUrgente = legalCase.priority === 'URGENTE';
@@ -307,37 +328,42 @@ function ProcessoCard({
         )}
       </div>
 
-      {/* Próxima audiência */}
+      {/* Todos os eventos (audiências, perícias, prazos, tarefas) */}
       {legalCase.calendar_events && legalCase.calendar_events.length > 0 && (() => {
         const nowCard = new Date();
-        // Prefere o próximo evento futuro; se todos forem passados, mostra o mais recente
-        const ev = legalCase.calendar_events!.find(e => new Date(e.start_at) >= nowCard)
-          ?? legalCase.calendar_events![legalCase.calendar_events!.length - 1];
-        const d = new Date(ev.start_at);
-        const hoje = new Date();
-        const diffDias = Math.ceil((d.getTime() - hoje.getTime()) / 86400000);
-        const isPast = diffDias < 0;
-        const isProxima = !isPast && diffDias <= 7;
-        const isHoje = diffDias <= 0 && diffDias > -1;
-        const dateLabel = `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às ${d.getUTCHours().toString().padStart(2,'0')}:${d.getUTCMinutes().toString().padStart(2,'0')}`;
+        const typeLabel: Record<string, string> = {
+          AUDIENCIA: 'Audiência', PERICIA: 'Perícia', PRAZO: 'Prazo', TAREFA: 'Tarefa',
+          CONSULTA: 'Consulta', OUTRO: 'Evento',
+        };
+        const typeEmoji: Record<string, string> = {
+          AUDIENCIA: '⚖️', PERICIA: '🔬', PRAZO: '⏰', TAREFA: '✅', CONSULTA: '📞', OUTRO: '📅',
+        };
         return (
-          <div className={`mt-1.5 flex items-center gap-1.5 px-2 py-1.5 rounded-lg border ${
-            isHoje
-              ? 'bg-red-500/12 border-red-500/30'
-              : isPast
-              ? 'bg-gray-500/8 border-gray-500/20'
-              : isProxima
-              ? 'bg-amber-500/10 border-amber-500/25'
-              : 'bg-blue-500/8 border-blue-500/20'
-          }`}>
-            <Calendar size={9} className={isHoje ? 'text-red-400 shrink-0' : isPast ? 'text-gray-400 shrink-0' : isProxima ? 'text-amber-400 shrink-0' : 'text-blue-400 shrink-0'} />
-            <span className={`text-[9px] font-semibold leading-tight ${isHoje ? 'text-red-400' : isPast ? 'text-gray-400' : isProxima ? 'text-amber-400' : 'text-blue-400'}`}>
-              {isHoje
-                ? '🔴 Audiência HOJE'
-                : isPast
-                ? `✅ Realizada: ${dateLabel}`
-                : `Audiência: ${dateLabel}${isProxima ? ` (em ${diffDias}d)` : ''}`}
-            </span>
+          <div className="mt-1.5 flex flex-col gap-1">
+            {legalCase.calendar_events!.map(ev => {
+              const d = new Date(ev.start_at);
+              const diffDias = Math.ceil((d.getTime() - nowCard.getTime()) / 86400000);
+              const isPast = diffDias < 0;
+              const isProxima = !isPast && diffDias <= 7;
+              const isHoje = diffDias <= 0 && diffDias > -1;
+              const dateLabel = `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')} às ${d.getUTCHours().toString().padStart(2,'0')}:${d.getUTCMinutes().toString().padStart(2,'0')}`;
+              const label = typeLabel[ev.type] ?? ev.type;
+              const emoji = typeEmoji[ev.type] ?? '📅';
+              const colorBg = isHoje ? 'bg-red-500/12 border-red-500/30' : isPast ? 'bg-gray-500/8 border-gray-500/20' : isProxima ? 'bg-amber-500/10 border-amber-500/25' : 'bg-blue-500/8 border-blue-500/20';
+              const colorText = isHoje ? 'text-red-400' : isPast ? 'text-gray-400' : isProxima ? 'text-amber-400' : 'text-blue-400';
+              return (
+                <div key={ev.id} className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border ${colorBg}`}>
+                  <Calendar size={9} className={`${colorText} shrink-0`} />
+                  <span className={`text-[9px] font-semibold leading-tight ${colorText}`}>
+                    {isHoje
+                      ? `🔴 ${label} HOJE`
+                      : isPast
+                      ? `${label} realizada: ${dateLabel}`
+                      : `${emoji} ${label}: ${dateLabel}${isProxima ? ` (em ${diffDias}d)` : ''}`}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         );
       })()}
@@ -349,6 +375,31 @@ function ProcessoCard({
           <span className="text-[9px] text-amber-400 font-semibold leading-tight">
             Atenção: juntada da contestação ocorre na data da audiência
           </span>
+        </div>
+      )}
+
+      {/* Badge financeiro */}
+      {fin.contracted > 0 && (
+        <div className="mt-1.5 flex items-center gap-2 px-2 py-1.5 rounded-lg bg-emerald-500/5 border border-emerald-500/15">
+          <DollarSign size={9} className="text-emerald-400 shrink-0" />
+          <div className="flex items-center gap-2 text-[9px] font-semibold overflow-hidden">
+            <span className="text-blue-400" title="Contratado">
+              {fin.contracted.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+            </span>
+            <span className="text-emerald-400" title="Recebido">
+              ✅ {fin.received.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+            </span>
+            {fin.overdue > 0 && (
+              <span className="text-red-400" title="Atrasado">
+                🔴 {fin.overdue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+              </span>
+            )}
+            {fin.pending > 0 && fin.overdue === 0 && (
+              <span className="text-amber-400" title="Pendente">
+                ⏰ {fin.pending.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+              </span>
+            )}
+          </div>
         </div>
       )}
 
@@ -401,7 +452,7 @@ function AgendarAudienciaModal({
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(suggestedDate ? suggestedDate.slice(0, 10) : '');
-  const [time, setTime] = useState(suggestedDate ? (suggestedDate.slice(11, 16) || '09:00') : '09:00');
+  const [time, setTime] = useState(suggestedDate ? (suggestedDate.slice(11, 16) || '07:00') : '07:00');
   const [title, setTitle] = useState('Audiência de Instrução e Julgamento');
   const [location, setLocation] = useState(legalCase.court || '');
   const [saving, setSaving] = useState(false);
@@ -412,9 +463,9 @@ function AgendarAudienciaModal({
     setSaving(true);
     setError(null);
     try {
-      const startAt = `${date}T${time || '09:00'}:00`;
-      const h = parseInt((time || '09:00').split(':')[0]);
-      const m = parseInt((time || '09:00').split(':')[1] || '0');
+      const startAt = `${date}T${time || '07:00'}:00`;
+      const h = parseInt((time || '07:00').split(':')[0]);
+      const m = parseInt((time || '07:00').split(':')[1] || '0');
       const endH = String(h + 1 < 24 ? h + 1 : h).padStart(2, '0');
       const endAt = `${date}T${endH}:${String(m).padStart(2, '0')}:00`;
 
@@ -562,6 +613,321 @@ function AgendarAudienciaModal({
   );
 }
 
+// ─── SentencaModal ──────────────────────────────────────────────
+// Exibido quando o usuário move um card para EXECUCAO.
+// Coleta valor da condenação, data e tipo da sentença.
+
+function SentencaModal({
+  legalCase,
+  onConfirm,
+  onSkip,
+  onCancel,
+}: {
+  legalCase: LegalCase;
+  onConfirm: (data: { sentence_value?: number; sentence_date?: string; sentence_type?: string }) => void;
+  onSkip: () => void;
+  onCancel: () => void;
+}) {
+  const [sentenceValue, setSentenceValue] = useState('');
+  const [sentenceDate, setSentenceDate] = useState('');
+  const [sentenceType, setSentenceType] = useState('PROCEDENTE');
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onCancel}>
+      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 text-lg">💰</div>
+          <div>
+            <h3 className="text-base font-bold text-foreground">Execução — Dados da Sentença</h3>
+            <p className="text-xs text-muted-foreground">
+              {legalCase.lead?.name} • {legalCase.case_number || 'Sem número'}
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground block mb-1">Valor da Condenação (R$)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={sentenceValue}
+              onChange={e => setSentenceValue(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+              placeholder="Ex: 50000.00"
+              autoFocus
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground block mb-1">Data da Sentença</label>
+              <input
+                type="date"
+                value={sentenceDate}
+                onChange={e => setSentenceDate(e.target.value)}
+                className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground block mb-1">Resultado</label>
+              <select
+                value={sentenceType}
+                onChange={e => setSentenceType(e.target.value)}
+                className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+              >
+                <option value="PROCEDENTE">Procedente</option>
+                <option value="PARCIAL">Parcialmente Procedente</option>
+                <option value="IMPROCEDENTE">Improcedente</option>
+                <option value="ACORDO">Acordo</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-2 pt-2">
+          <button
+            onClick={() => onConfirm({
+              sentence_value: sentenceValue ? parseFloat(sentenceValue) : undefined,
+              sentence_date: sentenceDate || undefined,
+              sentence_type: sentenceType,
+            })}
+            className="flex-1 py-2.5 text-sm font-semibold bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors"
+          >
+            Confirmar e Mover
+          </button>
+          <button
+            onClick={onSkip}
+            className="px-4 py-2.5 text-sm font-medium text-muted-foreground border border-border rounded-lg hover:bg-accent transition-colors"
+          >
+            Pular
+          </button>
+          <button
+            onClick={onCancel}
+            className="px-4 py-2.5 text-sm font-medium text-muted-foreground border border-border rounded-lg hover:bg-accent transition-colors"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AgendarPericiaModal ──────────────────────────────────────
+// Exibido quando o usuário move um card para PERICIA_AGENDADA.
+
+function AgendarPericiaModal({
+  legalCase,
+  suggestedDate,
+  onScheduled,
+  onSkip,
+  onCancel,
+}: {
+  legalCase: LegalCase;
+  suggestedDate?: string | null;
+  onScheduled: () => void;
+  onSkip: () => void;
+  onCancel: () => void;
+}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [date, setDate] = useState(suggestedDate ? suggestedDate.slice(0, 10) : '');
+  const [time, setTime] = useState(suggestedDate ? (suggestedDate.slice(11, 16) || '07:00') : '07:00');
+  const [title, setTitle] = useState('Perícia Médica/Técnica');
+  const [location, setLocation] = useState(legalCase.court || '');
+  const [perito, setPerito] = useState('');
+  const [obs, setObs] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    if (!date) { setError('Informe a data da perícia para continuar.'); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const startAt = `${date}T${time || '07:00'}:00`;
+      const h = parseInt((time || '07:00').split(':')[0]);
+      const m = parseInt((time || '07:00').split(':')[1] || '0');
+      const endH = String(h + 2 < 24 ? h + 2 : h).padStart(2, '0');
+      const endAt = `${date}T${endH}:${String(m).padStart(2, '0')}:00`;
+      const description = [
+        perito ? `Perito: ${perito}` : '',
+        obs ? `Observações: ${obs}` : '',
+      ].filter(Boolean).join('\n');
+
+      await api.post('/calendar/events', {
+        type: 'PERICIA',
+        title: title.trim() || 'Perícia',
+        start_at: startAt,
+        end_at: endAt,
+        legal_case_id: legalCase.id,
+        lead_id: legalCase.lead_id,
+        location: location.trim() || undefined,
+        description: description || undefined,
+        priority: 'URGENTE',
+        reminders: [
+          { minutes_before: 1440, channel: 'WHATSAPP' },
+          { minutes_before: 120, channel: 'WHATSAPP' },
+        ],
+      });
+      onScheduled();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'Erro ao agendar. Tente novamente.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative z-10 w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-border bg-sky-500/5">
+          <div className="w-9 h-9 rounded-xl bg-sky-500/15 flex items-center justify-center shrink-0">
+            <span className="text-[18px]">🔬</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-bold text-foreground">Agendar Perícia</p>
+            <p className="text-[11px] text-sky-400/80 mt-0.5">
+              Registre data, local e perito designado
+            </p>
+          </div>
+          <button onClick={onCancel} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent">
+            <X size={14} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-5 py-4 space-y-4">
+          {/* Info do processo */}
+          <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-accent/30 border border-border text-[12px] text-muted-foreground">
+            <Scale size={12} className="shrink-0" />
+            <span className="truncate font-mono">{legalCase.case_number || 'Processo sem número'}</span>
+            <span className="shrink-0">·</span>
+            <span className="truncate">{legalCase.lead?.name || 'Sem cliente'}</span>
+          </div>
+
+          {/* Tipo de perícia */}
+          <div>
+            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+              Tipo de Perícia
+            </label>
+            <input
+              type="text"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              className="w-full text-[12px] bg-background border border-border rounded-xl px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+              placeholder="Ex: Perícia Médica, Perícia Contábil…"
+            />
+          </div>
+
+          {/* Data + Hora */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                Data *
+              </label>
+              <input
+                type="date"
+                value={date}
+                min={today}
+                onChange={e => setDate(e.target.value)}
+                className="w-full text-[12px] bg-background border border-border rounded-xl px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                Hora
+              </label>
+              <input
+                type="time"
+                value={time}
+                onChange={e => setTime(e.target.value)}
+                className="w-full text-[12px] bg-background border border-border rounded-xl px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+              />
+            </div>
+          </div>
+
+          {/* Local */}
+          <div>
+            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+              Local / Endereço
+            </label>
+            <input
+              type="text"
+              value={location}
+              onChange={e => setLocation(e.target.value)}
+              placeholder="Ex: Fórum, clínica, endereço do perito"
+              className="w-full text-[12px] bg-background border border-border rounded-xl px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+            />
+          </div>
+
+          {/* Perito */}
+          <div>
+            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+              Nome do Perito (opcional)
+            </label>
+            <input
+              type="text"
+              value={perito}
+              onChange={e => setPerito(e.target.value)}
+              placeholder="Nome do perito designado"
+              className="w-full text-[12px] bg-background border border-border rounded-xl px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+            />
+          </div>
+
+          {/* Observações */}
+          <div>
+            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+              Observações (opcional)
+            </label>
+            <textarea
+              value={obs}
+              onChange={e => setObs(e.target.value)}
+              rows={2}
+              placeholder="Documentos a levar, orientações ao cliente…"
+              className="w-full text-[12px] bg-background border border-border rounded-xl px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-sky-500/40 resize-none"
+            />
+          </div>
+
+          {error && (
+            <p className="text-[12px] text-red-400 flex items-center gap-1.5">
+              <AlertTriangle size={11} /> {error}
+            </p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center gap-2 px-5 py-4 border-t border-border">
+          <button
+            onClick={onSkip}
+            className="text-[11px] font-medium text-muted-foreground hover:text-foreground px-3 py-2 rounded-xl border border-border hover:bg-accent transition-colors"
+          >
+            Pular por agora
+          </button>
+          <div className="flex-1" />
+          <button
+            onClick={onCancel}
+            className="text-[12px] font-semibold px-4 py-2 rounded-xl border border-border text-muted-foreground hover:bg-accent transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !date}
+            className="flex items-center gap-1.5 text-[12px] font-bold px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-500/90 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {saving ? <Loader2 size={12} className="animate-spin" /> : <span>🔬</span>}
+            {saving ? 'Agendando…' : 'Agendar e Mover'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Case Detail Panel ─────────────────────────────────────────
 
 function ProcessoDetailPanel({
@@ -569,14 +935,16 @@ function ProcessoDetailPanel({
   onClose,
   onRefresh,
   onOpenClientPanel,
+  onOpenChat,
 }: {
   legalCase: LegalCase;
   onClose: () => void;
   onRefresh: () => void;
   onOpenClientPanel: (leadId: string) => void;
+  onOpenChat: (legalCase: LegalCase) => void;
 }) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'info' | 'djen' | 'events' | 'tasks'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'djen' | 'events' | 'tasks' | 'honorarios'>('info');
   const { isAdmin } = useRole();
   const [saving, setSaving] = useState(false);
   const [savedFeedback, setSavedFeedback] = useState(false);
@@ -619,7 +987,7 @@ function ProcessoDetailPanel({
   // Archive
   const [showArchive, setShowArchive] = useState(false);
   const [archiveReason, setArchiveReason] = useState('');
-  const [notifyLead, setNotifyLead] = useState(true);
+  const [notifyLead, setNotifyLead] = useState(false);
   const [archiving, setArchiving] = useState(false);
 
   // Tasks
@@ -630,7 +998,7 @@ function ProcessoDetailPanel({
   const [allUsers, setAllUsers] = useState<Intern[]>([]);      // todos os usuários do sistema
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<string | null>(null);
-  const [editTaskForm, setEditTaskForm] = useState({ title: '', description: '', date: '', assignee: '' });
+  const [editTaskForm, setEditTaskForm] = useState({ title: '', description: '', date: '', time: '', assignee: '' });
   const [savingTask, setSavingTask] = useState(false);
   const [comments, setComments] = useState<{ id: string; text: string; created_at: string; user: { id: string; name: string } }[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
@@ -684,7 +1052,7 @@ function ProcessoDetailPanel({
       // Todos os usuários com perfil (para campo Responsável em eventos não-prazo)
       const res2 = await api.get('/users?limit=100');
       const data = res2.data?.data || res2.data?.users || res2.data || [];
-      setAllUsers(data.filter((u: any) => u.role));
+      setAllUsers(data.filter((u: any) => u.roles?.length > 0 || u.role));
     } catch {}
   }, [legalCase.lawyer_id]);
 
@@ -838,10 +1206,12 @@ function ProcessoDetailPanel({
 
   const openEditTask = (task: CaseTask) => {
     const dateVal = task.start_at ? task.start_at.slice(0, 10) : '';
+    const timeVal = task.start_at ? task.start_at.slice(11, 16) || '07:00' : '';
     setEditTaskForm({
       title: task.title,
       description: task.description || '',
       date: dateVal,
+      time: timeVal,
       assignee: task.assigned_user_id || '',
     });
     setEditingTask(task.id);
@@ -852,7 +1222,9 @@ function ProcessoDetailPanel({
     if (!editTaskForm.title.trim()) return;
     setSavingTask(true);
     try {
-      const startAt = editTaskForm.date ? new Date(editTaskForm.date).toISOString() : undefined;
+      const startAt = editTaskForm.date
+        ? new Date(`${editTaskForm.date}T${editTaskForm.time || '07:00'}:00Z`).toISOString()
+        : undefined;
       await api.patch(`/calendar/events/${taskId}`, {
         title: editTaskForm.title.trim(),
         description: editTaskForm.description.trim() || null,
@@ -961,6 +1333,13 @@ function ProcessoDetailPanel({
               {stageInfo.emoji} {stageInfo.label}
             </span>
             <button
+              onClick={() => onOpenChat(legalCase)}
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-green-600 hover:bg-green-500/10 transition-all"
+              title="Falar com o cliente"
+            >
+              <MessageSquare size={16} />
+            </button>
+            <button
               onClick={() => onOpenClientPanel(legalCase.lead_id)}
               className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
               title="Abrir Painel do Cliente"
@@ -976,11 +1355,12 @@ function ProcessoDetailPanel({
         {/* Tabs */}
         <div className="flex border-b border-border shrink-0">
           {([
-            { id: 'info', label: 'Processo' },
-            { id: 'djen', label: `DJEN (${djenPubs.length})` },
-            { id: 'events', label: `Movim. (${events.length})` },
-            { id: 'tasks', label: `Eventos (${tasks.length})` },
-          ] as const).map(tab => (
+            { id: 'info' as const, label: 'Processo' },
+            { id: 'honorarios' as const, label: 'Honorários' },
+            { id: 'djen' as const, label: `DJEN (${djenPubs.length})` },
+            { id: 'events' as const, label: `Movim. (${events.length})` },
+            { id: 'tasks' as const, label: `Eventos (${tasks.length})` },
+          ]).map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
@@ -1525,6 +1905,13 @@ function ProcessoDetailPanel({
             </div>
           )}
 
+          {/* ─── HONORÁRIOS TAB ─── */}
+          {activeTab === 'honorarios' && (
+            <div className="py-2">
+              <TabHonorarios caseId={legalCase.id} />
+            </div>
+          )}
+
           {/* ─── DJEN TAB ─── */}
           {activeTab === 'djen' && (
             <div className="p-5 space-y-3">
@@ -1670,25 +2057,27 @@ function ProcessoDetailPanel({
                                 {/* Evento sugerido — com preview antes de criar */}
                                 {analysis.tarefa_titulo && !djenTaskCreated[pub.id] && (() => {
                                   const preview = djenEventPreview[pub.id];
-                                  const eventTypeLabels: Record<string, string> = { AUDIENCIA: '⚖️ Audiência', PRAZO: '🕐 Prazo', TAREFA: '✅ Tarefa' };
+                                  const eventTypeLabels: Record<string, string> = { AUDIENCIA: '⚖️ Audiência', PERICIA: '🔬 Perícia', PRAZO: '🕐 Prazo', TAREFA: '✅ Tarefa' };
                                   // Calcula data/hora sugerida pela IA
                                   // IMPORTANTE: extraímos data e hora diretamente da string ISO da IA,
                                   // sem criar objetos Date — assim evitamos conversão de fuso (UTC-3 do browser).
                                   const pad = (n: number) => String(n).padStart(2, '0');
                                   const isoFromAi = (() => {
-                                    if (analysis.event_type === 'AUDIENCIA' && analysis.data_audiencia) return analysis.data_audiencia;
+                                    if ((analysis.event_type === 'AUDIENCIA' || analysis.event_type === 'PERICIA') && analysis.data_audiencia) return analysis.data_audiencia;
                                     if (analysis.event_type === 'PRAZO' && analysis.data_prazo) return analysis.data_prazo;
                                     return null;
                                   })();
                                   const defaultDate = (() => {
                                     if (isoFromAi) return isoFromAi.slice(0, 10); // "YYYY-MM-DD"
+                                    // Perícia sem data explícita: deixa em branco para o usuário preencher
+                                    if (analysis.event_type === 'PERICIA') return '';
                                     // fallback: data da publicação + prazo_dias úteis (usa UTC pois pub.data_disponibilizacao é ISO)
                                     const base = new Date(pub.data_disponibilizacao);
                                     let days = analysis.prazo_dias > 0 ? analysis.prazo_dias : 0;
                                     while (days > 0) { base.setUTCDate(base.getUTCDate() + 1); if (base.getUTCDay() !== 0 && base.getUTCDay() !== 6) days--; }
                                     return `${base.getUTCFullYear()}-${pad(base.getUTCMonth()+1)}-${pad(base.getUTCDate())}`;
                                   })();
-                                  const defaultTime = isoFromAi ? isoFromAi.slice(11, 16) || '09:00' : '09:00';
+                                  const defaultTime = isoFromAi ? isoFromAi.slice(11, 16) || '07:00' : '07:00';
                                   const defaultPriority = analysis.urgencia === 'URGENTE' ? 'ALTA' : analysis.urgencia === 'BAIXA' ? 'BAIXA' : 'NORMAL';
                                   return (
                                     <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-2.5 space-y-2">
@@ -1730,6 +2119,7 @@ function ProcessoDetailPanel({
                                               className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground outline-none"
                                             >
                                               <option value="AUDIENCIA">⚖️ Audiência</option>
+                                              <option value="PERICIA">🔬 Perícia</option>
                                               <option value="PRAZO">🕐 Prazo</option>
                                               <option value="TAREFA">✅ Tarefa</option>
                                               <option value="OUTRO">📌 Outro</option>
@@ -1781,7 +2171,7 @@ function ProcessoDetailPanel({
                                                   const [y, m, d] = preview.date.split('-').map(Number);
                                                   const [h, mi] = preview.time.split(':').map(Number);
                                                   const start = new Date(Date.UTC(y, m-1, d, h, mi, 0));
-                                                  const dur = preview.type === 'AUDIENCIA' ? 60 : 30;
+                                                  const dur = preview.type === 'AUDIENCIA' ? 60 : preview.type === 'PERICIA' ? 120 : 30;
                                                   await api.post('/calendar/events', {
                                                     type: preview.type,
                                                     title: preview.title,
@@ -1941,6 +2331,7 @@ function ProcessoDetailPanel({
               {showEventModal && (
                 <EventModal
                   caseId={legalCase.id}
+                  leadId={legalCase.lead_id}
                   lawyerId={legalCase.lawyer_id}
                   users={allUsers}
                   interns={interns}
@@ -2021,7 +2412,7 @@ function ProcessoDetailPanel({
                             className="w-full px-3 py-2 text-[12px] bg-card border border-border rounded-lg focus:outline-none resize-none"
                             placeholder="Descrição (opcional)"
                           />
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-3 gap-2">
                             <select
                               value={editTaskForm.assignee}
                               onChange={e => setEditTaskForm(f => ({ ...f, assignee: e.target.value }))}
@@ -2034,6 +2425,12 @@ function ProcessoDetailPanel({
                               type="date"
                               value={editTaskForm.date}
                               onChange={e => setEditTaskForm(f => ({ ...f, date: e.target.value }))}
+                              className="px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none"
+                            />
+                            <input
+                              type="time"
+                              value={editTaskForm.time}
+                              onChange={e => setEditTaskForm(f => ({ ...f, time: e.target.value }))}
                               className="px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none"
                             />
                           </div>
@@ -2136,13 +2533,22 @@ function CadastrarProcessoModal({
 }) {
   const { isAdmin } = useRole();
 
-  // ── Advogado (ADMIN only) ─────────────────────────────────────
+  // ── Advogado e Atendente (ADMIN only) ────────────────────────
   const [lawyers, setLawyers] = useState<{ id: string; name: string | null }[]>([]);
+  const [operators, setOperators] = useState<{ id: string; name: string | null }[]>([]);
   const [selectedLawyerId, setSelectedLawyerId] = useState('');
+  const [selectedOperatorId, setSelectedOperatorId] = useState('');
 
   useEffect(() => {
-    if (!isAdmin) return;
-    api.get('/users/lawyers').then(res => setLawyers(res.data || [])).catch(() => {});
+    // Advogados: ADMIN pode escolher qualquer um
+    if (isAdmin) {
+      api.get('/users/lawyers').then(res => setLawyers(res.data || [])).catch(() => {});
+    }
+    // Atendentes: todos os usuários podem selecionar (inclusive ADVOGADO)
+    api.get('/users?limit=100').then(res => {
+      const users = res.data?.data || res.data?.users || res.data || [];
+      setOperators(users.filter((u: any) => u.id && u.name));
+    }).catch(() => {});
   }, [isAdmin]);
 
   // ── Lead ──────────────────────────────────────────────────────
@@ -2161,6 +2567,23 @@ function CadastrarProcessoModal({
   const [newLeadPhone, setNewLeadPhone] = useState('');
   const [newLeadName, setNewLeadName] = useState('');
   const [newLeadEmail, setNewLeadEmail] = useState('');
+  const [phoneCheckResult, setPhoneCheckResult] = useState<{ exists: boolean; lead?: { id: string; name: string | null; phone: string } } | null>(null);
+  const [checkingPhone, setCheckingPhone] = useState(false);
+  const phoneCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const checkPhoneExists = (phone: string) => {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 8) { setPhoneCheckResult(null); return; }
+    if (phoneCheckTimer.current) clearTimeout(phoneCheckTimer.current);
+    phoneCheckTimer.current = setTimeout(async () => {
+      setCheckingPhone(true);
+      try {
+        const res = await api.get('/leads/check-phone', { params: { phone: digits } });
+        setPhoneCheckResult(res.data);
+      } catch { setPhoneCheckResult(null); }
+      finally { setCheckingPhone(false); }
+    }, 500);
+  };
 
   // ── Processo ──────────────────────────────────────────────────
   const [caseNumber, setCaseNumber] = useState('');
@@ -2221,6 +2644,7 @@ function CadastrarProcessoModal({
     if (!caseNumber.trim()) { setError('Informe o número do processo.'); return; }
     if (leadMode === 'existing' && !selectedLead) { setError('Selecione o cliente ou escolha "Novo cliente".'); return; }
     if (leadMode === 'new' && !newLeadPhone.replace(/\D/g,'')) { setError('Informe o telefone do novo cliente.'); return; }
+    if (leadMode === 'new' && phoneCheckResult?.exists) { setError('Este telefone já está cadastrado. Clique em "Usar este contato" para vincular ao cliente existente.'); return; }
 
     setSaving(true);
     setError('');
@@ -2242,8 +2666,10 @@ function CadastrarProcessoModal({
         lead_phone: leadMode === 'new' ? newLeadPhone : undefined,
         lead_name: leadMode === 'new' ? newLeadName || undefined : undefined,
         lead_email: leadMode === 'new' ? newLeadEmail || undefined : undefined,
-        // Advogado (ADMIN pode escolher; demais usam o próprio user via req.user.id no backend)
+        // Advogado: apenas ADMIN pode substituir (demais usam o próprio user via req.user.id)
         lawyer_id: isAdmin && selectedLawyerId ? selectedLawyerId : undefined,
+        // Atendente: qualquer usuário pode indicar o responsável pelo atendimento no chat
+        assigned_user_id: selectedOperatorId || undefined,
       });
       onSuccess();
       onClose();
@@ -2382,11 +2808,38 @@ function CadastrarProcessoModal({
                     <input
                       type="tel"
                       value={newLeadPhone}
-                      onChange={e => setNewLeadPhone(e.target.value)}
-                      className={inputCls}
+                      onChange={e => { setNewLeadPhone(e.target.value); checkPhoneExists(e.target.value); }}
+                      className={`${inputCls} ${phoneCheckResult?.exists ? 'border-amber-500 ring-1 ring-amber-500/30' : ''}`}
                       placeholder="(00) 00000-0000"
                       autoFocus
                     />
+                    {checkingPhone && <p className="text-[10px] text-muted-foreground mt-1">Verificando...</p>}
+                    {phoneCheckResult?.exists && phoneCheckResult.lead && (
+                      <div className="mt-2 p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-2">
+                        <p className="text-[11px] text-amber-400 font-bold">⚠️ Este telefone já está cadastrado!</p>
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center text-primary text-[10px] font-bold">
+                            {phoneCheckResult.lead.name?.[0]?.toUpperCase() || '?'}
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-foreground">{phoneCheckResult.lead.name || 'Sem nome'}</p>
+                            <p className="text-[10px] text-muted-foreground">{phoneCheckResult.lead.phone}</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLeadMode('existing');
+                            setSelectedLead(phoneCheckResult.lead || null);
+                            setNewLeadPhone('');
+                            setPhoneCheckResult(null);
+                          }}
+                          className="w-full px-3 py-2 text-[11px] font-bold text-primary border border-primary/30 rounded-lg hover:bg-primary/10 transition-colors"
+                        >
+                          Usar este contato
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className={labelCls}>Nome do Cliente</label>
@@ -2416,27 +2869,50 @@ function CadastrarProcessoModal({
             )}
           </div>
 
-          {/* ── Seção: Advogado Responsável (ADMIN only) ─────── */}
-          {isAdmin && lawyers.length > 0 && (
-            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-3">
-                👨‍⚖️ Advogado Responsável
+          {/* ── Seção: Responsáveis (Advogado: ADMIN; Atendente: todos) ─── */}
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-4">
+            {/* Advogado — apenas ADMIN pode escolher */}
+            {isAdmin && lawyers.length > 0 && (
+              <div>
+                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                  👨‍⚖️ Advogado Responsável
+                </p>
+                <select
+                  value={selectedLawyerId}
+                  onChange={e => setSelectedLawyerId(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="">Atribuir a mim (padrão)</option>
+                  {lawyers.map(l => (
+                    <option key={l.id} value={l.id}>{l.name || l.id}</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Se não selecionado, o processo será atribuído ao usuário logado.
+                </p>
+              </div>
+            )}
+
+            {/* Atendente — disponível para todos os perfis */}
+            <div>
+              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                👤 Atendente Responsável
               </p>
               <select
-                value={selectedLawyerId}
-                onChange={e => setSelectedLawyerId(e.target.value)}
+                value={selectedOperatorId}
+                onChange={e => setSelectedOperatorId(e.target.value)}
                 className={inputCls}
               >
-                <option value="">Atribuir automaticamente (padrão)</option>
-                {lawyers.map(l => (
-                  <option key={l.id} value={l.id}>{l.name || l.id}</option>
+                <option value="">Atribuir automaticamente</option>
+                {operators.map(u => (
+                  <option key={u.id} value={u.id}>{u.name || u.id}</option>
                 ))}
               </select>
-              <p className="text-[10px] text-muted-foreground mt-1.5">
-                Se não selecionado, o processo será atribuído a você.
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Usuário responsável pelo atendimento no chat. Se não selecionado, será definido automaticamente.
               </p>
             </div>
-          )}
+          </div>
 
           {/* ── Seção: Processo ────────────────────────────────── */}
           <div className="space-y-4">
@@ -2759,6 +3235,7 @@ function ProcessosPageContent() {
   const [selectedCase, setSelectedCase] = useState<LegalCase | null>(null);
   const [showCadastrarModal, setShowCadastrarModal] = useState(false);
   const [clientPanelLeadId, setClientPanelLeadId] = useState<string | null>(null);
+  const [chatPopupCase, setChatPopupCase] = useState<LegalCase | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const { isAdmin: currentUserIsAdmin } = useRole();
 
@@ -2776,6 +3253,18 @@ function ProcessosPageContent() {
     legalCase: LegalCase;
     targetStage: string;
     suggestedDate?: string | null;
+  } | null>(null);
+
+  // Mover para PERICIA_AGENDADA abre modal de perícia
+  const [pendingMoveToPericia, setPendingMoveToPericia] = useState<{
+    legalCase: LegalCase;
+    targetStage: string;
+    suggestedDate?: string | null;
+  } | null>(null);
+
+  // Mover para EXECUCAO abre modal de sentença (obrigatório)
+  const [pendingMoveToExecucao, setPendingMoveToExecucao] = useState<{
+    legalCase: LegalCase;
   } | null>(null);
 
   // (DJEN movido para /atendimento/djen)
@@ -2845,16 +3334,42 @@ function ProcessosPageContent() {
     }
   }, [searchParams, cases, router]);
 
-  const executeMoveCase = async (caseId: string, newTrackingStage: string) => {
+  const executeMoveCase = async (caseId: string, newTrackingStage: string, extra?: { sentence_value?: number; sentence_date?: string; sentence_type?: string }) => {
     setCases(prev => prev.map(c => c.id === caseId ? { ...c, tracking_stage: newTrackingStage } : c));
     try {
-      await api.patch(`/legal-cases/${caseId}/tracking-stage`, { trackingStage: newTrackingStage });
+      await api.patch(`/legal-cases/${caseId}/tracking-stage`, { trackingStage: newTrackingStage, ...extra });
     } catch {
       fetchCases(true);
     }
   };
 
   const moveCase = async (caseId: string, newTrackingStage: string) => {
+    // PERICIA_AGENDADA — abre modal para agendar perícia
+    if (newTrackingStage === 'PERICIA_AGENDADA') {
+      const lc = cases.find(c => c.id === caseId);
+      let suggestedDate: string | null = null;
+      try {
+        const res = await api.get('/calendar/events', {
+          params: { type: 'PERICIA', legalCaseId: caseId, showAll: 'true' },
+        });
+        const events: any[] = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+        if (events.length > 0 && events[0]?.start_at) suggestedDate = events[0].start_at;
+      } catch { /* permite mover mesmo sem eventos */ }
+      if (lc) {
+        setPendingMoveToPericia({ legalCase: lc, targetStage: newTrackingStage, suggestedDate });
+        return;
+      }
+    }
+
+    // EXECUCAO — abre modal para informar valor da condenação
+    if (newTrackingStage === 'EXECUCAO') {
+      const lc = cases.find(c => c.id === caseId);
+      if (lc) {
+        setPendingMoveToExecucao({ legalCase: lc });
+        return;
+      }
+    }
+
     // INSTRUCAO exige audiência cadastrada no calendário
     if (newTrackingStage === 'INSTRUCAO') {
       const lc = cases.find(c => c.id === caseId);
@@ -3235,6 +3750,43 @@ function ProcessosPageContent() {
         )}
       </main>
 
+      {/* Modal: Agendar Perícia (ao mover para PERICIA_AGENDADA) */}
+      {pendingMoveToPericia && (
+        <AgendarPericiaModal
+          legalCase={pendingMoveToPericia.legalCase}
+          suggestedDate={pendingMoveToPericia.suggestedDate}
+          onScheduled={() => {
+            const { legalCase: lc, targetStage } = pendingMoveToPericia;
+            setPendingMoveToPericia(null);
+            executeMoveCase(lc.id, targetStage);
+          }}
+          onSkip={() => {
+            const { legalCase: lc, targetStage } = pendingMoveToPericia;
+            setPendingMoveToPericia(null);
+            executeMoveCase(lc.id, targetStage);
+          }}
+          onCancel={() => setPendingMoveToPericia(null)}
+        />
+      )}
+
+      {/* Modal: Sentença (ao mover para EXECUCAO) */}
+      {pendingMoveToExecucao && (
+        <SentencaModal
+          legalCase={pendingMoveToExecucao.legalCase}
+          onConfirm={(data) => {
+            const lc = pendingMoveToExecucao.legalCase;
+            setPendingMoveToExecucao(null);
+            executeMoveCase(lc.id, 'EXECUCAO', data);
+          }}
+          onSkip={() => {
+            const lc = pendingMoveToExecucao.legalCase;
+            setPendingMoveToExecucao(null);
+            executeMoveCase(lc.id, 'EXECUCAO');
+          }}
+          onCancel={() => setPendingMoveToExecucao(null)}
+        />
+      )}
+
       {/* Modal: Agendar Audiência (bloqueio ao mover para INSTRUCAO) */}
       {pendingMoveToInstrucao && (
         <AgendarAudienciaModal
@@ -3269,6 +3821,18 @@ function ProcessosPageContent() {
           onClose={() => setSelectedCase(null)}
           onRefresh={() => { fetchCases(true); setSelectedCase(null); }}
           onOpenClientPanel={(leadId) => setClientPanelLeadId(leadId)}
+          onOpenChat={(lc) => setChatPopupCase(lc)}
+        />
+      )}
+
+      {/* Chat popup — falar com o cliente sem sair da tela */}
+      {chatPopupCase && (
+        <ChatPopup
+          leadId={chatPopupCase.lead_id}
+          leadName={chatPopupCase.lead?.name ?? null}
+          conversationId={chatPopupCase.conversation_id}
+          caseNumber={chatPopupCase.case_number}
+          onClose={() => setChatPopupCase(null)}
         />
       )}
 

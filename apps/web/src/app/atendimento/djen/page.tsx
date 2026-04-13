@@ -8,7 +8,7 @@ import {
   ChevronRight, Loader2, Plus, Link2, CheckCircle2, Eye,
   Gavel, AlertTriangle, Calendar, Sparkles, X, Clock,
   ArrowRight, CheckSquare, AlertCircle, ChevronDown,
-  Search, User, UserCheck, Scale,
+  Search, User, UserCheck, Scale, Ban,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useRole } from '@/lib/useRole';
@@ -28,12 +28,14 @@ interface DjenPublication {
   legal_case_id: string | null;
   viewed_at: string | null;
   archived: boolean;
+  ignored: boolean;
   auto_task_id: string | null;
   legal_case?: {
     id: string;
     case_number: string | null;
     legal_area: string | null;
     tracking_stage: string | null;
+    renounced: boolean;
     lead: { name: string | null };
   } | null;
   created_at: string;
@@ -492,33 +494,28 @@ function CreateProcessModal({
 
             {/* Sugestões automáticas de leads por partes da publicação */}
             {clientMode === 'search' && !selectedLead && !dismissedSuggestions && suggestedLeads && (suggestedLeads.autora.length > 0 || suggestedLeads.rea.length > 0) && (
-              <div className="rounded-xl border border-violet-500/30 bg-violet-500/5 p-3 space-y-2 mb-2">
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-2 mb-2">
                 <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-bold text-violet-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <Sparkles size={10} /> Possíveis clientes encontrados
+                  <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles size={10} /> Sugestões da IA — confira antes de selecionar
                   </p>
                   <button
                     onClick={() => setDismissedSuggestions(true)}
-                    className="text-[9px] text-muted-foreground hover:text-foreground transition-colors"
+                    className="text-[9px] text-muted-foreground hover:text-foreground transition-colors px-2 py-0.5 rounded border border-border hover:bg-accent"
                   >
                     Ignorar
                   </button>
                 </div>
+                <p className="text-[10px] text-amber-300/80">
+                  A IA identificou nomes na publicação. Verifique se correspondem ao cliente correto antes de selecionar.
+                </p>
                 {suggestedLeads.autora.length > 0 && (
                   <div>
                     {suggestedLeads.parte_autora && (
-                      <p className="text-[9px] text-muted-foreground mb-1">Parte autora: <span className="text-foreground/70 font-medium">{suggestedLeads.parte_autora}</span></p>
+                      <p className="text-[9px] text-muted-foreground mb-1">Nome na publicação (autora): <span className="text-foreground/70 font-medium">{suggestedLeads.parte_autora}</span></p>
                     )}
                     {suggestedLeads.autora.map(lead => (
-                      <button
-                        key={lead.id}
-                        onClick={() => {
-                          const fullLead: Lead = { id: lead.id, name: lead.name, phone: lead.phone, conversations: [] } as any;
-                          selectLead(fullLead);
-                          setDismissedSuggestions(true);
-                        }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-violet-500/10 transition-colors text-left"
-                      >
+                      <div key={lead.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-border/50 bg-background/50">
                         <div className="w-7 h-7 rounded-full bg-violet-500/20 border border-violet-500/30 flex items-center justify-center shrink-0">
                           <User size={11} className="text-violet-400" />
                         </div>
@@ -526,29 +523,29 @@ function CreateProcessModal({
                           <p className="text-[12px] font-semibold text-foreground">{lead.name}</p>
                           <p className="text-[10px] text-muted-foreground font-mono">{lead.phone}</p>
                         </div>
-                        {lead.is_client && (
-                          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 shrink-0">CLIENTE</span>
-                        )}
-                        <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 shrink-0">AUTORA</span>
-                      </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {lead.is_client && (
+                            <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400">CLIENTE</span>
+                          )}
+                          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400">AUTORA</span>
+                        </div>
+                        <button
+                          onClick={() => { setLeadSearch(lead.name); setDismissedSuggestions(true); }}
+                          className="px-2.5 py-1 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-bold transition-colors shrink-0"
+                        >
+                          Buscar
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
                 {suggestedLeads.rea.length > 0 && (
                   <div>
                     {suggestedLeads.parte_rea && (
-                      <p className="text-[9px] text-muted-foreground mb-1">Parte ré: <span className="text-foreground/70 font-medium">{suggestedLeads.parte_rea}</span></p>
+                      <p className="text-[9px] text-muted-foreground mb-1">Nome na publicação (ré): <span className="text-foreground/70 font-medium">{suggestedLeads.parte_rea}</span></p>
                     )}
                     {suggestedLeads.rea.map(lead => (
-                      <button
-                        key={lead.id}
-                        onClick={() => {
-                          const fullLead: Lead = { id: lead.id, name: lead.name, phone: lead.phone, conversations: [] } as any;
-                          selectLead(fullLead);
-                          setDismissedSuggestions(true);
-                        }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-violet-500/10 transition-colors text-left"
-                      >
+                      <div key={lead.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-border/50 bg-background/50">
                         <div className="w-7 h-7 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center shrink-0">
                           <User size={11} className="text-amber-400" />
                         </div>
@@ -556,11 +553,19 @@ function CreateProcessModal({
                           <p className="text-[12px] font-semibold text-foreground">{lead.name}</p>
                           <p className="text-[10px] text-muted-foreground font-mono">{lead.phone}</p>
                         </div>
-                        {lead.is_client && (
-                          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 shrink-0">CLIENTE</span>
-                        )}
-                        <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 shrink-0">RÉ</span>
-                      </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {lead.is_client && (
+                            <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400">CLIENTE</span>
+                          )}
+                          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">RÉ</span>
+                        </div>
+                        <button
+                          onClick={() => { setLeadSearch(lead.name); setDismissedSuggestions(true); }}
+                          className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold transition-colors shrink-0"
+                        >
+                          Buscar
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -913,6 +918,7 @@ function PublicationCard({
   onArchive,
   onUnarchive,
   onCreateProcess,
+  onIgnoreProcess,
 }: {
   pub: DjenPublication;
   isSelected: boolean;
@@ -921,6 +927,7 @@ function PublicationCard({
   onArchive: (id: string) => Promise<void>;
   onUnarchive: (id: string) => Promise<void>;
   onCreateProcess: (id: string, analysis?: AiAnalysis | null) => void;
+  onIgnoreProcess: (numeroProcesso: string) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState<string | null>(null);
@@ -968,14 +975,19 @@ function PublicationCard({
                 {pub.tipo_comunicacao}
               </span>
             )}
-            {!pub.legal_case_id && !pub.archived && (
+            {!pub.legal_case_id && !pub.archived && !pub.ignored && (
               <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-amber-500/10 text-amber-400 flex items-center gap-0.5">
                 <AlertTriangle size={8} /> Não vinculado
               </span>
             )}
-            {pub.legal_case_id && (
+            {pub.legal_case_id && !pub.ignored && (
               <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-400 flex items-center gap-0.5">
                 <Link2 size={8} /> Vinculado
+              </span>
+            )}
+            {pub.ignored && (
+              <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-red-500/10 text-red-400 flex items-center gap-0.5">
+                <Ban size={8} /> Não sou mais advogado
               </span>
             )}
             {pub.auto_task_id && (
@@ -1036,7 +1048,7 @@ function PublicationCard({
           <div className="flex items-center gap-2 flex-wrap">
             {pub.legal_case_id && (
               <button
-                onClick={() => window.open('/atendimento/processos', '_self')}
+                onClick={() => window.open(`/atendimento/processos?openCase=${pub.legal_case_id}`, '_self')}
                 className="flex items-center gap-1 text-[10px] font-semibold text-primary px-2 py-1 rounded border border-primary/30 hover:bg-primary/5 transition-colors"
               >
                 <ExternalLink size={10} /> Ver Processo
@@ -1049,6 +1061,16 @@ function PublicationCard({
               >
                 <Plus size={10} />
                 Criar Processo
+              </button>
+            )}
+            {!pub.archived && !pub.ignored && pub.numero_processo && (
+              <button
+                disabled={loading === 'ignore'}
+                onClick={() => handle('ignore', () => onIgnoreProcess(pub.numero_processo))}
+                className="flex items-center gap-1 text-[10px] font-semibold text-red-400 px-2 py-1 rounded border border-red-500/30 hover:bg-red-500/5 transition-colors disabled:opacity-50"
+              >
+                {loading === 'ignore' ? <Loader2 size={10} className="animate-spin" /> : <Ban size={10} />}
+                Não sou mais advogado
               </button>
             )}
             {isUnread && (
@@ -1415,6 +1437,17 @@ function DjenPageContent() {
     setPubs(prev => prev.filter(p => p.id !== id));
   };
 
+  const handleIgnoreProcess = async (numeroProcesso: string) => {
+    await api.post('/djen/ignore-process', { numero_processo: numeroProcesso });
+    // Remover todas as publicações desse número da lista atual
+    setPubs(prev => prev.filter(p => p.numero_processo !== numeroProcesso));
+    setTotal(c => {
+      const removed = pubs.filter(p => p.numero_processo === numeroProcesso).length;
+      return Math.max(0, c - removed);
+    });
+    if (selectedPub?.numero_processo === numeroProcesso) setSelectedPub(null);
+  };
+
   // Abre o modal de criação, com análise IA opcional já carregada (do AiPanel)
   const handleOpenCreateModal = (id: string, analysis?: AiAnalysis | null) => {
     const pub = pubs.find(p => p.id === id);
@@ -1564,6 +1597,7 @@ function DjenPageContent() {
                   onArchive={handleArchive}
                   onUnarchive={handleUnarchive}
                   onCreateProcess={handleOpenCreateModal}
+                  onIgnoreProcess={handleIgnoreProcess}
                 />
               ))}
             </div>

@@ -36,13 +36,24 @@ export class TasksController {
     @Query('assignedUserId') assignedUserId?: string,
     @Query('dueFilter') dueFilter?: string,
     @Query('search') search?: string,
+    @Query('viewAll') viewAll?: string,
     @Request() req?: any,
   ) {
     const p = page ? parseInt(page, 10) : undefined;
     const l = limit ? parseInt(limit, 10) : undefined;
+    const roles = req?.user?.roles || [];
+    const userId = req?.user?.id;
+
+    // ADMIN/ADVOGADO podem ver todas as tarefas (viewAll=true) ou filtrar por assignedUserId
+    // ESTAGIARIO/OPERADOR veem apenas as próprias tarefas por padrão
+    let effectiveAssignedUserId = assignedUserId;
+    if (!effectiveAssignedUserId && !roles.some((r: string) => ['ADMIN', 'ADVOGADO'].includes(r)) && viewAll !== 'true') {
+      effectiveAssignedUserId = userId;
+    }
+
     return this.tasksService.findAll(req?.user?.tenant_id, p, l, {
       status,
-      assignedUserId,
+      assignedUserId: effectiveAssignedUserId,
       dueFilter,
       search,
     });

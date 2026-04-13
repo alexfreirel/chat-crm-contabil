@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ChatGateway } from '../gateway/chat.gateway';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { Prisma, Conversation } from '@crm/shared';
+import { effectiveRole } from '../common/utils/permissions.util';
 
 @Injectable()
 export class ConversationsService {
@@ -20,16 +21,14 @@ export class ConversationsService {
 
   async findAll(status?: string, userId?: string, inboxId?: string, tenantId?: string, clientMode?: boolean) {
     const where: any = {};
+    // Filtro por status explícito (se passado via query param)
     if (status) {
       where.status = status;
-    } else {
-      // Por padrão excluir conversas fechadas ou adiadas do inbox principal
-      where.status = { notIn: ['FECHADO', 'ADIADO'] };
     }
+    // Não filtramos mais por conversation.status (FECHADO/ADIADO).
+    // A visibilidade é controlada exclusivamente por lead.stage e lead.is_client.
 
-    // Tenant isolation estrito: todos os registros históricos foram migrados para o
-    // tenant padrão via prisma/migrate-tenant-null.ts em 2026-03-31. Não há mais
-    // registros com tenant_id = null que pertençam a tenants reais.
+    // Tenant isolation
     if (tenantId) {
       where.tenant_id = tenantId;
     }
@@ -42,59 +41,69 @@ export class ConversationsService {
         })
       : null;
 
-    const userRole = user?.role ?? 'OPERADOR';
+    const userRole = effectiveRole(user?.roles ?? 'OPERADOR');
     const userInboxIds = (user?.inboxes ?? []).map((i: any) => i.id);
 
     // ─── Filtro por clientMode (modo Leads vs Clientes) ──────────────────
-    // clientMode=true  → clientes (is_client=true)
-    // clientMode=false → leads em prospecção (is_client=false, excluindo PERDIDO)
-    // clientMode=undefined → comportamento legado (excluir apenas PERDIDO)
+    // Visibilidade controlada por lead.stage e lead.is_client:
+    //   - Aba Leads (clientMode=false): is_client=false, exclui FINALIZADO e PERDIDO
+    //   - Aba Clientes (clientMode=true): is_client=true (todos os clientes)
+    //   - Legado (clientMode=undefined): exclui apenas PERDIDO
     if (clientMode === true) {
       where.lead = { is_client: true };
     } else if (clientMode === false) {
-      where.lead = { is_client: false, stage: { not: 'PERDIDO' } };
+      where.lead = { is_client: false, stage: { notIn: ['PERDIDO', 'FINALIZADO'] } };
     } else {
-      // Legado: excluir apenas PERDIDO
-      where.lead = { stage: { not: 'PERDIDO' } };
+      where.lead = { stage: { notIn: ['PERDIDO', 'FINALIZADO'] } };
     }
 
-    // ─── Controle de acesso por role ────────────────────────────────────
-    if (userRole === 'ADMIN') {
+    // ─── Controle de acesso por role (multi-role aware) ────────────────
+    const userRoles: string[] = Array.isArray(user?.roles) ? user.roles : [userRole];
+    const isAdminUser = userRoles.includes('ADMIN');
+    const isAdvogadoUser = userRoles.includes('ADVOGADO');
+    const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL');
+
+    if (isAdminUser) {
       // Admin vê tudo — apenas filtra por inboxId se explicitamente pedido
       if (inboxId) where.inbox_id = inboxId;
 
-    } else if (userRole === 'ADVOGADO') {
-      // Advogado vê:
-      // - No modo clientes: conversas onde é advogado atribuído OU responsável por um caso do lead
-      // - No modo leads: conversas onde foi indicado como advogado (triagem/reunião)
-      // - Com inboxId específico: respeita o inbox
-      if (inboxId) {
-        where.inbox_id = inboxId;
-      } else {
-        where.OR = [
-          { assigned_lawyer_id: userId },
-          ...(clientMode === true
-            ? [{ lead: { is_client: true, legal_cases: { some: { lawyer_id: userId } } } }]
-            : []),
-          // Se tiver inboxes vinculados, também vê essas conversas
-          ...(userInboxIds.length > 0 ? [{ inbox_id: { in: userInboxIds } }] : []),
-        ];
-      }
-
     } else {
-      // OPERADOR / ESTAGIARIO / outros:
-      // - No modo leads: vê conversas do seu inbox (prospecção)
-      // - No modo clientes: vê apenas clientes que ele converteu (cs_user_id)
+      // Multi-role: combina visibilidade de todos os papéis do usuário
+      // ADVOGADO vê: assigned_lawyer_id + legal_cases.lawyer_id
+      // OPERADOR vê: assigned_user_id + cs_user_id (clientes)
+      // Ambos: combina tudo via OR
       if (inboxId) {
-        where.inbox_id = inboxId;
-      } else if (clientMode === true) {
-        // Modo clientes: só vê os que ele converteu
-        where.lead = { ...(where.lead ?? {}), cs_user_id: userId };
-      } else {
-        // Modo leads (padrão): filtra pelo inbox do operador
-        if (userInboxIds.length > 0) {
-          where.inbox_id = { in: userInboxIds };
+        // Valida que o usuário pertence ao inbox solicitado
+        if (userInboxIds.length > 0 && !userInboxIds.includes(inboxId)) {
+          where.inbox_id = '__none__'; // retorna vazio se não pertence ao inbox
+        } else {
+          where.inbox_id = inboxId;
         }
+      } else {
+        const orConditions: any[] = [];
+
+        // Visibilidade de ADVOGADO: apenas CLIENTES atribuídos como advogada + processos
+        // Na aba Leads: advogado NÃO vê leads de outros operadores via assigned_lawyer_id
+        if (isAdvogadoUser && clientMode === true) {
+          orConditions.push({ assigned_lawyer_id: userId, lead: { is_client: true } });
+          orConditions.push({ lead: { is_client: true, legal_cases: { some: { lawyer_id: userId } } } });
+        }
+
+        // Conversas atribuídas diretamente ao usuário (qualquer role)
+        orConditions.push({ assigned_user_id: userId });
+
+        // Visibilidade de OPERADOR: cs_user_id (clientes) + inbox membership (leads)
+        if (isOperadorUser) {
+          if (clientMode === true) {
+            orConditions.push({ lead: { ...(where.lead ?? {}), cs_user_id: userId } });
+          }
+          // Inboxes vinculados — APENAS para operadores no modo leads
+          if (userInboxIds.length > 0 && clientMode !== true) {
+            orConditions.push({ inbox_id: { in: userInboxIds } });
+          }
+        }
+
+        where.OR = orConditions;
       }
     }
 
@@ -128,6 +137,19 @@ export class ConversationsService {
         })
       : [];
     const userNameMap: Record<string, string> = Object.fromEntries(enrichUsers.map((u) => [u.id, u.name]));
+
+    // Enrich with hasNotes flag (1 query, não N+1)
+    const convIds = conversations.map((c) => c.id);
+    const noteCounts = convIds.length
+      ? await (this.prisma as any).conversationNote.groupBy({
+          by: ['conversation_id'],
+          where: { conversation_id: { in: convIds } },
+          _count: true,
+        })
+      : [];
+    const noteCountMap: Record<string, boolean> = Object.fromEntries(
+      noteCounts.map((n: any) => [n.conversation_id, true]),
+    );
 
     const data = conversations.map((c) => ({
       id: c.id,
@@ -167,6 +189,7 @@ export class ConversationsService {
         assignedUserId: (c as any).tasks[0].assigned_user_id || null,
         postponeCount: (c as any).tasks[0].postpone_count || 0,
       } : null,
+      hasNotes: !!noteCountMap[c.id],
     }));
 
     return { data, total };
@@ -200,7 +223,9 @@ export class ConversationsService {
       where: { lead_id },
       orderBy: { last_message_at: 'desc' },
       include: {
-        lead: { select: { id: true, name: true, phone: true, email: true, profile_picture_url: true } },
+        lead: {
+          include: { memory: { select: { facts_json: true } } },
+        },
         messages: { orderBy: { created_at: 'asc' }, take: 100, include: { media: true, skill: { select: { id: true, name: true, area: true } } } },
         assigned_user: { select: { id: true, name: true } },
       },
@@ -289,14 +314,18 @@ export class ConversationsService {
   async setAiMode(id: string, ai_mode: boolean): Promise<Conversation> {
     return this.prisma.conversation.update({
       where: { id },
-      data: { ai_mode },
+      data: {
+        ai_mode,
+        // Registra timestamp quando desligou; limpa quando religou
+        ai_mode_disabled_at: ai_mode ? null : new Date(),
+      },
     });
   }
 
   async assign(id: string, userId: string): Promise<Conversation> {
     return this.prisma.conversation.update({
       where: { id },
-      data: { assigned_user_id: userId, ai_mode: false },
+      data: { assigned_user_id: userId, ai_mode: false, ai_mode_disabled_at: new Date() },
     });
   }
 
@@ -346,7 +375,7 @@ export class ConversationsService {
     const { fromUser, conv } = await this.prisma.$transaction(async (tx) => {
       const existing = await (tx as any).conversation.findUnique({
         where: { id },
-        select: { assigned_user_id: true, pending_transfer_to_id: true },
+        select: { assigned_user_id: true, pending_transfer_to_id: true, tenant_id: true },
       });
       if (!existing || existing.assigned_user_id !== fromUserId) {
         throw new ForbiddenException('Você só pode transferir conversas atribuídas a você.');
@@ -381,32 +410,36 @@ export class ConversationsService {
       audioIds: audioIds?.length ? audioIds : undefined,
     });
 
-    // Broadcast para todos os clientes: garante que o destino atualize
-    // a lista "Aguardando você" mesmo se o evento direto for perdido
-    this.chatGateway.emitConversationsUpdate(null);
+    // Broadcast escopado por tenant para atualizar a lista "Aguardando você"
+    this.chatGateway.emitConversationsUpdate((conv as any).tenant_id ?? null);
 
     return conv;
   }
 
   async acceptTransfer(id: string, userId: string) {
     // Transação atômica: ler estado atual + atualizar
-    const { current, acceptingUser, conv } = await this.prisma.$transaction(async (tx) => {
+    const { current, acceptingUser, fromUser, conv } = await this.prisma.$transaction(async (tx) => {
       const current = await (tx as any).conversation.findUnique({
         where: { id },
-        select: { pending_transfer_to_id: true, pending_transfer_from_id: true, lead: { select: { name: true, phone: true } } },
+        select: { pending_transfer_to_id: true, pending_transfer_from_id: true, tenant_id: true, lead: { select: { name: true, phone: true } } },
       });
 
       if (!current?.pending_transfer_to_id || current.pending_transfer_to_id !== userId) {
         throw new ForbiddenException('Você não é o destinatário desta transferência.');
       }
 
-      const [acceptingUser, conv] = await Promise.all([
+      const [acceptingUser, fromUser, conv] = await Promise.all([
         tx.user.findUnique({ where: { id: userId }, select: { name: true } }),
+        current.pending_transfer_from_id
+          ? tx.user.findUnique({ where: { id: current.pending_transfer_from_id }, select: { name: true } })
+          : null,
         (tx as any).conversation.update({
           where: { id },
           data: {
             assigned_user_id: userId,
+            origin_assigned_user_id: current.pending_transfer_from_id,
             ai_mode: false,
+            ai_mode_disabled_at: new Date(),
             pending_transfer_to_id: null,
             pending_transfer_from_id: null,
             pending_transfer_reason: null,
@@ -415,8 +448,23 @@ export class ConversationsService {
         }),
       ]);
 
-      return { current, acceptingUser, conv };
+      return { current, acceptingUser, fromUser, conv };
     });
+
+    // Salvar mensagem de histórico de transferência
+    const fromName = fromUser?.name || 'Operador';
+    const toName = acceptingUser?.name || 'Operador';
+    const transferMsg = await this.prisma.message.create({
+      data: {
+        conversation_id: id,
+        direction: 'out',
+        type: 'transfer_event',
+        text: `📨 Transferido de ${fromName} para ${toName}`,
+        status: 'enviado',
+        external_message_id: `transfer_${Date.now()}`,
+      },
+    });
+    this.chatGateway.emitNewMessage(id, transferMsg);
 
     if (current?.pending_transfer_from_id) {
       this.chatGateway.emitTransferResponse(current.pending_transfer_from_id, {
@@ -425,7 +473,7 @@ export class ConversationsService {
         contactName: current.lead?.name || current.lead?.phone || 'Contato',
       });
     }
-    this.chatGateway.emitConversationsUpdate(null);
+    this.chatGateway.emitConversationsUpdate(current?.tenant_id ?? null);
     return conv;
   }
 
@@ -458,6 +506,31 @@ export class ConversationsService {
       });
     }
 
+    return { success: true };
+  }
+
+  async cancelTransfer(id: string, userId: string) {
+    const conv = await (this.prisma as any).conversation.findUnique({
+      where: { id },
+      select: { pending_transfer_from_id: true, pending_transfer_to_id: true, tenant_id: true },
+    });
+    if (!conv?.pending_transfer_from_id || conv.pending_transfer_from_id !== userId) {
+      throw new ForbiddenException('Só quem enviou a transferência pode cancelá-la.');
+    }
+    await (this.prisma as any).conversation.update({
+      where: { id },
+      data: {
+        pending_transfer_to_id: null,
+        pending_transfer_from_id: null,
+        pending_transfer_reason: null,
+        pending_transfer_audio_ids: [],
+      },
+    });
+    // Notifica o destinatário para fechar o popup de transferência
+    if (conv.pending_transfer_to_id) {
+      this.chatGateway.emitTransferCancelled(conv.pending_transfer_to_id, { conversationId: id });
+    }
+    this.chatGateway.emitConversationsUpdate(conv.tenant_id ?? null);
     return { success: true };
   }
 
@@ -497,12 +570,13 @@ export class ConversationsService {
 
   async returnToOrigin(id: string, reason?: string, audioIds?: string[], returningUserId?: string) {
     // Transação atômica: ler estado + lookup user + atualizar conversa
-    const { originUserId, returningUserName, contactName } = await this.prisma.$transaction(async (tx) => {
+    const { originUserId, returningUserName, contactName, tenantId } = await this.prisma.$transaction(async (tx) => {
       const conv = await (tx as any).conversation.findUnique({
         where: { id },
         select: {
           origin_assigned_user_id: true,
           assigned_user_id: true,
+          tenant_id: true,
           lead: { select: { name: true, phone: true } },
         },
       });
@@ -521,6 +595,7 @@ export class ConversationsService {
           assigned_user_id: conv.origin_assigned_user_id,
           origin_assigned_user_id: null,
           ai_mode: false,
+          ai_mode_disabled_at: new Date(),
           linked_agent_ids: { push: linkedIds },
         },
       });
@@ -529,8 +604,23 @@ export class ConversationsService {
         originUserId: conv.origin_assigned_user_id,
         returningUserName: returningUser?.name || 'Advogado',
         contactName: conv.lead?.name || conv.lead?.phone || 'Contato',
+        tenantId: conv.tenant_id as string | null,
       };
     });
+
+    // Salvar mensagem de histórico de devolução
+    const originUser = await this.prisma.user.findUnique({ where: { id: originUserId }, select: { name: true } });
+    const returnMsg = await this.prisma.message.create({
+      data: {
+        conversation_id: id,
+        direction: 'out',
+        type: 'transfer_event',
+        text: `↩ Devolvido de ${returningUserName} para ${originUser?.name || 'Operador'}${reason?.trim() ? ` — ${reason.trim()}` : ''}`,
+        status: 'enviado',
+        external_message_id: `transfer_${Date.now()}`,
+      },
+    });
+    this.chatGateway.emitNewMessage(id, returnMsg);
 
     // Notificar o atendente de origem sobre a devolução com o contexto do advogado
     this.chatGateway.emitTransferReturned(originUserId, {
@@ -541,18 +631,18 @@ export class ConversationsService {
       audioIds: audioIds?.length ? audioIds : undefined,
     });
 
-    this.chatGateway.emitConversationsUpdate(null);
+    this.chatGateway.emitConversationsUpdate(tenantId ?? null);
     return { success: true };
   }
 
   async countOpen(userId?: string): Promise<number> {
-    const where: any = { status: { not: 'FECHADO' } };
+    const where: any = { lead: { stage: { notIn: ['PERDIDO', 'FINALIZADO'] }, is_client: false } };
     if (userId) {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
         include: { inboxes: { select: { id: true } } },
       });
-      if (user?.role !== 'ADMIN' && user?.inboxes && user.inboxes.length > 0) {
+      if (!user?.roles?.includes('ADMIN') && user?.inboxes && user.inboxes.length > 0) {
         where.inbox_id = { in: user.inboxes.map((i: any) => i.id) };
       }
     }
@@ -562,7 +652,7 @@ export class ConversationsService {
   async keepInInbox(id: string) {
     const conv = await (this.prisma as any).conversation.findUnique({
       where: { id },
-      select: { origin_assigned_user_id: true, assigned_user_id: true },
+      select: { origin_assigned_user_id: true, assigned_user_id: true, tenant_id: true },
     });
 
     const linkedIds = [...new Set([conv?.assigned_user_id, conv?.origin_assigned_user_id].filter(Boolean) as string[])];
@@ -574,11 +664,108 @@ export class ConversationsService {
       },
     });
 
-    this.chatGateway.emitConversationsUpdate(null);
+    this.chatGateway.emitConversationsUpdate(conv?.tenant_id ?? null);
     return { success: true };
   }
 
   // ── Mark as Read (envia tick azul ao contato) ───────────────────────────────
+
+  /**
+   * Retorna a contagem real de mensagens não lidas por conversa (fonte: banco de dados).
+   *
+   * Regra de negócio (notificações — mais restritiva que visibilidade):
+   *  - ADMIN: badges apenas das conversas atribuídas a ele (assigned_user_id)
+   *  - ADVOGADO: badges apenas de clientes atribuídos a ele (assigned_lawyer_id)
+   *  - OPERADOR: badges apenas de leads/clientes atribuídos a ele (assigned_user_id)
+   *  - ADVOGADO+OPERADOR: combina ambos (clientes como advogado + leads como operador)
+   *  - Exclui leads PERDIDO/FINALIZADO
+   *
+   * Nota: findAll() controla VISIBILIDADE (o que aparece na lista).
+   *       getUnreadCounts() controla NOTIFICAÇÃO (o que mostra badge vermelho).
+   *       Admin pode ver todas as conversas mas só recebe badge das suas.
+   */
+  async getUnreadCounts(tenantId?: string, userId?: string) {
+    let conversationIds: string[] | undefined;
+
+    if (userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: { inboxes: { select: { id: true } } },
+      });
+
+      const userRoles: string[] = Array.isArray(user?.roles)
+        ? user.roles
+        : [effectiveRole(user?.roles ?? 'OPERADOR')];
+      const isAdvogadoUser = userRoles.includes('ADVOGADO');
+      const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL');
+      const isAdminUser = userRoles.includes('ADMIN');
+
+      // Filtro base: tenant + exclui leads PERDIDO/FINALIZADO
+      const convWhere: any = {
+        ...(tenantId ? { tenant_id: tenantId } : {}),
+        lead: { stage: { notIn: ['PERDIDO', 'FINALIZADO'] } },
+      };
+
+      const orConditions: any[] = [];
+
+      // ADMIN: badge apenas das conversas atribuídas diretamente a ele
+      if (isAdminUser) {
+        orConditions.push({ assigned_user_id: userId });
+        // Admin que também é advogado: clientes atribuídos como advogado
+        if (isAdvogadoUser) {
+          orConditions.push({ assigned_lawyer_id: userId, lead: { is_client: true } });
+        }
+      } else {
+        // ADVOGADO: badge apenas de CLIENTES onde é advogado responsável
+        if (isAdvogadoUser) {
+          orConditions.push({ assigned_lawyer_id: userId, lead: { is_client: true } });
+        }
+
+        // Conversas atribuídas diretamente (qualquer role)
+        orConditions.push({ assigned_user_id: userId });
+      }
+
+      // Fallback (estagiário puro, financeiro)
+      if (orConditions.length === 0) {
+        orConditions.push({ assigned_user_id: userId });
+      }
+
+      convWhere.OR = orConditions;
+
+      const convs = await this.prisma.conversation.findMany({
+        where: convWhere,
+        select: { id: true },
+      });
+      conversationIds = convs.map(c => c.id);
+    }
+
+    // Etapa 2: conta mensagens não lidas apenas nessas conversas
+    const where: any = {
+      direction: 'in',
+      status: { in: ['recebido', 'entregue'] },
+    };
+
+    if (conversationIds !== undefined) {
+      where.conversation_id = { in: conversationIds };
+    } else if (tenantId) {
+      // Fallback sem userId (chamadas internas/admin sem contexto de usuário)
+      where.conversation = { tenant_id: tenantId };
+    }
+
+    const counts = await this.prisma.message.groupBy({
+      by: ['conversation_id'],
+      where,
+      _count: { id: true },
+    });
+
+    const result: Record<string, number> = {};
+    for (const c of counts) {
+      if (c.conversation_id) {
+        result[c.conversation_id] = c._count.id;
+      }
+    }
+    return result;
+  }
 
   async markAsRead(conversationId: string) {
     const convo = await this.prisma.conversation.findUnique({
@@ -639,5 +826,45 @@ export class ConversationsService {
     } catch {
       return { sent: false };
     }
+  }
+
+  // ── Notas internas fixas ──────────────────────────────────────────────────
+
+  async listNotes(conversationId: string, tenantId?: string) {
+    if (tenantId) {
+      const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId }, select: { tenant_id: true } });
+      if (conv?.tenant_id && conv.tenant_id !== tenantId) throw new ForbiddenException('Acesso negado');
+    }
+    return (this.prisma as any).conversationNote.findMany({
+      where: { conversation_id: conversationId },
+      orderBy: { created_at: 'asc' },
+      include: { user: { select: { id: true, name: true } } },
+    });
+  }
+
+  async createNote(conversationId: string, userId: string, text: string, tenantId?: string) {
+    if (tenantId) {
+      const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId }, select: { tenant_id: true } });
+      if (conv?.tenant_id && conv.tenant_id !== tenantId) throw new ForbiddenException('Acesso negado');
+    }
+    const note = await (this.prisma as any).conversationNote.create({
+      data: { conversation_id: conversationId, user_id: userId, text },
+      include: { user: { select: { id: true, name: true } } },
+    });
+    this.chatGateway.emitNewNote(conversationId, note);
+    return note;
+  }
+
+  async updateNote(noteId: string, userId: string, text: string) {
+    const note = await (this.prisma as any).conversationNote.findUnique({ where: { id: noteId } });
+    if (!note) throw new NotFoundException('Nota não encontrada');
+    if (note.user_id !== userId) throw new ForbiddenException('Apenas o autor pode editar esta nota');
+    const updated = await (this.prisma as any).conversationNote.update({
+      where: { id: noteId },
+      data: { text },
+      include: { user: { select: { id: true, name: true } } },
+    });
+    this.chatGateway.emitNoteUpdated(note.conversation_id, updated);
+    return updated;
   }
 }

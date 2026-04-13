@@ -1,4 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { ChatGateway } from '../gateway/chat.gateway';
@@ -56,6 +58,7 @@ export class MessagesService {
     private chatGateway: ChatGateway,
     private s3: MediaS3Service,
     private settings: SettingsService,
+    @InjectQueue('ai-jobs') private aiQueue: Queue,
   ) {}
 
   async getMessages(conversationId: string, page = 1, limit = 100, tenantId?: string) {
@@ -119,11 +122,18 @@ export class MessagesService {
 
     if (!rawMessages.length) return { imported: 0, total: 0 };
 
+    // Cutoff: só importar mensagens posteriores à criação do lead atual.
+    // Evita reimportar histórico de leads excluídos (a Evolution mantém o chat).
+    const cutoffTs = Math.floor(new Date(convo.lead.created_at).getTime() / 1000);
+
     let imported = 0;
     for (const msg of rawMessages) {
       try {
         const externalId: string | undefined = msg.key?.id || msg.id;
         if (!externalId) continue;
+
+        const msgTs = Number(msg.messageTimestamp || 0);
+        if (cutoffTs > 0 && msgTs > 0 && msgTs < cutoffTs) continue;
 
         const exists = await this.prisma.message.findUnique({
           where: { external_message_id: externalId },
@@ -186,6 +196,21 @@ export class MessagesService {
       `[AutoReassign] Conversa ${convo.id}: ${convo.assigned_user_id ?? 'sem operador'} → ${senderId}`,
     );
     this.chatGateway.emitConversationsUpdate(null);
+  }
+
+  /** Enfileira job para atualizar a Long Memory após mensagem do operador.
+   *  Debounce de 15s com job ID fixo para acumular mensagens rápidas. */
+  private async enqueueMemoryUpdate(conversationId: string, leadId: string) {
+    const jobId = `memory-op-${conversationId}`;
+    const existing = await this.aiQueue.getJob(jobId);
+    if (existing) {
+      try { await existing.remove(); } catch { /* job ativo/bloqueado */ }
+    }
+    await this.aiQueue.add(
+      'process_ai_response',
+      { conversation_id: conversationId, lead_id: leadId },
+      { jobId, delay: 15_000, removeOnComplete: true, removeOnFail: false },
+    );
   }
 
   async sendMessage(conversationId: string, text: string, replyToId?: string, senderId?: string, isInternal?: boolean) {
@@ -295,7 +320,12 @@ export class MessagesService {
       data: { last_message_at: new Date() }
     });
 
-    // 4. Emit real-time events via WebSocket
+    // 4. Atualizar memória com mensagem do operador (debounce 15s)
+    this.enqueueMemoryUpdate(convo.id, convo.lead_id).catch((e) =>
+      this.logger.error(`Erro ao enfileirar memory-op: ${e.message}`),
+    );
+
+    // 5. Emit real-time events via WebSocket
     this.chatGateway.emitNewMessage(convo.id, msg);
     this.chatGateway.emitConversationsUpdate(null);
 
@@ -399,7 +429,14 @@ export class MessagesService {
       data: { last_message_at: new Date() },
     });
 
-    // 7. Buscar mensagem com mídia para emitir e retornar
+    // 7. Atualizar memória com áudio do operador (debounce 15s)
+    if (audioSendStatus !== 'erro') {
+      this.enqueueMemoryUpdate(convo.id, convo.lead_id).catch((e) =>
+        this.logger.error(`Erro ao enfileirar memory-op (audio): ${e.message}`),
+      );
+    }
+
+    // 8. Buscar mensagem com mídia para emitir e retornar
     const msgWithMedia = await this.prisma.message.findUnique({
       where: { id: msg.id },
       include: { media: true },
@@ -496,6 +533,11 @@ export class MessagesService {
       where: { id: convo.id },
       data: { last_message_at: new Date() },
     });
+
+    // Atualizar memória com arquivo do operador (debounce 15s)
+    this.enqueueMemoryUpdate(convo.id, convo.lead_id).catch((e) =>
+      this.logger.error(`Erro ao enfileirar memory-op (file): ${e.message}`),
+    );
 
     const msgWithMedia = await this.prisma.message.findUnique({
       where: { id: msg.id },
@@ -610,8 +652,9 @@ export class MessagesService {
     const file = await toFile(buffer, `audio.${ext}`, { type: mimeBase });
     const result = await openai.audio.transcriptions.create({
       file,
-      model: 'whisper-1',
+      model: 'gpt-4o-transcribe',
       language: 'pt',
+      prompt: 'Transcrição de mensagem de voz do WhatsApp em português brasileiro. O cliente está conversando com um escritório de advocacia sobre questões jurídicas.',
     });
 
     const transcription = result.text?.trim() || '';
@@ -642,7 +685,7 @@ export class MessagesService {
 
     const openai = new OpenAI({ apiKey });
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4.1-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: text },

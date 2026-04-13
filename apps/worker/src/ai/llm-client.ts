@@ -250,8 +250,35 @@ export class AnthropicClient {
 
     return {
       role: m.role as 'user' | 'assistant',
-      content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+      content: typeof m.content === 'string'
+        ? m.content
+        : this.convertToAnthropicContent(m.content),
     };
+  }
+
+  /**
+   * Converte blocos de conteúdo multi-modal do formato OpenAI para Anthropic.
+   * OpenAI: { type: 'image_url', image_url: { url: 'data:...' } }
+   * Anthropic: { type: 'image', source: { type: 'base64', media_type, data } }
+   */
+  private convertToAnthropicContent(blocks: any[]): Anthropic.MessageParam['content'] {
+    return blocks.map((block: any) => {
+      if (block.type === 'image_url') {
+        const url: string = block.image_url?.url || '';
+        if (url.startsWith('data:')) {
+          const commaIdx = url.indexOf(',');
+          const header = url.slice(0, commaIdx); // 'data:image/jpeg;base64'
+          const data = url.slice(commaIdx + 1);
+          const mediaType = header.replace('data:', '').replace(';base64', '') as
+            'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+          return { type: 'image', source: { type: 'base64', media_type: mediaType, data } };
+        }
+        // URL remota — usar image_url source (Anthropic Messages API)
+        return { type: 'image', source: { type: 'url', url } };
+      }
+      if (block.type === 'text') return { type: 'text', text: block.text };
+      return block;
+    });
   }
 }
 

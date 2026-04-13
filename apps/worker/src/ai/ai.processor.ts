@@ -13,7 +13,7 @@ import { buildHandlerMap } from './tool-handlers';
 import { createLLMClient, calculateCost, type LLMProvider } from './llm-client';
 
 // Modelos com suporte a visão (imagens)
-const VISION_MODELS = ['gpt-4o', 'gpt-4.1', 'gpt-5'];
+const VISION_MODELS = ['gpt-4o', 'gpt-4.1', 'gpt-5', 'claude-'];
 
 // ─── Long Memory System Prompt (infraestrutura interna, não é skill) ───
 const LONG_MEMORY_SYSTEM_PROMPT = `Você é uma IA especializada em gerenciamento de memória de longo prazo (LONG MEMORY) de leads e casos jurídicos, multiárea.
@@ -194,23 +194,37 @@ export class AiProcessor extends WorkerHost {
     slots_to_offer?: { date: string; time: string; label: string }[];
   } {
     const extract = (parsed: any) => ({
-      reply: parsed.reply,
+      reply: parsed.reply ?? '',
       updates: parsed.updates || parsed.lead_update || {},
       scheduling_action: parsed.scheduling_action || undefined,
       slots_to_offer: parsed.slots_to_offer || undefined,
     });
 
+    // 1. JSON puro
     try {
       const parsed = JSON.parse(raw);
-      if (parsed.reply) return extract(parsed);
+      if ('reply' in parsed) return extract(parsed);
     } catch {}
 
-    const jsonMatch = raw.match(/```json?\s*([\s\S]*?)```/);
+    // 2. Markdown ```json ... ``` (com ou sem fechamento)
+    const jsonMatch = raw.match(/```json?\s*([\s\S]*?)```/) ||
+                      raw.match(/```json?\s*([\s\S]+)/); // ```json sem fechar
     if (jsonMatch) {
       try {
         const parsed = JSON.parse(jsonMatch[1].trim());
-        if (parsed.reply) return extract(parsed);
+        if ('reply' in parsed) return extract(parsed);
       } catch {}
+    }
+
+    // 3. Extrair "reply" via regex (fallback para JSON truncado/malformado)
+    const replyMatch = raw.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (replyMatch) {
+      const reply = replyMatch[1]
+        .replace(/\\n/g, '\n')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\');
+      this.logger.warn(`[AI] JSON malformado — reply extraído via regex (${reply.length} chars)`);
+      return { reply, updates: {} };
     }
 
     this.logger.warn('[AI] Resposta não é JSON válido — usando como texto puro');
@@ -233,18 +247,27 @@ export class AiProcessor extends WorkerHost {
       const isRecent = msgAge < 2 * 60 * 1000; // < 2 minutos
 
       if (!media?.s3_key && isRecent) {
-        for (let attempt = 1; attempt <= 5; attempt++) {
-          await new Promise((r) => setTimeout(r, 800));
-          const found = await this.prisma.media.findFirst({
-            where: { message_id: msg.id },
-          });
-          if (found?.s3_key) {
-            media = found;
-            break;
+        // Polling com duas fases:
+        // - Fase rápida (5×500ms = 2.5s): cobre download síncrono com pequeno atraso de commit
+        // - Fase lenta (12×2000ms = 24s): cobre fallback BullMQ processando áudios longos
+        const phases = [
+          { attempts: 5, delay: 500 },
+          { attempts: 12, delay: 2000 },
+        ];
+        outer: for (const phase of phases) {
+          for (let attempt = 1; attempt <= phase.attempts; attempt++) {
+            await new Promise((r) => setTimeout(r, phase.delay));
+            const found = await this.prisma.media.findFirst({
+              where: { message_id: msg.id },
+            });
+            if (found?.s3_key) {
+              media = found;
+              break outer;
+            }
+            this.logger.log(
+              `[AI] Aguardando mídia para msg ${msg.id} (delay=${phase.delay}ms tentativa ${attempt}/${phase.attempts})...`,
+            );
           }
-          this.logger.log(
-            `[AI] Aguardando mídia para msg ${msg.id} (tentativa ${attempt}/5)...`,
-          );
         }
       }
       if (!media?.s3_key) {
@@ -970,15 +993,30 @@ export class AiProcessor extends WorkerHost {
           if (leadParts.length) parts.push(`👤 Dados do Lead: ${leadParts.join(' | ')}`);
         }
         // Caso
-        if (factsJson?.case) {
-          const c = factsJson.case;
+        // Suporte a múltiplos processos (facts.cases[]) + backward compat (facts.case)
+        const allCases: any[] = factsJson?.cases || (factsJson?.case ? [factsJson.case] : []);
+        if (allCases.length === 1) {
+          const c = allCases[0];
           const caseParts: string[] = [];
+          if (c.case_number) caseParts.push(`Nº: ${c.case_number}`);
           if (c.area) caseParts.push(`Área: ${c.area}`);
-          if (c.subarea) caseParts.push(`Subárea: ${c.subarea}`);
+          if (c.tracking_stage) caseParts.push(`Estágio: ${c.tracking_stage}`);
           if (c.status) caseParts.push(`Status: ${c.status}`);
           if (c.summary) caseParts.push(`Resumo: ${c.summary}`);
+          if (c.opposing_party) caseParts.push(`Parte contrária: ${c.opposing_party}`);
+          if (c.subarea) caseParts.push(`Subárea: ${c.subarea}`);
           if (c.tags?.length) caseParts.push(`Tags: ${c.tags.join(', ')}`);
-          if (caseParts.length) parts.push(`⚖️ Caso: ${caseParts.join(' | ')}`);
+          if (caseParts.length) parts.push(`⚖️ Processo: ${caseParts.join(' | ')}`);
+        } else if (allCases.length > 1) {
+          const caseLines = allCases.map((c: any, i: number) => {
+            const p: string[] = [];
+            if (c.case_number) p.push(`Nº: ${c.case_number}`);
+            if (c.area) p.push(c.area);
+            if (c.tracking_stage) p.push(`Estágio: ${c.tracking_stage}`);
+            if (c.opposing_party) p.push(`vs ${c.opposing_party}`);
+            return `  ${i + 1}. ${p.join(' | ')}`;
+          });
+          parts.push(`⚖️ Processos (${allCases.length}):\n${caseLines.join('\n')}`);
         }
         // Partes
         if (factsJson?.parties) {
@@ -1080,6 +1118,26 @@ export class AiProcessor extends WorkerHost {
       // 8. Carregar skills ativas (com tools e assets inclusos)
       const activeSkills = await this.settings.getActiveSkills();
 
+      // 8.5 Detectar se é CLIENTE com processo ativo → forçar skill Acompanhamento
+      let isActiveClient = false;
+      let activeCases: any[] = [];
+      try {
+        const lead = await (this.prisma as any).lead.findUnique({
+          where: { id: convo.lead_id },
+          select: { is_client: true, stage: true },
+        });
+        if (lead?.is_client) {
+          activeCases = await (this.prisma as any).legalCase.findMany({
+            where: { lead_id: convo.lead_id, archived: false },
+            select: { id: true, case_number: true, legal_area: true, tracking_stage: true, in_tracking: true, stage: true, opposing_party: true },
+            orderBy: { stage_changed_at: 'desc' },
+          });
+          if (activeCases.length > 0) isActiveClient = true;
+        }
+      } catch (e: any) {
+        this.logger.warn(`[AI] Falha ao verificar status de cliente: ${e.message}`);
+      }
+
       // 9. Selecionar skill — via Router inteligente ou fallback area-matching
       const legalArea = (convo as any).legal_area || null;
       const nextStep = (convo as any).next_step || null;
@@ -1088,7 +1146,16 @@ export class AiProcessor extends WorkerHost {
       let routerReason = '';
       let routerTokens = 0;
 
-      if (routerConfig.enabled && activeSkills.length > 1) {
+      // Se é cliente com processo ativo, forçar skill de Acompanhamento
+      if (isActiveClient) {
+        skill = activeSkills.find((s: any) => s.area === 'Acompanhamento') || null;
+        if (skill) {
+          routerReason = `cliente ativo com ${activeCases.length} processo(s) — skill Acompanhamento`;
+          this.logger.log(`[AI] Cliente ativo detectado (lead=${convo.lead_id}), usando skill Acompanhamento`);
+        }
+      }
+
+      if (!skill && routerConfig.enabled && activeSkills.length > 1) {
         try {
           const routerApiKey = routerConfig.provider === 'anthropic'
             ? await this.settings.getAnthropicKey()
@@ -1286,6 +1353,35 @@ export class AiProcessor extends WorkerHost {
         }
       }
 
+      // Montar info de processos ativos (para clientes com caso em andamento)
+      let activeCasesInfoBlock = '';
+      if (isActiveClient && activeCases.length > 0) {
+        const TRACKING_LABELS: Record<string, string> = {
+          DISTRIBUIDO: 'Distribuído', CITACAO: 'Citação', CONTESTACAO: 'Contestação',
+          REPLICA: 'Réplica', PERICIA_AGENDADA: 'Perícia Agendada', INSTRUCAO: 'Audiência/Instrução',
+          ALEGACOES_FINAIS: 'Alegações Finais', AGUARDANDO_SENTENCA: 'Aguardando Sentença',
+          JULGAMENTO: 'Julgamento', RECURSO: 'Recurso', TRANSITADO: 'Transitado em Julgado',
+          EXECUCAO: 'Execução', ENCERRADO: 'Encerrado',
+        };
+        const PREP_LABELS: Record<string, string> = {
+          VIABILIDADE: 'Análise de Viabilidade', DOCUMENTACAO: 'Coleta de Documentos',
+          PETICAO: 'Petição Inicial', REVISAO: 'Revisão', PROTOCOLO: 'Protocolo',
+        };
+        const caseLines = activeCases.map((c: any) => {
+          const stageLabel = c.in_tracking
+            ? (TRACKING_LABELS[c.tracking_stage] || c.tracking_stage || 'Em acompanhamento')
+            : (PREP_LABELS[c.stage] || c.stage || 'Em preparação');
+          return `  - Nº ${c.case_number || 'Sem número'} | ${c.legal_area || 'Área não definida'} | Estágio: ${stageLabel}${c.opposing_party ? ` | vs ${c.opposing_party}` : ''}`;
+        });
+        activeCasesInfoBlock = `═══════════════════════════════════════════════════
+⚖️ PROCESSOS ATIVOS DO CLIENTE (${activeCases.length}):
+${caseLines.join('\n')}
+
+IMPORTANTE: Este é um CLIENTE já contratado. NÃO faça triagem, NÃO investigue fatos, NÃO pergunte dados pessoais. Responda sobre o andamento do processo.
+═══════════════════════════════════════════════════
+`;
+      }
+
       const vars: Record<string, string> = {
         lead_name: convo.lead.name || 'Desconhecido',
         lead_phone: convo.lead.phone || '',
@@ -1310,6 +1406,7 @@ export class AiProcessor extends WorkerHost {
         upcoming_events: upcomingEventsBlock,
         operator_notes: operatorNotesBlock,
         ai_notes: aiNotesBlock,
+        active_cases_info: activeCasesInfoBlock,
       };
 
       // Cabeçalho fixo de capacidades — injetado antes de qualquer skill prompt
@@ -1332,6 +1429,7 @@ MEMÓRIA DO LEAD (tudo que já foi coletado sobre este cliente):
 {{ai_notes}}
 {{reminder_context}}
 {{upcoming_events}}
+{{active_cases_info}}
 REGRAS DE TOM E FORMATO (INVIOLÁVEIS):
 - MÁXIMO 2 frases curtas por mensagem. Se passar disso, CORTE.
 - NUNCA pular linha na mensagem. Tudo em bloco só.
@@ -1412,11 +1510,61 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
       }
 
       // 11. Montar histórico MULTI-TURN (memória natural do modelo)
-      // Cada mensagem vira um turn user/assistant real — muito mais eficaz que texto plano
-      const chatTurns: Array<{role: 'user' | 'assistant', content: string}> = [];
+      // Imagens do cliente são incluídas inline no turn correto (não descoladas no final).
+      const supportsVision = this.modelSupportsVision(model);
+      const chatTurns: Array<{role: 'user' | 'assistant', content: string | any[]}> = [];
       for (const m of chronological) {
         const isClient = (m as any).direction === 'in';
         const role: 'user' | 'assistant' = isClient ? 'user' : 'assistant';
+
+        // Imagem do cliente + modelo suporta visão → incluir inline no turn
+        // Se media ainda não chegou (race condition com media job), aguarda com polling.
+        if (isClient && (m as any).type === 'image' && supportsVision) {
+          let mediaRecord = (m as any).media ?? null;
+
+          if (!mediaRecord?.s3_key) {
+            const msgAge = Date.now() - new Date((m as any).created_at).getTime();
+            const isRecent = msgAge < 2 * 60 * 1000;
+            if (isRecent) {
+              // Polling: fase rápida (5×500ms) + fase lenta (6×2000ms) = até 14.5s
+              const phases = [
+                { attempts: 5, delay: 500 },
+                { attempts: 6, delay: 2000 },
+              ];
+              outer: for (const phase of phases) {
+                for (let attempt = 1; attempt <= phase.attempts; attempt++) {
+                  await new Promise((r) => setTimeout(r, phase.delay));
+                  const found = await this.prisma.media.findFirst({
+                    where: { message_id: (m as any).id },
+                  });
+                  if (found?.s3_key) {
+                    mediaRecord = found;
+                    break outer;
+                  }
+                  this.logger.log(
+                    `[AI] Aguardando mídia de imagem para msg ${(m as any).id} (delay=${phase.delay}ms tentativa ${attempt}/${phase.attempts})...`,
+                  );
+                }
+              }
+            }
+          }
+
+          if (mediaRecord?.s3_key) {
+            try {
+              const { buffer, contentType } = await this.s3.getObjectBuffer(mediaRecord.s3_key);
+              const mimeBase = contentType.split(';')[0].trim();
+              const base64 = buffer.toString('base64');
+              const imageBlock = { type: 'image_url', image_url: { url: `data:${mimeBase};base64,${base64}` } };
+              const textBlock = { type: 'text', text: (m as any).text || '[imagem enviada pelo cliente]' };
+              chatTurns.push({ role, content: [imageBlock, textBlock] });
+              this.logger.log(`[AI] Imagem ${(m as any).id} incluída inline no chatTurn (${(buffer.length / 1024).toFixed(0)}KB)`);
+              continue;
+            } catch (e: any) {
+              this.logger.warn(`[AI] Falha ao carregar imagem ${(m as any).id} inline: ${e.message}`);
+            }
+          }
+        }
+
         const content =
           (m as any).text ||
           ((m as any).type === 'audio'
@@ -1426,25 +1574,19 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
               : (m as any).type === 'document'
                 ? '[documento enviado]'
                 : '[mídia]');
-        // Prefixar mensagens de operadores humanos para distinguir da IA
         const isOperator = !isClient && !(m as any).external_message_id?.startsWith('sys_');
         const finalContent = isOperator ? `[Operador Humano]: ${content}` : content;
-        // Mesclar mensagens consecutivas do mesmo remetente (ex: cliente envia 3 msgs seguidas)
-        if (chatTurns.length > 0 && chatTurns[chatTurns.length - 1].role === role) {
-          chatTurns[chatTurns.length - 1].content += '\n' + finalContent;
+        // Mesclar mensagens de texto consecutivas do mesmo remetente
+        const last = chatTurns[chatTurns.length - 1];
+        if (last && last.role === role && typeof last.content === 'string') {
+          last.content += '\n' + finalContent;
         } else {
           chatTurns.push({ role, content: finalContent });
         }
       }
 
-      // Coletar imagens para visão (modelos com suporte)
-      let visionImages: { type: 'image_url'; image_url: { url: string } }[] = [];
-      if (this.modelSupportsVision(model)) {
-        visionImages = await this.collectVisionImages(convo.messages as any[]);
-        if (visionImages.length > 0) {
-          this.logger.log(`[AI] Visão ativa: ${visionImages.length} imagem(ns) incluída(s)`);
-        }
-      }
+      // visionImages não é mais necessário — imagens já estão inline nos turns acima
+      const visionImages: { type: 'image_url'; image_url: { url: string } }[] = [];
 
       // Instrução final para a IA (não aparece no chat do cliente)
       const instruction = `[INSTRUÇÃO INTERNA — não exiba ao cliente]\nResponda à última mensagem do cliente. Consulte o histórico completo acima e a MEMÓRIA DO LEAD no system prompt: NÃO repita perguntas já respondidas. Avance o roteiro para o próximo ponto que ainda não foi coberto. Atualize o status do funil conforme as regras de PROGRESSÃO DE ETAPAS.`;
@@ -1502,12 +1644,16 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
           content: t.content,
         }));
 
-        // Add instruction + vision as last user message
-        if (visionImages.length > 0) {
-          llmMessages.push({
-            role: 'user' as const,
-            content: [{ type: 'text', text: instruction }, ...visionImages],
-          });
+        // Add instruction as last user turn.
+        // Se o último turn já é 'user' (ex: imagem), mescla a instruction nele —
+        // Anthropic rejeita dois turns 'user' consecutivos (imagem + instruction).
+        const lastLlmMsg = llmMessages[llmMessages.length - 1];
+        if (lastLlmMsg && lastLlmMsg.role === 'user') {
+          if (Array.isArray(lastLlmMsg.content)) {
+            lastLlmMsg.content = [...lastLlmMsg.content, { type: 'text', text: instruction }];
+          } else {
+            lastLlmMsg.content = String(lastLlmMsg.content) + '\n\n' + instruction;
+          }
         } else {
           llmMessages.push({ role: 'user' as const, content: instruction });
         }
@@ -1595,9 +1741,14 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
           role: t.role as 'user' | 'assistant',
           content: t.content,
         }));
-        // Adicionar instrução final como último user message
-        if (visionImages.length > 0) {
-          legacyMessages.push({ role: 'user' as const, content: [{ type: 'text', text: instruction }, ...visionImages] });
+        // Mesclar instrução no último turn user — evita dois user consecutivos (Anthropic rejeita)
+        const lastLegacyMsg = legacyMessages[legacyMessages.length - 1];
+        if (lastLegacyMsg && lastLegacyMsg.role === 'user') {
+          if (Array.isArray(lastLegacyMsg.content)) {
+            lastLegacyMsg.content = [...lastLegacyMsg.content, { type: 'text', text: instruction }];
+          } else {
+            lastLegacyMsg.content = String(lastLegacyMsg.content) + '\n\n' + instruction;
+          }
         } else {
           legacyMessages.push({ role: 'user' as const, content: instruction });
         }
@@ -1643,6 +1794,23 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
         this.logger.warn(`[AI] updates vazio após processamento — stage não será atualizado. convo=${conversation_id}`);
       }
 
+      // 13b. Sanitização: se aiText contém JSON cru (IA retornou JSON em vez de texto),
+      // extrair apenas o campo reply para não enviar dados internos ao cliente.
+      if (aiText && (aiText.includes('```json') || aiText.trimStart().startsWith('{'))) {
+        const sanitized = this.parseAiResponse(aiText);
+        if (sanitized.reply !== aiText) {
+          this.logger.warn(`[AI] JSON cru detectado no aiText — extraindo reply (${aiText.length} chars → ${sanitized.reply.length} chars)`);
+          aiText = sanitized.reply;
+          // Mesclar updates extraídos se os atuais estão vazios
+          if (!updates.status && sanitized.updates?.status) updates.status = sanitized.updates.status;
+          if (!updates.name && sanitized.updates?.name) updates.name = sanitized.updates.name;
+          if (!updates.area && sanitized.updates?.area) updates.area = sanitized.updates.area;
+          if (!updates.lead_summary && sanitized.updates?.lead_summary) updates.lead_summary = sanitized.updates.lead_summary;
+          if (!updates.next_step && sanitized.updates?.next_step) updates.next_step = sanitized.updates.next_step;
+          if (!updates.notes && sanitized.updates?.notes) updates.notes = sanitized.updates.notes;
+        }
+      }
+
       // 14. Verificar sinal de escalada (handoff para humano)
       let finalText = aiText;
       const handoffSignal = skill?.handoff_signal || null;
@@ -1657,6 +1825,15 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
         this.logger.log(
           `[AI] Sinal de escalada detectado ("${handoffSignal}") — ai_mode desativado para ${conversation_id}`,
         );
+      }
+
+      // 14a. Reply vazio = conversa encerrada — IA decidiu não responder
+      // (ex: cliente disse "obrigado" após despedida, loop detectado)
+      if (!finalText || !finalText.trim()) {
+        this.logger.log(`[AI] Reply vazio — conversa encerrada, IA não responde (conv ${conversation_id})`);
+        // Ainda aplica updates e salva log, mas não envia mensagem
+        await this.applyAiUpdates(updates, convo.id, convo.lead.id, convo.lead.phone, convo.instance_name || null);
+        return;
       }
 
       // 14b. Salvar log de execução da skill (observabilidade)
@@ -1773,26 +1950,10 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
         // Se vai enviar áudio, pula o texto
         if (_willAudio) {
           // Não envia texto — será enviado apenas áudio no passo 18 (TTS)
-        } else if (slotsToOffer?.length) {
-          const rows = slotsToOffer.map((s: any) => ({
-            title: s.label || `${s.date} ${s.time}`,
-            description: s.date || 'Horário disponível',
-            rowId: `slot_${s.date}_${(s.time || '').replace(/:/g, '')}`,
-          }));
-          sendResult = await axios.post(
-            `${apiUrl}/message/sendList/${instanceName}`,
-            {
-              number: convo.lead.phone,
-              title: 'Horários disponíveis',
-              description: finalText,
-              buttonText: 'Escolher horário',
-              footerText: 'André Lustosa Advogados',
-              sections: [{ title: 'Horários', rows }],
-            },
-            { headers: evoHeaders, timeout: 30000 },
-          );
-          this.logger.log(`[AI] Lista interativa enviada: ${rows.length} horários`);
         } else {
+          // sendList (listas interativas) não funciona via Baileys —
+          // WhatsApp deprecou para conexões não-oficiais (só Cloud API).
+          // Slots de agendamento já vêm formatados no finalText pela IA.
           sendResult = await axios.post(
             `${apiUrl}/message/sendText/${instanceName}`,
             { number: convo.lead.phone, text: textToSend },
@@ -1805,18 +1966,39 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
       }
 
       // 17. Salvar mensagem no banco com skill_id (texto limpo, sem assinatura)
-      // Usa o ID real da Evolution para que o echo do webhook seja deduplicado
-      const savedMsg = await this.prisma.message.create({
-        data: {
-          conversation_id: convo.id,
-          direction: 'out',
-          type: 'text',
-          text: finalText,
-          external_message_id: evolutionMsgId,
-          status: 'enviado',
-          skill_id: skill?.id || null,
-        },
-      });
+      // Usa o ID real da Evolution para que o echo do webhook seja deduplicado.
+      // Race condition: o echo da Evolution pode chegar antes do worker salvar,
+      // criando a mensagem sem skill_id. Nesse caso, capturamos P2002 e atualizamos.
+      let savedMsg: any;
+      try {
+        savedMsg = await this.prisma.message.create({
+          data: {
+            conversation_id: convo.id,
+            direction: 'out',
+            type: 'text',
+            text: finalText,
+            external_message_id: evolutionMsgId,
+            status: 'enviado',
+            skill_id: skill?.id || null,
+          },
+        });
+      } catch (createErr: any) {
+        if (createErr.code === 'P2002' && evolutionMsgId && !evolutionMsgId.startsWith('sys_ai_')) {
+          // Echo criou a mensagem primeiro — encontra e atualiza o skill_id
+          this.logger.warn(`[AI] P2002 em message.create — echo chegou antes do save. Atualizando skill_id em ${evolutionMsgId}`);
+          const existing = await this.prisma.message.findUnique({ where: { external_message_id: evolutionMsgId } });
+          if (existing) {
+            savedMsg = await this.prisma.message.update({
+              where: { id: existing.id },
+              data: { skill_id: skill?.id || null },
+            });
+          } else {
+            throw createErr;
+          }
+        } else {
+          throw createErr;
+        }
+      }
 
       // 18. Atualizar last_message_at
       await this.prisma.conversation.update({
@@ -1825,8 +2007,11 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
       });
 
       this.logger.log(
-        `[AI] Resposta enviada para ${convo.lead.phone} (model=${model}, skill=${skill?.name || 'fallback'})`,
+        `[AI] Resposta enviada para ${convo.lead.phone} (model=${model}, skill=${skill?.name || 'NULL — badge não aparecerá'}, skill_id=${skill?.id || 'null'}, evoId=${evolutionMsgId})`,
       );
+      if (!skill?.id) {
+        this.logger.warn(`[AI] skill_id=null para conv ${convo.id} — verifique se as skills estão ativas nas configurações de IA`);
+      }
 
       // 18. TTS — reutiliza _willAudio calculado antes do envio de texto
       const ttsConfig = _tts; // reutiliza config já carregado

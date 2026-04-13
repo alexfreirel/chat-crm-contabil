@@ -13,6 +13,8 @@ import { playNotificationSound } from '@/lib/notificationSounds';
 import api from '@/lib/api';
 import { io, Socket } from 'socket.io-client';
 import { formatPhone } from '@/lib/utils';
+import { showError } from '@/lib/toast';
+import { getDateKey, formatDateLabel, formatTime as formatTimeUtil, getInitial as getInitialUtil, isEmojiOnly, extractFirstUrl, getDocLabel } from '@/lib/chatUtils';
 
 function getWsUrl(): string {
   if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
@@ -39,19 +41,7 @@ function StatusIcon({ status, isOut }: { status: string; isOut: boolean }) {
   return <Check size={12} className="text-primary-foreground/60" />;
 }
 
-function getDateKey(dateStr: string): string {
-  return new Date(dateStr).toDateString();
-}
-
-function formatDateLabel(dateStr: string): string {
-  const date = new Date(dateStr);
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (date.toDateString() === today.toDateString()) return 'Hoje';
-  if (date.toDateString() === yesterday.toDateString()) return 'Ontem';
-  return date.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-}
+// getDateKey, formatDateLabel — importados de @/lib/chatUtils
 
 // Tipo declarado fora do componente para evitar problemas com Turbopack
 type ChatRenderItem =
@@ -103,28 +93,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
-  const getDocLabel = (mime: string, name?: string) => {
-    if (name) { const p = name.split('.'); if (p.length > 1) return p.pop()!.toUpperCase(); }
-    const map: Record<string, string> = {
-      'application/pdf': 'PDF',
-      'application/msword': 'DOC',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
-      'application/vnd.ms-excel': 'XLS',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
-    };
-    return map[mime] || 'FILE';
-  };
-
-  const isEmojiOnly = (text: string): boolean => {
-    const t = text.trim();
-    if (!t) return false;
-    return /^(\p{Emoji_Presentation}|\p{Extended_Pictographic}|\s)+$/u.test(t);
-  };
-
-  const extractFirstUrl = (text: string): string | null => {
-    const match = text.match(/https?:\/\/[^\s]+/);
-    return match ? match[0] : null;
-  };
+  // getDocLabel, isEmojiOnly, extractFirstUrl — importados de @/lib/chatUtils
 
   const handleDocDownload = async (url: string, name: string) => {
     try {
@@ -183,6 +152,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
       setMessages(prev => prev.map((m: any) => m.id === msgId ? { ...m, text: res.data.transcription } : m));
     } catch (e) {
       console.error('Erro ao transcrever áudio', e);
+      showError('Não foi possível transcrever o áudio. Tente novamente.');
     } finally {
       setTranscribing(prev => ({ ...prev, [msgId]: false }));
     }
@@ -228,6 +198,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
       }
     } catch (e) {
       console.error('Falha ao enviar arquivo', e);
+      showError('Falha ao enviar arquivo. Verifique o tamanho e tente novamente.');
     } finally {
       setUploadingFile(false);
     }
@@ -272,6 +243,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
       setMessages(prev => prev.map((m: any) => m.id === msgId ? { ...m, ...res.data } : m));
     } catch (e) {
       console.error('Erro ao apagar mensagem', e);
+      showError('Não foi possível apagar a mensagem.');
     }
   };
 
@@ -283,6 +255,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
       setEditingMsg(null);
     } catch (e) {
       console.error('Erro ao editar mensagem', e);
+      showError('Não foi possível editar a mensagem.');
     }
   };
 
@@ -444,6 +417,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
       }
     } catch (e) {
       console.error('Falha ao enviar mensagem', e);
+      showError('Falha ao enviar mensagem. Tente novamente.');
       setText(msgText);
     } finally {
       setSending(false);
@@ -466,6 +440,12 @@ export default function ChatPage({ params }: { params: { id: string } }) {
         if (convoRes.data && convoRes.data.length > 0) {
           const convo = convoRes.data[0];
           setLead(convo.lead);
+          // Buscar memória completa do lead (o endpoint de conversa pode não incluir)
+          api.get(`/leads/${convo.lead.id}`).then((r) => {
+            if (r.data?.memory) {
+              setLead((prev: any) => ({ ...prev, memory: r.data.memory }));
+            }
+          }).catch(() => {});
           setConvoId(convo.id);
           setConvoStatus(convo.status || 'ABERTO');
           setAiMode(!!convo.ai_mode);
@@ -510,13 +490,16 @@ export default function ChatPage({ params }: { params: { id: string } }) {
             if (currentUserId) socketRef.current?.emit('join_user', currentUserId);
           });
 
-          // Sound: only plays when the backend targets this specific operator
-          socketRef.current.on('incoming_message_notification', () => {
-            playNotificationSound();
+          // Som para mensagens de OUTRAS conversas (backend já filtra por atribuição).
+          // Mensagens da conversa atual são cobertas pelo handler 'newMessage'.
+          socketRef.current.on('incoming_message_notification', (data: any) => {
+            if (data?.conversationId !== convo.id) {
+              playNotificationSound();
+            }
           });
 
           socketRef.current.on('newMessage', (msg: any) => {
-            setMessages(prev => {
+            const addMsg = () => setMessages(prev => {
               const exists = prev.some((m: any) => m.id === msg.id || (m.external_message_id && m.external_message_id === msg.external_message_id));
               if (exists) return prev;
               return [...prev, msg];
@@ -526,14 +509,28 @@ export default function ChatPage({ params }: { params: { id: string } }) {
               // Auto mark-read since operator is viewing the chat
               api.post(`/conversations/${convo.id}/mark-read`).catch(() => {});
             }
+            // Refetch memória após cada mensagem (IA: 3s, humano: 18s para cobrir debounce)
+            const memDelay = (msg.skill_id || msg.skill) ? 3000 : 18000;
+            setTimeout(() => {
+              api.get(`/leads/${convo.lead.id}`).then((r) => {
+                if (r.data?.memory) {
+                  setLead((prev: any) => ({ ...prev, memory: r.data.memory }));
+                }
+              }).catch(() => {});
+            }, memDelay);
+            // Áudio com mídia pronta: pré-busca blob antes de exibir (aparece já reproduzível)
+            if (msg.type === 'audio' && msg.media?.s3_key) {
+              import('@/components/AudioPlayer').then(({ preFetchAudio }) => {
+                const timeout = setTimeout(addMsg, 8000);
+                preFetchAudio(msg.id).finally(() => { clearTimeout(timeout); addMsg(); });
+              });
+            } else {
+              addMsg();
+            }
           });
 
           socketRef.current.on('messageUpdate', (updatedMsg: any) => {
             setMessages(prev => prev.map((m: any) => m.id === updatedMsg.id ? { ...m, ...updatedMsg } : m));
-          });
-
-          socketRef.current.on('mediaReady', (updatedMsg: any) => {
-            setMessages(prev => prev.map((m: any) => m.id === updatedMsg.id ? updatedMsg : m));
           });
 
           socketRef.current.on('messageReaction', (data: { messageId: string; reactions: any[] }) => {
@@ -558,7 +555,6 @@ export default function ChatPage({ params }: { params: { id: string } }) {
         s.off('incoming_message_notification');
         s.off('newMessage');
         s.off('messageUpdate');
-        s.off('mediaReady');
         s.off('messageReaction');
         s.off('contact_presence');
         s.disconnect();
@@ -567,20 +563,25 @@ export default function ChatPage({ params }: { params: { id: string } }) {
     };
   }, [params.id, router]);
 
+  // Smart scroll: so auto-scroll se o usuario esta perto do final (< 150px).
+  // Evita perder posicao ao ler mensagens antigas quando chega uma nova.
+  const prevMessagesLenRef = useRef(0);
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const el = scrollRef.current;
+    if (!el) return;
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+    const isInitialLoad = prevMessagesLenRef.current === 0 && messages.length > 0;
+    if (isNearBottom || isInitialLoad) {
+      el.scrollTop = el.scrollHeight;
     }
+    prevMessagesLenRef.current = messages.length;
   }, [messages]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  const formatTime = (dateStr?: string) => {
-    if (!dateStr) return '';
-    return new Date(dateStr).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const getInitial = (name?: string) => (name || 'V')[0].toUpperCase();
+  // formatTime, getInitial — importados de @/lib/chatUtils (como formatTimeUtil, getInitialUtil)
+  const formatTime = formatTimeUtil;
+  const getInitial = getInitialUtil;
   const isClosed = convoStatus === 'FECHADO';
 
   // Lista plana: separa mensagens e separadores de data (type declarado fora do componente)
@@ -761,6 +762,22 @@ export default function ChatPage({ params }: { params: { id: string } }) {
           </div>
         </header>
 
+        {/* Banner de perguntas em aberto — orienta o operador */}
+        {(() => {
+          const openQ = (lead?.memory?.facts_json as any)?.open_questions;
+          return openQ?.length > 0 ? (
+            <div className="px-4 py-2.5 border-b border-amber-500/20 bg-amber-500/5 flex gap-3 items-start">
+              <span className="text-amber-400 text-xs font-bold mt-0.5 shrink-0">?</span>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-amber-400/90">
+                {openQ.slice(0, 6).map((q: string, i: number) => (
+                  <span key={i} className="whitespace-nowrap">{q}</span>
+                ))}
+                {openQ.length > 6 && <span className="text-amber-400/50">+{openQ.length - 6} mais</span>}
+              </div>
+            </div>
+          ) : null;
+        })()}
+
         {/* Messages — click em área vazia foca o textarea (UX WhatsApp Web) */}
         <div className="flex-1 p-8 overflow-y-auto custom-scrollbar" ref={scrollRef} onClick={handleChatAreaClick}>
           <div className="flex flex-col gap-4 max-w-4xl mx-auto pb-4">
@@ -872,37 +889,28 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                           );
                         })()
                       ) : msg.type === 'audio' ? (
-                        msg.media ? (
-                          <div>
-                            <AudioPlayer
-                              src={`/api/media/${msg.id}`}
-                              duration={msg.media.duration}
-                              isOutgoing={isOut}
-                            />
-                            {msg.text ? (
-                              <p className={`text-[12px] mt-2 leading-snug italic ${isOut ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                                {msg.text}
-                              </p>
-                            ) : (
-                              <button
-                                onClick={() => handleTranscribe(msg.id)}
-                                disabled={transcribing[msg.id]}
-                                className={`mt-2 flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-colors disabled:opacity-50 ${isOut ? 'bg-white/15 hover:bg-white/25 text-white/80' : 'bg-primary/10 hover:bg-primary/20 text-primary'}`}
-                              >
-                                <Mic size={11} />
-                                {transcribing[msg.id] ? 'Transcrevendo...' : 'Transcrever'}
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-3 w-48 animate-pulse">
-                            <div className="w-8 h-8 rounded-full bg-current opacity-20 shrink-0" />
-                            <div className="flex-1 space-y-1.5">
-                              <div className="h-1 rounded bg-current opacity-20" />
-                              <div className="h-1 rounded bg-current opacity-10 w-3/4" />
-                            </div>
-                          </div>
-                        )
+                        <div>
+                          <AudioPlayer
+                            src={`/api/media/${msg.id}`}
+                            duration={msg.media?.duration}
+                            isOutgoing={isOut}
+                            messageId={msg.id}
+                          />
+                          {msg.text ? (
+                            <p className={`text-[12px] mt-2 leading-snug italic ${isOut ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                              {msg.text}
+                            </p>
+                          ) : (
+                            <button
+                              onClick={() => handleTranscribe(msg.id)}
+                              disabled={transcribing[msg.id]}
+                              className={`mt-2 flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-colors disabled:opacity-50 ${isOut ? 'bg-white/15 hover:bg-white/25 text-white/80' : 'bg-primary/10 hover:bg-primary/20 text-primary'}`}
+                            >
+                              <Mic size={11} />
+                              {transcribing[msg.id] ? 'Transcrevendo...' : 'Transcrever'}
+                            </button>
+                          )}
+                        </div>
                       ) : msg.type === 'image' ? (
                         msg.media ? (
                           <div className="relative group inline-block">
@@ -1272,7 +1280,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
             </div>
             {/* Conteúdo da ficha */}
             <div className="flex-1 overflow-y-auto p-4">
-              <FichaTrabalhista leadId={lead.id} />
+              <FichaTrabalhista leadId={lead.id} embedded />
             </div>
           </div>
         </div>

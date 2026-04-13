@@ -45,7 +45,7 @@ export class MediaProcessor extends WorkerHost {
       const downloadResponse = await axios.post(
         `${apiUrl}/chat/getBase64FromMediaMessage/${instance}`,
         { message: { key: { id: msg_id } } },
-        { headers: { apikey: apiKey } }
+        { headers: { apikey: apiKey }, timeout: 15000 }
       );
 
       const base64Data = downloadResponse.data.base64;
@@ -74,6 +74,26 @@ export class MediaProcessor extends WorkerHost {
       const originalUrl: string | null = media_data?.url ?? null;
       // Para documentos, a Evolution API fornece o nome original do arquivo
       const originalName: string | null = media_data?.fileName ?? null;
+
+      // Verificar se a mensagem ainda existe (pode ter sido deletada com o lead)
+      // Retry com delay para cobrir race condition: o job pode ser processado antes
+      // do commit da transação que criou a mensagem estar visível para esta conexão.
+      let msgExists = await this.prisma.message.findUnique({ where: { id: message_id }, select: { id: true } });
+      if (!msgExists) {
+        this.logger.warn(`[MEDIA] Mensagem ${message_id} não encontrada na 1ª tentativa — aguardando 5s para retry`);
+        await new Promise(r => setTimeout(r, 5000));
+        msgExists = await this.prisma.message.findUnique({ where: { id: message_id }, select: { id: true } });
+      }
+      if (!msgExists) {
+        // 2ª tentativa com mais 5s
+        this.logger.warn(`[MEDIA] Mensagem ${message_id} não encontrada na 2ª tentativa — aguardando mais 5s`);
+        await new Promise(r => setTimeout(r, 5000));
+        msgExists = await this.prisma.message.findUnique({ where: { id: message_id }, select: { id: true } });
+      }
+      if (!msgExists) {
+        this.logger.warn(`[MEDIA] Mensagem ${message_id} não existe após 3 tentativas — ignorando mídia`);
+        return;
+      }
 
       await this.prisma.media.create({
         data: {
@@ -148,11 +168,28 @@ export class MediaProcessor extends WorkerHost {
 
     if (!rawMessages.length) return { imported: 0 };
 
+    // Cutoff: só importar mensagens posteriores à criação do lead atual.
+    // Evita reimportar histórico de leads excluídos (a Evolution mantém o chat).
+    const conv = await this.prisma.conversation.findUnique({
+      where: { id: conversation_id },
+      include: { lead: { select: { created_at: true } } },
+    });
+    if (!conv) {
+      this.logger.warn(`[RESYNC] Conversa ${conversation_id} não encontrada — abortando resync`);
+      return { imported: 0 };
+    }
+    const cutoffTs = conv?.lead?.created_at
+      ? Math.floor(new Date(conv.lead.created_at).getTime() / 1000)
+      : 0;
+
     let imported = 0;
     for (const msg of rawMessages) {
       try {
         const externalId: string | undefined = msg.key?.id || msg.id;
         if (!externalId) continue;
+
+        const msgTs = Number(msg.messageTimestamp || 0);
+        if (cutoffTs > 0 && msgTs > 0 && msgTs < cutoffTs) continue;
 
         const exists = await this.prisma.message.findUnique({
           where: { external_message_id: externalId },

@@ -3,8 +3,9 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatGateway } from '../gateway/chat.gateway';
+import { isAdmin } from '../common/utils/permissions.util';
 
-const EVENT_TYPES = ['CONSULTA', 'TAREFA', 'AUDIENCIA', 'PRAZO', 'OUTRO'] as const;
+const EVENT_TYPES = ['CONSULTA', 'TAREFA', 'AUDIENCIA', 'PERICIA', 'PRAZO', 'OUTRO'] as const;
 const EVENT_STATUSES = ['AGENDADO', 'CONFIRMADO', 'CONCLUIDO', 'CANCELADO', 'ADIADO'] as const;
 
 @Injectable()
@@ -159,6 +160,16 @@ export class CalendarService {
       throw new BadRequestException(`Tipo invalido: ${data.type}. Use: ${EVENT_TYPES.join(', ')}`);
     }
 
+    // Auto-preencher lead_id a partir do processo vinculado, se não informado
+    let resolvedLeadId = data.lead_id;
+    if (!resolvedLeadId && data.legal_case_id) {
+      const legalCase = await this.prisma.legalCase.findUnique({
+        where: { id: data.legal_case_id },
+        select: { lead_id: true },
+      });
+      if (legalCase?.lead_id) resolvedLeadId = legalCase.lead_id;
+    }
+
     const event = await this.prisma.calendarEvent.create({
       data: {
         type: data.type,
@@ -171,7 +182,7 @@ export class CalendarService {
         priority: data.priority ?? 'NORMAL',
         color: data.color,
         location: data.location,
-        lead_id: data.lead_id,
+        lead_id: resolvedLeadId,
         conversation_id: data.conversation_id,
         legal_case_id: data.legal_case_id,
         assigned_user_id: data.assigned_user_id,
@@ -213,8 +224,27 @@ export class CalendarService {
     // Enqueue WhatsApp + Email reminders
     await this.enqueueReminders(event.id, event.start_at, event.reminders || []);
 
-    // Notificação imediata ao cliente (1 min de delay) quando audiência é agendada
-    if (data.type === 'AUDIENCIA' && event.lead?.phone) {
+    // Se não tem lead direto mas tem processo, buscar lead do processo
+    let leadPhone: string | undefined = event.lead?.phone || undefined;
+    if (!leadPhone && data.legal_case_id) {
+      try {
+        const lc = await this.prisma.legalCase.findUnique({
+          where: { id: data.legal_case_id },
+          select: { lead_id: true, lead: { select: { phone: true } } },
+        });
+        leadPhone = lc?.lead?.phone || undefined;
+        // Vincular lead_id ao evento para futuras referências
+        if (lc?.lead_id && !event.lead_id) {
+          await this.prisma.calendarEvent.update({
+            where: { id: event.id },
+            data: { lead_id: lc.lead_id },
+          }).catch(() => {});
+        }
+      } catch {}
+    }
+
+    // Notificação imediata ao cliente (1 min de delay) quando audiência ou perícia é agendada
+    if ((data.type === 'AUDIENCIA' || data.type === 'PERICIA') && leadPhone) {
       try {
         await this.reminderQueue.add(
           'notify-hearing-scheduled',
@@ -228,9 +258,9 @@ export class CalendarService {
             removeOnFail: 50,
           },
         );
-        this.logger.log(`[AUDIENCIA] Notificação agendada ao cliente em 1 min (evento ${event.id})`);
+        this.logger.log(`[NOTIFY] Notificação ${data.type} agendada ao cliente em 1 min (evento ${event.id}, lead: ${event.lead?.phone})`);
       } catch (e: any) {
-        this.logger.error(`[AUDIENCIA] Erro ao enfileirar notificação: ${e.message}`);
+        this.logger.error(`[NOTIFY] Erro ao enfileirar notificação ${data.type}: ${e.message}`);
       }
     }
 
@@ -320,6 +350,15 @@ export class CalendarService {
     if (data.end_at) updateData.end_at = new Date(data.end_at);
     if (data.end_at === null) updateData.end_at = null;
 
+    // Auto-preencher lead_id a partir do processo vinculado, se legal_case_id mudou e lead_id não foi informado
+    if (data.legal_case_id && data.lead_id === undefined) {
+      const legalCase = await this.prisma.legalCase.findUnique({
+        where: { id: data.legal_case_id },
+        select: { lead_id: true },
+      });
+      if (legalCase?.lead_id) updateData.lead_id = legalCase.lead_id;
+    }
+
     // Carrega estado anterior para detectar mudanças relevantes na audiência
     const before = await this.prisma.calendarEvent.findUnique({
       where: { id },
@@ -342,8 +381,8 @@ export class CalendarService {
       this.logger.log(`Lembretes re-enfileirados para evento ${event.id} (start_at alterado)`);
     }
 
-    // Se é AUDIÊNCIA e data ou local mudaram → notificar cliente sobre a remarcação
-    const isAudiencia = (before?.type ?? event.type) === 'AUDIENCIA';
+    // Se é AUDIÊNCIA ou PERÍCIA e data ou local mudaram → notificar cliente sobre a remarcação
+    const isAudiencia = ['AUDIENCIA', 'PERICIA'].includes(before?.type ?? event.type);
     const dateChanged = data.start_at && new Date(data.start_at).getTime() !== before?.start_at?.getTime();
     const locationChanged = data.location !== undefined && data.location !== before?.location;
     if (isAudiencia && (dateChanged || locationChanged) && event.lead?.phone) {
@@ -509,9 +548,8 @@ export class CalendarService {
     if (isNaN(date.getTime())) {
       throw new BadRequestException('Data inválida');
     }
-    // Use America/Sao_Paulo timezone to determine day of week correctly
-    const saoPauloDate = new Date(new Date(dateStr).toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
-    const dayOfWeek = saoPauloDate.getDay(); // 0=dom..6=sab
+    // UTC naive: datas armazenadas como horário local em UTC — usar getUTCDay()
+    const dayOfWeek = date.getUTCDay(); // 0=dom..6=sab
 
     // 0. Verificar se e feriado (com filtro de tenant)
     const isHoliday = await this.isHoliday(date, tenantId);
@@ -550,10 +588,9 @@ export class CalendarService {
     const workStart = startH * 60 + startM;
     const workEnd = endH * 60 + endM;
 
-    // Helper: extrair hora/minuto no fuso correto (America/Sao_Paulo)
+    // UTC naive: extrair hora/minuto direto em UTC (datas armazenadas como horário local)
     const toLocalMinutes = (d: Date): number => {
-      const parts = d.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false }).split(':');
-      return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+      return d.getUTCHours() * 60 + d.getUTCMinutes();
     };
 
     const busy = events.map((e) => {
@@ -896,15 +933,16 @@ export class CalendarService {
       },
     });
 
-    // Formatar data no fuso America/Sao_Paulo para ICS (TZID)
+    // UTC naive: datas armazenadas como horário local em UTC — extrair componentes UTC
+    // O TZID no ICS é America/Sao_Paulo, então os valores devem ser horário local (= UTC raw)
     const formatIcsLocalDate = (d: Date) => {
-      const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'America/Sao_Paulo',
-        year: 'numeric', month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-      }).formatToParts(d);
-      const get = (t: string) => parts.find(p => p.type === t)?.value || '00';
-      return `${get('year')}${get('month')}${get('day')}T${get('hour')}${get('minute')}${get('second')}`;
+      const y = d.getUTCFullYear();
+      const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const da = String(d.getUTCDate()).padStart(2, '0');
+      const h = String(d.getUTCHours()).padStart(2, '0');
+      const mi = String(d.getUTCMinutes()).padStart(2, '0');
+      const s = String(d.getUTCSeconds()).padStart(2, '0');
+      return `${y}${mo}${da}T${h}${mi}${s}`;
     };
 
     const lines = [
@@ -945,8 +983,8 @@ export class CalendarService {
 
   // ─── Ownership Check ──────────────────────────────────
 
-  async checkOwnership(eventId: string, userId: string, userRole: string, tenantId?: string): Promise<boolean> {
-    if (userRole === 'ADMIN') return true;
+  async checkOwnership(eventId: string, userId: string, userRoles: string | string[], tenantId?: string): Promise<boolean> {
+    if (isAdmin(userRoles)) return true;
     const event = await this.prisma.calendarEvent.findUnique({
       where: { id: eventId },
       select: { created_by_id: true, assigned_user_id: true, tenant_id: true },
@@ -1025,7 +1063,7 @@ export class CalendarService {
 
     let migrated = 0;
     for (const task of orphanTasks) {
-      const creatorId = task.assigned_user_id || (await this.prisma.user.findFirst({ where: { role: 'ADMIN' }, select: { id: true } }))?.id;
+      const creatorId = task.assigned_user_id || (await this.prisma.user.findFirst({ where: { roles: { has: 'ADMIN' } }, select: { id: true } }))?.id;
       if (!creatorId) continue;
 
       const event = await this.prisma.calendarEvent.create({
@@ -1082,5 +1120,64 @@ export class CalendarService {
     }
 
     return { orphanTasksMigrated: migrated, commentsMigrated };
+  }
+
+  // ─── Re-envio manual de notificação ──────────────────────────────────────────
+
+  async notifyEvent(eventId: string): Promise<{ queued: boolean; message: string }> {
+    const event = await this.prisma.calendarEvent.findUnique({
+      where: { id: eventId },
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        title: true,
+        lead: { select: { phone: true } },
+      },
+    });
+
+    if (!event) {
+      throw new NotFoundException(`Evento ${eventId} não encontrado`);
+    }
+
+    if (!['AUDIENCIA', 'PERICIA'].includes(event.type)) {
+      throw new BadRequestException(
+        `Notificação manual disponível apenas para Audiência e Perícia (tipo atual: ${event.type})`,
+      );
+    }
+
+    if (!event.lead?.phone) {
+      throw new BadRequestException(
+        'Cliente vinculado ao evento não possui telefone cadastrado',
+      );
+    }
+
+    if (['CANCELADO', 'CONCLUIDO'].includes(event.status)) {
+      throw new BadRequestException(
+        `Evento está ${event.status} — notificação não enviada`,
+      );
+    }
+
+    // Remove job pendente anterior para evitar duplicata
+    try {
+      const existing = await this.reminderQueue.getJob(`hearing-notify-${eventId}`);
+      if (existing) await existing.remove();
+    } catch {}
+
+    // Enfileira sem delay (envio imediato)
+    await this.reminderQueue.add(
+      'notify-hearing-scheduled',
+      { eventId },
+      {
+        jobId: `hearing-notify-manual-${eventId}-${Date.now()}`,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: true,
+        removeOnFail: 50,
+      },
+    );
+
+    this.logger.log(`[NOTIFY] Re-envio manual enfileirado para evento ${eventId} (${event.type}: "${event.title}")`);
+    return { queued: true, message: `Notificação de ${event.type === 'PERICIA' ? 'perícia' : 'audiência'} enfileirada com sucesso` };
   }
 }

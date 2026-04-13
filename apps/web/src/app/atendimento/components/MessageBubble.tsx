@@ -1,7 +1,7 @@
 'use client';
 
 import React, { memo } from 'react';
-import { Download, Mic, FileText, Trash2, Reply, Pencil, CheckCheck, Check, Bot } from 'lucide-react';
+import { Download, Mic, FileText, Trash2, Reply, Pencil, CheckCheck, Check, Bot, Loader2 } from 'lucide-react';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { LinkPreview } from '@/components/LinkPreview';
 import type { MessageItem } from '../types';
@@ -103,6 +103,18 @@ function MessageBubbleInner({
   onReact,
   onForward,
 }: MessageBubbleProps) {
+  // Evento de transferência: separador centralizado
+  if (msg.type === 'transfer_event') {
+    return (
+      <div id={`msg-${msg.id}`} className="w-full flex justify-center my-2">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[11px] font-semibold">
+          <span>{msg.text}</span>
+          <span className="text-sky-400/50 text-[9px]">{formatTime(msg.created_at)}</span>
+        </div>
+      </div>
+    );
+  }
+
   // Nota interna: renderização especial em amber sem envio ao WhatsApp
   if (msg.type === 'internal_note') {
     return (
@@ -246,37 +258,35 @@ function MessageBubbleInner({
             </>
           )
         ) : msg.type === 'audio' ? (
-          msg.media ? (
-            <div>
+          <div>
+            {msg.media ? (
               <AudioPlayer
                 src={`/api/media/${msg.id}`}
                 duration={msg.media.duration}
                 isOutgoing={isOut}
+                messageId={msg.id}
               />
-              {msg.text ? (
-                <p className={`text-[12px] mt-2 leading-snug italic ${isOut ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                  {msg.text}
-                </p>
-              ) : (
-                <button
-                  onClick={() => onTranscribe(msg.id)}
-                  disabled={transcribing[msg.id]}
-                  className={`mt-2 flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-colors disabled:opacity-50 ${isOut ? 'bg-white/15 hover:bg-white/25 text-white/80' : 'bg-primary/10 hover:bg-primary/20 text-primary'}`}
-                >
-                  <Mic size={11} />
-                  {transcribing[msg.id] ? 'Transcrevendo...' : 'Transcrever'}
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="flex items-center gap-3 w-48 animate-pulse">
-              <div className="w-8 h-8 rounded-full bg-current opacity-20 shrink-0" />
-              <div className="flex-1 space-y-1.5">
-                <div className="h-1 rounded bg-current opacity-20" />
-                <div className="h-1 rounded bg-current opacity-10 w-3/4" />
+            ) : (
+              <div className={`flex items-center gap-2 min-w-[160px] text-[11px] ${isOut ? 'text-white/60' : 'text-muted-foreground'}`}>
+                <Loader2 size={13} className="animate-spin shrink-0" />
+                <span>Aguardando áudio...</span>
               </div>
-            </div>
-          )
+            )}
+            {msg.text ? (
+              <p className={`text-[12px] mt-2 leading-snug italic ${isOut ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                {msg.text}
+              </p>
+            ) : (
+              <button
+                onClick={() => onTranscribe(msg.id)}
+                disabled={transcribing[msg.id]}
+                className={`mt-2 flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-colors disabled:opacity-50 ${isOut ? 'bg-white/15 hover:bg-white/25 text-white/80' : 'bg-primary/10 hover:bg-primary/20 text-primary'}`}
+              >
+                <Mic size={11} />
+                {transcribing[msg.id] ? 'Transcrevendo...' : 'Transcrever'}
+              </button>
+            )}
+          </div>
         ) : msg.type === 'image' ? (
           msg.media ? (
             <div className="relative group inline-block">
@@ -432,6 +442,7 @@ export const MessageBubble = memo(MessageBubbleInner, (prev, next) => {
     prev.msg.type === next.msg.type &&
     prev.msg.media === next.msg.media &&
     prev.msg.reactions === next.msg.reactions &&
+    prev.msg.skill === next.msg.skill &&
     prev.isOut === next.isOut &&
     prev.editingMsg?.id === next.editingMsg?.id &&
     (prev.editingMsg?.id !== prev.msg.id || prev.editingMsg?.text === next.editingMsg?.text) &&

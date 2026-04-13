@@ -14,12 +14,19 @@ export class InboxesService {
   }
 
   async findAllOperators() {
-    const [inboxes, sectors] = await Promise.all([
+    const [inboxes, sectors, allEligible] = await Promise.all([
       this.inbox.findMany({
         include: { users: { select: { id: true, name: true } } },
       }),
       (this.prisma as any).sector.findMany({
         include: { users: { select: { id: true, name: true } } },
+        orderBy: { name: 'asc' },
+      }),
+      // Inclui TODOS os usuários que têm role de OPERADOR ou ADVOGADO (multi-role)
+      // Mesmo que não estejam vinculados a um inbox específico
+      (this.prisma as any).user.findMany({
+        where: { roles: { hasSome: ['OPERADOR', 'ADVOGADO', 'ADMIN'] } },
+        select: { id: true, name: true },
         orderBy: { name: 'asc' },
       }),
     ]);
@@ -40,7 +47,27 @@ export class InboxesService {
       users: sector.users as { id: string; name: string }[],
     }));
 
-    return [...inboxGroups, ...sectorGroups];
+    // Grupo "Todos" com usuários elegíveis que podem receber transferências
+    const inboxUserIds = new Set(inboxes.flatMap((i: any) => (i.users || []).map((u: any) => u.id)));
+    const sectorUserIds = new Set(sectors.flatMap((s: any) => (s.users || []).map((u: any) => u.id)));
+    const ungroupedUsers = (allEligible as { id: string; name: string }[]).filter(
+      u => !inboxUserIds.has(u.id) && !sectorUserIds.has(u.id),
+    );
+
+    const result = [...inboxGroups, ...sectorGroups];
+
+    // Adicionar grupo "Equipe" com usuários que não estão em nenhum inbox/setor
+    if (ungroupedUsers.length > 0) {
+      result.push({
+        id: '__team__',
+        name: 'Equipe',
+        type: 'SECTOR' as const,
+        auto_route: false,
+        users: ungroupedUsers,
+      });
+    }
+
+    return result;
   }
 
   async findAll(tenantId?: string, userId?: string) {
@@ -172,8 +199,11 @@ export class InboxesService {
    * Round-robin: retorna o ID do próximo operador do inbox.
    * Usa $transaction para evitar double-assign em chamadas paralelas.
    * Retorna null se o inbox não tiver operadores cadastrados.
+   *
+   * @param onlineUserIds Se fornecido, filtra apenas operadores online.
+   *                      Retorna null se nenhum operador online estiver no inbox.
    */
-  async getNextAssignee(inboxId: string): Promise<string | null> {
+  async getNextAssignee(inboxId: string, onlineUserIds?: string[]): Promise<string | null> {
     return (this.prisma as any).$transaction(async (tx: any) => {
       const inbox = await tx.inbox.findUnique({
         where: { id: inboxId },
@@ -182,7 +212,14 @@ export class InboxesService {
 
       if (!inbox?.users?.length) return null;
 
-      const users: { id: string }[] = inbox.users;
+      // Filtra por operadores online (se fornecido)
+      let users: { id: string }[] = inbox.users;
+      if (onlineUserIds) {
+        users = users.filter((u: any) => onlineUserIds.includes(u.id));
+        if (users.length === 0) return null; // Ninguém online neste inbox
+      }
+
+      // Round-robin sobre os operadores disponíveis
       const currentIdx = inbox.rr_pointer
         ? users.findIndex((u: any) => u.id === inbox.rr_pointer)
         : -1;

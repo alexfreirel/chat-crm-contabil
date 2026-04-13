@@ -8,6 +8,7 @@ import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X
 import FichaTrabalhista from '@/components/FichaTrabalhista';
 import { EventModal, type UserOption } from '@/components/EventModal';
 import { AudioRecorder } from '@/components/AudioRecorder';
+import { useRole } from '@/lib/useRole';
 import { AuthAudioPlayer } from '@/components/AuthAudioPlayer';
 import { EmojiPickerButton } from '@/components/EmojiPickerButton';
 import { SophIAButton } from '@/components/SophIAButton';
@@ -104,7 +105,19 @@ function DateSeparator({ label }: { label: string }) {
 
 export default function Dashboard() {
   const router = useRouter();
-  const [leadFilter, setLeadFilter] = useState('');
+  const { isAdmin } = useRole();
+  // Não-admin começa no filtro "MINHAS" — admin começa em "TUDO"
+  const [leadFilter, setLeadFilter] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return 'MINE';
+      const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(b64));
+      const roles: string[] = Array.isArray(payload?.roles) ? payload.roles : (payload?.role ? [payload.role] : []);
+      return roles.includes('ADMIN') ? '' : 'MINE';
+    } catch { return 'MINE'; }
+  });
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [userInboxes, setUserInboxes] = useState<any[]>([]);
   const [selectedInboxId, setSelectedInboxId] = useState<string | null>(null);
@@ -128,6 +141,7 @@ export default function Dashboard() {
   const [fichaInboxVisible, setFichaInboxVisible] = useState(false);
   const [fichaFinalizada, setFichaFinalizada] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<{ file: File; preview: string | null }[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [replyingTo, setReplyingTo] = useState<MessageItem | null>(null);
   const [editingMsg, setEditingMsg] = useState<{ id: string; text: string } | null>(null);
@@ -223,10 +237,10 @@ export default function Dashboard() {
   const touchStartYRef = useRef<number>(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  // Unread message counts per conversation (persisted in sessionStorage to survive same-page navigation)
+  // Unread message counts per conversation (only tracks new messages arriving via socket during this session)
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>(() => {
-    if (typeof window === 'undefined') return {};
-    try { return JSON.parse(sessionStorage.getItem('unreadCounts') || '{}'); } catch { return {}; }
+    if (typeof window !== 'undefined') try { sessionStorage.removeItem('unreadCounts'); } catch {} // limpar dados antigos
+    return {};
   });
   // Current user ID decoded from JWT (lazy init, never changes)
   const [currentUserId] = useState<string | null>(() => {
@@ -260,6 +274,7 @@ export default function Dashboard() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
   const lawyerDropdownRef = useRef<HTMLDivElement>(null);
+  const lawyerDropdownRef2 = useRef<HTMLDivElement>(null); // Segundo ref para sidebar (evita conflito com ChatHeader)
   const stageDropdownRef = useRef<HTMLDivElement>(null);
   const selectedInboxIdRef = useRef<string | null>(selectedInboxId);
   const selectedIdRef = useRef<string | null>(selectedId);
@@ -317,9 +332,8 @@ export default function Dashboard() {
     return () => document.removeEventListener('mousedown', handler);
   }, [mobileMoreOpen]);
 
-  // Persist unreadCounts + broadcast total to Sidebar
+  // Broadcast unread total to Sidebar (no sessionStorage persistence to avoid stale counts)
   useEffect(() => {
-    try { sessionStorage.setItem('unreadCounts', JSON.stringify(unreadCounts)); } catch {}
     const total = Object.values(unreadCounts).reduce((sum, n) => sum + n, 0);
     window.dispatchEvent(new CustomEvent('unread_count_update', { detail: { total } }));
   }, [unreadCounts]);
@@ -543,10 +557,14 @@ export default function Dashboard() {
   }, [showLegalAreaDropdown]);
 
   // Fechar dropdown de especialista ao clicar fora
+  // Checa ambos os refs (ChatHeader + sidebar) para evitar fechar prematuramente
   useEffect(() => {
     if (!showLawyerDropdown) return;
     const handler = (e: MouseEvent) => {
-      if (lawyerDropdownRef.current && !lawyerDropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const inRef1 = lawyerDropdownRef.current?.contains(target);
+      const inRef2 = lawyerDropdownRef2.current?.contains(target);
+      if (!inRef1 && !inRef2) {
         setShowLawyerDropdown(false);
       }
     };
@@ -702,6 +720,14 @@ export default function Dashboard() {
       fetchConversations(selectedInboxIdRef.current, true);
       fetchAdiadoConversations(selectedInboxIdRef.current);
       fetchPendingTransfers(true);
+      // Re-fetch unread counts para sincronizar badges após mudanças de outros operadores
+      api.get('/conversations/unread-counts', { _silent401: true } as any)
+        .then(r => {
+          if (r.data && typeof r.data === 'object' && !Array.isArray(r.data)) {
+            setUnreadCounts(r.data as Record<string, number>);
+          }
+        })
+        .catch(() => {});
     });
 
     // Nota criada em uma conversa — marcar hasNotes=true na lista
@@ -848,6 +874,17 @@ export default function Dashboard() {
     };
   }, [fetchConversations, fetchAdiadoConversations]);
 
+  // Carrega contadores de não-lidos do servidor na montagem (badges persistem entre refreshes)
+  useEffect(() => {
+    api.get('/conversations/unread-counts', { _silent401: true } as any)
+      .then(r => {
+        if (r.data && typeof r.data === 'object' && !Array.isArray(r.data)) {
+          setUnreadCounts(r.data as Record<string, number>);
+        }
+      })
+      .catch(() => {}); // falha silenciosa — badges partem do zero se API indisponível
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Initial data load + refetch on inbox filter change or clientMode change
   useEffect(() => {
     fetchInboxes(true);
@@ -862,6 +899,14 @@ export default function Dashboard() {
     const interval = setInterval(() => fetchPendingTransfers(true), 30_000);
     return () => clearInterval(interval);
   }, [fetchPendingTransfers]);
+
+  // Polling de conversas (60s) — resiliência para mensagens recebidas quando offline
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchConversations(selectedInboxIdRef.current, true);
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [fetchConversations]);
 
   // Ao trocar clientMode: deseleciona conversa ativa para evitar contexto errado
   useEffect(() => {
@@ -898,6 +943,10 @@ export default function Dashboard() {
       delete next[selectedId];
       return next;
     });
+    // Marcar mensagens como lidas no backend (atualiza status no BD + envia read receipt ao WhatsApp)
+    if (!selectedId.startsWith('demo-')) {
+      api.post(`/conversations/${selectedId}/mark-read`, {}, { _silent401: true } as any).catch(() => {});
+    }
     const conv = conversations.find(c => c.id === selectedId);
     if (conv?.leadId) {
       api.get(`/leads/${conv.leadId}`, { _silent401: true } as any)
@@ -976,30 +1025,33 @@ export default function Dashboard() {
           socketRef.current.on('newMessage', (msg: MessageItem) => {
             // Guard estrito: ignora mensagens de outra conversa
             if (msg.conversation_id !== selectedIdRef.current) return;
-            setMessages(prev => {
+            const addMsg = () => setMessages(prev => {
               // Dedup: já existe pelo ID real
               if (prev.some(m => m.id === msg.id)) return prev;
               // Dedup: já existe pelo external_message_id
               if (msg.external_message_id && prev.some(m => m.external_message_id === msg.external_message_id)) return prev;
               // Se é outgoing, substituir a msg otimista com texto mais próximo (optimistic UI)
-              // Usa o texto para corresponder corretamente quando há múltiplas msgs otimistas
               if (msg.direction === 'out') {
                 const optimisticIdx = prev.findIndex(
                   m => typeof m.id === 'string' && m.id.startsWith('optimistic_') &&
                        (m.text === msg.text || !msg.text)
                 );
-                if (optimisticIdx >= 0) {
-                  return prev.map((m, i) => i === optimisticIdx ? msg : m);
-                }
-                // Fallback: substitui a primeira otimista sem correspondência de texto
+                if (optimisticIdx >= 0) return prev.map((m, i) => i === optimisticIdx ? msg : m);
                 const fallbackIdx = prev.findIndex(m => typeof m.id === 'string' && m.id.startsWith('optimistic_'));
-                if (fallbackIdx >= 0) {
-                  return prev.map((m, i) => i === fallbackIdx ? msg : m);
-                }
+                if (fallbackIdx >= 0) return prev.map((m, i) => i === fallbackIdx ? msg : m);
               }
               return [...prev, msg];
             });
             if (msg.direction === 'in') playNotificationSound();
+            // Áudio com mídia pronta: pré-busca blob antes de exibir (aparece já reproduzível)
+            if ((msg as any).type === 'audio' && (msg as any).media?.s3_key) {
+              import('@/components/AudioPlayer').then(({ preFetchAudio }) => {
+                const timeout = setTimeout(addMsg, 8000);
+                preFetchAudio(msg.id).finally(() => { clearTimeout(timeout); addMsg(); });
+              });
+            } else {
+              addMsg();
+            }
             // Refetch memória após cada mensagem (IA: 3s, humano: 18s para cobrir debounce de 15s)
             const delay = (msg as any).skill_id || (msg as any).skill ? 3000 : 18000;
             setTimeout(() => {
@@ -1012,11 +1064,6 @@ export default function Dashboard() {
                 }
               }).catch(() => {});
             }, delay);
-          });
-          socketRef.current.off('mediaReady');
-          socketRef.current.on('mediaReady', (updatedMsg: MessageItem) => {
-            console.log('[SOCKET] mediaReady received:', updatedMsg.id);
-            setMessages(prev => prev.map(m => m.id === updatedMsg.id ? updatedMsg : m));
           });
           socketRef.current.off('messageUpdate');
           socketRef.current.on('messageUpdate', (updatedMsg: MessageItem) => {
@@ -1110,7 +1157,6 @@ export default function Dashboard() {
       // Cleanup listeners ao trocar de conversa (evita race condition)
       if (socketRef.current) {
         socketRef.current.off('newMessage');
-        socketRef.current.off('mediaReady');
         socketRef.current.off('messageUpdate');
         socketRef.current.off('contact_presence');
       }
@@ -1865,11 +1911,61 @@ export default function Dashboard() {
     }
   };
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const addFileToPending = (file: File) => {
+    if (file.size > MAX_FILE_SIZE) {
+      showError(`Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Limite: 50MB`);
+      return;
+    }
+    if (!ALLOWED_MEDIA.test(file.type) && !ALLOWED_DOC_TYPES.some(t => file.type.startsWith(t))) {
+      showError('Tipo de arquivo não permitido');
+      return;
+    }
+    const preview = file.type.startsWith('image/') ? URL.createObjectURL(file) : null;
+    setPendingFiles(prev => [...prev, { file, preview }]);
+  };
+
+  const removePendingFile = (index: number) => {
+    setPendingFiles(prev => {
+      const removed = prev[index];
+      if (removed?.preview) URL.revokeObjectURL(removed.preview);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const sendPendingFiles = async () => {
+    if (!pendingFiles.length || !selectedId || selectedId.startsWith('demo-')) return;
+    setUploadingFile(true);
+    try {
+      for (const { file, preview } of pendingFiles) {
+        await uploadFile(file);
+        if (preview) URL.revokeObjectURL(preview);
+      }
+      setPendingFiles([]);
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
     e.target.value = '';
-    await uploadFile(file);
+    for (let i = 0; i < files.length; i++) {
+      addFileToPending(files[i]);
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        e.preventDefault();
+        const file = items[i].getAsFile();
+        if (file) addFileToPending(file);
+        return;
+      }
+    }
   };
 
   const handleDragEnter = (e: React.DragEvent) => {
@@ -1888,13 +1984,15 @@ export default function Dashboard() {
     e.preventDefault();
   };
 
-  const handleDrop = async (e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     dragCounterRef.current = 0;
     setIsDragging(false);
     if (!isRealConvo || isClosed) return;
-    const file = e.dataTransfer.files?.[0];
-    if (file) await uploadFile(file);
+    const files = e.dataTransfer.files;
+    for (let i = 0; i < files.length; i++) {
+      addFileToPending(files[i]);
+    }
   };
 
   const handleEmojiSelect = (emoji: string) => {
@@ -1948,8 +2046,11 @@ export default function Dashboard() {
     }
     let result: ConversationSummary[];
     if (leadFilter === 'MINE') {
-      // Minhas conversas: todas atribuídas ao usuário atual (qualquer status exceto CLOSED)
-      result = conversations.filter(c => c.assignedAgentId === currentUserId && c.status !== 'CLOSED');
+      // Minhas conversas: atribuídas ao usuário atual (como operador OU advogado), SEM IA ativa
+      result = conversations.filter(c =>
+        (c.assignedAgentId === currentUserId || c.assignedLawyerId === currentUserId) &&
+        !c.aiMode && c.status !== 'CLOSED'
+      );
     } else if (leadFilter === 'ACTIVE') {
       result = conversations.filter(myActiveConvs);
     } else if (leadFilter === 'BOT') {
@@ -2612,7 +2713,7 @@ export default function Dashboard() {
                       {selected.legalArea && (
                         <div className="flex justify-between items-center text-sm">
                           <span className="text-muted-foreground">Especialista</span>
-                          <div className="relative" ref={lawyerDropdownRef}>
+                          <div className="relative" ref={lawyerDropdownRef2}>
                             <button
                               onClick={() => setShowLawyerDropdown(v => !v)}
                               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border transition-colors hover:opacity-80 active:scale-95 ${selected.assignedLawyerName ? 'bg-primary/10 text-primary border-primary/20' : 'bg-muted/40 text-muted-foreground border-border'}`}
@@ -2887,9 +2988,44 @@ export default function Dashboard() {
                     ref={fileInputRef}
                     type="file"
                     accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
+                    multiple
                     className="hidden"
                     onChange={handleFileSelect}
                   />
+
+                  {/* ── Arquivos pendentes (preview antes de enviar) ── */}
+                  {pendingFiles.length > 0 && (
+                    <div className="flex items-center gap-2 p-2 bg-accent/20 border border-border rounded-xl mb-2 flex-wrap">
+                      {pendingFiles.map((pf, idx) => (
+                        <div key={idx} className="relative group">
+                          {pf.preview ? (
+                            <img src={pf.preview} alt="" className="w-16 h-16 object-cover rounded-lg border border-border" />
+                          ) : (
+                            <div className="w-16 h-16 flex items-center justify-center bg-accent/40 rounded-lg border border-border">
+                              <span className="text-[9px] text-muted-foreground text-center leading-tight px-1 truncate">{pf.file.name.slice(-12)}</span>
+                            </div>
+                          )}
+                          <button
+                            onClick={() => removePendingFile(idx)}
+                            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={sendPendingFiles}
+                        disabled={uploadingFile}
+                        className="ml-auto flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-bold hover:opacity-90 disabled:opacity-50"
+                      >
+                        {uploadingFile ? (
+                          <span>Enviando...</span>
+                        ) : (
+                          <>Enviar {pendingFiles.length} arquivo{pendingFiles.length > 1 ? 's' : ''}</>
+                        )}
+                      </button>
+                    </div>
+                  )}
 
                   {/* ── Textarea + ícones internos ──────────────────── */}
                   <div className="relative flex-1">
@@ -2900,6 +3036,7 @@ export default function Dashboard() {
                       ref={inputRef}
                       rows={1}
                       value={text}
+                      onPaste={handlePaste}
                       onChange={(e) => {
                         const val = e.target.value;
                         setText(val);

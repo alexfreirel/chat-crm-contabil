@@ -5,14 +5,10 @@ import OpenAI from 'openai';
 @Injectable()
 export class FollowupService {
   private readonly logger = new Logger(FollowupService.name);
-  private openai: OpenAI | null = null;
+  private openai: OpenAI;
 
   constructor(private prisma: PrismaService) {
-    if (process.env.OPENAI_API_KEY) {
-      this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    } else {
-      this.logger.warn('[FOLLOWUP] OPENAI_API_KEY não configurada — geração de mensagens IA desativada.');
-    }
+    this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
 
   async buildDossie(enrollment: any, step: any, lead: any): Promise<any> {
@@ -159,7 +155,7 @@ export class FollowupService {
     return 'morno';
   }
 
-  async generateMessage(dossie: any, customPrompt?: string | null): Promise<string> {
+  async generateMessage(dossie: any, customPrompt?: string | null, retries?: number): Promise<string> {
     const categoria = dossie.tarefa?.categoria || 'LEADS';
     const canal = dossie.tarefa?.canal || 'whatsapp';
     const tom = dossie.tarefa?.tom || 'amigavel';
@@ -251,21 +247,19 @@ ${customPrompt ? `\nINSTRUÇÃO ADICIONAL DO ADVOGADO:\n${customPrompt}` : ''}
 IMPORTANTE: Gere uma mensagem DIFERENTE das anteriores em estrutura e abordagem.
 Gere APENAS o texto da mensagem final, sem introduções, sem "Aqui está a mensagem:" etc.`;
 
-    if (!this.openai) return this.fallbackMessage(nome);
-
     try {
       const completion = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4.1-mini',
         messages: [{ role: 'system', content: systemPrompt }],
         max_tokens: 700,
         temperature: 0.88,
       });
       return completion.choices[0]?.message?.content?.trim() || this.fallbackMessage(nome);
     } catch (e: any) {
-      if (e?.status === 429) {
-        this.logger.warn('[FOLLOWUP] OpenAI rate limit — aguardando 5s e tentando novamente');
+      if (e?.status === 429 && (retries ?? 0) < 2) {
+        this.logger.warn(`[FOLLOWUP] OpenAI rate limit — tentativa ${(retries ?? 0) + 1}/2, aguardando 5s`);
         await new Promise(r => setTimeout(r, 5000));
-        return this.generateMessage(dossie, customPrompt);
+        return this.generateMessage(dossie, customPrompt, (retries ?? 0) + 1);
       }
       this.logger.error(`[FOLLOWUP] Erro OpenAI: ${e.message}`);
       return this.fallbackMessage(nome);
@@ -325,11 +319,9 @@ Considere requer_humano=true se:
 - Negociação de valores ou acordos
 - Reclamação de serviço`;
 
-    if (!this.openai) return { sentimento: 'neutro', intencao: 'incerto', urgencia: 'media', requer_humano: false, resumo: 'Sem análise', proxima_acao: 'Revisar manualmente' };
-
     try {
       const r = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4.1-mini',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 300, temperature: 0.3,
         response_format: { type: 'json_object' },

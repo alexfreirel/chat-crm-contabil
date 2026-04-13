@@ -16,8 +16,8 @@ export class McpToolsService {
   async callTool(name: string, args: Record<string, any>, user: any): Promise<unknown> {
     const tenantId = user?.tenant_id;
     const userId = user?.sub;
-    const role = user?.role;
-    const lawyerId = role === 'ADMIN' ? undefined : userId;
+    const roles = user?.roles || (user?.role ? [user.role] : []);
+    const lawyerId = roles.includes('ADMIN') ? undefined : userId;
 
     switch (name) {
       // ─── Clientes ─────────────────────────────────────────────

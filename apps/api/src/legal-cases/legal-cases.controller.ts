@@ -46,7 +46,7 @@ export class LegalCasesController {
     @Query('leadId') leadId?: string,
     @Query('caseNumber') caseNumber?: string,
   ) {
-    const isAdmin = req.user.role === 'ADMIN';
+    const isAdmin = req.user.roles?.includes('ADMIN');
     const lawyerId = isAdmin ? undefined : req.user.id;
     const archivedBool = archived === 'true' ? true : archived === 'false' ? false : undefined;
     const inTrackingBool = inTracking === 'true' ? true : inTracking === 'false' ? false : undefined;
@@ -136,14 +136,19 @@ export class LegalCasesController {
       lead_email?: string;
       // ADMIN pode escolher o advogado responsável
       lawyer_id?: string;
+      // ADMIN pode escolher o atendente responsável
+      assigned_user_id?: string;
     },
     @Request() req: any,
   ) {
-    const isAdmin = req.user.role === 'ADMIN';
+    const isAdmin = req.user.roles?.includes('ADMIN');
     return this.service.createDirect({
       ...body,
       lawyer_id: req.user.id,
+      // Apenas ADMIN pode substituir o advogado responsável
       override_lawyer_id: isAdmin && body.lawyer_id ? body.lawyer_id : undefined,
+      // Qualquer usuário autenticado pode informar o atendente responsável
+      assigned_user_id: body.assigned_user_id || undefined,
       tenant_id: req.user.tenant_id,
     });
   }
@@ -188,6 +193,16 @@ export class LegalCasesController {
     return this.service.unarchive(id, req.user?.tenant_id);
   }
 
+  @Patch(':id/renounce')
+  renounce(@Param('id') id: string, @Request() req: any) {
+    return this.service.renounce(id, req.user?.tenant_id);
+  }
+
+  @Patch(':id/unrenounce')
+  unrenounce(@Param('id') id: string, @Request() req: any) {
+    return this.service.unrenounce(id, req.user?.tenant_id);
+  }
+
   @Patch(':id/case-number')
   setCaseNumber(@Param('id') id: string, @Body() body: { caseNumber: string; court?: string }, @Request() req: any) {
     return this.service.setCaseNumber(id, body.caseNumber, body.court, req.user?.tenant_id);
@@ -198,9 +213,28 @@ export class LegalCasesController {
     return this.service.sendToTracking(id, body.caseNumber, body.court, req.user?.tenant_id);
   }
 
+  /** Concluir todas as tarefas pendentes de um caso (ao avançar estágio) */
+  @Patch(':id/complete-stage-tasks')
+  completeStageTasks(@Param('id') id: string, @Request() req: any) {
+    return this.service.completeStageTasks(id, req.user?.tenant_id).then(count => ({ completed: count }));
+  }
+
   @Patch(':id/tracking-stage')
-  updateTrackingStage(@Param('id') id: string, @Body('trackingStage') trackingStage: string, @Request() req: any) {
-    return this.service.updateTrackingStage(id, trackingStage, req.user?.tenant_id);
+  updateTrackingStage(
+    @Param('id') id: string,
+    @Body() body: {
+      trackingStage: string;
+      sentence_value?: number;
+      sentence_date?: string;
+      sentence_type?: string;
+    },
+    @Request() req: any,
+  ) {
+    return this.service.updateTrackingStage(id, body.trackingStage, req.user?.tenant_id, {
+      sentence_value: body.sentence_value,
+      sentence_date: body.sentence_date,
+      sentence_type: body.sentence_type,
+    });
   }
 
   @Patch(':id/notes')

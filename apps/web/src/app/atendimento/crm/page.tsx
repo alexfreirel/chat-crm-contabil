@@ -113,10 +113,11 @@ function agingBorderClass(days: number, stage: string): string {
 
 const EVENT_TYPE_EMOJI: Record<string, string> = {
   AUDIENCIA: '⚖️',
-  PRAZO: '⏰',
-  CONSULTA: '📞',
-  TAREFA: '✓',
-  OUTRO: '📅',
+  PERICIA:   '🔬',
+  PRAZO:     '⏰',
+  CONSULTA:  '📞',
+  TAREFA:    '✓',
+  OUTRO:     '📅',
 };
 
 function eventDaysUntil(startAt: string): number {
@@ -1225,11 +1226,23 @@ export default function CrmPage() {
       if (document.visibilityState === 'visible') fetchLeads(true);
     }, 30_000);
 
+    // Decode userId para join_user
+    let myId: string | null = null;
+    try {
+      let b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      myId = JSON.parse(atob(b64)).sub || null;
+    } catch { /* ignora */ }
+
     // Socket: atualiza o CRM em tempo real quando há novos leads/mensagens
     const socket = io(getWsUrl(), {
       path: getSocketPath(),
       transports: ['polling', 'websocket'],
       auth: { token },
+    });
+    // Entrar no room user:${myId} para receber notificações direcionadas
+    socket.on('connect', () => {
+      if (myId) socket.emit('join_user', myId);
     });
     socket.on('inboxUpdate', () => {
       if (document.visibilityState === 'visible') fetchLeads(true);
@@ -1659,13 +1672,13 @@ export default function CrmPage() {
           });
           if (stagnant.length === 0) return null;
           return (
-            <div className="mx-6 mt-3 mb-1 flex items-center gap-3 px-4 py-2.5 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
-              <AlertCircle size={15} className="text-yellow-400 shrink-0" />
-              <p className="flex-1 text-[12px] text-yellow-300">
+            <div className="mx-6 mt-3 mb-1 flex items-center gap-3 px-4 py-2.5 bg-amber-50 dark:bg-yellow-500/10 border border-amber-300 dark:border-yellow-500/30 rounded-xl">
+              <AlertCircle size={15} className="text-amber-600 dark:text-yellow-400 shrink-0" />
+              <p className="flex-1 text-[12px] text-amber-800 dark:text-yellow-300">
                 <span className="font-bold">{stagnant.length} lead{stagnant.length !== 1 ? 's' : ''}</span> sem atividade há mais de {stagnationDays} dia{stagnationDays !== 1 ? 's' : ''}:{' '}
                 <span className="opacity-80">{stagnant.slice(0, 3).map(l => l.name || l.phone).join(', ')}{stagnant.length > 3 ? ` e mais ${stagnant.length - 3}` : ''}</span>
               </p>
-              <button onClick={() => setDismissedStagnation(true)} className="p-1 rounded-md text-yellow-400/60 hover:text-yellow-400 transition-colors shrink-0">
+              <button onClick={() => setDismissedStagnation(true)} className="p-1 rounded-md text-amber-500/60 dark:text-yellow-400/60 hover:text-amber-600 dark:hover:text-yellow-400 transition-colors shrink-0">
                 <XIcon size={13} />
               </button>
             </div>

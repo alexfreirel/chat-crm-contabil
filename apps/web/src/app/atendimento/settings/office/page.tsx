@@ -102,8 +102,8 @@ export default function OfficeSettingsPage() {
       const data = (res.data?.data || res.data?.users || res.data || []) as UserOption[];
       // Mostrar apenas advogados e admins (não atendentes comerciais)
       const lawyers = data
-        .map((u: any) => ({ id: u.id, name: u.name, role: u.role }))
-        .filter((u) => u.role === 'ADVOGADO' || u.role === 'ADMIN');
+        .map((u: any) => ({ id: u.id, name: u.name, role: u.role, roles: u.roles }))
+        .filter((u: any) => u.roles?.includes('ADVOGADO') || u.roles?.includes('ADMIN') || u.role === 'ADVOGADO' || u.role === 'ADMIN');
       setUsers(lawyers);
     } catch {}
   };

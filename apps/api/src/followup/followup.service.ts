@@ -83,6 +83,11 @@ export class FollowupService {
   }
 
   async deleteSequence(id: string) {
+    // Cancelar enrollments ativos antes de deletar
+    await this.prisma.followupEnrollment.updateMany({
+      where: { sequence_id: id, status: { in: ['ATIVO', 'PAUSADO'] } },
+      data: { status: 'CANCELADO' },
+    });
     await this.prisma.followupSequence.delete({ where: { id } });
     return { ok: true };
   }
@@ -133,6 +138,14 @@ export class FollowupService {
     if (!sequence) throw new NotFoundException('Sequência não encontrada');
     if (!sequence.active) throw new BadRequestException('Sequência inativa');
 
+    // Verificar se já existe enrollment concluído — não re-enrolar automaticamente
+    const existing = await this.prisma.followupEnrollment.findUnique({
+      where: { lead_id_sequence_id: { lead_id: leadId, sequence_id: sequenceId } },
+    });
+    if (existing && existing.status === 'CONCLUIDO') {
+      throw new BadRequestException('Lead já concluiu esta sequência. Cancele antes de re-enrolar.');
+    }
+
     const firstStep = sequence.steps[0];
     const nextSendAt = firstStep ? new Date(Date.now() + firstStep.delay_hours * 3600 * 1000) : null;
 
@@ -157,6 +170,31 @@ export class FollowupService {
     });
   }
 
+  async resumeEnrollment(enrollmentId: string) {
+    const enrollment = await this.prisma.followupEnrollment.findUnique({
+      where: { id: enrollmentId },
+      include: { sequence: { include: { steps: { orderBy: { position: 'asc' } } } } },
+    });
+    if (!enrollment) throw new NotFoundException('Enrollment não encontrado');
+    if (enrollment.status !== 'PAUSADO') throw new BadRequestException('Enrollment não está pausado');
+
+    const currentStep = enrollment.sequence.steps.find(s => s.position === enrollment.current_step);
+    const nextSendAt = currentStep ? new Date(Date.now() + currentStep.delay_hours * 3600 * 1000) : new Date(Date.now() + 3600000);
+
+    const updated = await this.prisma.followupEnrollment.update({
+      where: { id: enrollmentId },
+      data: { status: 'ATIVO', paused_reason: null, next_send_at: nextSendAt },
+    });
+
+    await this.followupQueue.add('process-step', { enrollment_id: enrollmentId }, {
+      delay: Math.max(0, nextSendAt.getTime() - Date.now()),
+      jobId: `resume-${enrollmentId}-${Date.now()}`,
+      removeOnComplete: true,
+    });
+
+    return updated;
+  }
+
   async cancelEnrollment(enrollmentId: string) {
     return this.prisma.followupEnrollment.update({
       where: { id: enrollmentId },
@@ -173,14 +211,18 @@ export class FollowupService {
 
   // ─── Fila de Aprovação ───────────────────────────────────────────────────
 
-  async listPendingApprovals() {
+  async listPendingApprovals(tenantId?: string) {
     return this.prisma.followupMessage.findMany({
-      where: { status: 'PENDENTE_APROVACAO' },
+      where: {
+        status: 'PENDENTE_APROVACAO',
+        ...(tenantId && { enrollment: { lead: { tenant_id: tenantId } } }),
+      },
       include: {
         enrollment: {
           include: {
             lead: { select: { id: true, name: true, phone: true, stage: true } },
             sequence: { select: { id: true, name: true } },
+            messages: { orderBy: { created_at: 'desc' }, take: 5, select: { id: true, generated_text: true, sent_text: true, status: true, created_at: true, channel: true } },
           },
         },
         step: { select: { position: true, channel: true, tone: true, objective: true } },
@@ -336,7 +378,7 @@ ${customPrompt ? `INSTRUÇÃO ADICIONAL:\n${customPrompt}` : ''}
 Gere APENAS o texto da mensagem, sem introduções ou explicações.`;
 
     const completion = await this.openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4.1-mini',
       messages: [{ role: 'system', content: systemPrompt }],
       max_tokens: 600,
       temperature: 0.85,
@@ -360,16 +402,185 @@ Gere APENAS o texto da mensagem, sem introduções ou explicações.`;
 
   // ─── Stats ───────────────────────────────────────────────────────────────
 
-  async getStats() {
+  async getStats(tenantId?: string) {
+    const tenantFilter = tenantId ? { lead: { tenant_id: tenantId } } : {};
+    const msgTenantFilter = tenantId ? { enrollment: { lead: { tenant_id: tenantId } } } : {};
     const [total, ativos, pendentes, enviados, convertidos] = await Promise.all([
-      this.prisma.followupEnrollment.count(),
-      this.prisma.followupEnrollment.count({ where: { status: 'ATIVO' } }),
-      this.prisma.followupMessage.count({ where: { status: 'PENDENTE_APROVACAO' } }),
-      this.prisma.followupMessage.count({ where: { status: 'ENVIADO' } }),
-      this.prisma.followupEnrollment.count({ where: { status: 'CONVERTIDO' } }),
+      this.prisma.followupEnrollment.count({ where: tenantFilter }),
+      this.prisma.followupEnrollment.count({ where: { status: 'ATIVO', ...tenantFilter } }),
+      this.prisma.followupMessage.count({ where: { status: 'PENDENTE_APROVACAO', ...msgTenantFilter } }),
+      this.prisma.followupMessage.count({ where: { status: 'ENVIADO', ...msgTenantFilter } }),
+      this.prisma.followupEnrollment.count({ where: { status: 'CONVERTIDO', ...tenantFilter } }),
     ]);
-    const taxaConversao = total > 0 ? Math.round((convertidos / total) * 100) : 0;
+    const taxaConversao = total > 0 ? Math.round((convertidos / total) * 1000) / 10 : 0;
     return { total_enrollments: total, ativos, pendentes_aprovacao: pendentes, total_enviados: enviados, convertidos, taxa_conversao: taxaConversao };
+  }
+
+  // ─── Disparos em Massa (Broadcasts) ─────────────────────────────────────
+
+  async previewBroadcast(type: string, daysAhead: number, tenantId?: string) {
+    // COMUNICADO: busca todos os clientes com processo ativo (não depende de CalendarEvent)
+    if (type === 'COMUNICADO') {
+      const cases = await this.prisma.legalCase.findMany({
+        where: {
+          archived: false,
+          lead: {
+            phone: { not: '' },
+            is_client: true,
+            ...(tenantId ? { tenant_id: tenantId } : {}),
+          },
+        },
+        include: {
+          lead: { select: { id: true, name: true, phone: true, stage: true } },
+        },
+        orderBy: { created_at: 'desc' },
+      });
+
+      // Deduplica por lead_id (um lead pode ter vários processos)
+      const seen = new Set<string>();
+      return cases
+        .filter(c => { if (seen.has(c.lead_id)) return false; seen.add(c.lead_id); return true; })
+        .map(c => ({
+          event_id: null,
+          event_title: null,
+          event_date: null,
+          event_location: null,
+          lead_id: c.lead!.id,
+          lead_name: c.lead!.name,
+          lead_phone: c.lead!.phone,
+          lead_stage: c.lead!.stage,
+          case_number: c.case_number,
+          case_type: c.action_type,
+          court: c.court,
+        }));
+    }
+
+    // Tipos com CalendarEvent (AUDIENCIA, PERICIA, PRAZO)
+    const now = new Date();
+    const until = new Date(Date.now() + daysAhead * 86400000);
+
+    const events = await this.prisma.calendarEvent.findMany({
+      where: {
+        type: type,
+        start_at: { gte: now, lte: until },
+        status: { in: ['AGENDADO', 'CONFIRMADO'] },
+        lead_id: { not: null },
+        lead: { phone: { not: '' }, ...(tenantId ? { tenant_id: tenantId } : {}) },
+      },
+      include: {
+        lead: { select: { id: true, name: true, phone: true, stage: true } },
+        legal_case: { select: { id: true, case_number: true, action_type: true, court: true, opposing_party: true } },
+      },
+      orderBy: { start_at: 'asc' },
+    });
+
+    return events.map(e => ({
+      event_id: e.id,
+      event_title: e.title,
+      event_date: e.start_at,
+      event_location: e.location,
+      lead_id: e.lead!.id,
+      lead_name: e.lead!.name,
+      lead_phone: e.lead!.phone,
+      lead_stage: e.lead!.stage,
+      case_number: e.legal_case?.case_number,
+      case_type: e.legal_case?.action_type,
+      court: e.legal_case?.court,
+    }));
+  }
+
+  async createBroadcast(data: { type: string; days_ahead: number; interval_ms: number; custom_prompt?: string }, userId: string, tenantId?: string) {
+    const targets = await this.previewBroadcast(data.type, data.days_ahead, tenantId);
+    if (targets.length === 0) throw new BadRequestException('Nenhum alvo encontrado para este disparo');
+
+    // Deduplicate by lead_id (same lead may have multiple events)
+    const uniqueTargets = targets.filter((t, i, arr) => arr.findIndex(x => x.lead_id === t.lead_id) === i);
+
+    const typeLabels: Record<string, string> = { AUDIENCIA: 'Audiências', PERICIA: 'Perícias', PRAZO: 'Prazos', COMUNICADO: 'Comunicados' };
+    const today = new Date().toLocaleDateString('pt-BR');
+    const name = `Lembrete ${typeLabels[data.type] || data.type} — ${today}`;
+
+    const broadcast = await this.prisma.broadcastJob.create({
+      data: {
+        name,
+        type: data.type,
+        tenant_id: tenantId,
+        created_by_id: userId,
+        total_targets: uniqueTargets.length,
+        interval_ms: Math.max(5000, Math.min(60000, data.interval_ms)),
+        custom_prompt: data.custom_prompt,
+        filter_json: { type: data.type, days_ahead: data.days_ahead },
+        status: 'ENVIANDO',
+        started_at: new Date(),
+        items: {
+          create: uniqueTargets.map(t => ({
+            lead_id: t.lead_id,
+            ...(t.event_id ? { event_id: t.event_id } : {}),
+            phone: t.lead_phone,
+          })),
+        },
+      },
+      include: { items: true },
+    });
+
+    // Enqueue each item with staggered delay
+    for (let i = 0; i < broadcast.items.length; i++) {
+      const item = broadcast.items[i];
+      const delay = i * broadcast.interval_ms;
+      await this.followupQueue.add('broadcast-send', {
+        broadcast_id: broadcast.id,
+        item_id: item.id,
+        custom_prompt: data.custom_prompt,
+      }, {
+        delay,
+        jobId: `broadcast-${broadcast.id}-${item.id}`,
+        removeOnComplete: true,
+      });
+    }
+
+    this.logger.log(`[BROADCAST] Criado "${name}" com ${broadcast.items.length} alvos, intervalo ${broadcast.interval_ms}ms`);
+    return broadcast;
+  }
+
+  async listBroadcasts(tenantId?: string) {
+    return this.prisma.broadcastJob.findMany({
+      where: tenantId ? { tenant_id: tenantId } : {},
+      include: { created_by: { select: { name: true } }, _count: { select: { items: true } } },
+      orderBy: { created_at: 'desc' },
+      take: 50,
+    });
+  }
+
+  async getBroadcast(id: string) {
+    const broadcast = await this.prisma.broadcastJob.findUnique({
+      where: { id },
+      include: {
+        items: {
+          orderBy: { created_at: 'asc' },
+          include: { lead: { select: { name: true } } },
+        },
+        created_by: { select: { name: true } },
+      },
+    });
+    if (!broadcast) throw new NotFoundException('Disparo não encontrado');
+    return broadcast;
+  }
+
+  async cancelBroadcast(id: string) {
+    const broadcast = await this.prisma.broadcastJob.findUnique({ where: { id } });
+    if (!broadcast) throw new NotFoundException('Disparo não encontrado');
+    if (broadcast.status !== 'ENVIANDO') throw new BadRequestException('Disparo não está em andamento');
+
+    // Cancel pending items
+    await this.prisma.broadcastItem.updateMany({
+      where: { broadcast_id: id, status: 'PENDENTE' },
+      data: { status: 'PULADO' },
+    });
+
+    return this.prisma.broadcastJob.update({
+      where: { id },
+      data: { status: 'CANCELADO', completed_at: new Date() },
+    });
   }
 
   // ─── Auto-enroll por stage ───────────────────────────────────────────────
@@ -416,7 +627,7 @@ Considere requer_humano=true se:
 
     try {
       const r = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4.1-mini',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 300, temperature: 0.3,
         response_format: { type: 'json_object' },

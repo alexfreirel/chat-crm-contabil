@@ -72,7 +72,8 @@ interface LeadOption {
 const EVENT_TYPES = [
   { id: 'CONSULTA', label: 'Consulta', emoji: '🟣', color: '#8b5cf6' },
   { id: 'TAREFA', label: 'Tarefa', emoji: '🟢', color: '#22c55e' },
-  { id: 'AUDIENCIA', label: 'Audiencia', emoji: '🔴', color: '#ef4444' },
+  { id: 'AUDIENCIA', label: 'Audiência', emoji: '🔴', color: '#ef4444' },
+  { id: 'PERICIA', label: 'Perícia', emoji: '🔬', color: '#0ea5e9' },
   { id: 'PRAZO', label: 'Prazo', emoji: '🟠', color: '#f59e0b' },
   { id: 'OUTRO', label: 'Outro', emoji: '⚪', color: '#6b7280' },
 ] as const;
@@ -523,7 +524,7 @@ export default function AgendaPage() {
     defaultView: isMobile ? 'day' : 'week',
     locale: 'pt-BR',
     firstDayOfWeek: 1,
-    dayBoundaries: { start: '06:00', end: '22:00' },
+    dayBoundaries: { start: '05:00', end: '23:00' },
     weekOptions: { gridHeight: isMobile ? 800 : 1200, gridStep: 30 },
     isDark: true,
     callbacks: {
@@ -568,10 +569,13 @@ export default function AgendaPage() {
     try {
       const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
       if (payload?.sub) setCurrentUserId(payload.sub);
-      if (payload?.role) {
-        setCurrentUserRole(payload.role);
-        // Admin visualiza todos os advogados por padrão
-        if (payload.role === 'ADMIN') {
+      // Multi-role: aceita roles (array) ou role (string legado)
+      const roles: string[] = Array.isArray(payload?.roles)
+        ? payload.roles
+        : (payload?.role ? [payload.role] : []);
+      if (roles.length > 0) {
+        setCurrentUserRole(roles[0]);
+        if (roles.includes('ADMIN')) {
           setShowAllUsers(true);
         }
       }
@@ -580,11 +584,26 @@ export default function AgendaPage() {
     api.get('/users?limit=100').then(r => {
       const data: any[] = r.data?.data || r.data?.users || r.data || [];
       const lawyers = data.filter((u: any) =>
-        u.role === 'ADVOGADO' || u.role === 'ADMIN'
+        u.roles?.includes('ADVOGADO') || u.roles?.includes('ADMIN') || u.role === 'ADVOGADO' || u.role === 'ADMIN'
       );
       setUsers(lawyers.map((u: any) => ({ id: u.id, name: u.name })));
     }).catch(() => {});
     api.get('/leads').then(r => setLeads((r.data || []).map((l: any) => ({ id: l.id, name: l.name, phone: l.phone })))).catch(() => {});
+
+    // Deep link: abrir evento via alerta de tarefa vencida
+    const openEventId = sessionStorage.getItem('open_event_id');
+    if (openEventId) {
+      sessionStorage.removeItem('open_event_id');
+      api.get(`/calendar/events/${openEventId}`)
+        .then(res => {
+          if (res.data) {
+            const ev = res.data;
+            setEditingEvent(ev);
+            setShowModal(true);
+          }
+        })
+        .catch(() => {});
+    }
   }, [router]);
 
   // Sync filtro → calendar
@@ -879,6 +898,21 @@ export default function AgendaPage() {
       if (rangeRef.current) fetchEvents(rangeRef.current.start, rangeRef.current.end);
     } catch (e: any) {
       showError(e?.response?.data?.message || e?.message || 'Erro ao remover evento');
+    }
+  };
+
+  const [sendingNotify, setSendingNotify] = useState(false);
+
+  const handleNotify = async () => {
+    if (!editingEvent) return;
+    setSendingNotify(true);
+    try {
+      const res = await api.post(`/calendar/events/${editingEvent.id}/notify`);
+      showSuccess(res.data?.message || 'Notificação WhatsApp enviada ao cliente!');
+    } catch (e: any) {
+      showError(e?.response?.data?.message || e?.message || 'Erro ao reenviar notificação');
+    } finally {
+      setSendingNotify(false);
     }
   };
 
@@ -1938,6 +1972,16 @@ export default function AgendaPage() {
                     title="Exportar .ics"
                   >
                     <Download size={12} /> .ics
+                  </button>
+                )}
+                {editingEvent && ['AUDIENCIA', 'PERICIA'].includes(editingEvent.type) && (
+                  <button
+                    onClick={handleNotify}
+                    disabled={sendingNotify}
+                    className="px-3 py-2 text-xs font-semibold text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg transition-colors inline-flex items-center gap-1 disabled:opacity-40 disabled:pointer-events-none"
+                    title="Reenviar notificação WhatsApp ao cliente"
+                  >
+                    <Bell size={12} /> {sendingNotify ? 'Enviando…' : 'Notificar'}
                   </button>
                 )}
               </div>
