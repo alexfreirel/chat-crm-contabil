@@ -418,6 +418,78 @@ def impostos_sefaz():
     return jsonify({"task_id": _iniciar_tarefa(cmd)})
 
 
+# ── API: Arquivos (listar / baixar / ZIP) ─────────────────────────────────────
+
+@app.route("/api/arquivos/<mes>")
+def listar_arquivos(mes):
+    """Lista todos os PDFs baixados para um mês."""
+    download_dir = BASE_DIR / "downloads" / mes
+    if not download_dir.exists():
+        return jsonify({"files": [], "total": 0})
+
+    files = []
+    for f in sorted(download_dir.rglob("*.pdf")):
+        rel = f.relative_to(download_dir)
+        files.append({
+            "nome": f.name,
+            "caminho": str(rel).replace("\\", "/"),
+            "empresa": str(rel.parts[0]) if len(rel.parts) > 1 else "",
+            "tamanho": f.stat().st_size,
+        })
+    return jsonify({"files": files, "total": len(files)})
+
+
+@app.route("/api/arquivos/<mes>/download")
+def baixar_arquivo(mes):
+    """Baixa um arquivo individual. Query param: path=empresa/relatorio/file.pdf"""
+    from flask import send_file
+    rel_path = request.args.get("path", "")
+    if not rel_path:
+        return jsonify({"error": "path é obrigatório"}), 400
+
+    arquivo = (BASE_DIR / "downloads" / mes / rel_path).resolve()
+    download_dir = (BASE_DIR / "downloads" / mes).resolve()
+
+    # Segurança: impedir path traversal
+    if not str(arquivo).startswith(str(download_dir)):
+        return jsonify({"error": "Caminho inválido"}), 403
+
+    if not arquivo.exists():
+        return jsonify({"error": "Arquivo não encontrado"}), 404
+
+    return send_file(str(arquivo), as_attachment=True, download_name=arquivo.name)
+
+
+@app.route("/api/arquivos/<mes>/zip")
+def baixar_zip(mes):
+    """Baixa todos os PDFs do mês como ZIP."""
+    import zipfile
+    import tempfile
+    from flask import send_file
+
+    download_dir = BASE_DIR / "downloads" / mes
+    if not download_dir.exists():
+        return jsonify({"error": "Nenhum arquivo encontrado"}), 404
+
+    pdfs = list(download_dir.rglob("*.pdf"))
+    if not pdfs:
+        return jsonify({"error": "Nenhum PDF encontrado"}), 404
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+    with zipfile.ZipFile(tmp.name, "w", zipfile.ZIP_DEFLATED) as zf:
+        for pdf in pdfs:
+            arcname = str(pdf.relative_to(download_dir))
+            zf.write(pdf, arcname)
+    tmp.close()
+
+    return send_file(
+        tmp.name,
+        as_attachment=True,
+        download_name=f"relatorios-sefaz-{mes}.zip",
+        mimetype="application/zip",
+    )
+
+
 # ── Entrada ────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

@@ -45,6 +45,10 @@ export default function AgenteFiscalPage() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
 
+  // ── Arquivos baixados ────────────────────────────────────────────────
+  const [arquivos, setArquivos] = useState<{ nome: string; caminho: string; empresa: string; tamanho: number }[]>([]);
+  const [loadingArquivos, setLoadingArquivos] = useState(false);
+
   // ── Terminal output ─────────────────────────────────────────────────
   const [termLines, setTermLines] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
@@ -95,15 +99,34 @@ export default function AgenteFiscalPage() {
     if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight;
   }, [termLines]);
 
+  // ── Listar arquivos ──────────────────────────────────────────────────
+  const fetchArquivos = useCallback(async (mes?: string) => {
+    const m = mes || selectedMes;
+    setLoadingArquivos(true);
+    try {
+      const res = await fetch(`${AGENT_API}/api/arquivos/${m}`);
+      if (res.ok) {
+        const data = await res.json();
+        setArquivos(data.files || []);
+      }
+    } catch { /* silent */ }
+    finally { setLoadingArquivos(false); }
+  }, [selectedMes]);
+
   // ── SSE stream ──────────────────────────────────────────────────────
-  const streamTask = useCallback((taskId: string) => {
+  const streamTask = useCallback((taskId: string, autoLoadFiles = false) => {
     setRunning(true);
     setTermLines([]);
+    setArquivos([]);
     const es = new EventSource(`${AGENT_API}/api/tarefa/${taskId}/stream`);
     es.onmessage = (e) => setTermLines(prev => [...prev, e.data]);
-    es.addEventListener('done', () => { es.close(); setRunning(false); });
+    es.addEventListener('done', () => {
+      es.close();
+      setRunning(false);
+      if (autoLoadFiles) fetchArquivos();
+    });
     es.onerror = () => { es.close(); setRunning(false); };
-  }, []);
+  }, [fetchArquivos]);
 
   // ── Actions ─────────────────────────────────────────────────────────
   const runBaixarSefaz = async () => {
@@ -115,7 +138,7 @@ export default function AgenteFiscalPage() {
         body: JSON.stringify({ mes: selectedMes, cnpj: selectedCnpj }),
       });
       const data = await res.json();
-      if (data.task_id) streamTask(data.task_id);
+      if (data.task_id) streamTask(data.task_id, true);
       else toast(data.error || 'Erro ao iniciar', 'err');
     } catch { toast('Agente offline', 'err'); }
   };
@@ -129,7 +152,7 @@ export default function AgenteFiscalPage() {
         body: JSON.stringify({ mes: selectedMes, cnpj: selectedCnpj }),
       });
       const data = await res.json();
-      if (data.task_id) streamTask(data.task_id);
+      if (data.task_id) streamTask(data.task_id, true);
       else toast(data.error || 'Erro ao iniciar', 'err');
     } catch { toast('Agente offline', 'err'); }
   };
@@ -143,7 +166,7 @@ export default function AgenteFiscalPage() {
         body: JSON.stringify({ cnpj: selectedCnpj }),
       });
       const data = await res.json();
-      if (data.task_id) streamTask(data.task_id);
+      if (data.task_id) streamTask(data.task_id, true);
       else toast(data.error || 'Erro ao iniciar', 'err');
     } catch { toast('Agente offline', 'err'); }
   };
@@ -481,16 +504,72 @@ export default function AgenteFiscalPage() {
 
         {/* ── Baixar Sefaz ───────────────────────────────────────────── */}
         {activeTab === 'sefaz' && (
-          <div className="grid lg:grid-cols-[360px_1fr] gap-6">
-            <div className="bg-card border border-border rounded-xl p-5 space-y-4 h-fit">
-              <h3 className="text-sm font-semibold flex items-center gap-2"><Download size={15} className="text-primary" /> Configurar</h3>
-              <div><label className="text-xs font-medium text-muted-foreground block mb-1.5">Empresa</label><EmpresaSelect /></div>
-              <div><label className="text-xs font-medium text-muted-foreground block mb-1.5">Mes de referencia</label><MesInput /></div>
-              <button onClick={runBaixarSefaz} disabled={running} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50">
-                {running ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} Iniciar Download
-              </button>
+          <div className="space-y-6">
+            <div className="grid lg:grid-cols-[360px_1fr] gap-6">
+              <div className="bg-card border border-border rounded-xl p-5 space-y-4 h-fit">
+                <h3 className="text-sm font-semibold flex items-center gap-2"><Download size={15} className="text-primary" /> Configurar</h3>
+                <div><label className="text-xs font-medium text-muted-foreground block mb-1.5">Empresa</label><EmpresaSelect /></div>
+                <div><label className="text-xs font-medium text-muted-foreground block mb-1.5">Mes de referencia</label><MesInput /></div>
+                <button onClick={runBaixarSefaz} disabled={running} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50">
+                  {running ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} Iniciar Download
+                </button>
+                <hr className="border-border" />
+                <button onClick={() => fetchArquivos()} disabled={loadingArquivos} className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border bg-card text-foreground text-sm font-medium hover:bg-muted/50 disabled:opacity-50">
+                  {loadingArquivos ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />} Ver Arquivos Baixados
+                </button>
+              </div>
+              <TerminalOutput title="agente_nfe_claude.py" />
             </div>
-            <TerminalOutput title="agente_nfe_claude.py" />
+
+            {/* Arquivos baixados */}
+            {arquivos.length > 0 && (
+              <div className="bg-card border border-border rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
+                  <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <FileText size={15} className="text-primary" /> Arquivos Baixados ({arquivos.length})
+                  </h3>
+                  <a
+                    href={`${AGENT_API}/api/arquivos/${selectedMes}/zip`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90"
+                  >
+                    <Download size={14} /> Baixar Todos (ZIP)
+                  </a>
+                </div>
+                <div className="max-h-[350px] overflow-y-auto">
+                  <table className="w-full">
+                    <thead className="sticky top-0 bg-card z-10">
+                      <tr className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                        <th className="px-5 py-3 text-left font-semibold">Empresa</th>
+                        <th className="px-5 py-3 text-left font-semibold">Arquivo</th>
+                        <th className="px-5 py-3 text-right font-semibold">Tamanho</th>
+                        <th className="px-5 py-3 text-right font-semibold">Acao</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {arquivos.map((a, i) => (
+                        <tr key={i} className="border-t border-border/50 hover:bg-muted/30">
+                          <td className="px-5 py-2.5 text-xs text-muted-foreground">{a.empresa}</td>
+                          <td className="px-5 py-2.5 text-sm text-foreground font-medium">{a.nome}</td>
+                          <td className="px-5 py-2.5 text-xs text-muted-foreground text-right font-mono">{(a.tamanho / 1024).toFixed(0)} KB</td>
+                          <td className="px-5 py-2.5 text-right">
+                            <a
+                              href={`${AGENT_API}/api/arquivos/${selectedMes}/download?path=${encodeURIComponent(a.caminho)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20"
+                            >
+                              <Download size={12} /> Baixar
+                            </a>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
