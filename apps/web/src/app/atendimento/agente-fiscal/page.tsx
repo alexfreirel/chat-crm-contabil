@@ -569,7 +569,7 @@ export default function AgenteFiscalPage() {
               {empresas.length === 0 ? (
                 <div className="p-6 text-center text-muted-foreground text-xs">Nenhuma empresa cadastrada</div>
               ) : (
-                <div className="max-h-[280px] overflow-y-auto scrollbar-thin p-2">
+                <div className="p-2">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
                     {empresas.map((e, i) => (
                       <div key={e.cnpj} className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-muted/30 transition-colors">
