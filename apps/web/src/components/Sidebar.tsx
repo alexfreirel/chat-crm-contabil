@@ -339,6 +339,11 @@ export function Sidebar() {
       items: [allItems.dashboard, allItems.inbox, allItems.crm, allItems.contacts, allItems.agenda].filter(i => i.show),
     },
     {
+      id: 'juridico',
+      label: 'Jurídico',
+      items: [allItems.estagiario, allItems.advogado, allItems.processos, allItems.djen].filter(i => i.show),
+    },
+    {
       id: 'contabil',
       label: 'Serviços Contábeis',
       items: [allItems.agenteFiscal].filter(i => i.show),

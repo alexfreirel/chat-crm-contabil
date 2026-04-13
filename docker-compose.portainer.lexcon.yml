@@ -139,6 +139,34 @@ services:
       restart_policy:
         condition: any
 
+  # ------ Agente Fiscal SEFAZ (Flask) ------
+  agente-fiscal:
+    image: lexconassessoria/chat-crm-contabil-agente-fiscal:latest
+    networks:
+      - default
+      - OrionNet
+    ports:
+      - "${AGENT_PORT:-44050}:5000"
+    environment:
+      - TZ=America/Sao_Paulo
+    volumes:
+      - agente_fiscal_downloads:/app/downloads
+      - agente_fiscal_empresas:/app/empresas_data
+    deploy:
+      restart_policy:
+        condition: any
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.lexcon-agente.rule=Host(`lexconassessoriacontabil.com.br`) && PathPrefix(`/agente-fiscal-api`)"
+        - "traefik.http.routers.lexcon-agente.service=lexcon-agente"
+        - "traefik.http.routers.lexcon-agente.priority=110"
+        - "traefik.http.middlewares.lexcon-strip-agente.stripprefix.prefixes=/agente-fiscal-api"
+        - "traefik.http.routers.lexcon-agente.middlewares=lexcon-strip-agente"
+        - "traefik.http.services.lexcon-agente.loadbalancer.server.port=5000"
+        - "traefik.http.routers.lexcon-agente.entrypoints=websecure"
+        - "traefik.http.routers.lexcon-agente.tls.certresolver=letsencryptresolver"
+        - "traefik.docker.network=OrionNet"
+
   # ------ Next.js Frontend ------
   crm-web:
     image: lexconassessoria/chat-crm-contabil-web:latest
@@ -171,3 +199,5 @@ volumes:
   pgdata_lexcon:
   redisdata_lexcon:
   minio_data_lexcon:
+  agente_fiscal_downloads:
+  agente_fiscal_empresas:

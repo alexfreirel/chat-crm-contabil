@@ -1,0 +1,1361 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agente Lexcon</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Tokens ────────────────────────────────────────────────────────── */
+    :root {
+      --bg:        #0d0f18;
+      --surface:   #161928;
+      --surface2:  #1d2035;
+      --border:    rgba(255,255,255,0.07);
+      --accent:    #6366f1;
+      --accent2:   #818cf8;
+      --accent-bg: rgba(99,102,241,0.12);
+      --green:     #10b981;
+      --red:       #ef4444;
+      --yellow:    #f59e0b;
+      --blue:      #3b82f6;
+      --t1:        #e2e8f0;
+      --t2:        #94a3b8;
+      --t3:        #475569;
+      --radius:    12px;
+      --sidebar-w: 256px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--t1);
+      display: flex;
+      min-height: 100vh;
+      font-size: 14px;
+    }
+
+    /* ── Scrollbar ─────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--t3); border-radius: 3px; }
+
+    /* ── Sidebar ───────────────────────────────────────────────────────── */
+    .sidebar {
+      width: var(--sidebar-w);
+      min-height: 100vh;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      left: 0; top: 0; bottom: 0;
+      z-index: 200;
+    }
+
+    .sb-brand {
+      padding: 22px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .sb-logo {
+      width: 42px; height: 42px;
+      border-radius: 11px;
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 21px;
+      flex-shrink: 0;
+      box-shadow: 0 4px 14px rgba(99,102,241,.35);
+    }
+
+    .sb-name  { font-size: 15px; font-weight: 700; line-height: 1.2; }
+    .sb-sub   { font-size: 11px; color: var(--t2); }
+
+    .sb-nav   { padding: 16px 10px; flex: 1; overflow-y: auto; }
+
+    .sb-section {
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .08em;
+      color: var(--t3); padding: 10px 10px 4px;
+    }
+
+    .sb-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 12px; border-radius: 9px;
+      cursor: pointer; color: var(--t2);
+      font-size: 13.5px; font-weight: 500;
+      transition: background .15s, color .15s;
+      margin-bottom: 1px;
+    }
+    .sb-item:hover { background: rgba(255,255,255,.04); color: var(--t1); }
+    .sb-item.active { background: var(--accent-bg); color: var(--accent2); }
+    .sb-item i { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
+
+    .sb-footer {
+      padding: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .sb-badge {
+      background: var(--accent-bg);
+      border: 1px solid rgba(99,102,241,.25);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .sb-badge-num { font-size: 26px; font-weight: 700; color: var(--accent2); line-height: 1; }
+    .sb-badge-lbl { font-size: 11.5px; color: var(--t2); line-height: 1.4; }
+
+    /* ── Main ──────────────────────────────────────────────────────────── */
+    .main {
+      margin-left: var(--sidebar-w);
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    .topbar {
+      padding: 18px 32px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      backdrop-filter: blur(8px);
+    }
+
+    .topbar-title { font-size: 17px; font-weight: 700; }
+    .topbar-sub   { font-size: 12px; color: var(--t2); margin-top: 1px; }
+
+    .content { padding: 28px 32px; flex: 1; }
+
+    /* ── Pages ─────────────────────────────────────────────────────────── */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ── Cards ─────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .card-head {
+      padding: 18px 22px 0;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+
+    .card-body { padding: 18px 22px 22px; }
+    .card-body.p0 { padding: 0; }
+
+    .card-title {
+      font-size: 14px; font-weight: 600;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .card-title i { color: var(--accent2); }
+
+    /* ── Stat cards ────────────────────────────────────────────────────── */
+    .stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      display: flex; align-items: flex-start; gap: 14px;
+    }
+
+    .stat-icon {
+      width: 42px; height: 42px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 19px; flex-shrink: 0;
+    }
+    .ic-purple { background: rgba(99,102,241,.15); color: #818cf8; }
+    .ic-blue   { background: rgba(59,130,246,.15);  color: #60a5fa; }
+    .ic-green  { background: rgba(16,185,129,.15);  color: #34d399; }
+    .ic-orange { background: rgba(245,158,11,.15);  color: #fbbf24; }
+
+    .stat-val { font-size: 26px; font-weight: 700; line-height: 1; }
+    .stat-lbl { font-size: 12px; color: var(--t2); margin-top: 3px; }
+
+    /* ── Table ─────────────────────────────────────────────────────────── */
+    .tbl { width: 100%; border-collapse: collapse; }
+    .tbl th {
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .06em; color: var(--t2);
+      padding: 11px 16px; border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .tbl td {
+      padding: 13px 16px; border-bottom: 1px solid rgba(255,255,255,.035);
+      color: var(--t1); vertical-align: middle;
+    }
+    .tbl tr:last-child td { border-bottom: none; }
+    .tbl tr:hover td { background: rgba(255,255,255,.02); }
+
+    .chip {
+      display: inline-flex; align-items: center;
+      padding: 3px 10px; border-radius: 6px;
+      font-size: 12px; font-weight: 500;
+    }
+    .chip-purple { background: var(--accent-bg); color: var(--accent2); }
+
+    /* ── Buttons ───────────────────────────────────────────────────────── */
+    .btn-p {
+      background: var(--accent);
+      color: #fff; border: none; border-radius: 9px;
+      padding: 9px 18px; font-size: 13.5px; font-weight: 500;
+      cursor: pointer; transition: background .15s, transform .1s, box-shadow .15s;
+      display: inline-flex; align-items: center; gap: 7px;
+      font-family: inherit;
+    }
+    .btn-p:hover:not(:disabled) { background: #4f46e5; box-shadow: 0 4px 14px rgba(99,102,241,.35); transform: translateY(-1px); }
+    .btn-p:disabled { opacity: .5; cursor: not-allowed; }
+
+    .btn-s {
+      background: rgba(255,255,255,.06);
+      color: var(--t1); border: 1px solid var(--border);
+      border-radius: 9px; padding: 9px 18px;
+      font-size: 13.5px; font-weight: 500;
+      cursor: pointer; transition: background .15s;
+      display: inline-flex; align-items: center; gap: 7px;
+      font-family: inherit;
+    }
+    .btn-s:hover { background: rgba(255,255,255,.1); }
+
+    .btn-danger {
+      background: rgba(239,68,68,.12);
+      color: #f87171; border: 1px solid rgba(239,68,68,.25);
+      border-radius: 9px; padding: 7px 13px;
+      font-size: 13px; font-weight: 500;
+      cursor: pointer; transition: background .15s;
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: inherit;
+    }
+    .btn-danger:hover { background: rgba(239,68,68,.22); }
+
+    .btn-icon {
+      background: rgba(255,255,255,.05);
+      color: var(--t2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 7px 9px; font-size: 14px;
+      cursor: pointer; transition: background .15s, color .15s;
+      display: inline-flex; align-items: center;
+      font-family: inherit;
+    }
+    .btn-icon:hover { background: rgba(255,255,255,.1); color: var(--t1); }
+
+    .w100 { width: 100%; justify-content: center; }
+
+    /* ── Form ──────────────────────────────────────────────────────────── */
+    .fl {
+      font-size: 12.5px; font-weight: 500; color: var(--t2);
+      display: block; margin-bottom: 6px;
+    }
+
+    .fc {
+      background: rgba(255,255,255,.05);
+      border: 1px solid var(--border);
+      border-radius: 8px; color: var(--t1);
+      padding: 9px 13px; font-size: 13.5px; width: 100%;
+      transition: border-color .15s, box-shadow .15s;
+      font-family: inherit;
+    }
+    .fc:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(99,102,241,.15);
+      background: rgba(99,102,241,.05);
+    }
+    .fc::placeholder { color: var(--t3); }
+    .fc option { background: var(--surface2); }
+
+    /* ── Terminal ──────────────────────────────────────────────────────── */
+    .term-wrap {
+      background: #080a12;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .term-bar {
+      padding: 9px 14px;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(255,255,255,.025);
+    }
+    .term-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot-r { background: #ff5f56; }
+    .dot-y { background: #ffbd2e; }
+    .dot-g { background: #27c93f; }
+    .term-lbl { font-size: 11.5px; color: var(--t2); margin-left: 4px; font-family: inherit; }
+
+    .term-out {
+      padding: 14px 16px;
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+      font-size: 12.5px; line-height: 1.65;
+      color: #8fa3bb;
+      overflow-y: auto; max-height: 380px;
+      min-height: 120px;
+    }
+
+    .t-ok   { color: #34d399; }
+    .t-err  { color: #f87171; }
+    .t-warn { color: #fbbf24; }
+    .t-info { color: #60a5fa; }
+    .t-dim  { color: var(--t3); font-style: italic; }
+
+    /* ── Running badge ─────────────────────────────────────────────────── */
+    .running {
+      display: inline-flex; align-items: center; gap: 7px;
+      color: #60a5fa; font-size: 12.5px;
+    }
+
+    .spin {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(96,165,250,.25);
+      border-top-color: #60a5fa;
+      border-radius: 50%;
+      animation: spin .65s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Modal ─────────────────────────────────────────────────────────── */
+    .overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.65);
+      backdrop-filter: blur(5px);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 500;
+      opacity: 0; pointer-events: none;
+      transition: opacity .2s;
+    }
+    .overlay.open { opacity: 1; pointer-events: auto; }
+
+    .modal-box {
+      background: var(--surface2);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 16px;
+      width: 460px; max-width: 94vw;
+      padding: 26px;
+      transform: translateY(18px);
+      transition: transform .2s;
+      box-shadow: 0 24px 60px rgba(0,0,0,.5);
+    }
+    .overlay.open .modal-box { transform: translateY(0); }
+
+    .modal-title {
+      font-size: 17px; font-weight: 700;
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .modal-close {
+      background: none; border: none; color: var(--t2);
+      font-size: 22px; cursor: pointer; border-radius: 5px;
+      line-height: 1; padding: 2px 5px;
+      transition: color .15s;
+    }
+    .modal-close:hover { color: var(--t1); }
+
+    /* ── Alert inline ──────────────────────────────────────────────────── */
+    .a-danger {
+      background: rgba(239,68,68,.1); color: #f87171;
+      border: 1px solid rgba(239,68,68,.2);
+      border-radius: 8px; padding: 10px 14px;
+      font-size: 13px; display: flex; align-items: center; gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    /* ── Toast ─────────────────────────────────────────────────────────── */
+    #toasts {
+      position: fixed; top: 18px; right: 18px;
+      z-index: 9999;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+
+    .toast {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 13px 17px;
+      display: flex; align-items: center; gap: 11px;
+      font-size: 13.5px;
+      min-width: 260px;
+      box-shadow: 0 8px 28px rgba(0,0,0,.4);
+      animation: tslide .3s ease;
+    }
+    .toast.ok  { border-left: 3px solid var(--green); }
+    .toast.err { border-left: 3px solid var(--red); }
+    .toast.inf { border-left: 3px solid var(--blue); }
+    @keyframes tslide { from { transform: translateX(110%); opacity: 0; } }
+
+    /* ── Quick action cards (dashboard) ────────────────────────────────── */
+    .qa-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 14px;
+    }
+
+    .qa-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      cursor: pointer;
+      transition: border-color .15s, transform .12s, box-shadow .15s;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .qa-card:hover {
+      border-color: rgba(99,102,241,.4);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,.3);
+    }
+    .qa-icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center; font-size: 18px;
+    }
+    .qa-label { font-size: 13.5px; font-weight: 600; }
+    .qa-desc  { font-size: 12px; color: var(--t2); }
+
+    /* ── Divider ───────────────────────────────────────────────────────── */
+    hr.div { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
+
+    /* Utilities */
+    .mb1 { margin-bottom: 10px; }
+    .mb2 { margin-bottom: 16px; }
+    .mb3 { margin-bottom: 22px; }
+    .gap2 { gap: 10px; }
+    .gap3 { gap: 16px; }
+    .mono { font-family: 'Cascadia Code', monospace; font-size: 12.5px; }
+  </style>
+</head>
+<body>
+
+<!-- ── Toast container ───────────────────────────────────────────────────── -->
+<div id="toasts"></div>
+
+<!-- ── Sidebar ───────────────────────────────────────────────────────────── -->
+<aside class="sidebar">
+  <div class="sb-brand">
+    <div class="sb-logo">📊</div>
+    <div>
+      <div class="sb-name">Agente Lexcon</div>
+      <div class="sb-sub">SEFAZ Alagoas</div>
+    </div>
+  </div>
+
+  <nav class="sb-nav">
+    <div class="sb-section">Principal</div>
+    <div class="sb-item active" id="nav-dashboard" onclick="showPage('dashboard')">
+      <i class="bi bi-grid-1x2-fill"></i> Dashboard
+    </div>
+
+    <div class="sb-section">Relatórios</div>
+    <div class="sb-item" id="nav-sefaz" onclick="showPage('sefaz')">
+      <i class="bi bi-cloud-download-fill"></i> Baixar Relatórios Sefaz
+    </div>
+    <div class="sb-item" id="nav-analitico" onclick="showPage('analitico')">
+      <i class="bi bi-bar-chart-line-fill"></i> Analítico Empresas Sefaz
+    </div>
+    <div class="sb-item" id="nav-impostos" onclick="showPage('impostos')">
+      <i class="bi bi-cash-coin"></i> Impostos Sefaz
+    </div>
+
+    <div class="sb-section">Parcelamento</div>
+    <div class="sb-item" id="nav-parcela" onclick="showPage('parcela')">
+      <i class="bi bi-receipt-cutoff"></i> Parcelamento Sefaz / Proc.
+    </div>
+
+    <div class="sb-section">Cadastro</div>
+    <div class="sb-item" id="nav-empresas" onclick="showPage('empresas')">
+      <i class="bi bi-building"></i> Gerenciar Empresas
+    </div>
+  </nav>
+
+  <div class="sb-footer">
+    <div class="sb-badge">
+      <i class="bi bi-buildings-fill" style="color:var(--accent2);font-size:22px;"></i>
+      <div>
+        <div class="sb-badge-num" id="sbCount">0</div>
+        <div class="sb-badge-lbl">empresas<br>cadastradas</div>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- ── Main ──────────────────────────────────────────────────────────────── -->
+<main class="main">
+
+  <!-- ═══════════════════ DASHBOARD ═══════════════════ -->
+  <div class="page active" id="page-dashboard">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Dashboard</div>
+        <div class="topbar-sub">Visão geral do sistema</div>
+      </div>
+    </div>
+    <div class="content">
+      <!-- Stats -->
+      <div class="row g-3 mb-4">
+        <div class="col-6 col-lg-3">
+          <div class="stat">
+            <div class="stat-icon ic-purple"><i class="bi bi-buildings"></i></div>
+            <div>
+              <div class="stat-val" id="stEmpresas">0</div>
+              <div class="stat-lbl">Empresas</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-lg-3">
+          <div class="stat">
+            <div class="stat-icon ic-blue"><i class="bi bi-calendar3"></i></div>
+            <div>
+              <div class="stat-val" id="stMes" style="font-size:18px;">--</div>
+              <div class="stat-lbl">Mês atual</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick actions -->
+      <div class="mb3">
+        <div class="card-title mb-3"><i class="bi bi-lightning-charge-fill"></i> Ações Rápidas</div>
+        <div class="qa-grid">
+          <div class="qa-card" onclick="showPage('sefaz')">
+            <div class="qa-icon ic-blue"><i class="bi bi-cloud-download"></i></div>
+            <div>
+              <div class="qa-label">Baixar Relatórios</div>
+              <div class="qa-desc">Portal SEFAZ Alagoas</div>
+            </div>
+          </div>
+          <div class="qa-card" onclick="showPage('analitico')">
+            <div class="qa-icon ic-purple"><i class="bi bi-bar-chart-line"></i></div>
+            <div>
+              <div class="qa-label">Analítico</div>
+              <div class="qa-desc">Relatório por período</div>
+            </div>
+          </div>
+          <div class="qa-card" onclick="showPage('impostos')">
+            <div class="qa-icon ic-green"><i class="bi bi-cash-coin"></i></div>
+            <div>
+              <div class="qa-label">Impostos Sefaz</div>
+              <div class="qa-desc">Baixar DARs de impostos</div>
+            </div>
+          </div>
+          <div class="qa-card" onclick="showPage('parcela')">
+            <div class="qa-icon ic-green"><i class="bi bi-receipt-cutoff"></i></div>
+            <div>
+              <div class="qa-label">Parcelamento</div>
+              <div class="qa-desc">Analisar e emitir DARs</div>
+            </div>
+          </div>
+          <div class="qa-card" onclick="showPage('empresas'); setTimeout(openAddModal, 80)">
+            <div class="qa-icon ic-orange"><i class="bi bi-building-add"></i></div>
+            <div>
+              <div class="qa-label">Adicionar Empresa</div>
+              <div class="qa-desc">Cadastrar nova empresa</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empresas table -->
+      <div class="card">
+        <div class="card-head" style="padding:18px 22px;">
+          <span class="card-title"><i class="bi bi-building"></i> Empresas Cadastradas</span>
+          <button class="btn-p" onclick="showPage('empresas'); setTimeout(openAddModal, 80)">
+            <i class="bi bi-plus-lg"></i> Adicionar
+          </button>
+        </div>
+        <div class="card-body p0" id="dashTbl">
+          <div style="padding:36px;text-align:center;color:var(--t2);">
+            <div class="spin" style="margin:0 auto 10px;"></div> Carregando...
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ BAIXAR SEFAZ ═══════════════════ -->
+  <div class="page" id="page-sefaz">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Baixar Relatórios Sefaz</div>
+        <div class="topbar-sub">Portal do Contribuinte — SEFAZ Alagoas</div>
+      </div>
+    </div>
+    <div class="content">
+      <div class="row g-4">
+        <div class="col-lg-4">
+          <div class="card">
+            <div class="card-head"><span class="card-title"><i class="bi bi-sliders"></i> Configurar</span></div>
+            <div class="card-body">
+              <div class="mb2">
+                <label class="fl">Empresa</label>
+                <select class="fc" id="sefazEmpresa">
+                  <option value="">Todas as empresas</option>
+                </select>
+              </div>
+              <div class="mb3">
+                <label class="fl">Mês de referência</label>
+                <input type="month" class="fc" id="sefazMes" />
+              </div>
+              <div class="mb3">
+                <label class="fl">Pasta de destino</label>
+                <div style="display:flex;gap:8px;">
+                  <input type="text" class="fc" id="sefazDestino" placeholder="Padrão: downloads/" readonly style="flex:1;cursor:pointer;font-size:12px;" onclick="selecionarPasta('sefazDestino')" />
+                  <button class="btn-s" onclick="selecionarPasta('sefazDestino')" style="white-space:nowrap;">
+                    <i class="bi bi-folder2-open"></i>
+                  </button>
+                </div>
+              </div>
+              <button class="btn-p w100" id="btnSefaz" onclick="runBaixarSefaz()">
+                <i class="bi bi-cloud-download"></i> Iniciar Download
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-8">
+          <div class="card h-100">
+            <div class="card-head">
+              <span class="card-title"><i class="bi bi-terminal-fill"></i> Saída do Agente</span>
+              <span class="running" id="sefazRun" style="display:none">
+                <div class="spin"></div> Executando…
+              </span>
+            </div>
+            <div class="card-body">
+              <div class="term-wrap">
+                <div class="term-bar">
+                  <div class="term-dot dot-r"></div>
+                  <div class="term-dot dot-y"></div>
+                  <div class="term-dot dot-g"></div>
+                  <span class="term-lbl">agente_nfe_claude.py</span>
+                </div>
+                <div class="term-out" id="sefazTerm">
+                  <span class="t-dim">Configure e clique em "Iniciar Download" para começar…</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ ANALÍTICO ═══════════════════ -->
+  <div class="page" id="page-analitico">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Analítico Empresas Sefaz</div>
+        <div class="topbar-sub">Relatório analítico consolidado por período</div>
+      </div>
+    </div>
+    <div class="content">
+      <div class="row g-4">
+        <div class="col-lg-4">
+          <div class="card">
+            <div class="card-head"><span class="card-title"><i class="bi bi-sliders"></i> Configurar</span></div>
+            <div class="card-body">
+              <div class="mb2">
+                <label class="fl">Empresa</label>
+                <select class="fc" id="analiticoEmpresa">
+                  <option value="">Todas as empresas</option>
+                </select>
+              </div>
+              <div class="mb3">
+                <label class="fl">Mês de referência</label>
+                <input type="month" class="fc" id="analiticoMes" />
+              </div>
+              <button class="btn-p w100" onclick="runAnalitico()">
+                <i class="bi bi-bar-chart-line"></i> Gerar Analítico
+              </button>
+              <hr class="div" style="margin:16px 0;" />
+              <button class="btn-s w100" id="btnImprimir" onclick="imprimirAnalitico()" disabled>
+                <i class="bi bi-printer"></i> Imprimir Relatório
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-8">
+          <div class="card">
+            <div class="card-head">
+              <span class="card-title"><i class="bi bi-terminal-fill"></i> Resultado</span>
+              <span class="running" id="analiticoRun" style="display:none">
+                <div class="spin"></div> Gerando…
+              </span>
+            </div>
+            <div class="card-body">
+              <div class="term-wrap">
+                <div class="term-bar">
+                  <div class="term-dot dot-r"></div>
+                  <div class="term-dot dot-y"></div>
+                  <div class="term-dot dot-g"></div>
+                  <span class="term-lbl">analitico.py</span>
+                </div>
+                <div class="term-out" id="analiticoTerm">
+                  <span class="t-dim">Selecione o mês e clique em "Gerar Analítico"…</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ IMPOSTOS SEFAZ ═══════════════════ -->
+  <div class="page" id="page-impostos">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Impostos Sefaz</div>
+        <div class="topbar-sub">Cobrança DF-e — DIFAL, Antecipado, ST, ST Emitente, ANTEF</div>
+      </div>
+    </div>
+    <div class="content">
+      <div class="row g-4">
+        <div class="col-lg-4">
+          <div class="card">
+            <div class="card-head"><span class="card-title"><i class="bi bi-sliders"></i> Configurar</span></div>
+            <div class="card-body">
+              <div class="mb3">
+                <label class="fl">Empresa</label>
+                <select class="fc" id="impostosEmpresa">
+                  <option value="">Todas as empresas</option>
+                </select>
+              </div>
+              <div class="mb3">
+                <label class="fl">Pasta de destino</label>
+                <div style="display:flex;gap:8px;">
+                  <input type="text" class="fc" id="impostosDestino" placeholder="Padrão: downloads/" readonly style="flex:1;cursor:pointer;font-size:12px;" onclick="selecionarPasta('impostosDestino')" />
+                  <button class="btn-s" onclick="selecionarPasta('impostosDestino')" style="white-space:nowrap;">
+                    <i class="bi bi-folder2-open"></i>
+                  </button>
+                </div>
+              </div>
+              <div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;color:var(--t2);">
+                <i class="bi bi-info-circle" style="color:var(--accent2);margin-right:6px;"></i>
+                <strong>Filtros automáticos:</strong><br>
+                Competência: ano corrente<br>
+                Vencimento: mês atual<br>
+                Situação: Em Aberto
+              </div>
+              <button class="btn-p w100" id="btnImpostos" onclick="runImpostos()">
+                <i class="bi bi-cash-coin"></i> Baixar Impostos
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-8">
+          <div class="card h-100">
+            <div class="card-head">
+              <span class="card-title"><i class="bi bi-terminal-fill"></i> Saída do Agente</span>
+              <span class="running" id="impostosRun" style="display:none">
+                <div class="spin"></div> Executando…
+              </span>
+            </div>
+            <div class="card-body">
+              <div class="term-wrap">
+                <div class="term-bar">
+                  <div class="term-dot dot-r"></div>
+                  <div class="term-dot dot-y"></div>
+                  <div class="term-dot dot-g"></div>
+                  <span class="term-lbl">agente_nfe_claude.py --modo impostos</span>
+                </div>
+                <div class="term-out" id="impostosTerm">
+                  <span class="t-dim">Selecione a empresa e clique em "Baixar Impostos" para começar…</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ PARCELAMENTO ═══════════════════ -->
+  <div class="page" id="page-parcela">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Parcelamento Sefaz / Procuradoria</div>
+        <div class="topbar-sub">Análise de parcelamentos e emissão de DARs</div>
+      </div>
+    </div>
+    <div class="content">
+      <div class="row g-4 mb-4">
+        <!-- Analisar -->
+        <div class="col-lg-6">
+          <div class="card">
+            <div class="card-head"><span class="card-title"><i class="bi bi-search"></i> Analisar Parcelamentos</span></div>
+            <div class="card-body">
+              <div class="mb3">
+                <label class="fl">Mês de referência</label>
+                <input type="month" class="fc" id="parcMes" />
+              </div>
+              <button class="btn-p w100" onclick="runAnalisarParc()">
+                <i class="bi bi-search"></i> Analisar
+              </button>
+            </div>
+          </div>
+        </div>
+        <!-- Emitir -->
+        <div class="col-lg-6">
+          <div class="card">
+            <div class="card-head"><span class="card-title"><i class="bi bi-file-earmark-pdf-fill"></i> Emitir DARs</span></div>
+            <div class="card-body">
+              <div class="mb3">
+                <label class="fl">Empresa (deixe vazio para todas)</label>
+                <select class="fc" id="parcEmpresa">
+                  <option value="">Todas as empresas</option>
+                </select>
+              </div>
+              <div class="mb3">
+                <label class="fl">Pasta de destino</label>
+                <div style="display:flex;gap:8px;">
+                  <input type="text" class="fc" id="parcDestino" placeholder="Padrão: downloads/" readonly style="flex:1;cursor:pointer;font-size:12px;" onclick="selecionarPasta('parcDestino')" />
+                  <button class="btn-s" onclick="selecionarPasta('parcDestino')" style="white-space:nowrap;">
+                    <i class="bi bi-folder2-open"></i>
+                  </button>
+                </div>
+              </div>
+              <button class="btn-p w100" onclick="runEmitirParc()">
+                <i class="bi bi-download"></i> Emitir Parcelas
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Terminal -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title"><i class="bi bi-terminal-fill"></i> Saída do Agente</span>
+          <span class="running" id="parcRun" style="display:none">
+            <div class="spin"></div> Executando…
+          </span>
+        </div>
+        <div class="card-body">
+          <div class="term-wrap">
+            <div class="term-bar">
+              <div class="term-dot dot-r"></div>
+              <div class="term-dot dot-y"></div>
+              <div class="term-dot dot-g"></div>
+              <span class="term-lbl">agente_nfe_claude.py</span>
+            </div>
+            <div class="term-out" id="parcTerm">
+              <span class="t-dim">Aguardando execução…</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ EMPRESAS ═══════════════════ -->
+  <div class="page" id="page-empresas">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Gerenciar Empresas</div>
+        <div class="topbar-sub">Adicionar, editar e remover empresas cadastradas</div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn-danger" onclick="openDelTodasModal()" id="btnDelTodas">
+          <i class="bi bi-trash3-fill"></i> Excluir Todas
+        </button>
+        <button class="btn-p" onclick="openAddModal()">
+          <i class="bi bi-plus-lg"></i> Adicionar Empresa
+        </button>
+      </div>
+    </div>
+    <div class="content">
+      <div class="card">
+        <div id="empTbl">
+          <div style="padding:36px;text-align:center;color:var(--t2);">
+            <div class="spin" style="margin:0 auto 10px;"></div> Carregando...
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ═══════════════════ MODAIS ═══════════════════ -->
+
+<!-- Adicionar -->
+<div class="overlay" id="ovAdd">
+  <div class="modal-box">
+    <div class="modal-title">
+      <span><i class="bi bi-building-add" style="color:var(--accent2);margin-right:9px;"></i>Adicionar Empresa</span>
+      <button class="modal-close" onclick="closeModal('ovAdd')">&times;</button>
+    </div>
+    <div id="addErr"></div>
+    <div class="mb2">
+      <label class="fl">Nome da empresa *</label>
+      <input class="fc" id="addNome" type="text" placeholder="Razão social" />
+    </div>
+    <div class="mb2">
+      <label class="fl">CNPJ * (somente números)</label>
+      <input class="fc" id="addCnpj" type="text" placeholder="00000000000000" maxlength="18" />
+    </div>
+    <div class="mb2">
+      <label class="fl">Usuário (login) *</label>
+      <input class="fc" id="addUser" type="text" placeholder="Login do portal" />
+    </div>
+    <div class="mb3">
+      <label class="fl">Senha *</label>
+      <input class="fc" id="addPass" type="password" placeholder="Senha do portal" />
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn-p" style="flex:1;justify-content:center;" onclick="doAdd()">
+        <i class="bi bi-check-lg"></i> Adicionar
+      </button>
+      <button class="btn-s" onclick="closeModal('ovAdd')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Editar -->
+<div class="overlay" id="ovEdit">
+  <div class="modal-box">
+    <div class="modal-title">
+      <span><i class="bi bi-pencil-square" style="color:var(--accent2);margin-right:9px;"></i>Editar Empresa</span>
+      <button class="modal-close" onclick="closeModal('ovEdit')">&times;</button>
+    </div>
+    <input type="hidden" id="editIdx" />
+    <div id="editErr"></div>
+    <div class="mb2">
+      <label class="fl">Nome da empresa</label>
+      <input class="fc" id="editNome" type="text" />
+    </div>
+    <div class="mb2">
+      <label class="fl">Usuário (login)</label>
+      <input class="fc" id="editUser" type="text" />
+    </div>
+    <div class="mb3">
+      <label class="fl">Nova senha <span style="color:var(--t3);">(vazio = manter atual)</span></label>
+      <input class="fc" id="editPass" type="password" placeholder="Nova senha" />
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn-p" style="flex:1;justify-content:center;" onclick="doEdit()">
+        <i class="bi bi-check-lg"></i> Salvar
+      </button>
+      <button class="btn-s" onclick="closeModal('ovEdit')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Excluir Todas -->
+<div class="overlay" id="ovDelTodas">
+  <div class="modal-box" style="max-width:400px;">
+    <div class="modal-title">
+      <span><i class="bi bi-exclamation-triangle-fill" style="color:#f87171;margin-right:9px;"></i>Excluir Todas as Empresas</span>
+      <button class="modal-close" onclick="closeModal('ovDelTodas')">&times;</button>
+    </div>
+    <p style="color:var(--t2);margin-bottom:22px;line-height:1.6;">
+      Esta ação removerá <strong style="color:#f87171;">todas</strong> as empresas cadastradas.<br>
+      Essa operação não pode ser desfeita.
+    </p>
+    <div style="display:flex;gap:10px;">
+      <button class="btn-danger" style="flex:1;justify-content:center;" onclick="doDelTodas()">
+        <i class="bi bi-trash3-fill"></i> Excluir Todas
+      </button>
+      <button class="btn-s" style="flex:1;justify-content:center;" onclick="closeModal('ovDelTodas')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Remover -->
+<div class="overlay" id="ovDel">
+  <div class="modal-box" style="max-width:400px;">
+    <div class="modal-title">
+      <span><i class="bi bi-trash3" style="color:#f87171;margin-right:9px;"></i>Remover Empresa</span>
+      <button class="modal-close" onclick="closeModal('ovDel')">&times;</button>
+    </div>
+    <input type="hidden" id="delIdx" />
+    <p style="color:var(--t2);margin-bottom:22px;line-height:1.6;">
+      Remover <strong id="delNome" style="color:var(--t1);"></strong>?
+      Esta ação não pode ser desfeita.
+    </p>
+    <div style="display:flex;gap:10px;">
+      <button class="btn-danger" style="flex:1;justify-content:center;" onclick="doDel()">
+        <i class="bi bi-trash3"></i> Remover
+      </button>
+      <button class="btn-s" style="flex:1;justify-content:center;" onclick="closeModal('ovDel')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ JS ═══════════════════ -->
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let empresas = [];
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const now = new Date();
+  const m = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  document.getElementById('stMes').textContent = m;
+  ['sefazMes','analiticoMes','parcMes'].forEach(id => {
+    document.getElementById(id).value = m;
+  });
+  load();
+});
+
+// ── Navigation ─────────────────────────────────────────────────────────────
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sb-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  const nav = document.getElementById('nav-' + id);
+  if (nav) nav.classList.add('active');
+}
+
+// ── Load data ──────────────────────────────────────────────────────────────
+async function load() {
+  const res = await fetch('/api/empresas');
+  empresas = await res.json();
+
+  document.getElementById('sbCount').textContent = empresas.length;
+  document.getElementById('stEmpresas').textContent = empresas.length;
+
+  // Populate selects
+  ['sefazEmpresa','analiticoEmpresa','impostosEmpresa','parcEmpresa'].forEach(id => {
+    const sel = document.getElementById(id);
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">Todas as empresas</option>';
+    empresas.forEach(e => {
+      const opt = document.createElement('option');
+      opt.value = e.cnpj;
+      opt.textContent = `${e.nome}  —  ${e.cnpj_fmt}`;
+      sel.appendChild(opt);
+    });
+    sel.value = prev;
+  });
+
+  renderDashTbl();
+  renderEmpTbl();
+}
+
+// ── Tables ─────────────────────────────────────────────────────────────────
+function renderDashTbl() {
+  const el = document.getElementById('dashTbl');
+  if (!empresas.length) {
+    el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--t2);">
+      <i class="bi bi-building" style="font-size:38px;opacity:.25;"></i>
+      <p style="margin-top:12px;">Nenhuma empresa cadastrada.</p>
+      <button class="btn-p" style="margin-top:8px;" onclick="showPage('empresas');setTimeout(openAddModal,80)">
+        <i class="bi bi-plus-lg"></i> Adicionar empresa
+      </button></div>`;
+    return;
+  }
+  const rows = empresas.map((e,i) => `
+    <tr>
+      <td><span class="chip chip-purple">${i+1}</span></td>
+      <td><strong>${e.nome}</strong></td>
+      <td class="mono" style="color:var(--t2);">${e.cnpj_fmt}</td>
+      <td style="color:var(--t2);">${e.usuario}</td>
+    </tr>`).join('');
+  el.innerHTML = `<table class="tbl">
+    <thead><tr>
+      <th style="width:48px;">#</th><th>Nome</th><th>CNPJ</th><th>Usuário</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function renderEmpTbl() {
+  const el = document.getElementById('empTbl');
+  if (!empresas.length) {
+    el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--t2);">
+      <i class="bi bi-building" style="font-size:38px;opacity:.25;"></i>
+      <p style="margin-top:12px;">Nenhuma empresa cadastrada.</p></div>`;
+    return;
+  }
+  const rows = empresas.map((e,i) => `
+    <tr>
+      <td><span class="chip chip-purple">${i+1}</span></td>
+      <td><strong>${e.nome}</strong></td>
+      <td class="mono" style="color:var(--t2);">${e.cnpj_fmt}</td>
+      <td style="color:var(--t2);">${e.usuario}</td>
+      <td>
+        <div style="display:flex;gap:6px;">
+          <button class="btn-icon" title="Editar" onclick="openEditModal(${i})"><i class="bi bi-pencil"></i></button>
+          <button class="btn-icon" title="Remover" style="color:#f87171;border-color:rgba(239,68,68,.25);"
+            onclick="openDelModal(${i})"><i class="bi bi-trash3"></i></button>
+        </div>
+      </td>
+    </tr>`).join('');
+  el.innerHTML = `<table class="tbl">
+    <thead><tr>
+      <th style="width:48px;">#</th><th>Nome</th><th>CNPJ</th><th>Usuário</th>
+      <th style="width:90px;">Ações</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+// ── Modals ─────────────────────────────────────────────────────────────────
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function openAddModal() {
+  ['addNome','addCnpj','addUser','addPass'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('addErr').innerHTML = '';
+  openModal('ovAdd');
+  setTimeout(() => document.getElementById('addNome').focus(), 150);
+}
+
+function openEditModal(i) {
+  const e = empresas[i];
+  document.getElementById('editIdx').value  = i;
+  document.getElementById('editNome').value = e.nome;
+  document.getElementById('editUser').value = e.usuario;
+  document.getElementById('editPass').value = '';
+  document.getElementById('editErr').innerHTML = '';
+  openModal('ovEdit');
+}
+
+function openDelTodasModal() {
+  if (!empresas.length) { toast('Nenhuma empresa cadastrada.', 'inf'); return; }
+  openModal('ovDelTodas');
+}
+
+async function doDelTodas() {
+  await fetch('/api/empresas/todas', { method: 'DELETE' });
+  closeModal('ovDelTodas');
+  toast('Todas as empresas foram removidas.', 'inf');
+  load();
+}
+
+function openDelModal(i) {
+  document.getElementById('delIdx').value = i;
+  document.getElementById('delNome').textContent = empresas[i].nome;
+  openModal('ovDel');
+}
+
+async function doAdd() {
+  const nome = document.getElementById('addNome').value.trim();
+  const cnpj = document.getElementById('addCnpj').value.trim();
+  const usuario = document.getElementById('addUser').value.trim();
+  const senha = document.getElementById('addPass').value.trim();
+
+  const res = await fetch('/api/empresas', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({nome, cnpj, usuario, senha})
+  });
+  const d = await res.json();
+  if (!res.ok) {
+    document.getElementById('addErr').innerHTML =
+      `<div class="a-danger"><i class="bi bi-exclamation-triangle"></i>${d.error}</div>`;
+    return;
+  }
+  closeModal('ovAdd');
+  toast('Empresa adicionada!', 'ok');
+  load();
+}
+
+async function doEdit() {
+  const idx  = parseInt(document.getElementById('editIdx').value);
+  const nome = document.getElementById('editNome').value.trim();
+  const usuario = document.getElementById('editUser').value.trim();
+  const senha = document.getElementById('editPass').value.trim();
+
+  const res = await fetch(`/api/empresas/${idx}`, {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({nome, usuario, senha})
+  });
+  if (!res.ok) {
+    const d = await res.json();
+    document.getElementById('editErr').innerHTML =
+      `<div class="a-danger"><i class="bi bi-exclamation-triangle"></i>${d.error}</div>`;
+    return;
+  }
+  closeModal('ovEdit');
+  toast('Empresa atualizada!', 'ok');
+  load();
+}
+
+async function doDel() {
+  const idx = parseInt(document.getElementById('delIdx').value);
+  const res = await fetch(`/api/empresas/${idx}`, {method: 'DELETE'});
+  const d   = await res.json();
+  closeModal('ovDel');
+  toast(`"${d.nome}" removida.`, 'inf');
+  load();
+}
+
+// ── Selecionar pasta ──────────────────────────────────────────────────────
+async function selecionarPasta(inputId) {
+  const input = document.getElementById(inputId);
+  const pastaAtual = input.value || '';
+
+  toast('Abrindo seletor de pasta...', 'inf');
+
+  try {
+    const r = await fetch('/api/selecionar-pasta', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({pastaInicial: pastaAtual})
+    });
+    const d = await r.json();
+    if (d.pasta) {
+      input.value = d.pasta;
+      toast('Pasta selecionada!', 'ok');
+    }
+  } catch(e) {
+    toast('Erro ao abrir seletor de pasta.', 'err');
+  }
+}
+
+// ── Actions ────────────────────────────────────────────────────────────────
+async function runBaixarSefaz() {
+  const mes     = document.getElementById('sefazMes').value;
+  const cnpj    = document.getElementById('sefazEmpresa').value;
+  const destino = document.getElementById('sefazDestino').value;
+  if (!mes) { toast('Selecione o mês!', 'err'); return; }
+
+  const r = await fetch('/api/baixar-sefaz', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({mes, cnpj, destino})
+  });
+  const {task_id} = await r.json();
+  stream(task_id, 'sefazTerm', 'sefazRun');
+}
+
+async function runAnalitico() {
+  const mes  = document.getElementById('analiticoMes').value;
+  const cnpj = document.getElementById('analiticoEmpresa').value;
+  if (!mes) { toast('Selecione o mês!', 'err'); return; }
+
+  document.getElementById('btnImprimir').disabled = true;
+
+  const r = await fetch('/api/analitico', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({mes, cnpj})
+  });
+  const {task_id} = await r.json();
+  stream(task_id, 'analiticoTerm', 'analiticoRun', () => {
+    document.getElementById('btnImprimir').disabled = false;
+  });
+}
+
+async function imprimirAnalitico() {
+  const btn = document.getElementById('btnImprimir');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spin"></div> Enviando…';
+
+  try {
+    const r = await fetch('/api/analitico/imprimir', {method: 'POST'});
+    const d = await r.json();
+    if (r.ok) {
+      toast('Relatório enviado para impressora!', 'ok');
+    } else {
+      toast('Erro ao imprimir: ' + d.error, 'err');
+    }
+  } catch(e) {
+    toast('Erro ao imprimir.', 'err');
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="bi bi-printer"></i> Imprimir Relatório';
+}
+
+async function runAnalisarParc() {
+  const mes = document.getElementById('parcMes').value;
+  if (!mes) { toast('Selecione o mês!', 'err'); return; }
+
+  const r = await fetch('/api/parcelamentos/analisar', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({mes})
+  });
+  const {task_id} = await r.json();
+  stream(task_id, 'parcTerm', 'parcRun');
+}
+
+async function runEmitirParc() {
+  const cnpj    = document.getElementById('parcEmpresa').value;
+  const destino = document.getElementById('parcDestino').value;
+
+  const r = await fetch('/api/parcelamentos/emitir', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({cnpj, destino})
+  });
+  const {task_id} = await r.json();
+  stream(task_id, 'parcTerm', 'parcRun');
+}
+
+async function runImpostos() {
+  const cnpj    = document.getElementById('impostosEmpresa').value;
+  const destino = document.getElementById('impostosDestino').value;
+
+  const r = await fetch('/api/impostos-sefaz', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({cnpj, destino})
+  });
+  const {task_id} = await r.json();
+  stream(task_id, 'impostosTerm', 'impostosRun');
+}
+
+// ── SSE stream ─────────────────────────────────────────────────────────────
+function stream(taskId, termId, runId, onDone) {
+  const term  = document.getElementById(termId);
+  const runEl = document.getElementById(runId);
+
+  term.innerHTML = '';
+  runEl.style.display = 'inline-flex';
+
+  const src = new EventSource(`/api/tarefa/${taskId}/stream`);
+
+  src.onmessage = e => {
+    const line = e.data;
+    const div  = document.createElement('div');
+
+    if (/✖|ERRO|Error|erro/i.test(line))              div.className = 't-err';
+    else if (/✔|Concluído|sucesso|\[OK\]/i.test(line)) div.className = 't-ok';
+    else if (/AVISO|warn/i.test(line))                 div.className = 't-warn';
+    else if (/^\s+\[|Processando|Empresa/i.test(line)) div.className = 't-info';
+
+    div.textContent = line;
+    term.appendChild(div);
+    term.scrollTop = term.scrollHeight;
+  };
+
+  const finish = () => { src.close(); runEl.style.display = 'none'; if (onDone) onDone(); };
+  src.addEventListener('done', finish);
+  src.onerror = finish;
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function toast(msg, type = 'inf') {
+  const icons = { ok: 'bi-check-circle-fill', err: 'bi-x-circle-fill', inf: 'bi-info-circle-fill' };
+  const cols  = { ok: '#34d399', err: '#f87171', inf: '#60a5fa' };
+
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<i class="bi ${icons[type]}" style="color:${cols[type]};font-size:17px;flex-shrink:0;"></i><span>${msg}</span>`;
+  document.getElementById('toasts').appendChild(el);
+
+  setTimeout(() => {
+    el.style.transition = 'opacity .3s, transform .3s';
+    el.style.opacity = '0'; el.style.transform = 'translateX(110%)';
+    setTimeout(() => el.remove(), 320);
+  }, 3200);
+}
+
+// ── Close overlay on bg click ──────────────────────────────────────────────
+document.querySelectorAll('.overlay').forEach(ov => {
+  ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); });
+});
+
+// ── Enter key in last field of modal ──────────────────────────────────────
+document.getElementById('addPass').addEventListener('keydown',  e => { if (e.key==='Enter') doAdd(); });
+document.getElementById('editPass').addEventListener('keydown', e => { if (e.key==='Enter') doEdit(); });
+</script>
+</body>
+</html>

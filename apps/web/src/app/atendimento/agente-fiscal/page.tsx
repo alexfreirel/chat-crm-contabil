@@ -11,10 +11,14 @@ import {
 
 /* ────────────────────────────────────────────────────────────────────────────
    Agente Fiscal — SEFAZ Alagoas
-   Página integrada ao CRM que se comunica com o backend Flask (localhost:5000)
+   Em produção usa /agente-fiscal-api (proxy via Traefik na VPS)
+   Em dev local usa http://localhost:5000
    ──────────────────────────────────────────────────────────────────────────── */
 
-const AGENT_API = process.env.NEXT_PUBLIC_AGENT_FISCAL_URL || 'http://localhost:5000';
+const AGENT_API = process.env.NEXT_PUBLIC_AGENT_FISCAL_URL
+  || (typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+    ? `${window.location.origin}/agente-fiscal-api`
+    : 'http://localhost:5000');
 
 interface Empresa {
   idx: number;
@@ -307,11 +311,10 @@ export default function AgenteFiscalPage() {
           </div>
           <h2 className="text-xl font-bold text-foreground">Agente Fiscal Offline</h2>
           <p className="text-sm text-muted-foreground">
-            O agente Flask nao esta em execucao. Inicie-o com:
+            O servico do Agente Fiscal nao esta respondendo. Verifique se o container esta rodando na VPS.
           </p>
           <code className="block bg-card border border-border rounded-lg px-4 py-3 text-xs font-mono text-left">
-            cd &quot;C:\Users\Alex\Documents\AGENDE DE IA NOTAS FISCAIS&quot;<br/>
-            python app.py
+            docker service ls | grep agente-fiscal
           </code>
           <button onClick={fetchEmpresas} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90">
             Tentar novamente

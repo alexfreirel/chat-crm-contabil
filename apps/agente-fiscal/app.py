@@ -1,0 +1,433 @@
+"""
+app.py — Interface Web moderna para o Agente Lexcon
+Acesse http://localhost:5000 após iniciar.
+"""
+
+import json
+import os
+import sys
+import subprocess
+import threading
+import uuid
+import webbrowser
+from pathlib import Path
+from flask import Flask, render_template, jsonify, request, Response, stream_with_context
+
+BASE_DIR = Path(__file__).parent
+
+# Em producao (Docker), persiste empresas.json num volume montado
+_DATA_DIR = Path(os.environ.get("EMPRESAS_DATA_DIR", str(BASE_DIR)))
+EMPRESAS_JSON = _DATA_DIR / "empresas.json"
+
+app = Flask(__name__)
+
+
+# ── CORS para integrar com o frontend Next.js ─────────────────────────────────
+@app.after_request
+def add_cors(response):
+    origin = request.headers.get("Origin", "")
+    allowed = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000,https://lexconassessoriacontabil.com.br")
+    for o in allowed.split(","):
+        if o.strip() and origin.startswith(o.strip()):
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
+            response.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS"
+            break
+    return response
+
+# Tarefas em execução: {task_id: {lines, done, returncode}}
+_tasks: dict = {}
+
+# Último texto do analítico gerado (para impressão)
+_ultimo_analitico: str = ""
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def fmt_cnpj(cnpj: str) -> str:
+    c = cnpj.replace(".", "").replace("/", "").replace("-", "")
+    if len(c) == 14:
+        return f"{c[:2]}.{c[2:5]}.{c[5:8]}/{c[8:12]}-{c[12:]}"
+    return cnpj
+
+
+def carregar() -> list[dict]:
+    if EMPRESAS_JSON.exists():
+        dados = json.loads(EMPRESAS_JSON.read_text(encoding="utf-8"))
+        for i, e in enumerate(dados):
+            e["idx"] = i
+            e["cnpj_fmt"] = fmt_cnpj(e["cnpj"])
+        return dados
+    return []
+
+
+def salvar(empresas: list[dict]):
+    campos = ["nome", "cnpj", "usuario", "senha"]
+    clean = [{k: e[k] for k in campos if k in e} for e in empresas]
+    EMPRESAS_JSON.write_text(
+        json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def _rodar_cmd(cmd: list, task_id: str):
+    """Executa comando em thread e armazena saída linha a linha."""
+    _tasks[task_id] = {"lines": [], "done": False, "returncode": None}
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=str(BASE_DIR),
+        )
+        for line in proc.stdout:
+            _tasks[task_id]["lines"].append(line.rstrip())
+        proc.wait()
+        _tasks[task_id]["returncode"] = proc.returncode
+    except Exception as e:
+        _tasks[task_id]["lines"].append(f"ERRO: {e}")
+        _tasks[task_id]["returncode"] = 1
+    finally:
+        _tasks[task_id]["done"] = True
+
+
+def _iniciar_tarefa(cmd: list) -> str:
+    task_id = str(uuid.uuid4())
+    threading.Thread(target=_rodar_cmd, args=(cmd, task_id), daemon=True).start()
+    return task_id
+
+
+# ── Rotas principais ───────────────────────────────────────────────────────────
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+# ── API: Empresas ──────────────────────────────────────────────────────────────
+
+@app.route("/api/empresas", methods=["GET"])
+def get_empresas():
+    return jsonify(carregar())
+
+
+@app.route("/api/empresas", methods=["POST"])
+def add_empresa():
+    d = request.json or {}
+    nome = d.get("nome", "").strip()
+    cnpj = d.get("cnpj", "").strip().replace(".", "").replace("/", "").replace("-", "")
+    usuario = d.get("usuario", "").strip()
+    senha = d.get("senha", "").strip()
+
+    if not all([nome, cnpj, usuario, senha]):
+        return jsonify({"error": "Todos os campos são obrigatórios"}), 400
+    if len(cnpj) != 14 or not cnpj.isdigit():
+        return jsonify({"error": "CNPJ inválido — informe 14 dígitos"}), 400
+
+    empresas = carregar()
+    if any(e["cnpj"] == cnpj for e in empresas):
+        return jsonify({"error": "CNPJ já cadastrado"}), 400
+
+    empresas.append({"nome": nome, "cnpj": cnpj, "usuario": usuario, "senha": senha})
+    salvar(empresas)
+    return jsonify({"ok": True, "total": len(empresas)})
+
+
+@app.route("/api/empresas/<int:idx>", methods=["PUT"])
+def update_empresa(idx):
+    empresas = carregar()
+    if idx < 0 or idx >= len(empresas):
+        return jsonify({"error": "Empresa não encontrada"}), 404
+
+    d = request.json or {}
+    e = empresas[idx]
+    if d.get("nome"):
+        e["nome"] = d["nome"].strip()
+    if d.get("usuario"):
+        e["usuario"] = d["usuario"].strip()
+    if d.get("senha"):
+        e["senha"] = d["senha"].strip()
+
+    salvar(empresas)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/empresas/todas", methods=["DELETE"])
+def delete_todas():
+    salvar([])
+    return jsonify({"ok": True})
+
+
+@app.route("/api/empresas/<int:idx>", methods=["DELETE"])
+def delete_empresa(idx):
+    empresas = carregar()
+    if idx < 0 or idx >= len(empresas):
+        return jsonify({"error": "Empresa não encontrada"}), 404
+    removida = empresas.pop(idx)
+    salvar(empresas)
+    return jsonify({"ok": True, "nome": removida["nome"]})
+
+
+# ── API: Streaming de tarefas (SSE) ────────────────────────────────────────────
+
+@app.route("/api/tarefa/<task_id>/stream")
+def stream_tarefa(task_id):
+    def generate():
+        import time
+        sent = 0
+        while True:
+            if task_id not in _tasks:
+                time.sleep(0.15)
+                continue
+
+            t = _tasks[task_id]
+            lines = t["lines"]
+            while sent < len(lines):
+                yield f"data: {lines[sent]}\n\n"
+                sent += 1
+
+            if t["done"]:
+                rc = t.get("returncode", 0)
+                if rc == 0:
+                    yield "data: ✔  Concluído com sucesso.\n\n"
+                else:
+                    yield f"data: ✖  Encerrado com erro (código {rc}).\n\n"
+                yield "event: done\ndata: done\n\n"
+                break
+
+            time.sleep(0.1)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ── API: Ações ─────────────────────────────────────────────────────────────────
+
+@app.route("/api/selecionar-pasta", methods=["POST"])
+def selecionar_pasta():
+    """Abre diálogo nativo do Windows para selecionar pasta de destino."""
+    d = request.json or {}
+    pasta_inicial = d.get("pastaInicial", str(BASE_DIR / "downloads"))
+
+    ps = f"""
+Add-Type -AssemblyName System.Windows.Forms
+$dlg = New-Object System.Windows.Forms.FolderBrowserDialog
+$dlg.Description = 'Selecione a pasta de destino'
+$dlg.SelectedPath = '{pasta_inicial.replace(chr(39), "")}'
+$dlg.ShowNewFolderButton = $true
+if ($dlg.ShowDialog() -eq 'OK') {{
+    Write-Output $dlg.SelectedPath
+}} else {{
+    Write-Output ''
+}}
+"""
+    import tempfile
+    import subprocess as _sp
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".ps1", delete=False, encoding="utf-8") as f:
+            f.write(ps)
+            ps_path = f.name
+        res = _sp.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+             "-WindowStyle", "Normal", "-File", ps_path],
+            capture_output=True, text=True, timeout=60,
+        )
+        os.unlink(ps_path)
+        pasta = res.stdout.strip()
+        if pasta:
+            return jsonify({"pasta": pasta})
+        return jsonify({"pasta": ""})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/baixar-sefaz", methods=["POST"])
+def baixar_sefaz():
+    d = request.json or {}
+    mes = d.get("mes", "").strip()
+    cnpj = d.get("cnpj", "").strip()
+    destino = d.get("destino", "").strip()
+    if not mes:
+        return jsonify({"error": "Mês é obrigatório"}), 400
+
+    cmd = [sys.executable, str(BASE_DIR / "agente_nfe_claude.py"), "--mes", mes]
+    if cnpj:
+        cmd += ["--cnpj", cnpj]
+    if destino:
+        cmd += ["--destino", destino]
+
+    return jsonify({"task_id": _iniciar_tarefa(cmd)})
+
+
+@app.route("/api/analitico", methods=["POST"])
+def run_analitico():
+    global _ultimo_analitico
+    d = request.json or {}
+    mes  = d.get("mes", "").strip()
+    cnpj = d.get("cnpj", "").strip()
+    if not mes:
+        return jsonify({"error": "Mês é obrigatório"}), 400
+
+    task_id = str(uuid.uuid4())
+
+    def _run():
+        global _ultimo_analitico
+        _tasks[task_id] = {"lines": [], "done": False, "returncode": 0}
+        try:
+            import io
+            sys.path.insert(0, str(BASE_DIR))
+            from analitico import exibir_analitico
+            buf = io.StringIO()
+            exibir_analitico(mes, BASE_DIR / "downloads" / mes, destino=buf, cnpj_filtro=cnpj)
+            txt = buf.getvalue()
+            _ultimo_analitico = txt
+            for line in txt.splitlines():
+                _tasks[task_id]["lines"].append(line)
+        except Exception as e:
+            _tasks[task_id]["lines"].append(f"ERRO: {e}")
+            _tasks[task_id]["returncode"] = 1
+        finally:
+            _tasks[task_id]["done"] = True
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"task_id": task_id})
+
+
+@app.route("/api/analitico/imprimir", methods=["POST"])
+def imprimir_analitico():
+    global _ultimo_analitico
+    if not _ultimo_analitico:
+        return jsonify({"error": "Nenhum relatório gerado ainda"}), 400
+
+    import tempfile
+    txt = _ultimo_analitico
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as f:
+            f.write(txt)
+            txt_path = f.name
+
+        ps = f"""
+Add-Type -AssemblyName System.Drawing
+$script:idx = 0
+$lines = [System.IO.File]::ReadAllLines('{txt_path.replace(chr(92), "/")}', [System.Text.Encoding]::UTF8)
+$pd = New-Object System.Drawing.Printing.PrintDocument
+$pd.DefaultPageSettings.Landscape = $true
+$pd.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(59, 59, 59, 59)
+$pd.add_PrintPage({{
+    param($s, $e)
+    $font  = New-Object System.Drawing.Font('Courier New', 10)
+    $brush = [System.Drawing.Brushes]::Black
+    $y     = [float]$e.MarginBounds.Top
+    $lh    = $e.Graphics.MeasureString('Ag', $font).Height
+    while ($script:idx -lt $lines.Length) {{
+        if ($y + $lh -gt $e.MarginBounds.Bottom) {{
+            $e.HasMorePages = $true
+            return
+        }}
+        $e.Graphics.DrawString($lines[$script:idx], $font, $brush, [float]$e.MarginBounds.Left, $y)
+        $y += $lh
+        $script:idx++
+    }}
+}})
+$pd.Print()
+"""
+        with tempfile.NamedTemporaryFile("w", suffix=".ps1", delete=False, encoding="utf-8") as f:
+            f.write(ps)
+            ps_path = f.name
+
+        import subprocess as _sp
+        res = _sp.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+             "-WindowStyle", "Hidden", "-File", ps_path],
+            capture_output=True, text=True, timeout=30,
+        )
+        for p in (txt_path, ps_path):
+            try:
+                os.unlink(p)
+            except Exception:
+                pass
+
+        if res.returncode == 0:
+            return jsonify({"ok": True})
+        return jsonify({"error": res.stderr.strip()[:300]}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/parcelamentos/analisar", methods=["POST"])
+def analisar_parcelamentos():
+    d = request.json or {}
+    mes = d.get("mes", "").strip()
+    if not mes:
+        return jsonify({"error": "Mês é obrigatório"}), 400
+
+    task_id = str(uuid.uuid4())
+
+    def _run():
+        _tasks[task_id] = {"lines": [], "done": False, "returncode": 0}
+        try:
+            import io
+            sys.path.insert(0, str(BASE_DIR))
+            from analitico import exibir_parcelamentos
+            buf = io.StringIO()
+            exibir_parcelamentos(mes, BASE_DIR / "downloads" / mes, destino=buf)
+            for line in buf.getvalue().splitlines():
+                _tasks[task_id]["lines"].append(line)
+        except Exception as e:
+            _tasks[task_id]["lines"].append(f"ERRO: {e}")
+            _tasks[task_id]["returncode"] = 1
+        finally:
+            _tasks[task_id]["done"] = True
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"task_id": task_id})
+
+
+@app.route("/api/parcelamentos/emitir", methods=["POST"])
+def emitir_parcelas():
+    d = request.json or {}
+    cnpj = d.get("cnpj", "").strip()
+    destino = d.get("destino", "").strip()
+
+    cmd = [sys.executable, str(BASE_DIR / "agente_nfe_claude.py"), "--modo", "emitir-parcelas"]
+    if cnpj:
+        cmd += ["--cnpj", cnpj]
+    if destino:
+        cmd += ["--destino", destino]
+
+    return jsonify({"task_id": _iniciar_tarefa(cmd)})
+
+
+@app.route("/api/impostos-sefaz", methods=["POST"])
+def impostos_sefaz():
+    d = request.json or {}
+    cnpj = d.get("cnpj", "").strip()
+    destino = d.get("destino", "").strip()
+
+    cmd = [sys.executable, str(BASE_DIR / "agente_nfe_claude.py"), "--modo", "impostos"]
+    if cnpj:
+        cmd += ["--cnpj", cnpj]
+    if destino:
+        cmd += ["--destino", destino]
+
+    return jsonify({"task_id": _iniciar_tarefa(cmd)})
+
+
+# ── Entrada ────────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    port = 5000
+    print()
+    print("  ╔══════════════════════════════════════╗")
+    print("  ║     Agente Lexcon — Interface Web    ║")
+    print(f"  ║   Acesse: http://localhost:{port}      ║")
+    print("  ║   Pressione Ctrl+C para encerrar     ║")
+    print("  ╚══════════════════════════════════════╝")
+    print()
+    webbrowser.open(f"http://localhost:{port}")
+    app.run(host="127.0.0.1", port=port, debug=False, threaded=True)
