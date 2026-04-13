@@ -272,7 +272,7 @@ export default function AgenteFiscalPage() {
         body: JSON.stringify({ mes: selectedMes }),
       });
       const data = await res.json();
-      if (data.task_id) streamTask(data.task_id);
+      if (data.task_id) streamTask(data.task_id, true);
       else toast(data.error || 'Erro ao iniciar', 'err');
     } catch { toast('Agente offline', 'err'); }
   };
@@ -286,7 +286,7 @@ export default function AgenteFiscalPage() {
         body: JSON.stringify({ cnpj: selectedCnpj }),
       });
       const data = await res.json();
-      if (data.task_id) streamTask(data.task_id);
+      if (data.task_id) streamTask(data.task_id, true);
       else toast(data.error || 'Erro ao iniciar', 'err');
     } catch { toast('Agente offline', 'err'); }
   };
@@ -723,6 +723,15 @@ export default function AgenteFiscalPage() {
         {/* ── Parcelamento ────────────────────────────────────────────── */}
         {activeTab === 'parcela' && (
           <div className="space-y-6">
+            {/* Pasta de destino */}
+            <div className="bg-card border border-border rounded-xl p-4">
+              <button onClick={chooseSaveFolder} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-border bg-background text-sm hover:bg-muted/50 transition-colors">
+                <FolderOpen size={16} className={selectedFolder ? 'text-emerald-400' : 'text-muted-foreground'} />
+                <span className={selectedFolder ? 'text-emerald-400 font-medium' : 'text-muted-foreground'}>
+                  {selectedFolder ? `Salvar em: ${selectedFolder}` : 'Escolher pasta para salvar DARs...'}
+                </span>
+              </button>
+            </div>
             <div className="grid lg:grid-cols-2 gap-6">
               <div className="bg-card border border-border rounded-xl p-5 space-y-4">
                 <h3 className="text-sm font-semibold flex items-center gap-2"><Search size={15} className="text-primary" /> Analisar Parcelamentos</h3>
@@ -740,6 +749,12 @@ export default function AgenteFiscalPage() {
               </div>
             </div>
             <TerminalOutput title="parcelamentos" />
+            {/* Arquivos salvos */}
+            {savingFiles && (
+              <div className="flex items-center gap-2 text-sm text-emerald-400">
+                <Loader2 size={16} className="animate-spin" /> Salvando arquivos na pasta... ({savedCount}/{arquivos.length})
+              </div>
+            )}
           </div>
         )}
 
