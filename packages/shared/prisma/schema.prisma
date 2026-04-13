@@ -35,6 +35,7 @@ model Tenant {
   tax_records               TaxRecord[]
   broadcast_jobs            BroadcastJob[]
   djen_ignored_processes    DjenIgnoredProcess[]
+  lead_honorarios           LeadHonorario[]
 }
 
 model User {
@@ -122,6 +123,7 @@ model Lead {
   payment_gateway_customers PaymentGatewayCustomer[]
   notas_fiscais             NotaFiscal[]
   broadcast_items           BroadcastItem[]
+  lead_honorarios           LeadHonorario[]
   cpf_cnpj                  String? // CPF ou CNPJ — facilita match com Asaas
 
   @@index([tenant_id, phone])
@@ -1092,6 +1094,52 @@ model HonorarioPayment {
 }
 
 // ===============================================
+// Honorários Negociados (fase de negociação/lead)
+// ===============================================
+
+model LeadHonorario {
+  id                 String    @id @default(uuid())
+  tenant_id          String?
+  lead_id            String
+  type               String    // CONTRATUAL, ENTRADA, ACORDO
+  total_value        Decimal
+  success_percentage Decimal?  // % sucumbência negociada antecipadamente
+  installment_count  Int       @default(1)
+  entry_value        Decimal?  // Valor de entrada separado
+  notes              String?
+  status             String    @default("NEGOCIANDO") // NEGOCIANDO, ACEITO, RECUSADO, CONVERTIDO
+  promoted_to_id     String?   // ID do CaseHonorario após conversão
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+
+  lead     Lead                   @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+  tenant   Tenant?                @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  payments LeadHonorarioPayment[]
+
+  @@index([lead_id])
+  @@index([tenant_id])
+}
+
+model LeadHonorarioPayment {
+  id                  String    @id @default(uuid())
+  lead_honorario_id   String
+  amount              Decimal
+  due_date            DateTime?
+  paid_at             DateTime?
+  payment_method      String?   // PIX, BOLETO, CARTAO, DINHEIRO, TRANSFERENCIA
+  status              String    @default("PENDENTE") // PENDENTE, PAGO, ATRASADO
+  notes               String?
+  created_at          DateTime  @default(now())
+
+  lead_honorario        LeadHonorario         @relation(fields: [lead_honorario_id], references: [id], onDelete: Cascade)
+  financial_transaction FinancialTransaction?
+  gateway_charge        PaymentGatewayCharge?
+
+  @@index([lead_honorario_id, due_date])
+  @@index([status])
+}
+
+// ===============================================
 // Contract Signatures (integração Clicksign)
 // ===============================================
 
@@ -1207,7 +1255,8 @@ model FinancialTransaction {
   legal_case_id        String?
   lead_id              String?
   lawyer_id            String?
-  honorario_payment_id String?   @unique // 1:1 com HonorarioPayment
+  honorario_payment_id        String?   @unique // 1:1 com HonorarioPayment
+  lead_honorario_payment_id   String?   @unique // 1:1 com LeadHonorarioPayment
 
   created_at           DateTime  @default(now())
   updated_at           DateTime  @updatedAt
@@ -1216,8 +1265,9 @@ model FinancialTransaction {
   legal_case        LegalCase?        @relation(fields: [legal_case_id], references: [id], onDelete: SetNull)
   lead              Lead?             @relation(fields: [lead_id], references: [id], onDelete: SetNull)
   lawyer            User?             @relation("FinancialLawyer", fields: [lawyer_id], references: [id], onDelete: SetNull)
-  honorario_payment HonorarioPayment?  @relation(fields: [honorario_payment_id], references: [id], onDelete: SetNull)
-  gateway_charge    PaymentGatewayCharge?
+  honorario_payment      HonorarioPayment?      @relation(fields: [honorario_payment_id], references: [id], onDelete: SetNull)
+  lead_honorario_payment LeadHonorarioPayment?  @relation(fields: [lead_honorario_payment_id], references: [id], onDelete: SetNull)
+  gateway_charge         PaymentGatewayCharge?
   nota_fiscal       NotaFiscal?
 
   @@index([tenant_id, date])
@@ -1303,10 +1353,13 @@ model PaymentGatewayCharge {
   created_at           DateTime  @default(now())
   updated_at           DateTime  @updatedAt
 
-  honorario_payment    HonorarioPayment?    @relation(fields: [honorario_payment_id], references: [id], onDelete: SetNull)
-  transaction          FinancialTransaction? @relation(fields: [transaction_id], references: [id], onDelete: SetNull)
-  legal_case           LegalCase?           @relation(fields: [legal_case_id], references: [id], onDelete: SetNull)
-  tenant               Tenant?              @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  lead_honorario_payment_id String?  @unique
+
+  honorario_payment      HonorarioPayment?      @relation(fields: [honorario_payment_id], references: [id], onDelete: SetNull)
+  lead_honorario_payment LeadHonorarioPayment?  @relation(fields: [lead_honorario_payment_id], references: [id], onDelete: SetNull)
+  transaction            FinancialTransaction?  @relation(fields: [transaction_id], references: [id], onDelete: SetNull)
+  legal_case             LegalCase?             @relation(fields: [legal_case_id], references: [id], onDelete: SetNull)
+  tenant                 Tenant?                @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
 
   @@index([tenant_id, status])
   @@index([customer_external_id])

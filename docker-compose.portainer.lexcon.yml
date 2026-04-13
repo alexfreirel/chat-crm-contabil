@@ -73,8 +73,8 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-crm_user}:${POSTGRES_PASSWORD:-crm_pass}@postgres:5432/${POSTGRES_DB:-lexcon}?schema=public
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - JWT_SECRET=${JWT_SECRET:-troque_esta_secret}
-      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-15m}
+      - JWT_SECRET=lexcon-jwt-secret-2026-prod-k8s9x2m4
+      - JWT_EXPIRES_IN=365d
       - EVOLUTION_API_URL=${EVOLUTION_API_URL}
       - EVOLUTION_GLOBAL_APIKEY=${EVOLUTION_GLOBAL_APIKEY}
       - EVOLUTION_INSTANCE_NAME=${EVOLUTION_INSTANCE_NAME}
@@ -122,7 +122,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-crm_user}:${POSTGRES_PASSWORD:-crm_pass}@postgres:5432/${POSTGRES_DB:-lexcon}?schema=public
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - JWT_SECRET=${JWT_SECRET:-troque_esta_secret}
+      - JWT_SECRET=lexcon-jwt-secret-2026-prod-k8s9x2m4
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - EVOLUTION_API_URL=${EVOLUTION_API_URL}
       - EVOLUTION_GLOBAL_APIKEY=${EVOLUTION_GLOBAL_APIKEY}
