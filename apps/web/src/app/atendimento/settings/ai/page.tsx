@@ -771,7 +771,7 @@ export default function AiSettingsPage() {
               <div>
                 <h4 className="text-sm font-bold text-foreground">Skills da IA</h4>
                 <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
-                  Prompts especializados por área jurídica
+                  Prompts especializados por área contábil
                 </p>
               </div>
             </div>
