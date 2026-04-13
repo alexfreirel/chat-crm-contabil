@@ -341,7 +341,7 @@ export function Sidebar() {
     {
       id: 'juridico',
       label: 'Jurídico',
-      items: [allItems.estagiario, allItems.advogado, allItems.processos, allItems.djen].filter(i => i.show),
+      items: [allItems.estagiario, allItems.advogado, allItems.djen].filter(i => i.show),
     },
     {
       id: 'contabil',
