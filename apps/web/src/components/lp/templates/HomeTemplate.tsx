@@ -14,6 +14,7 @@ import {
   Linkedin,
   Shield,
   Scale,
+  Calculator,
   ChevronRight,
   ChevronLeft,
   Menu,
@@ -568,52 +569,28 @@ export function HomeTemplate({
           >
             {[
               {
-                icon: Briefcase,
-                title: "Direito Trabalhista",
+                icon: Calculator,
+                title: "Contábil",
                 description:
-                  "Protege os direitos dos trabalhadores, regulando relações como salários, jornada, férias, FGTS e demissões. Atuamos na defesa de quem busca justiça nas relações de emprego.",
-              },
-              {
-                icon: ShoppingCart,
-                title: "Direito do Consumidor",
-                description:
-                  "Garante a proteção contra práticas abusivas nas relações de consumo. Atuamos na defesa de clientes lesados por empresas, cobranças indevidas, produtos defeituosos ou serviços mal prestados.",
-              },
-              {
-                icon: HeartPulse,
-                title: "Direito Previdenciário",
-                description:
-                  "Voltado à garantia de benefícios como aposentadoria, pensão, auxílio-doença e BPC/LOAS. Defendemos os direitos de quem busca amparo do INSS em momentos de necessidade.",
-              },
-              {
-                icon: Users,
-                title: "Direito de Família",
-                description:
-                  "Cuida das relações familiares, como divórcio, guarda de filhos, pensão alimentícia e inventário. Atuamos com sensibilidade e firmeza na defesa dos seus direitos e da sua família.",
-              },
-              {
-                icon: Gavel,
-                title: "Direito Criminal",
-                description:
-                  "Defesa em processos criminais, desde inquérito até julgamento. Atuamos com estratégia e compromisso na proteção dos direitos do acusado, sempre respeitando o devido processo legal.",
+                  "Executamos serviços pertinentes a rotina contábil, desde a classificação dos documentos até a emissão dos relatórios correspondentes, observando os princípios, normas contábeis e a legislação em vigor. Estamos preparados para atender todos os tipos de empresa, Simples Nacional, Lucro Presumido, Lucro Real, Lucro Arbitrado, Imunes, Isentas e subsidiárias estrangeiras.",
               },
               {
                 icon: FileText,
-                title: "Direito Civil",
+                title: "Serviços Fiscais",
                 description:
-                  "Abrange questões do dia a dia como contratos, indenizações, posse, propriedade e responsabilidade civil. Atuamos na prevenção e resolução de conflitos com segurança jurídica.",
+                  "Efetuamos toda a rotina do departamento fiscal, desde a classificação fiscal das Notas Fiscais de Entrada e Saída até a operação dos impostos pertinentes (ICMS, IPI, ISS, COFINS, PIS, IRPJ, CSLL etc.). Assumimos a entrega de todas as obrigações acessórias periódicas (EFD ICMS/IPI, EFD Contribuições, DCTF, DIME, DIRF, ECF etc.) e prestamos assessoria em emissão de NFS, importação, exportação e alíquotas.",
+              },
+              {
+                icon: Briefcase,
+                title: "Trabalhista",
+                description:
+                  "Preparados para o e-Social, executamos toda a rotina do departamento pessoal: registro de funcionários, folha de pagamento, guias de impostos, rescisões, RAIS, DIRF, EFD Reinf, entre outros. Oferecemos assessoria completa na administração de pessoal e comunicamos ao cliente todas as alterações legais, incluindo dissídios da categoria.",
               },
               {
                 icon: Building2,
-                title: "Direito Imobiliário",
+                title: "Legalização de Empresas",
                 description:
-                  "Atuação em compra e venda de imóveis, contratos de locação, usucapião, inventário de bens imóveis e regularização fundiária. Protegemos seu patrimônio com segurança jurídica.",
-              },
-              {
-                icon: Landmark,
-                title: "Direito das Sucessões",
-                description:
-                  "Regula a transferência do patrimônio após o falecimento. Atuamos em inventários, partilhas, testamentos e planejamento sucessório, garantindo segurança jurídica e respeito à vontade dos herdeiros.",
+                  "Abertura, alteração e encerramento de empresas; constituição de empresas no Brasil com sócios estrangeiros; planejamento societário e blindagem patrimonial; processos de Incorporação, Cisão e Fusão; constituição de SCP, SPE e Patrimônio de Afetação com obtenção de Regime Especial de Tributação.",
               },
             ].map((area, index) => {
               const Icon = area.icon;

@@ -56,6 +56,7 @@ export interface ChatHeaderProps {
   onToggleAiMode: () => void;
   onAccept: () => void;
   onOpenTransferModal: () => void;
+  hasPendingTransfer?: boolean;
   onOpenReasonPopup: (ctx: 'lawyer' | 'operator' | 'return', name: string) => void;
   onKeepInInbox: () => void;
   onToggleStage: () => void;
@@ -101,7 +102,7 @@ export function ChatHeader({
   onAssignLawyer,
   onToggleAiMode,
   onAccept,
-  onOpenTransferModal,
+  onOpenTransferModal, hasPendingTransfer,
   onOpenReasonPopup,
   onKeepInInbox,
   onToggleStage,
@@ -209,42 +210,7 @@ export function ChatHeader({
               {contactPresence === 'composing' ? 'digitando...' : 'online'}
             </span>
           )}
-          {/* Tags do lead */}
-          {isRealConvo && (
-            <div className="hidden md:flex items-center gap-1 flex-wrap mt-1" onClick={e => e.stopPropagation()}>
-              {(leadTags ?? []).map(tag => (
-                <span
-                  key={tag}
-                  className="group inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary/80 border border-primary/20 transition-colors hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20 cursor-pointer"
-                  onClick={() => handleRemoveTag(tag)}
-                  title={`Remover tag "${tag}"`}
-                >
-                  {tag}
-                  <XIcon size={8} className="opacity-60 group-hover:opacity-100" />
-                </span>
-              ))}
-              {showTagInput ? (
-                <input
-                  ref={tagInputRef}
-                  value={tagInput}
-                  onChange={e => setTagInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleAddTag(); if (e.key === 'Escape') { setShowTagInput(false); setTagInput(''); } }}
-                  onBlur={handleAddTag}
-                  placeholder="nova tag…"
-                  className="text-[10px] bg-transparent border-b border-primary/40 outline-none text-foreground w-20 px-0.5"
-                />
-              ) : (
-                <button
-                  onClick={() => setShowTagInput(true)}
-                  title="Adicionar etiqueta"
-                  className="inline-flex items-center gap-0.5 text-[9px] text-muted-foreground/50 hover:text-primary transition-colors"
-                >
-                  <Tag size={9} />
-                  <Plus size={8} />
-                </button>
-              )}
-            </div>
-          )}
+          {/* Tags removidas — funcionalidade descontinuada */}
           {/* Área jurídica + especialista pré-atribuído — hidden on mobile */}
           <div className="hidden md:flex items-center gap-2 flex-wrap mt-1.5">
             {/* Badge de área — clicável para editar */}
@@ -280,11 +246,6 @@ export function ChatHeader({
                 </div>
               )}
             </div>
-            {fichaFinalizada && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/20">
-                ✅ Ficha Finalizada
-              </span>
-            )}
             {selected.legalArea && (
               <div className="relative" ref={lawyerDropdownRef}>
                 <button
@@ -352,30 +313,36 @@ export function ChatHeader({
             )}
           </div>
         )}
-        {/* Linha de botões de ação — desktop only */}
-        <div className="hidden md:flex gap-2 items-center flex-wrap justify-end">
-          {selected?.legalArea?.toLowerCase().includes('trabalhist') && (
-            <>
-              {!isClosed && (
-                <button
-                  onClick={onSendFormLink}
-                  title="Enviar link do formulário trabalhista ao lead"
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-bold border border-amber-500/20 hover:bg-amber-500/25 transition-colors"
-                >
-                  <ClipboardList size={10} />
-                  Enviar Formulário
-                </button>
-              )}
+        {/* Badges informativos — ficha trabalhista (desktop only) */}
+        {selected?.legalArea?.toLowerCase().includes('trabalhist') && (
+          <div className="hidden md:flex gap-1.5 items-center justify-end">
+            {!isClosed && (
               <button
-                onClick={onShowFicha}
-                title="Visualizar ficha trabalhista"
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-400 text-[10px] font-bold border border-violet-500/20 hover:bg-violet-500/25 transition-colors"
+                onClick={onSendFormLink}
+                title="Enviar link do formulário trabalhista ao lead"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-bold border border-amber-500/20 hover:bg-amber-500/25 transition-colors"
               >
-                <Eye size={10} />
-                Visualizar Ficha
+                <ClipboardList size={10} />
+                Enviar Formulário
               </button>
-            </>
-          )}
+            )}
+            <button
+              onClick={onShowFicha}
+              title="Visualizar ficha trabalhista"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-400 text-[10px] font-bold border border-violet-500/20 hover:bg-violet-500/25 transition-colors"
+            >
+              <Eye size={10} />
+              Visualizar Ficha
+            </button>
+            {fichaFinalizada && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/20">
+                ✅ Finalizada
+              </span>
+            )}
+          </div>
+        )}
+        {/* Botões de ação — desktop only */}
+        <div className="hidden md:flex gap-2 items-center flex-wrap justify-end">
           {isRealConvo && (
             <button
               onClick={onToggleAiMode}
@@ -401,11 +368,16 @@ export function ChatHeader({
           {!isClosed && isRealConvo && (
             <button
               onClick={onOpenTransferModal}
-              title="Transferir conversa para outro operador"
-              className="px-3 py-2 text-sm font-semibold text-sky-400 bg-sky-500/10 border border-sky-500/20 rounded-xl hover:bg-sky-500/20 transition-colors flex items-center gap-2"
+              disabled={hasPendingTransfer}
+              title={hasPendingTransfer ? 'Transferência pendente — aguardando resposta' : 'Transferir conversa para outro operador'}
+              className={`px-3 py-2 text-sm font-semibold border rounded-xl transition-colors flex items-center gap-2 ${
+                hasPendingTransfer
+                  ? 'text-muted-foreground bg-muted/30 border-border cursor-not-allowed opacity-50'
+                  : 'text-sky-400 bg-sky-500/10 border-sky-500/20 hover:bg-sky-500/20'
+              }`}
             >
               <UserCheck size={16} />
-              Transferir
+              {hasPendingTransfer ? 'Aguardando...' : 'Transferir'}
             </button>
           )}
           {selected?.originAssignedUserId && selected?.assignedAgentId === currentUserId && !isClosed && (
@@ -431,20 +403,11 @@ export function ChatHeader({
           {selected?.leadId && isRealConvo && !isClosed && (
             <button
               onClick={onCreateTask}
-              title="Adiar atendimento"
+              title="Criar tarefa"
               className="px-3 py-2 text-sm font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl hover:bg-amber-500/20 transition-colors flex items-center gap-2"
             >
-              <Clock size={16} />
-              Adiar
-            </button>
-          )}
-          {isRealConvo && onSyncHistory && (
-            <button
-              onClick={onSyncHistory}
-              title="Sincronizar histórico de mensagens com WhatsApp"
-              className="p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded-xl transition-colors"
-            >
-              <RefreshCw size={16} />
+              <ClipboardList size={16} />
+              Tarefa
             </button>
           )}
         </div>

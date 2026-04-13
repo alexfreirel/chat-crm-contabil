@@ -1,0 +1,173 @@
+version: '3.8'
+
+services:
+  # ------ Banco de Dados ------
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-crm_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-crm_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-lexcon}
+    networks:
+      - default
+      - OrionNet
+    volumes:
+      - pgdata_lexcon:/var/lib/postgresql/data
+    ports:
+      - "46432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-crm_user}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    deploy:
+      restart_policy:
+        condition: any
+
+  # ------ Redis (Filas e Cache) ------
+  redis:
+    image: redis:alpine
+    ports:
+      - "47379:6379"
+    networks:
+      - default
+      - OrionNet
+    volumes:
+      - redisdata_lexcon:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    deploy:
+      restart_policy:
+        condition: any
+
+  # ------ MinIO (Mídias S3) ------
+  minio:
+    image: minio/minio:latest
+    command: server /data
+    ports:
+      - "50000:9000"
+    environment:
+      - MINIO_ROOT_USER=${S3_ACCESS_KEY:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${S3_SECRET_KEY:-minioadmin}
+    networks:
+      - default
+      - OrionNet
+    volumes:
+      - minio_data_lexcon:/data
+    deploy:
+      restart_policy:
+        condition: any
+
+  # ------ NestJS Core API ------
+  crm-api:
+    image: lexconassessoria/chat-crm-contabil-api:latest
+    ports:
+      - "${API_PORT:-44001}:3001"
+    environment:
+      - PORT=3001
+      - TZ=America/Sao_Paulo
+      - RUN_MIGRATIONS=true
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-crm_user}:${POSTGRES_PASSWORD:-crm_pass}@postgres:5432/${POSTGRES_DB:-lexcon}?schema=public
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=${JWT_SECRET:-troque_esta_secret}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-15m}
+      - EVOLUTION_API_URL=${EVOLUTION_API_URL}
+      - EVOLUTION_GLOBAL_APIKEY=${EVOLUTION_GLOBAL_APIKEY}
+      - EVOLUTION_INSTANCE_NAME=${EVOLUTION_INSTANCE_NAME}
+      - PUBLIC_API_URL=${PUBLIC_API_URL:-https://lexconassessoriacontabil.com.br/api}
+      - S3_ENDPOINT=${S3_ENDPOINT:-http://minio:9000}
+      - S3_REGION=${S3_REGION:-us-east-1}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
+      - S3_BUCKET=${S3_BUCKET:-chat-crm-media}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://lexconassessoriacontabil.com.br}
+      - WEBHOOK_HMAC_REQUIRED=${WEBHOOK_HMAC_REQUIRED:-false}
+      - NODE_ENV=production
+    networks:
+      - default
+      - OrionNet
+    deploy:
+      restart_policy:
+        condition: any
+      labels:
+        - "traefik.enable=true"
+        # --- API router ---
+        - "traefik.http.routers.lexcon-api.rule=Host(`lexconassessoriacontabil.com.br`) && PathPrefix(`/api`)"
+        - "traefik.http.routers.lexcon-api.service=lexcon-api"
+        - "traefik.http.routers.lexcon-api.priority=100"
+        - "traefik.http.middlewares.lexcon-strip-api.stripprefix.prefixes=/api"
+        - "traefik.http.routers.lexcon-api.middlewares=lexcon-strip-api"
+        - "traefik.http.services.lexcon-api.loadbalancer.server.port=3001"
+        - "traefik.http.routers.lexcon-api.entrypoints=websecure"
+        - "traefik.http.routers.lexcon-api.tls.certresolver=letsencryptresolver"
+        # --- WebSocket router ---
+        - "traefik.http.routers.lexcon-ws.rule=Host(`lexconassessoriacontabil.com.br`) && PathPrefix(`/socket.io`)"
+        - "traefik.http.routers.lexcon-ws.service=lexcon-ws"
+        - "traefik.http.routers.lexcon-ws.priority=100"
+        - "traefik.http.services.lexcon-ws.loadbalancer.server.port=3001"
+        - "traefik.http.routers.lexcon-ws.entrypoints=websecure"
+        - "traefik.http.routers.lexcon-ws.tls.certresolver=letsencryptresolver"
+        - "traefik.docker.network=OrionNet"
+
+  # ------ NestJS Worker ------
+  crm-worker:
+    image: lexconassessoria/chat-crm-contabil-worker:latest
+    environment:
+      - PORT=3002
+      - TZ=America/Sao_Paulo
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-crm_user}:${POSTGRES_PASSWORD:-crm_pass}@postgres:5432/${POSTGRES_DB:-lexcon}?schema=public
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=${JWT_SECRET:-troque_esta_secret}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - EVOLUTION_API_URL=${EVOLUTION_API_URL}
+      - EVOLUTION_GLOBAL_APIKEY=${EVOLUTION_GLOBAL_APIKEY}
+      - EVOLUTION_INSTANCE_NAME=${EVOLUTION_INSTANCE_NAME}
+      - S3_ENDPOINT=http://minio:9000
+      - S3_REGION=us-east-1
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
+      - S3_BUCKET=${S3_BUCKET:-chat-crm-media}
+    networks:
+      - default
+      - OrionNet
+    deploy:
+      restart_policy:
+        condition: any
+
+  # ------ Next.js Frontend ------
+  crm-web:
+    image: lexconassessoria/chat-crm-contabil-web:latest
+    networks:
+      - default
+      - OrionNet
+    ports:
+      - "${WEB_PORT:-44000}:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://lexconassessoriacontabil.com.br/api}
+      - NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL:-wss://lexconassessoriacontabil.com.br}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://lexconassessoriacontabil.com.br}
+    deploy:
+      restart_policy:
+        condition: any
+      labels:
+        - "traefik.enable=true"
+        # --- Web (frontend) ---
+        - "traefik.http.routers.lexcon-web.rule=Host(`lexconassessoriacontabil.com.br`)"
+        - "traefik.http.services.lexcon-web.loadbalancer.server.port=3000"
+        - "traefik.http.routers.lexcon-web.entrypoints=websecure"
+        - "traefik.http.routers.lexcon-web.tls.certresolver=letsencryptresolver"
+        - "traefik.docker.network=OrionNet"
+
+networks:
+  OrionNet:
+    external: true
+
+volumes:
+  pgdata_lexcon:
+  redisdata_lexcon:
+  minio_data_lexcon:

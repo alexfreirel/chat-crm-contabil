@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
@@ -65,6 +65,14 @@ function classifyPublication(
       taskTitle: 'Elaborar contestação — prazo iniciado',
       taskDescription: 'Citação publicada no DJEN. Verificar prazo para contestação e elaborar defesa.',
       dueDays: 15,
+      priority: 'URGENTE',
+    };
+  }
+  if (/perí?cia|laudo pericial|perito designado/.test(text)) {
+    return {
+      taskTitle: 'Preparar para perícia e notificar cliente',
+      taskDescription: 'Perícia designada via DJEN. Notificar cliente sobre data, documentos necessários e orientações.',
+      dueDays: 5,
       priority: 'URGENTE',
     };
   }
@@ -306,8 +314,52 @@ export class DjenService {
                 `[DJEN] Tarefa automática criada para processo ${numeroProcesso}: "${classification.taskTitle}"`,
               );
 
-              // ── Se for publicação de audiência, tentar criar evento no calendário ──
+              // ── Se for publicação de perícia, tentar criar evento no calendário ──
               const pubText = [tipoComunicacao, assunto, conteudo].join(' ').toLowerCase();
+              if (/perí?cia|laudo pericial|perito designado/.test(pubText)) {
+                try {
+                  const periciaDate = extractHearingDateTime(conteudo);
+                  if (periciaDate) {
+                    const existingPericia = await this.prisma.calendarEvent.findFirst({
+                      where: {
+                        legal_case_id: legalCase.id,
+                        type: 'PERICIA',
+                        start_at: {
+                          gte: new Date(periciaDate.getTime() - 86400000),
+                          lte: new Date(periciaDate.getTime() + 86400000),
+                        },
+                      },
+                      select: { id: true },
+                    });
+                    if (!existingPericia) {
+                      const endDate = new Date(periciaDate.getTime() + 120 * 60000); // +2h
+                      await this.calendarService.create({
+                        type: 'PERICIA',
+                        title: `[DJEN] Perícia — ${numeroProcesso}`,
+                        description: `Perícia detectada automaticamente via DJEN.\n${assunto || ''}`,
+                        start_at: periciaDate.toISOString(),
+                        end_at: endDate.toISOString(),
+                        assigned_user_id: legalCase.lawyer_id,
+                        legal_case_id: legalCase.id,
+                        created_by_id: legalCase.lawyer_id,
+                        tenant_id: legalCase.tenant_id || undefined,
+                        priority: 'URGENTE',
+                        reminders: [
+                          { minutes_before: 1440, channel: 'WHATSAPP' },
+                          { minutes_before: 120, channel: 'WHATSAPP' },
+                        ],
+                      });
+                      this.logger.log(
+                        `[DJEN] Perícia automática criada: ${periciaDate.toISOString()} (caso ${legalCase.id})`,
+                      );
+                    }
+                  }
+                } catch (e: any) {
+                  this.logger.warn(`[DJEN] Falha ao criar perícia automática: ${e.message}`);
+                }
+              }
+
+              // ── Se for publicação de audiência, tentar criar evento no calendário ──
               if (/audiência|audiencia|designada|designando/.test(pubText)) {
                 try {
                   const hearingDate = extractHearingDateTime(conteudo);
@@ -545,7 +597,12 @@ export class DjenService {
       lead = realLead;
     } else {
       // Opção B: cadastrar novo cliente com nome + telefone
-      const phone = leadPhone!.trim();
+      let phone = leadPhone!.trim().replace(/\D/g, '');
+      // Normalizar: adicionar 55 se necessário, remover 9 extra
+      if (phone.length <= 11) phone = '55' + phone;
+      if (phone.length === 13 && phone.startsWith('55') && phone[4] === '9') {
+        phone = phone.slice(0, 4) + phone.slice(5);
+      }
       const name = leadName!.trim();
       // Verifica se já existe lead com esse telefone no mesmo tenant para evitar duplicatas
       const existingByPhone = await this.prisma.lead.findFirst({
@@ -585,8 +642,8 @@ export class DjenService {
 
     // ─── Valida e resolve o estágio de entrada no kanban ─────────────────────
     const VALID_TRACKING = [
-      'DISTRIBUIDO', 'CITACAO', 'CONTESTACAO', 'REPLICA', 'INSTRUCAO',
-      'JULGAMENTO', 'RECURSO', 'TRANSITADO', 'EXECUCAO', 'ENCERRADO',
+      'DISTRIBUIDO', 'CITACAO', 'CONTESTACAO', 'REPLICA', 'PERICIA_AGENDADA',
+      'INSTRUCAO', 'JULGAMENTO', 'RECURSO', 'TRANSITADO', 'EXECUCAO', 'ENCERRADO',
     ];
     const finalTrackingStage = (trackingStage && VALID_TRACKING.includes(trackingStage))
       ? trackingStage
@@ -677,16 +734,12 @@ export class DjenService {
       },
     });
 
-    // Bloquear análise se publicação não está vinculada a nenhum processo
-    if (!pub.legal_case_id) {
-      throw new BadRequestException(
-        'Esta publicação não está vinculada a nenhum processo. Vincule-a a um processo antes de criar eventos.'
-      );
-    }
+    // Sem processo vinculado: análise ocorre normalmente, mas event_type será forçado a TAREFA no retorno
+    const hasLinkedCase = !!pub.legal_case_id;
 
     const STAGES = [
-      'DISTRIBUIDO', 'CITACAO', 'CONTESTACAO', 'REPLICA', 'INSTRUCAO',
-      'JULGAMENTO', 'RECURSO', 'TRANSITADO', 'EXECUCAO', 'ENCERRADO',
+      'DISTRIBUIDO', 'CITACAO', 'CONTESTACAO', 'REPLICA', 'PERICIA_AGENDADA',
+      'INSTRUCAO', 'JULGAMENTO', 'RECURSO', 'TRANSITADO', 'EXECUCAO', 'ENCERRADO',
     ];
 
     const DEFAULT_DJEN_PROMPT = `Você é um assistente jurídico especializado em análise de publicações do DJEN (Diário da Justiça Eletrônico) brasileiro. Analise a publicação e retorne um JSON com os campos abaixo. Extraia as informações DIRETAMENTE do texto da publicação quando disponíveis — não invente dados.
@@ -708,11 +761,12 @@ Campos de extração (null se não encontrado no texto):
 - juizo: string | null (vara, juízo ou tribunal onde tramita)
 - area_juridica: string | null (ex: "Trabalhista", "Cível", "Previdenciário", "Criminal", "Consumidor", "Família", "Tributário")
 - valor_causa: string | null (valor da causa se mencionado, formato "R$ X.XXX,XX")
-- data_audiencia: string | null (data e hora da audiência/sessão se mencionada NO TEXTO, formato ISO "YYYY-MM-DDTHH:MM:00", null se não for publicação de audiência — EXTRAIA DO TEXTO, não invente)
+- data_audiencia: string | null (data e hora da audiência/sessão/perícia se mencionada EXPLICITAMENTE NO TEXTO, formato ISO "YYYY-MM-DDTHH:MM:00". IMPORTANTE: se a publicação for de perícia previdenciária (INSS) e não constar data no texto, retorne null — NÃO calcule nem invente data. Retorne null também se não for publicação de audiência ou perícia.)
 - data_prazo: string | null (data limite do prazo processual se mencionada NO TEXTO, formato ISO "YYYY-MM-DDTHH:MM:00", null se não houver prazo com data explícita)
 
-Critérios de urgência: URGENTE = citação/intimação com prazo curto (≤15 dias), sentença, audiência marcada. NORMAL = contestação, manifestação, despacho de rotina. BAIXA = distribuição, informativo, arquivamento.
-Critérios de estágio: citação→CITACAO, contestação→CONTESTACAO, réplica→REPLICA, audiência/instrução→INSTRUCAO, sentença/julgamento→JULGAMENTO, recurso→RECURSO, trânsito em julgado→TRANSITADO, execução→EXECUCAO, distribuição→DISTRIBUIDO, encerramento/extinção→ENCERRADO.`;
+Critérios de urgência: URGENTE = citação/intimação com prazo curto (≤15 dias), sentença, audiência marcada, perícia designada. NORMAL = contestação, manifestação, despacho de rotina. BAIXA = distribuição, informativo, arquivamento.
+Critérios de estágio: citação→CITACAO, contestação→CONTESTACAO, réplica→REPLICA, perícia/laudo/perito designado→PERICIA_AGENDADA, audiência/instrução→INSTRUCAO, sentença/julgamento→JULGAMENTO, recurso→RECURSO, trânsito em julgado→TRANSITADO, execução→EXECUCAO, distribuição→DISTRIBUIDO, encerramento/extinção→ENCERRADO.
+Critérios de event_type: use AUDIENCIA apenas se houver data/hora explícita no texto para audiência ou sessão. Para perícia sem data explícita no texto use TAREFA. Para prazos com data explícita use PRAZO. Nos demais casos use TAREFA.`;
 
     // Usa prompt customizado do banco (se existir) ou o prompt padrão
     const customPrompt = await this.settings.getDjenPrompt();
@@ -780,7 +834,8 @@ ${pub.conteudo.slice(0, 2000)}`;
       tarefa_titulo: parsed.tarefa_titulo || 'Verificar publicação DJEN',
       tarefa_descricao: parsed.tarefa_descricao || '',
       orientacoes: parsed.orientacoes || '',
-      event_type: (['AUDIENCIA', 'PRAZO', 'TAREFA'].includes(parsed.event_type) ? parsed.event_type : 'TAREFA') as 'AUDIENCIA' | 'PRAZO' | 'TAREFA',
+      // Sem processo vinculado: não sugerir criação de eventos de audiência/prazo
+      event_type: (!hasLinkedCase ? 'TAREFA' : (['AUDIENCIA', 'PRAZO', 'TAREFA'].includes(parsed.event_type) ? parsed.event_type : 'TAREFA')) as 'AUDIENCIA' | 'PRAZO' | 'TAREFA',
       model_used: configuredModel,
       // Dados extraídos
       parte_autora: parsed.parte_autora || null,
@@ -791,6 +846,17 @@ ${pub.conteudo.slice(0, 2000)}`;
       data_audiencia: parsed.data_audiencia || null,
       data_prazo: parsed.data_prazo || null,
     };
+
+    // Persistir parte_autora e parte_rea na publicação para matching futuro com leads
+    if (result.parte_autora || result.parte_rea) {
+      await this.prisma.djenPublication.update({
+        where: { id },
+        data: {
+          parte_autora: result.parte_autora || null,
+          parte_rea: result.parte_rea || null,
+        },
+      }).catch(e => this.logger.warn(`[DJEN] Falha ao salvar partes na publicação ${id}: ${e.message}`));
+    }
 
     // Salva insights da análise na memória do lead para enriquecer contexto futuro da IA
     const leadId = (pub.legal_case as any)?.lead?.id;
@@ -852,5 +918,113 @@ ${pub.conteudo.slice(0, 2000)}`;
       });
     }
     this.logger.log(`[DJEN] Análise salva na memória do lead ${leadId}`);
+  }
+
+  // ─── Suggest Leads — Match automático por nome das partes ─────────────────
+
+  /**
+   * Busca leads cujos nomes correspondam às partes (autora/ré) da publicação.
+   * Usa tokenização + unaccent do PostgreSQL para matching robusto de nomes brasileiros.
+   */
+  async suggestLeads(publicationId: string, tenantId?: string): Promise<{
+    autora: { id: string; name: string; phone: string; is_client: boolean; score: number }[];
+    rea: { id: string; name: string; phone: string; is_client: boolean; score: number }[];
+    parte_autora: string | null;
+    parte_rea: string | null;
+  }> {
+    const pub = await this.prisma.djenPublication.findUnique({
+      where: { id: publicationId },
+      select: { parte_autora: true, parte_rea: true },
+    });
+    if (!pub) throw new NotFoundException('Publicação não encontrada.');
+
+    const parteAutora = pub.parte_autora || null;
+    const parteRea = pub.parte_rea || null;
+
+    // Se não há partes extraídas, retorna vazio
+    if (!parteAutora && !parteRea) {
+      return { autora: [], rea: [], parte_autora: null, parte_rea: null };
+    }
+
+    const PARTICLES = new Set(['de', 'da', 'do', 'dos', 'das', 'e', 'em', 'a', 'o', 'as', 'os']);
+
+    const tokenize = (name: string): string[] => {
+      return name
+        .toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+        .split(/\s+/)
+        .filter(t => t.length > 1 && !PARTICLES.has(t));
+    };
+
+    const searchByTokens = async (tokens: string[]): Promise<{ id: string; name: string; phone: string; is_client: boolean; score: number }[]> => {
+      if (tokens.length === 0) return [];
+
+      // Montar cláusulas CASE para scoring e WHERE para filtro
+      const caseClauses = tokens.map((_, i) => `CASE WHEN unaccent(lower("name")) ILIKE $${i + 2} THEN 1 ELSE 0 END`).join(' + ');
+      const whereClauses = tokens.map((_, i) => `unaccent(lower("name")) ILIKE $${i + 2}`).join(' OR ');
+      const params: any[] = [tenantId || null, ...tokens.map(t => `%${t}%`)];
+
+      const sql = `
+        SELECT id, name, phone, is_client, (${caseClauses}) as score
+        FROM "Lead"
+        WHERE (CASE WHEN $1::text IS NOT NULL THEN tenant_id = $1 ELSE TRUE END)
+          AND name IS NOT NULL
+          AND length(name) > 2
+          AND (${whereClauses})
+        ORDER BY score DESC, is_client DESC
+        LIMIT 5
+      `;
+
+      try {
+        const rows: any[] = await (this.prisma as any).$queryRawUnsafe(sql, ...params);
+        return rows.map(r => ({
+          id: r.id,
+          name: r.name,
+          phone: r.phone,
+          is_client: r.is_client,
+          score: Number(r.score),
+        }));
+      } catch (e) {
+        // Se unaccent não está disponível, fallback sem acentos
+        this.logger.warn(`[DJEN] suggestLeads SQL falhou (extensão unaccent pode não existir): ${e.message}`);
+        return this.fallbackSearchByTokens(tokens, tenantId);
+      }
+    };
+
+    const [autora, rea] = await Promise.all([
+      parteAutora ? searchByTokens(tokenize(parteAutora)) : Promise.resolve([]),
+      parteRea ? searchByTokens(tokenize(parteRea)) : Promise.resolve([]),
+    ]);
+
+    return { autora, rea, parte_autora: parteAutora, parte_rea: parteRea };
+  }
+
+  /** Fallback caso a extensão unaccent do PostgreSQL não esteja instalada */
+  private async fallbackSearchByTokens(tokens: string[], tenantId?: string): Promise<{ id: string; name: string; phone: string; is_client: boolean; score: number }[]> {
+    if (tokens.length === 0) return [];
+
+    const caseClauses = tokens.map((_, i) => `CASE WHEN lower("name") ILIKE $${i + 2} THEN 1 ELSE 0 END`).join(' + ');
+    const whereClauses = tokens.map((_, i) => `lower("name") ILIKE $${i + 2}`).join(' OR ');
+    const params: any[] = [tenantId || null, ...tokens.map(t => `%${t}%`)];
+
+    const sql = `
+      SELECT id, name, phone, is_client, (${caseClauses}) as score
+      FROM "Lead"
+      WHERE (CASE WHEN $1::text IS NOT NULL THEN tenant_id = $1 ELSE TRUE END)
+        AND name IS NOT NULL
+        AND length(name) > 2
+        AND (${whereClauses})
+      ORDER BY score DESC, is_client DESC
+      LIMIT 5
+    `;
+
+    const rows: any[] = await (this.prisma as any).$queryRawUnsafe(sql, ...params);
+    return rows.map(r => ({
+      id: r.id,
+      name: r.name,
+      phone: r.phone,
+      is_client: r.is_client,
+      score: Number(r.score),
+    }));
   }
 }
