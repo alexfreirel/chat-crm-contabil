@@ -208,6 +208,14 @@ export class SettingsService {
     await this.set('DJEN_SYSTEM_PROMPT', prompt);
   }
 
+  async getDjenNotifyTemplate(): Promise<string | null> {
+    return this.get('DJEN_CLIENT_NOTIFY_TEMPLATE');
+  }
+
+  async setDjenNotifyTemplate(template: string): Promise<void> {
+    await this.set('DJEN_CLIENT_NOTIFY_TEMPLATE', template);
+  }
+
   async getAdminBotEnabled(): Promise<boolean> {
     const val = await this.get('ADMIN_BOT_ENABLED');
     return val !== 'false'; // padrão: habilitado
