@@ -299,7 +299,7 @@ export default function AgenteFiscalPage() {
   const MesInput = () => (
     <input
       type="month"
-      className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"
+      className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-white focus:border-primary focus:ring-1 focus:ring-primary [color-scheme:dark]"
       value={selectedMes}
       onChange={e => setSelectedMes(e.target.value)}
     />
@@ -477,7 +477,7 @@ export default function AgenteFiscalPage() {
               {empresas.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground text-sm">Nenhuma empresa cadastrada</div>
               ) : (
-                <div className="max-h-[400px] overflow-y-auto">
+                <div className="max-h-[400px] overflow-y-auto scrollbar-thin">
                 <table className="w-full">
                   <thead className="sticky top-0 bg-card z-10">
                     <tr className="text-[11px] uppercase tracking-wider text-muted-foreground">
@@ -537,7 +537,7 @@ export default function AgenteFiscalPage() {
                     <Download size={14} /> Baixar Todos (ZIP)
                   </a>
                 </div>
-                <div className="max-h-[350px] overflow-y-auto">
+                <div className="max-h-[350px] overflow-y-auto scrollbar-thin">
                   <table className="w-full">
                     <thead className="sticky top-0 bg-card z-10">
                       <tr className="text-[11px] uppercase tracking-wider text-muted-foreground">
@@ -655,7 +655,7 @@ export default function AgenteFiscalPage() {
               {empresas.length === 0 ? (
                 <div className="p-12 text-center text-muted-foreground text-sm">Nenhuma empresa cadastrada ainda</div>
               ) : (
-                <div className="max-h-[500px] overflow-y-auto">
+                <div className="max-h-[500px] overflow-y-auto scrollbar-thin">
                 <table className="w-full">
                   <thead className="sticky top-0 bg-card z-10">
                     <tr className="text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
