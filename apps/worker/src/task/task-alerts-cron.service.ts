@@ -80,7 +80,7 @@ export class TaskAlertsCronService {
           (task.lead?.name ? `👤 Cliente: ${task.lead.name}\n` : '') +
           (task.legalCase?.case_number ? `📁 Processo: ${task.legalCase.case_number}\n` : '') +
           `\nAcesse o sistema para atualizar o status.\n\n` +
-          `_Alerta automático do CRM Jurídico_`;
+          `_Alerta automático do CRM Contábil_`;
 
         await this.sendWhatsApp(task.user.phone, msg);
         await this.logAlert(task.id, 'TASK_DUE_SOON', task.user.id);
@@ -168,7 +168,7 @@ export class TaskAlertsCronService {
           `${taskList}` +
           (count > 5 ? `\n... e mais ${count - 5} tarefa(s)` : '') +
           `\n\nAcesse o sistema para atualizar.\n\n` +
-          `_Alerta automático do CRM Jurídico_`;
+          `_Alerta automático do CRM Contábil_`;
 
         await this.sendWhatsApp(user.phone, msg);
         await this.logAlert(userId, 'TASK_OVERDUE_BATCH', userId);

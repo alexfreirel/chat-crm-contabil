@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Servidor MCP — CRM Jurídico
+ * Servidor MCP — CRM Contábil
  * Protocolo: Model Context Protocol (MCP) via stdio
  *
  * Variáveis de ambiente necessárias:

@@ -1,5 +1,5 @@
 /**
- * Cliente HTTP para a API REST do CRM Jurídico.
+ * Cliente HTTP para a API REST do CRM Contábil.
  * Autentica via JWT (email + senha) e faz refresh automático em caso de 401.
  */
 

@@ -257,7 +257,7 @@ export class AdminBotService implements OnModuleInit, OnModuleDestroy {
       timeZone: 'America/Sao_Paulo',
     });
 
-    return `Você é o assistente administrativo do CRM Jurídico — acessível via WhatsApp pelo administrador.
+    return `Você é o assistente administrativo do CRM Contábil — acessível via WhatsApp pelo administrador.
 
 📅 Hoje: ${dateStr} às ${timeStr} (Horário de Brasília)
 

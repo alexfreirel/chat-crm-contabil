@@ -64,7 +64,7 @@ function templateAdvogado(event: any, minutesBefore: number): string {
       `📅 *Data/Hora:* ${dateStr}\n` +
       (event.location ? `📍 *Local:* ${event.location}\n` : '') +
       (event.lead?.name ? `👤 *Cliente:* ${event.lead.name}\n` : '') +
-      `\n_Lembrete automático do CRM Jurídico_`
+      `\n_Lembrete automático do CRM Contábil_`
     );
   }
   if (tipo === 'PERICIA') {
@@ -76,7 +76,7 @@ function templateAdvogado(event: any, minutesBefore: number): string {
       (event.location ? `📍 *Local:* ${event.location}\n` : '') +
       (event.lead?.name ? `👤 *Cliente:* ${event.lead.name}\n` : '') +
       (event.description ? `📝 *Obs:* ${event.description}\n` : '') +
-      `\n_Lembrete automático do CRM Jurídico_`
+      `\n_Lembrete automático do CRM Contábil_`
     );
   }
   if (tipo === 'PRAZO') {
@@ -86,11 +86,11 @@ function templateAdvogado(event: any, minutesBefore: number): string {
       `📋 *Prazo:* ${event.title}\n` +
       `📅 *Vencimento:* ${dateStr}\n` +
       (caseNum ? `🔢 *Processo:* ${caseNum}\n` : '') +
-      `\n_Lembrete automático do CRM Jurídico_`
+      `\n_Lembrete automático do CRM Contábil_`
     );
   }
   return (
-    `📅 *Lembrete — ${prazo} antes*\n\nOlá, ${advNome}!\n\n*${event.title}*\n📅 ${dateStr}\n\n_Lembrete automático do CRM Jurídico_`
+    `📅 *Lembrete — ${prazo} antes*\n\nOlá, ${advNome}!\n\n*${event.title}*\n📅 ${dateStr}\n\n_Lembrete automático do CRM Contábil_`
   );
 }
 
