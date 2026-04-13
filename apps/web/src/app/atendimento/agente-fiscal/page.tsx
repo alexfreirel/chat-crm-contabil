@@ -6,7 +6,7 @@ import {
   Building2, Download, BarChart3, Receipt, DollarSign, Plus,
   Play, Printer, Trash2, Pencil, X, ChevronDown, Loader2,
   Search, FileText, AlertCircle, CheckCircle2, Info,
-  Sparkles, Terminal, FolderOpen, Save,
+  Sparkles, Terminal, FolderOpen, Save, HardDrive,
 } from 'lucide-react';
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -52,6 +52,10 @@ export default function AgenteFiscalPage() {
   const [savedCount, setSavedCount] = useState(0);
   const dirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+
+  // ── Períodos armazenados ────────────────────────────────────────────
+  const [periodos, setPeriodos] = useState<{ mes: string; arquivos: number; empresas: number; tamanho_mb: number }[]>([]);
+  const [loadingPeriodos, setLoadingPeriodos] = useState(false);
 
   // ── Terminal output ─────────────────────────────────────────────────
   const [termLines, setTermLines] = useState<string[]>([]);
@@ -349,6 +353,33 @@ export default function AgenteFiscalPage() {
     fetchEmpresas();
   };
 
+  // ── Períodos (armazenamento VPS) ─────────────────────────────────────
+  const fetchPeriodos = async () => {
+    setLoadingPeriodos(true);
+    try {
+      const res = await fetch(`${AGENT_API}/api/periodos`);
+      if (res.ok) {
+        const data = await res.json();
+        setPeriodos(data.periodos || []);
+      }
+    } catch { /* silent */ }
+    finally { setLoadingPeriodos(false); }
+  };
+
+  const deletePeriodo = async (mes: string, arquivos: number) => {
+    if (!confirm(`Apagar ${arquivos} arquivo(s) do periodo ${mes}? Nao pode ser desfeito.`)) return;
+    try {
+      const res = await fetch(`${AGENT_API}/api/periodos/${mes}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) {
+        toast(`Periodo ${mes} apagado (${data.arquivos_removidos} arquivos)`, 'ok');
+        fetchPeriodos();
+      } else {
+        toast(data.error || 'Erro ao apagar', 'err');
+      }
+    } catch { toast('Agente offline', 'err'); }
+  };
+
   // ── Format helpers ──────────────────────────────────────────────────
   const fmtCnpj = (c: string) => {
     const d = c.replace(/\D/g, '');
@@ -583,6 +614,48 @@ export default function AgenteFiscalPage() {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* Armazenamento VPS */}
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+                <h3 className="text-xs font-semibold text-foreground flex items-center gap-2">
+                  <HardDrive size={14} className="text-primary" /> Armazenamento VPS
+                </h3>
+                <button onClick={fetchPeriodos} className="text-[10px] text-primary hover:underline font-medium">
+                  {loadingPeriodos ? 'Carregando...' : 'Atualizar'}
+                </button>
+              </div>
+              {periodos.length === 0 ? (
+                <div className="p-4 text-center">
+                  <button onClick={fetchPeriodos} disabled={loadingPeriodos} className="text-xs text-muted-foreground hover:text-foreground">
+                    {loadingPeriodos ? 'Carregando...' : 'Clique para ver periodos armazenados'}
+                  </button>
+                </div>
+              ) : (
+                <div className="p-2 space-y-1">
+                  {periodos.map(p => (
+                    <div key={p.mes} className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-muted/30">
+                      <div className="flex items-center gap-3">
+                        <div className="w-7 h-7 rounded-md bg-blue-500/10 flex items-center justify-center text-blue-400 text-xs font-bold">
+                          {p.mes.split('-')[1]}
+                        </div>
+                        <div>
+                          <div className="text-xs font-medium text-foreground">{p.mes}</div>
+                          <div className="text-[10px] text-muted-foreground">{p.arquivos} arquivo(s) &middot; {p.empresas} empresa(s) &middot; {p.tamanho_mb} MB</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => deletePeriodo(p.mes, p.arquivos)}
+                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400"
+                        title={`Apagar periodo ${p.mes}`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

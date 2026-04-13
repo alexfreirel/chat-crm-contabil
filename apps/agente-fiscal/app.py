@@ -490,6 +490,50 @@ def baixar_zip(mes):
     )
 
 
+# ── API: Gerenciar períodos (listar / apagar) ─────────────────────────────────
+
+@app.route("/api/periodos")
+def listar_periodos():
+    """Lista todos os períodos (meses) que têm relatórios baixados."""
+    downloads = BASE_DIR / "downloads"
+    if not downloads.exists():
+        return jsonify({"periodos": []})
+
+    periodos = []
+    for pasta in sorted(downloads.iterdir(), reverse=True):
+        if pasta.is_dir() and len(pasta.name) >= 7:
+            pdfs = list(pasta.rglob("*.pdf"))
+            total_bytes = sum(f.stat().st_size for f in pdfs)
+            empresas = set()
+            for f in pdfs:
+                rel = f.relative_to(pasta)
+                if len(rel.parts) > 1:
+                    empresas.add(rel.parts[0])
+            periodos.append({
+                "mes": pasta.name,
+                "arquivos": len(pdfs),
+                "empresas": len(empresas),
+                "tamanho_mb": round(total_bytes / (1024 * 1024), 1),
+            })
+    return jsonify({"periodos": periodos})
+
+
+@app.route("/api/periodos/<mes>", methods=["DELETE"])
+def apagar_periodo(mes):
+    """Apaga todos os relatórios de um período (mês)."""
+    import shutil
+    download_dir = BASE_DIR / "downloads" / mes
+    if not download_dir.exists():
+        return jsonify({"error": f"Período {mes} não encontrado"}), 404
+
+    # Conta antes de apagar
+    pdfs = list(download_dir.rglob("*.pdf"))
+    total = len(pdfs)
+
+    shutil.rmtree(download_dir)
+    return jsonify({"ok": True, "mes": mes, "arquivos_removidos": total})
+
+
 # ── Entrada ────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
