@@ -69,7 +69,10 @@ def carregar_empresas() -> list[Empresa]:
     Carrega a lista de empresas de empresas.json.
     Se o arquivo não existir, usa as variáveis de ambiente do .env como fallback.
     """
-    caminho = BASE_DIR / "empresas.json"
+    _data_dir = Path(os.environ.get("EMPRESAS_DATA_DIR", str(BASE_DIR)))
+    caminho = _data_dir / "empresas.json"
+    if not caminho.exists():
+        caminho = BASE_DIR / "empresas.json"
     if caminho.exists():
         dados = json.loads(caminho.read_text(encoding="utf-8"))
         empresas = [Empresa(**d) for d in dados]
