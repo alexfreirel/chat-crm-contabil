@@ -227,6 +227,13 @@ export default function AgenteFiscalPage() {
     fetchEmpresas();
   };
 
+  const deleteAllEmpresas = async () => {
+    if (!confirm(`Excluir TODAS as ${empresas.length} empresas? Esta acao nao pode ser desfeita.`)) return;
+    await fetch(`${AGENT_API}/api/empresas/todas`, { method: 'DELETE' });
+    toast('Todas as empresas foram excluidas', 'info');
+    fetchEmpresas();
+  };
+
   // ── Format helpers ──────────────────────────────────────────────────
   const fmtCnpj = (c: string) => {
     const d = c.replace(/\D/g, '');
@@ -438,7 +445,7 @@ export default function AgenteFiscalPage() {
             <div className="bg-card border border-border rounded-xl overflow-hidden">
               <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
                 <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                  <Building2 size={15} className="text-primary" /> Empresas Cadastradas
+                  <Building2 size={15} className="text-primary" /> Empresas Cadastradas ({empresas.length})
                 </h3>
                 <button onClick={() => { setActiveTab('empresas'); setTimeout(openAddModal, 100); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90">
                   <Plus size={14} /> Adicionar
@@ -447,8 +454,9 @@ export default function AgenteFiscalPage() {
               {empresas.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground text-sm">Nenhuma empresa cadastrada</div>
               ) : (
+                <div className="max-h-[400px] overflow-y-auto">
                 <table className="w-full">
-                  <thead>
+                  <thead className="sticky top-0 bg-card z-10">
                     <tr className="text-[11px] uppercase tracking-wider text-muted-foreground">
                       <th className="px-5 py-3 text-left font-semibold">Nome</th>
                       <th className="px-5 py-3 text-left font-semibold">CNPJ</th>
@@ -465,6 +473,7 @@ export default function AgenteFiscalPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
           </div>
@@ -551,17 +560,25 @@ export default function AgenteFiscalPage() {
         {activeTab === 'empresas' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold flex items-center gap-2"><Building2 size={15} className="text-primary" /> Gerenciar Empresas</h3>
-              <button onClick={openAddModal} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90">
-                <Plus size={14} /> Adicionar Empresa
-              </button>
+              <h3 className="text-sm font-semibold flex items-center gap-2"><Building2 size={15} className="text-primary" /> Gerenciar Empresas ({empresas.length})</h3>
+              <div className="flex items-center gap-2">
+                {empresas.length > 0 && (
+                  <button onClick={deleteAllEmpresas} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-xs font-medium hover:bg-red-500/20">
+                    <Trash2 size={14} /> Excluir Todas
+                  </button>
+                )}
+                <button onClick={openAddModal} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90">
+                  <Plus size={14} /> Adicionar Empresa
+                </button>
+              </div>
             </div>
             <div className="bg-card border border-border rounded-xl overflow-hidden">
               {empresas.length === 0 ? (
                 <div className="p-12 text-center text-muted-foreground text-sm">Nenhuma empresa cadastrada ainda</div>
               ) : (
+                <div className="max-h-[500px] overflow-y-auto">
                 <table className="w-full">
-                  <thead>
+                  <thead className="sticky top-0 bg-card z-10">
                     <tr className="text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
                       <th className="px-5 py-3 text-left font-semibold">#</th>
                       <th className="px-5 py-3 text-left font-semibold">Nome</th>
@@ -587,6 +604,7 @@ export default function AgenteFiscalPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
           </div>
