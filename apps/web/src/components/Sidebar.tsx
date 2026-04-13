@@ -9,6 +9,7 @@ import {
   LayoutDashboard, Gavel, Wallet, HelpCircle,
   ChevronRight, Plus, UserPlus, CheckSquare,
   CalendarPlus, FolderPlus, ClipboardList, Sparkles,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { API_BASE_URL } from '@/lib/api';
@@ -315,6 +316,13 @@ export function Sidebar() {
       match: (p) => p.startsWith('/atendimento/manual'),
       show: true,
     },
+    agenteFiscal: {
+      label: 'Agente Fiscal SEFAZ',
+      href: '/atendimento/agente-fiscal',
+      icon: <FileSpreadsheet size={20} strokeWidth={2} />,
+      match: (p) => p.startsWith('/atendimento/agente-fiscal'),
+      show: true,
+    },
     settings: {
       label: 'Configurações',
       href: '/atendimento/settings',
@@ -331,9 +339,9 @@ export function Sidebar() {
       items: [allItems.dashboard, allItems.inbox, allItems.crm, allItems.contacts, allItems.agenda].filter(i => i.show),
     },
     {
-      id: 'juridico',
-      label: 'Jurídico',
-      items: [allItems.estagiario, allItems.advogado, allItems.processos, allItems.djen].filter(i => i.show),
+      id: 'contabil',
+      label: 'Serviços Contábeis',
+      items: [allItems.agenteFiscal].filter(i => i.show),
     },
     {
       id: 'gestao',
