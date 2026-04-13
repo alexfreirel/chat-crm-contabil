@@ -9,6 +9,7 @@ RUN npm install --legacy-peer-deps
 ARG APP
 RUN npm run db:generate -w @crm/shared
 RUN cd packages/shared && npm run build
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN cd apps/${APP} && npm run build
 
 FROM base AS runner
