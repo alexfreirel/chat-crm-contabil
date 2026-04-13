@@ -93,11 +93,11 @@ Leads que não avançam vão para PERDIDO (com motivo obrigatório).`,
         title: '2.2 SDR Sophia — Primeiro contato',
         body: `A Sophia SDR é o primeiro agente que atende. Ela:
 • Pede o nome do lead
-• Entende qual é o problema (de forma geral)
-• Identifica a área do direito (Trabalhista, Consumidor, Família, etc.)
-• Gera um resumo do caso
+• Entende qual é a necessidade (de forma geral)
+• Identifica a área contábil (Fiscal, Contábil, Departamento Pessoal, etc.)
+• Gera um resumo da demanda
 
-Ela NÃO dá orientação jurídica, NÃO analisa viabilidade e NÃO agenda reuniões.
+Ela NÃO dá orientação contábil/fiscal, NÃO analisa viabilidade e NÃO agenda reuniões.
 
 Quando identifica nome + área, o lead avança para QUALIFICANDO e a conversa é transferida silenciosamente para o Especialista daquela área (o lead não percebe a troca).`,
       },
@@ -483,7 +483,7 @@ O sistema rastreia parcelas, pagamentos recebidos e gera relatórios financeiros
         body: `Em Configurações > IA você gerencia:
 
 • Modelo — Qual LLM usar (Claude, GPT-4, etc.)
-• Skills — Os "especialistas" da Sophia (SDR, Trabalhista, Consumidor, etc.)
+• Skills — Os "especialistas" da Sophia (SDR, Fiscal, Contábil, Depto Pessoal, etc.)
 • Referências — Documentos que a IA consulta para responder (persona, funil, investigação)
 • Temperatura — Criatividade das respostas (0.0 = preciso, 1.0 = criativo)
 • Voz TTS — Se ativado, Sophia responde por áudio quando o lead envia áudio
