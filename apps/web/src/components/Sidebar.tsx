@@ -336,17 +336,12 @@ export function Sidebar() {
     {
       id: 'principal',
       label: 'Principal',
-      items: [allItems.dashboard, allItems.inbox, allItems.crm, allItems.contacts, allItems.agenda].filter(i => i.show),
+      items: [allItems.dashboard, allItems.inbox, allItems.crm, allItems.contacts, allItems.agenda, allItems.agenteFiscal].filter(i => i.show),
     },
     {
       id: 'juridico',
       label: 'Jurídico',
       items: [allItems.estagiario, allItems.advogado].filter(i => i.show),
-    },
-    {
-      id: 'contabil',
-      label: 'Serviços Contábeis',
-      items: [allItems.agenteFiscal].filter(i => i.show),
     },
     {
       id: 'gestao',
