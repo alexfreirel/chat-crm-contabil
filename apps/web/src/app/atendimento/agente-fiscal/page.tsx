@@ -417,7 +417,7 @@ export default function AgenteFiscalPage() {
   const MesInput = () => (
     <input
       type="month"
-      className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-white focus:border-primary focus:ring-1 focus:ring-primary [color-scheme:dark]"
+      className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"
       value={selectedMes}
       onChange={e => setSelectedMes(e.target.value)}
     />
