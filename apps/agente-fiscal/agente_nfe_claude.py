@@ -45,20 +45,12 @@ API_COBRANCA_LISTA  = f"{BASE_COBRANCA_DFE}/sfz-cobranca-dfe-api/api/cobranca-nf
 API_CONSOLIDAR_DAR  = f"{BASE_COBRANCA_DFE}/cobranca-dfe-obrigacao-api/api/consolidacao/consolidar-cobrancas"
 API_EMITIR_DAR      = f"{BASE_COBRANCA_DFE}/cobranca-dfe-obrigacao-api/api/dar/emitir/consolidacoes"
 
-# Grupos de receitas por tipo de imposto
+# Um DAR por aba do portal (sem ANTEF — suas receitas já estão nos outros grupos)
 GRUPOS_IMPOSTOS = [
-    {
-        "nome": "ICMS-FECOEP",
-        "label": "DIFAL / ANTECIPADO / ST EMITENTE / ANTEF",
-        "receitas": [1220, 1546],
-        "arquivo": "impostos-icms-fecoep-{mes}.pdf",
-    },
-    {
-        "nome": "SUBSTITUICAO-TRIBUTARIA",
-        "label": "Substituição Tributária",
-        "receitas": [1315, 1814, 1813, 1758, 1812],
-        "arquivo": "impostos-st-{mes}.pdf",
-    },
+    {"label": "DIFAL",                    "receitas": [1538, 2125, 1756, 2127],       "arquivo": "dar-difal-{mes}.pdf"},
+    {"label": "Antecipado",               "receitas": [1220, 1546],                   "arquivo": "dar-antecipado-{mes}.pdf"},
+    {"label": "Substituição Tributária",  "receitas": [1315, 1814, 1813, 1758, 1812], "arquivo": "dar-st-{mes}.pdf"},
+    {"label": "ST Emitente",              "receitas": [1769, 1760, 2058],             "arquivo": "dar-st-emitente-{mes}.pdf"},
 ]
 
 # ── Cache de endpoints descobertos ────────────────────────────────────────────
@@ -785,9 +777,55 @@ def _consolidar_e_emitir_dar(
     return None
 
 
+def _gerar_relatorio_cobrancas(cobrancas: list[dict], label: str, empresa_nome: str, cnpj: str) -> str:
+    """
+    Gera relatório texto das cobranças listadas, igual à tabela do portal.
+    Colunas: Nº Documento | Emissão | Vencimento | Competência | Tipo de Imposto | Valor | Situação
+    """
+    linhas = []
+    linhas.append("=" * 120)
+    linhas.append(f"  RELATÓRIO DE COBRANÇAS — {label}")
+    linhas.append(f"  Empresa: {empresa_nome}  |  CNPJ: {cnpj}")
+    linhas.append(f"  Data: {date.today().strftime('%d/%m/%Y')}")
+    linhas.append("=" * 120)
+    linhas.append("")
+
+    hdr = f"{'Nº Documento':<18} {'Emissão':<12} {'Vencimento':<12} {'Competência':<13} {'Tipo de Imposto':<30} {'Valor':>12} {'Situação':<12}"
+    linhas.append(hdr)
+    linhas.append("-" * 120)
+
+    total_valor = 0.0
+
+    for cob in cobrancas:
+        resumo = cob.get("resumo", cob)
+        num_nfe = resumo.get("numNfe") or resumo.get("numeroDocumento") or resumo.get("numDocumento") or ""
+        num_doc = f"NF-e {num_nfe}" if num_nfe else str(resumo.get("seqObrigacao", ""))
+        emissao = resumo.get("dataEmissao") or resumo.get("emissao") or ""
+        vencimento = resumo.get("dataVencimento") or resumo.get("vencimento") or ""
+        competencia = resumo.get("competencia") or resumo.get("mesAnoCompetencia") or ""
+        tipo_imposto = resumo.get("nomeReceita") or resumo.get("tipoImposto") or resumo.get("descricaoReceita") or ""
+        situacao = resumo.get("descricaoSituacaoObrigacao") or resumo.get("situacao") or ""
+        valor = resumo.get("valorPrincipal") or resumo.get("valor") or 0
+        try:
+            valor = float(valor)
+        except (ValueError, TypeError):
+            valor = 0.0
+        total_valor += valor
+        valor_fmt = f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        linha = f"{num_doc:<18} {str(emissao):<12} {str(vencimento):<12} {str(competencia):<13} {tipo_imposto:<30} {valor_fmt:>12} {situacao:<12}"
+        linhas.append(linha)
+
+    linhas.append("-" * 120)
+    total_fmt = f"R$ {total_valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    linhas.append(f"{'TOTAL':<18} {'':<12} {'':<12} {'':<13} {f'{len(cobrancas)} cobrança(s)':<30} {total_fmt:>12}")
+    linhas.append("=" * 120)
+    linhas.append("")
+    return "\n".join(linhas)
+
+
 def _baixar_impostos_empresa(empresa: Empresa) -> dict:
     """
-    Baixa DARs de impostos (DIFAL, ANTECIPADO, ST, ST EMITENTE, ANTEF)
+    Baixa DARs de impostos (DIFAL, ANTECIPADO, ST, ST EMITENTE)
     do módulo Cobrança DF-e da SEFAZ para a empresa.
 
     Para cada grupo de impostos em GRUPOS_IMPOSTOS:
@@ -795,7 +833,7 @@ def _baixar_impostos_empresa(empresa: Empresa) -> dict:
       2. Consolida e emite DAR em PDF
 
     Filtros:
-      - Competência: ano corrente inteiro (01/YYYY a 12/YYYY)
+      - Competência: mês selecionado pelo usuário
       - Situação: Em Aberto
     """
     resultado = {"ok": [], "falha": []}
@@ -808,22 +846,27 @@ def _baixar_impostos_empresa(empresa: Empresa) -> dict:
 
     sess, token = login
 
-    # Competência: ano corrente (formato MM/YYYY)
-    hoje = date.today()
-    comp_ini = f"01/{hoje.year}"
-    comp_fim = f"{hoje.month:02d}/{hoje.year}"
+    # Competência: mês selecionado pelo usuário
+    comp_ini = f"{config.MES_NUM:02d}/{config.ANO}"
+    comp_fim = f"{config.MES_NUM:02d}/{config.ANO}"
 
     log.info(f"[{empresa.nome}] Buscando cobranças DF-e...")
     log.info(f"  Competência: {comp_ini} a {comp_fim}")
 
     # Pasta destino: downloads/{mes}/{empresa}/impostos sefaz/
-    mes_str = hoje.strftime("%Y-%m")
+    mes_str = config.MES_STR
     nome_limpo = empresa.nome.replace("/", "-").replace("\\", "-").strip()
     pasta_empresa = f"{nome_limpo} - {empresa.cnpj}"
     pasta = config.DOWNLOAD_DIR / pasta_empresa / "impostos sefaz"
     pasta.mkdir(parents=True, exist_ok=True)
 
-    # Para cada grupo de impostos, buscar e consolidar
+    # Rastrear obrigações já processadas para não duplicar entre grupos
+    obrigacoes_ja_processadas = set()
+
+    # Para cada aba do portal:
+    #   1. Buscar cobranças de CADA receita separadamente
+    #   2. Filtrar detalhes pela receita correta e excluir já processados
+    #   3. Consolidar e emitir UM ÚNICO DAR
     for grupo in GRUPOS_IMPOSTOS:
         label = grupo["label"]
         receitas = grupo["receitas"]
@@ -837,51 +880,107 @@ def _baixar_impostos_empresa(empresa: Empresa) -> dict:
 
         log.info(f"  {label} — receitas {receitas}")
 
-        cobrancas = _listar_cobrancas(
-            sess, empresa.cnpj,
-            comp_ini, comp_fim,
-            receitas,
-        )
+        # Passo 1: Buscar cobranças de todas as receitas do grupo
+        todas_cobrancas = []
+        for rec in receitas:
+            cobs = _listar_cobrancas(sess, empresa.cnpj, comp_ini, comp_fim, [rec])
+            if cobs:
+                log.info(f"    Receita {rec}: {len(cobs)} cobrança(s)")
+                todas_cobrancas.extend(cobs)
 
-        if not cobrancas:
+        if not todas_cobrancas:
             log.info(f"  {label}: nenhuma cobrança em aberto")
             resultado["ok"].append(f"{label} — sem cobranças")
             continue
 
-        # Extrair IDs das obrigações para consolidar
-        # A API retorna objetos com "resumo" e "detalhes".
-        # O ID está em resumo.seqObrigacao
+        # Passo 2: Extrair seqObrigacao dos DETALHES, filtrando APENAS
+        # as receitas que pertencem a este grupo e excluindo já processados.
+        receitas_set = set(receitas)
         obrigacoes_ids = []
-        for cob in cobrancas:
-            # Pode ser objeto com "resumo" ou objeto direto
-            resumo = cob.get("resumo", cob)
-            oid = (
-                resumo.get("seqObrigacao")
-                or resumo.get("id")
-                or resumo.get("idObrigacao")
-                or resumo.get("sequencial")
-                or cob.get("seqObrigacao")
-            )
-            if oid:
-                obrigacoes_ids.append(oid)
+        for cob in todas_cobrancas:
+            detalhes = cob.get("detalhes", [])
+            if detalhes:
+                for d in detalhes:
+                    seq_receita = d.get("seqReceita")
+                    oid = d.get("seqObrigacao")
+                    if (oid and seq_receita in receitas_set
+                            and oid not in obrigacoes_ids
+                            and oid not in obrigacoes_ja_processadas):
+                        obrigacoes_ids.append(oid)
+            else:
+                resumo = cob.get("resumo", cob)
+                oid = resumo.get("seqObrigacao") or resumo.get("id")
+                if (oid and oid not in obrigacoes_ids
+                        and oid not in obrigacoes_ja_processadas):
+                    obrigacoes_ids.append(oid)
 
         if not obrigacoes_ids:
-            log.warning(f"  {label}: cobranças sem IDs de obrigação")
-            log.info(f"  Chaves da cobrança: {list(cobrancas[0].keys()) if cobrancas else '?'}")
-            if cobrancas:
-                resumo = cobrancas[0].get("resumo", cobrancas[0])
-                log.info(f"  Chaves do resumo: {list(resumo.keys())}")
-            resultado["falha"].append(f"{label} — sem IDs")
+            log.info(f"  {label}: nenhuma obrigação pendente")
+            resultado["ok"].append(f"{label} — sem cobranças")
             continue
 
-        log.info(f"  {label}: {len(obrigacoes_ids)} obrigação(ões) — consolidando e emitindo DAR...")
+        log.info(f"  {len(obrigacoes_ids)} obrigação(ões) para consolidar")
 
-        pdf = _consolidar_e_emitir_dar(sess, empresa.cnpj, obrigacoes_ids)
-        if pdf:
-            destino.write_bytes(pdf)
-            log.info(f"  Salvo: {nome_arquivo} ({len(pdf):,} bytes)")
-            resultado["ok"].append(f"{label}")
-        else:
+        # Marcar como processadas
+        obrigacoes_ja_processadas.update(obrigacoes_ids)
+
+        # Gerar relatório (só quando tem cobranças)
+        nome_relatorio = nome_arquivo.replace(".pdf", "-relatorio.txt")
+        destino_relatorio = pasta / nome_relatorio
+        if not destino_relatorio.exists():
+            txt = _gerar_relatorio_cobrancas(todas_cobrancas, label, empresa.nome, empresa.cnpj)
+            destino_relatorio.write_text(txt, encoding="utf-8")
+            log.info(f"  Relatório salvo: {nome_relatorio}")
+
+        # Passo 3: Consolidar TODAS as obrigações de uma vez
+        body_consolidar = {
+            "numeroDocumento": empresa.cnpj,
+            "obrigacoes": obrigacoes_ids,
+            "dataConsolidacao": None,
+        }
+        try:
+            r1 = sess.post(API_CONSOLIDAR_DAR, json=body_consolidar, timeout=(15, 90))
+            log.info(f"  Consolidar: HTTP {r1.status_code} — {len(r1.content)} bytes")
+
+            if r1.status_code != 200:
+                log.warning(f"  Erro consolidar: {r1.text[:300]}")
+                resultado["falha"].append(f"{label}")
+                continue
+
+            consolidacoes = r1.json()
+            ids_consolidacao = []
+            for c in consolidacoes:
+                cid = c.get("sequencialConsolidacao") or c.get("id")
+                desc = c.get("descricaoReceita", "")
+                valor = c.get("total", 0)
+                if cid:
+                    ids_consolidacao.append(cid)
+                    log.info(f"    Consolidação {cid}: {desc} — R$ {valor}")
+
+        except Exception as e:
+            log.error(f"  Erro consolidar: {e}")
+            resultado["falha"].append(f"{label}")
+            continue
+
+        if not ids_consolidacao:
+            log.warning(f"  {label}: nenhuma consolidação gerada")
+            resultado["falha"].append(f"{label}")
+            continue
+
+        # Passo 4: Emitir UM ÚNICO DAR com todas as consolidações juntas
+        log.info(f"  Emitindo DAR com {len(ids_consolidacao)} consolidação(ões)")
+        try:
+            r2 = sess.post(API_EMITIR_DAR, json=ids_consolidacao, timeout=(15, 120))
+            ct = r2.headers.get("Content-Type", "")
+            if r2.status_code == 200 and ("pdf" in ct.lower() or r2.content[:4] == b"%PDF"):
+                destino.write_bytes(r2.content)
+                log.info(f"  Salvo: {nome_arquivo} ({len(r2.content):,} bytes)")
+                resultado["ok"].append(f"{label}")
+            else:
+                log.warning(f"  Emitir DAR: HTTP {r2.status_code} — {r2.text[:200]}")
+                resultado["falha"].append(f"{label}")
+        except Exception as e:
+            log.error(f"  Erro emitir DAR: {e}")
             resultado["falha"].append(f"{label}")
 
     return resultado
