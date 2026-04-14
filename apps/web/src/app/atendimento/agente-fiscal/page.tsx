@@ -259,7 +259,7 @@ export default function AgenteFiscalPage() {
       const res = await fetch(`${AGENT_API}/api/impostos-sefaz`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cnpj: selectedCnpj }),
+        body: JSON.stringify({ cnpj: selectedCnpj, mes: selectedMes }),
       });
       const data = await res.json();
       if (data.task_id) streamTask(data.task_id, true);
@@ -790,10 +790,11 @@ export default function AgenteFiscalPage() {
             <div className="bg-card border border-border rounded-xl p-5 space-y-4 h-fit">
               <h3 className="text-sm font-semibold flex items-center gap-2"><DollarSign size={15} className="text-primary" /> Configurar</h3>
               <div><label className="text-xs font-medium text-muted-foreground block mb-1.5">Empresa</label><EmpresaSelect /></div>
+              <div><label className="text-xs font-medium text-muted-foreground block mb-1.5">Mes de referencia</label><MesInput /></div>
               <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 text-xs text-muted-foreground space-y-0.5">
                 <div className="flex items-center gap-1.5 font-medium text-primary"><Info size={13} /> Filtros automaticos:</div>
-                <div>Competencia: ano corrente</div>
-                <div>Vencimento: mes atual</div>
+                <div>Competencia: {selectedMes || 'mes selecionado'}</div>
+                <div>Vencimento: {selectedMes || 'mes selecionado'}</div>
                 <div>Situacao: Em Aberto</div>
               </div>
               <button onClick={runImpostos} disabled={running} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50">

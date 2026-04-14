@@ -370,12 +370,15 @@ def impostos_sefaz():
     d = request.json or {}
     cnpj = d.get("cnpj", "").strip()
     destino = d.get("destino", "").strip()
+    mes = d.get("mes", "").strip()
 
     cmd = [sys.executable, str(BASE_DIR / "agente_nfe_claude.py"), "--modo", "impostos"]
     if cnpj:
         cmd += ["--cnpj", cnpj]
     if destino:
         cmd += ["--destino", destino]
+    if mes:
+        cmd += ["--mes", mes]
 
     return jsonify({"task_id": _iniciar_tarefa(cmd)})
 
