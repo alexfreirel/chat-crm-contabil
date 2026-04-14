@@ -298,65 +298,27 @@ def run_analitico():
     return jsonify({"task_id": task_id})
 
 
-@app.route("/api/analitico/imprimir", methods=["POST"])
+@app.route("/api/analitico/imprimir", methods=["POST", "GET"])
 def imprimir_analitico():
+    """Retorna o relatório analítico como HTML para impressão no navegador."""
     global _ultimo_analitico
     if not _ultimo_analitico:
         return jsonify({"error": "Nenhum relatório gerado ainda"}), 400
 
-    import tempfile
+    from flask import Response
     txt = _ultimo_analitico
-    try:
-        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as f:
-            f.write(txt)
-            txt_path = f.name
-
-        ps = f"""
-Add-Type -AssemblyName System.Drawing
-$script:idx = 0
-$lines = [System.IO.File]::ReadAllLines('{txt_path.replace(chr(92), "/")}', [System.Text.Encoding]::UTF8)
-$pd = New-Object System.Drawing.Printing.PrintDocument
-$pd.DefaultPageSettings.Landscape = $true
-$pd.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(59, 59, 59, 59)
-$pd.add_PrintPage({{
-    param($s, $e)
-    $font  = New-Object System.Drawing.Font('Courier New', 10)
-    $brush = [System.Drawing.Brushes]::Black
-    $y     = [float]$e.MarginBounds.Top
-    $lh    = $e.Graphics.MeasureString('Ag', $font).Height
-    while ($script:idx -lt $lines.Length) {{
-        if ($y + $lh -gt $e.MarginBounds.Bottom) {{
-            $e.HasMorePages = $true
-            return
-        }}
-        $e.Graphics.DrawString($lines[$script:idx], $font, $brush, [float]$e.MarginBounds.Left, $y)
-        $y += $lh
-        $script:idx++
-    }}
-}})
-$pd.Print()
-"""
-        with tempfile.NamedTemporaryFile("w", suffix=".ps1", delete=False, encoding="utf-8") as f:
-            f.write(ps)
-            ps_path = f.name
-
-        import subprocess as _sp
-        res = _sp.run(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
-             "-WindowStyle", "Hidden", "-File", ps_path],
-            capture_output=True, text=True, timeout=30,
-        )
-        for p in (txt_path, ps_path):
-            try:
-                os.unlink(p)
-            except Exception:
-                pass
-
-        if res.returncode == 0:
-            return jsonify({"ok": True})
-        return jsonify({"error": res.stderr.strip()[:300]}), 500
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    # Escapar HTML e converter para <pre> com estilo de impressão
+    import html as _html
+    escaped = _html.escape(txt)
+    page = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Relatório Analítico</title>
+<style>
+  @media print {{ @page {{ size: landscape; margin: 15mm; }} body {{ margin: 0; }} }}
+  body {{ font-family: 'Courier New', monospace; font-size: 11px; line-height: 1.4; background: #fff; color: #000; padding: 20px; }}
+  pre {{ white-space: pre-wrap; word-wrap: break-word; }}
+</style></head><body><pre>{escaped}</pre>
+<script>window.print();</script></body></html>"""
+    return Response(page, mimetype="text/html")
 
 
 @app.route("/api/parcelamentos/analisar", methods=["POST"])

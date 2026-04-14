@@ -295,13 +295,8 @@ export default function AgenteFiscalPage() {
     } catch { toast('Agente offline', 'err'); }
   };
 
-  const imprimirAnalitico = async () => {
-    try {
-      const res = await fetch(`${AGENT_API}/api/analitico/imprimir`, { method: 'POST' });
-      const data = await res.json();
-      if (data.ok) toast('Enviado para impressora', 'ok');
-      else toast(data.error || 'Erro ao imprimir', 'err');
-    } catch { toast('Agente offline', 'err'); }
+  const imprimirAnalitico = () => {
+    window.open(`${AGENT_API}/api/analitico/imprimir`, '_blank');
   };
 
   // ── Empresa CRUD ────────────────────────────────────────────────────
