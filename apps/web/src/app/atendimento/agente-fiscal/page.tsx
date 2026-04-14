@@ -827,22 +827,114 @@ export default function AgenteFiscalPage() {
 
         {/* ── Impostos ───────────────────────────────────────────────── */}
         {activeTab === 'impostos' && (
-          <div className="grid lg:grid-cols-[360px_1fr] gap-6">
-            <div className="bg-card border border-border rounded-xl p-5 space-y-4 h-fit">
-              <h3 className="text-sm font-semibold flex items-center gap-2"><DollarSign size={15} className="text-primary" /> Configurar</h3>
-              <div><label className="text-xs font-medium text-muted-foreground block mb-1.5">Empresa</label><EmpresaSelect /></div>
-              <div><label className="text-xs font-medium text-muted-foreground block mb-1.5">Mes de referencia</label><MesInput /></div>
-              <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 text-xs text-muted-foreground space-y-0.5">
-                <div className="flex items-center gap-1.5 font-medium text-primary"><Info size={13} /> Filtros automaticos:</div>
-                <div>Competencia: {selectedMes || 'mes selecionado'}</div>
-                <div>Vencimento: {selectedMes || 'mes selecionado'}</div>
-                <div>Situacao: Em Aberto</div>
+          <div className="space-y-6">
+            <div className="grid lg:grid-cols-[360px_1fr] gap-6">
+              <div className="bg-card border border-border rounded-xl p-5 space-y-4 h-fit">
+                <h3 className="text-sm font-semibold flex items-center gap-2"><DollarSign size={15} className="text-primary" /> Configurar</h3>
+                <div><label className="text-xs font-medium text-muted-foreground block mb-1.5">Empresa</label><EmpresaSelect /></div>
+                <div><label className="text-xs font-medium text-muted-foreground block mb-1.5">Mes de referencia</label><MesInput /></div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground block mb-1.5">Salvar em</label>
+                  <button onClick={chooseSaveFolder} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-border bg-card text-sm hover:bg-muted/50 transition-colors">
+                    <FolderOpen size={16} className={selectedFolder ? 'text-emerald-400' : 'text-muted-foreground'} />
+                    <span className={selectedFolder ? 'text-emerald-400 font-medium' : 'text-muted-foreground'}>
+                      {selectedFolder || 'Escolher pasta no computador...'}
+                    </span>
+                  </button>
+                </div>
+                <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 text-xs text-muted-foreground space-y-0.5">
+                  <div className="flex items-center gap-1.5 font-medium text-primary"><Info size={13} /> Filtros automaticos:</div>
+                  <div>Competencia: {selectedMes || 'mes selecionado'}</div>
+                  <div>Vencimento: {selectedMes || 'mes selecionado'}</div>
+                  <div>Situacao: Em Aberto</div>
+                </div>
+                <button onClick={runImpostos} disabled={running} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50">
+                  {running ? <Loader2 size={16} className="animate-spin" /> : <DollarSign size={16} />} Baixar Impostos
+                </button>
               </div>
-              <button onClick={runImpostos} disabled={running} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50">
-                {running ? <Loader2 size={16} className="animate-spin" /> : <DollarSign size={16} />} Baixar Impostos
-              </button>
+              <TerminalOutput title="agente_nfe_claude.py --modo impostos" />
             </div>
-            <TerminalOutput title="agente_nfe_claude.py --modo impostos" />
+
+            {/* Arquivos baixados */}
+            {arquivos.length > 0 && (
+              <div className="bg-card border border-border rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
+                  <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <FileText size={15} className="text-primary" /> Arquivos Baixados ({arquivos.length})
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    {selectedFolder && (
+                      <button
+                        onClick={() => saveFilesToFolder()}
+                        disabled={savingFiles}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
+                      >
+                        {savingFiles ? <><Loader2 size={14} className="animate-spin" /> Salvando {savedCount}/{arquivos.length}...</> : <><Save size={14} /> Salvar na Pasta</>}
+                      </button>
+                    )}
+                    <button
+                      onClick={deleteAllArquivos}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-xs font-medium hover:bg-red-500/20"
+                    >
+                      <Trash2 size={14} /> Excluir Todos
+                    </button>
+                    <a
+                      href={`${AGENT_API}/api/arquivos/${selectedMes}/zip`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90"
+                    >
+                      <Download size={14} /> Baixar ZIP
+                    </a>
+                  </div>
+                </div>
+                <div className="max-h-[350px] overflow-y-auto scrollbar-thin">
+                  <table className="w-full">
+                    <thead className="sticky top-0 bg-card z-10">
+                      <tr className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                        <th className="px-5 py-3 text-left font-semibold">Empresa</th>
+                        <th className="px-5 py-3 text-left font-semibold">Arquivo</th>
+                        <th className="px-5 py-3 text-right font-semibold">Tamanho</th>
+                        <th className="px-5 py-3 text-right font-semibold">Acoes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {arquivos.map((a, i) => (
+                        <tr key={i} className="border-t border-border/50 hover:bg-muted/30">
+                          <td className="px-5 py-2.5 text-xs text-muted-foreground">{a.empresa}</td>
+                          <td className="px-5 py-2.5 text-sm text-foreground font-medium">{a.nome}</td>
+                          <td className="px-5 py-2.5 text-xs text-muted-foreground text-right font-mono">{(a.tamanho / 1024).toFixed(0)} KB</td>
+                          <td className="px-5 py-2.5 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <a
+                                href={`${AGENT_API}/api/arquivos/${selectedMes}/download?path=${encodeURIComponent(a.caminho)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20"
+                              >
+                                <Download size={12} /> Baixar
+                              </a>
+                              <button
+                                onClick={() => deleteArquivo(a.caminho)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-500/10 text-red-400 text-xs font-medium hover:bg-red-500/20"
+                              >
+                                <Trash2 size={12} /> Excluir
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {savingFiles && (
+              <div className="flex items-center gap-2 text-sm text-emerald-400">
+                <Loader2 size={16} className="animate-spin" /> Salvando arquivos na pasta... ({savedCount}/{arquivos.length})
+              </div>
+            )}
           </div>
         )}
 
