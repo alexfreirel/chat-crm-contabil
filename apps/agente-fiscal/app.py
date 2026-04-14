@@ -455,6 +455,50 @@ def baixar_zip(mes):
     )
 
 
+@app.route("/api/arquivos/<mes>/arquivo", methods=["DELETE"])
+def deletar_arquivo(mes):
+    """Exclui um arquivo individual. Query param: path=empresa/relatorio/file.pdf"""
+    rel_path = request.args.get("path", "")
+    if not rel_path:
+        return jsonify({"error": "path é obrigatório"}), 400
+
+    arquivo = (BASE_DIR / "downloads" / mes / rel_path).resolve()
+    download_dir = (BASE_DIR / "downloads" / mes).resolve()
+
+    if not str(arquivo).startswith(str(download_dir)):
+        return jsonify({"error": "Caminho inválido"}), 403
+
+    if not arquivo.exists():
+        return jsonify({"error": "Arquivo não encontrado"}), 404
+
+    arquivo.unlink()
+    return jsonify({"ok": True, "removido": rel_path})
+
+
+@app.route("/api/arquivos/<mes>", methods=["DELETE"])
+def deletar_todos_arquivos(mes):
+    """Exclui todos os arquivos PDFs do mês."""
+    import shutil
+    download_dir = BASE_DIR / "downloads" / mes
+    if not download_dir.exists():
+        return jsonify({"ok": True, "removidos": 0})
+
+    pdfs = list(download_dir.rglob("*.pdf"))
+    count = len(pdfs)
+    for pdf in pdfs:
+        pdf.unlink()
+
+    # Remove subpastas vazias
+    for subdir in sorted(download_dir.rglob("*"), reverse=True):
+        if subdir.is_dir():
+            try:
+                subdir.rmdir()
+            except OSError:
+                pass
+
+    return jsonify({"ok": True, "removidos": count})
+
+
 # ── API: Gerenciar períodos (listar / apagar) ─────────────────────────────────
 
 @app.route("/api/periodos")

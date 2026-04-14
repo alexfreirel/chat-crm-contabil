@@ -160,6 +160,33 @@ export default function AgenteFiscalPage() {
     }
   };
 
+  const deleteArquivo = async (caminho: string) => {
+    if (!confirm(`Excluir o arquivo "${caminho.split('/').pop()}"?`)) return;
+    try {
+      const res = await fetch(`${AGENT_API}/api/arquivos/${selectedMes}/arquivo?path=${encodeURIComponent(caminho)}`, { method: 'DELETE' });
+      if (res.ok) {
+        setArquivos(prev => prev.filter(a => a.caminho !== caminho));
+        toast('Arquivo excluído', 'ok');
+      } else {
+        toast('Erro ao excluir arquivo', 'err');
+      }
+    } catch { toast('Agente offline', 'err'); }
+  };
+
+  const deleteAllArquivos = async () => {
+    if (arquivos.length === 0) return;
+    if (!confirm(`Excluir todos os ${arquivos.length} arquivos do mês ${selectedMes}?`)) return;
+    try {
+      const res = await fetch(`${AGENT_API}/api/arquivos/${selectedMes}`, { method: 'DELETE' });
+      if (res.ok) {
+        setArquivos([]);
+        toast('Todos os arquivos excluídos', 'ok');
+      } else {
+        toast('Erro ao excluir arquivos', 'err');
+      }
+    } catch { toast('Agente offline', 'err'); }
+  };
+
   const fetchArquivos = useCallback(async (mes?: string) => {
     const m = mes || selectedMes;
     setLoadingArquivos(true);
@@ -688,6 +715,12 @@ export default function AgenteFiscalPage() {
                         {savingFiles ? <><Loader2 size={14} className="animate-spin" /> Salvando {savedCount}/{arquivos.length}...</> : <><Save size={14} /> Salvar na Pasta</>}
                       </button>
                     )}
+                    <button
+                      onClick={deleteAllArquivos}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-xs font-medium hover:bg-red-500/20"
+                    >
+                      <Trash2 size={14} /> Excluir Todos
+                    </button>
                     <a
                       href={`${AGENT_API}/api/arquivos/${selectedMes}/zip`}
                       target="_blank"
@@ -705,7 +738,7 @@ export default function AgenteFiscalPage() {
                         <th className="px-5 py-3 text-left font-semibold">Empresa</th>
                         <th className="px-5 py-3 text-left font-semibold">Arquivo</th>
                         <th className="px-5 py-3 text-right font-semibold">Tamanho</th>
-                        <th className="px-5 py-3 text-right font-semibold">Acao</th>
+                        <th className="px-5 py-3 text-right font-semibold">Acoes</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -715,14 +748,22 @@ export default function AgenteFiscalPage() {
                           <td className="px-5 py-2.5 text-sm text-foreground font-medium">{a.nome}</td>
                           <td className="px-5 py-2.5 text-xs text-muted-foreground text-right font-mono">{(a.tamanho / 1024).toFixed(0)} KB</td>
                           <td className="px-5 py-2.5 text-right">
-                            <a
-                              href={`${AGENT_API}/api/arquivos/${selectedMes}/download?path=${encodeURIComponent(a.caminho)}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20"
-                            >
-                              <Download size={12} /> Baixar
-                            </a>
+                            <div className="flex items-center justify-end gap-1">
+                              <a
+                                href={`${AGENT_API}/api/arquivos/${selectedMes}/download?path=${encodeURIComponent(a.caminho)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20"
+                              >
+                                <Download size={12} /> Baixar
+                              </a>
+                              <button
+                                onClick={() => deleteArquivo(a.caminho)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-500/10 text-red-400 text-xs font-medium hover:bg-red-500/20"
+                              >
+                                <Trash2 size={12} /> Excluir
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
