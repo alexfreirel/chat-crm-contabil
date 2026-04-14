@@ -187,6 +187,19 @@ export default function AgenteFiscalPage() {
     } catch { toast('Agente offline', 'err'); }
   };
 
+  const deleteAllImpostos = async () => {
+    const dars = arquivos.filter(a => a.nome.startsWith('dar-'));
+    if (dars.length === 0) return;
+    if (!confirm(`Excluir todos os ${dars.length} DARs do mês ${selectedMes}?`)) return;
+    try {
+      for (const a of dars) {
+        await fetch(`${AGENT_API}/api/arquivos/${selectedMes}/arquivo?path=${encodeURIComponent(a.caminho)}`, { method: 'DELETE' });
+      }
+      setArquivos(prev => prev.filter(a => !a.nome.startsWith('dar-')));
+      toast('DARs excluídos', 'ok');
+    } catch { toast('Agente offline', 'err'); }
+  };
+
   const fetchArquivos = useCallback(async (mes?: string) => {
     const m = mes || selectedMes;
     setLoadingArquivos(true);
@@ -826,7 +839,9 @@ export default function AgenteFiscalPage() {
         )}
 
         {/* ── Impostos ───────────────────────────────────────────────── */}
-        {activeTab === 'impostos' && (
+        {activeTab === 'impostos' && (() => {
+          const arquivosImpostos = arquivos.filter(a => a.nome.startsWith('dar-'));
+          return (
           <div className="space-y-6">
             <div className="grid lg:grid-cols-[360px_1fr] gap-6">
               <div className="bg-card border border-border rounded-xl p-5 space-y-4 h-fit">
@@ -855,25 +870,25 @@ export default function AgenteFiscalPage() {
               <TerminalOutput title="agente_nfe_claude.py --modo impostos" />
             </div>
 
-            {/* Arquivos baixados */}
-            {arquivos.length > 0 && (
+            {/* DARs baixados (somente dar-*.pdf) */}
+            {arquivosImpostos.length > 0 && (
               <div className="bg-card border border-border rounded-xl overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
                   <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                    <FileText size={15} className="text-primary" /> Arquivos Baixados ({arquivos.length})
+                    <FileText size={15} className="text-primary" /> DARs Baixados ({arquivosImpostos.length})
                   </h3>
                   <div className="flex items-center gap-2">
                     {selectedFolder && (
                       <button
-                        onClick={() => saveFilesToFolder()}
+                        onClick={() => saveFilesToFolder(arquivosImpostos)}
                         disabled={savingFiles}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
                       >
-                        {savingFiles ? <><Loader2 size={14} className="animate-spin" /> Salvando {savedCount}/{arquivos.length}...</> : <><Save size={14} /> Salvar na Pasta</>}
+                        {savingFiles ? <><Loader2 size={14} className="animate-spin" /> Salvando {savedCount}/{arquivosImpostos.length}...</> : <><Save size={14} /> Salvar na Pasta</>}
                       </button>
                     )}
                     <button
-                      onClick={deleteAllArquivos}
+                      onClick={deleteAllImpostos}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-xs font-medium hover:bg-red-500/20"
                     >
                       <Trash2 size={14} /> Excluir Todos
@@ -899,7 +914,7 @@ export default function AgenteFiscalPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {arquivos.map((a, i) => (
+                      {arquivosImpostos.map((a, i) => (
                         <tr key={i} className="border-t border-border/50 hover:bg-muted/30">
                           <td className="px-5 py-2.5 text-xs text-muted-foreground">{a.empresa}</td>
                           <td className="px-5 py-2.5 text-sm text-foreground font-medium">{a.nome}</td>
@@ -932,11 +947,12 @@ export default function AgenteFiscalPage() {
 
             {savingFiles && (
               <div className="flex items-center gap-2 text-sm text-emerald-400">
-                <Loader2 size={16} className="animate-spin" /> Salvando arquivos na pasta... ({savedCount}/{arquivos.length})
+                <Loader2 size={16} className="animate-spin" /> Salvando arquivos na pasta... ({savedCount}/{arquivosImpostos.length})
               </div>
             )}
           </div>
-        )}
+          );
+        })()}
 
         {/* ── Parcelamento ────────────────────────────────────────────── */}
         {activeTab === 'parcela' && (
