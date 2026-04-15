@@ -2,11 +2,22 @@ import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Request, 
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { ChatGateway } from '../gateway/chat.gateway';
 
 @UseGuards(JwtAuthGuard)
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly chatGateway: ChatGateway,
+  ) {}
+
+  /** Retorna lista de usuários online (para admin ver quem está no sistema) */
+  @Get('online')
+  @Roles('ADMIN')
+  getOnlineUsers() {
+    return { onlineUserIds: this.chatGateway.getOnlineUserIds() };
+  }
 
   @Get('agents')
   findAgents(@Request() req: any) {
@@ -27,7 +38,7 @@ export class UsersController {
   @Get(':id')
   findOne(@Request() req: any, @Param('id') id: string) {
     // Permite ADMIN ou o próprio usuário ver seu perfil
-    if (req.user.role !== 'ADMIN' && req.user.id !== id) {
+    if (!req.user.roles?.includes('ADMIN') && req.user.id !== id) {
       throw new ForbiddenException('Sem permissão');
     }
     return this.usersService.findById(id, req.user?.tenant_id);
@@ -41,7 +52,7 @@ export class UsersController {
 
   @Patch(':id')
   @Roles('ADMIN')
-  update(@Request() req: any, @Param('id') id: string, @Body() data: { name?: string; email?: string; role?: string; password?: string; inboxIds?: string[]; specialties?: string[]; phone?: string }) {
+  update(@Request() req: any, @Param('id') id: string, @Body() data: { name?: string; email?: string; role?: string; roles?: string[]; password?: string; inboxIds?: string[]; specialties?: string[]; phone?: string }) {
     return this.usersService.update(id, data, req.user?.tenant_id);
   }
 
@@ -56,12 +67,19 @@ export class UsersController {
     return this.usersService.linkSupervisors(id, data.lawyerIds);
   }
 
+  /** Resumo do que o usuário possui (para modal de transferência antes de excluir) */
+  @Get(':id/transfer-summary')
+  @Roles('ADMIN')
+  transferSummary(@Param('id') id: string, @Request() req: any) {
+    return this.usersService.getTransferSummary(id, req.user?.tenant_id);
+  }
+
   @Delete(':id')
   @Roles('ADMIN')
-  remove(@Request() req: any, @Param('id') id: string) {
+  remove(@Request() req: any, @Param('id') id: string, @Body() body?: { transferToId?: string }) {
     if (req.user.id === id) {
       throw new ForbiddenException('Você não pode remover a si mesmo');
     }
-    return this.usersService.remove(id, req.user?.tenant_id);
+    return this.usersService.remove(id, req.user?.tenant_id, body?.transferToId);
   }
 }

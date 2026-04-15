@@ -13,7 +13,7 @@ import { buildHandlerMap } from './tool-handlers';
 import { createLLMClient, calculateCost, type LLMProvider } from './llm-client';
 
 // Modelos com suporte a visão (imagens)
-const VISION_MODELS = ['gpt-4o', 'gpt-4.1', 'gpt-5'];
+const VISION_MODELS = ['gpt-4o', 'gpt-4.1', 'gpt-5', 'claude-'];
 
 // ─── Long Memory System Prompt (infraestrutura interna, não é skill) ───
 const LONG_MEMORY_SYSTEM_PROMPT = `Você é uma IA especializada em gerenciamento de memória de longo prazo (LONG MEMORY) de leads e casos jurídicos, multiárea.
@@ -165,6 +165,27 @@ export class AiProcessor extends WorkerHost {
     return aliases[model] || model;
   }
 
+  // ─── Constrói header WAV para PCM raw (Gemini TTS retorna PCM 24kHz) ───
+  private buildWavHeader(dataSize: number, sampleRate: number, channels: number, bitsPerSample: number): Buffer {
+    const header = Buffer.alloc(44);
+    const byteRate = sampleRate * channels * (bitsPerSample / 8);
+    const blockAlign = channels * (bitsPerSample / 8);
+    header.write('RIFF', 0);
+    header.writeUInt32LE(36 + dataSize, 4);
+    header.write('WAVE', 8);
+    header.write('fmt ', 12);
+    header.writeUInt32LE(16, 16);
+    header.writeUInt16LE(1, 20); // PCM
+    header.writeUInt16LE(channels, 22);
+    header.writeUInt32LE(sampleRate, 24);
+    header.writeUInt32LE(byteRate, 28);
+    header.writeUInt16LE(blockAlign, 32);
+    header.writeUInt16LE(bitsPerSample, 34);
+    header.write('data', 36);
+    header.writeUInt32LE(dataSize, 40);
+    return header;
+  }
+
   // ─── Substitui variáveis {{var}} no prompt ───
   private injectVariables(
     prompt: string,
@@ -181,35 +202,43 @@ export class AiProcessor extends WorkerHost {
     reply: string;
     updates: any;
     scheduling_action?: { action: string; date?: string; time?: string };
+    slots_to_offer?: { date: string; time: string; label: string }[];
   } {
+    const extract = (parsed: any) => ({
+      reply: parsed.reply ?? '',
+      updates: parsed.updates || parsed.lead_update || {},
+      scheduling_action: parsed.scheduling_action || undefined,
+      slots_to_offer: parsed.slots_to_offer || undefined,
+    });
+
+    // 1. JSON puro
     try {
       const parsed = JSON.parse(raw);
-      if (parsed.reply) {
-        return {
-          reply: parsed.reply,
-          updates: parsed.updates || parsed.lead_update || {},
-          scheduling_action: parsed.scheduling_action || undefined,
-        };
-      }
+      if ('reply' in parsed) return extract(parsed);
     } catch {}
 
-    const jsonMatch = raw.match(/```json?\s*([\s\S]*?)```/);
+    // 2. Markdown ```json ... ``` (com ou sem fechamento)
+    const jsonMatch = raw.match(/```json?\s*([\s\S]*?)```/) ||
+                      raw.match(/```json?\s*([\s\S]+)/); // ```json sem fechar
     if (jsonMatch) {
       try {
         const parsed = JSON.parse(jsonMatch[1].trim());
-        if (parsed.reply) {
-          return {
-            reply: parsed.reply,
-            updates: parsed.updates || parsed.lead_update || {},
-            scheduling_action: parsed.scheduling_action || undefined,
-          };
-        }
+        if ('reply' in parsed) return extract(parsed);
       } catch {}
     }
 
-    this.logger.warn(
-      '[AI] Resposta não é JSON válido — usando como texto puro',
-    );
+    // 3. Extrair "reply" via regex (fallback para JSON truncado/malformado)
+    const replyMatch = raw.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (replyMatch) {
+      const reply = replyMatch[1]
+        .replace(/\\n/g, '\n')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\');
+      this.logger.warn(`[AI] JSON malformado — reply extraído via regex (${reply.length} chars)`);
+      return { reply, updates: {} };
+    }
+
+    this.logger.warn('[AI] Resposta não é JSON válido — usando como texto puro');
     return { reply: raw, updates: {} };
   }
 

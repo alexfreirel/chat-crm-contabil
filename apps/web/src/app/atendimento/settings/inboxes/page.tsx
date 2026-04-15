@@ -53,23 +53,18 @@ export default function InboxesSettingsPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [inboxesRes, usersRes] = await Promise.all([
+      const [inboxesRes, usersRes, waRes] = await Promise.all([
         api.get('/inboxes'),
         api.get('/users'),
+        api.get('/whatsapp/instances')
       ]);
       setInboxes(inboxesRes.data);
       setAllUsers(usersRes.data);
+      setWhatsappInstances(waRes.data);
     } catch (error) {
-      console.error('Erro ao buscar setores/usuários:', error);
+      console.error('Erro ao buscar dados:', error);
     } finally {
       setLoading(false);
-    }
-    // Busca instâncias WhatsApp separadamente — não bloqueia o resto se Evolution não estiver configurada
-    try {
-      const waRes = await api.get('/whatsapp/instances');
-      setWhatsappInstances(Array.isArray(waRes.data) ? waRes.data : []);
-    } catch {
-      // Silencioso — Evolution pode não estar configurada
     }
   };
 
@@ -85,9 +80,8 @@ export default function InboxesSettingsPage() {
       setNewInboxName('');
       setShowAddInbox(false);
       fetchData();
-    } catch (error: any) {
-      const msg = error?.response?.data?.message || error?.message || 'Erro ao criar setor';
-      alert(`Erro ao criar setor: ${msg}`);
+    } catch (error) {
+      alert('Erro ao criar setor');
     } finally {
       setIsCreating(false);
     }

@@ -25,6 +25,7 @@ export interface TransferModalsProps {
   selectedTransferUserId: string | null;
   onSelectTransferUser: (id: string | null) => void;
   selected: ConversationSummary | null;
+  currentUserId: string | null;
   onOpenReasonPopup: (context: 'lawyer' | 'operator' | 'return', targetName: string) => void;
 
   // Reason Popup
@@ -55,6 +56,7 @@ export interface TransferModalsProps {
   // Banners
   transferSentMsg: string | null;
   onClearTransferSentMsg: () => void;
+  onCancelTransfer?: () => void;
   transferResponseMsg: string | null;
   onClearTransferResponseMsg: () => void;
 }
@@ -63,13 +65,13 @@ export interface TransferModalsProps {
 
 export function TransferModals({
   transferModal, onCloseTransferModal, transferGroups, loadingOperators, transferError,
-  selectedTransferUserId, onSelectTransferUser, selected, onOpenReasonPopup,
+  selectedTransferUserId, onSelectTransferUser, selected, currentUserId, onOpenReasonPopup,
   showReasonPopup, reasonPopupContext, reasonPopupTargetName, transferReason,
   onSetTransferReason, transferring, onCloseReasonPopup, onTransferToLawyer,
   onReturnWithReason, onTransfer, onSetTransferAudioIds, selectedConversationId,
   incomingTransfer, onCloseIncomingTransfer, showDeclineInput, onSetShowDeclineInput,
   declineReason, onSetDeclineReason, processingTransfer, onAcceptTransfer, onDeclineTransfer,
-  transferSentMsg, onClearTransferSentMsg, transferResponseMsg, onClearTransferResponseMsg,
+  transferSentMsg, onClearTransferSentMsg, onCancelTransfer, transferResponseMsg, onClearTransferResponseMsg,
 }: TransferModalsProps) {
   return (
     <>
@@ -101,10 +103,10 @@ export function TransferModals({
               <>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 px-1 shrink-0">Selecione o destino</p>
                 <div className="flex flex-col gap-4 overflow-y-auto custom-scrollbar flex-1 min-h-0">
-                  {transferGroups.filter(g => g.users.length > 0 || (g.type === 'SECTOR' && g.auto_route)).map(group => (
+                  {transferGroups.map(g => ({ ...g, users: g.users.filter(u => u.id !== currentUserId) })).filter(g => g.users.length > 0 || (g.type === 'SECTOR' && g.auto_route)).map(group => (
                     <div key={group.id}>
                       <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5 px-1">
-                        {group.type === 'SECTOR' ? (group.auto_route ? '\u2696\uFE0F' : '\uD83C\uDFE2') : '\uD83D\uDCE5'} {group.name}
+                        {group.type === 'SECTOR' ? (group.auto_route ? '{"⚖️"}' : '{"🏢"}') : '{"📥"}'} {group.name}
                         {group.auto_route && <span className="ml-1 text-violet-400">(auto)</span>}
                       </p>
                       {group.type === 'SECTOR' && group.auto_route ? (
@@ -118,7 +120,7 @@ export function TransferModals({
                                   onClick={() => onOpenReasonPopup('lawyer', lawyerName)}
                                   className="w-full py-3 bg-violet-500/10 border border-violet-500/30 text-violet-300 rounded-xl font-bold text-sm hover:bg-violet-500/20 transition-colors flex items-center justify-center gap-2"
                                 >
-                                  \u2696\uFE0F Transferir para {lawyerName}{selected.legalArea ? ` (${selected.legalArea})` : ''}
+                                  {"⚖️"} Transferir para {lawyerName}{selected.legalArea ? ` (${selected.legalArea})` : ''}
                                 </button>
                               );
                             })()
@@ -135,7 +137,7 @@ export function TransferModals({
                                         : 'bg-muted/30 hover:bg-sky-500/10 hover:text-sky-400 border-border hover:border-sky-500/30'
                                     }`}
                                   >
-                                    {selectedTransferUserId === user.id && <span className="mr-2">\u2713</span>}
+                                    {selectedTransferUserId === user.id && <span className="mr-2">{"✓"}</span>}
                                     {user.name}
                                   </button>
                                 ))}
@@ -159,7 +161,7 @@ export function TransferModals({
                                   : 'bg-muted/30 hover:bg-sky-500/10 hover:text-sky-400 border-border hover:border-sky-500/30'
                               }`}
                             >
-                              {selectedTransferUserId === user.id && <span className="mr-2">\u2713</span>}
+                              {selectedTransferUserId === user.id && <span className="mr-2">{"✓"}</span>}
                               {user.name}
                             </button>
                           ))}
@@ -208,9 +210,9 @@ export function TransferModals({
               'bg-sky-500/5'
             }`}>
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">
-                {reasonPopupContext === 'lawyer' ? '\u2696\uFE0F Transferencia para especialista' :
-                 reasonPopupContext === 'return' ? '\u21A9 Devolver contato' :
-                 '\uD83D\uDCE8 Solicitar transferencia'}
+                {reasonPopupContext === 'lawyer' ? '{"⚖️"} Transferencia para especialista' :
+                 reasonPopupContext === 'return' ? '{"↩"} Devolver contato' :
+                 '{"📨"} Solicitar transferencia'}
               </p>
               <h3 className="font-bold text-sm text-foreground">
                 {reasonPopupContext === 'return' ? `Para: ${reasonPopupTargetName}` : reasonPopupTargetName}
@@ -274,9 +276,9 @@ export function TransferModals({
                     : 'bg-sky-500 text-white hover:bg-sky-600'
                 }`}
               >
-                {transferring ? '\u23F3 Enviando...' :
-                 reasonPopupContext === 'lawyer' ? '\u2696\uFE0F Confirmar' :
-                 reasonPopupContext === 'return' ? '\u21A9 Devolver' :
+                {transferring ? '{"⏳"} Enviando...' :
+                 reasonPopupContext === 'lawyer' ? '{"⚖️"} Confirmar' :
+                 reasonPopupContext === 'return' ? '{"↩"} Devolver' :
                  'Enviar'}
               </button>
             </div>
@@ -290,7 +292,7 @@ export function TransferModals({
           <div className="bg-card border-2 border-amber-500/40 rounded-2xl shadow-2xl w-full max-w-sm flex flex-col max-h-[90vh]">
             {/* Header fixo */}
             <div className="flex items-center gap-3 px-6 pt-6 pb-4 shrink-0">
-              <span className="text-2xl">\uD83D\uDCE8</span>
+              <span className="text-2xl">{"📨"}</span>
               <div>
                 <h3 className="font-bold text-base">Pedido de Transferencia</h3>
                 <p className="text-xs text-muted-foreground">De: <strong className="text-foreground">{incomingTransfer.fromUserName}</strong></p>
@@ -348,14 +350,14 @@ export function TransferModals({
                       disabled={processingTransfer}
                       className="flex-1 py-2.5 bg-emerald-500 text-white rounded-xl font-bold text-sm hover:bg-emerald-600 transition-colors disabled:opacity-50"
                     >
-                      \u2713 Aceitar
+                      {"✓"} Aceitar
                     </button>
                     <button
                       onClick={() => onSetShowDeclineInput(true)}
                       disabled={processingTransfer}
                       className="flex-1 py-2.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl font-bold text-sm hover:bg-red-500/20 transition-colors"
                     >
-                      \u2717 Recusar
+                      {"✗"} Recusar
                     </button>
                   </>
                 ) : (
@@ -381,11 +383,16 @@ export function TransferModals({
         </div>
       )}
 
-      {/* Transfer Sent Banner */}
+      {/* Transfer Sent Banner — fixo no topo */}
       {transferSentMsg && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[90] bg-card border border-sky-500/30 rounded-2xl px-5 py-3 shadow-2xl text-sm font-medium flex items-center gap-3">
+        <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[90] bg-card border border-sky-500/30 rounded-2xl px-5 py-3 shadow-2xl text-sm font-medium flex items-center gap-3 animate-pulse">
+          <span className="text-sky-400">📨</span>
           {transferSentMsg}
-          <button onClick={onClearTransferSentMsg} className="text-muted-foreground hover:text-foreground ml-2" aria-label="Fechar aviso"><X size={14} /></button>
+          {onCancelTransfer && (
+            <button onClick={onCancelTransfer} className="ml-2 px-3 py-1 text-xs font-bold text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-colors">
+              Cancelar
+            </button>
+          )}
         </div>
       )}
 

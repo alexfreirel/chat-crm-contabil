@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service';
+import { InboxesService } from '../inboxes/inboxes.service';
 
 @Injectable()
 export class ChatGateway {
@@ -8,14 +9,122 @@ export class ChatGateway {
 
   private logger = new Logger('ChatGateway');
 
-  constructor(private prisma: PrismaService) {}
+  // ─── Presença de usuários online ─────────────────────────────────
+  // Map<userId, Set<socketId>> — um usuário pode ter múltiplas abas
+  private onlineUsers = new Map<string, Set<string>>();
+
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => InboxesService))
+    private inboxesService: InboxesService,
+  ) {}
 
   handleConnection(client: Socket) {
     this.logger.log(`[SOCKET] Client connected: ${client.id} (transport: ${client.conn?.transport?.name})`);
+    const socketUser = (client as any).user;
+    if (socketUser?.sub) {
+      this.trackUserOnline(socketUser.sub, client.id);
+    }
   }
 
   handleDisconnect(client: Socket) {
     this.logger.log(`Client disconnected: ${client.id}`);
+    const socketUser = (client as any).user;
+    if (socketUser?.sub) {
+      this.trackUserOffline(socketUser.sub, client.id);
+    }
+  }
+
+  private trackUserOnline(userId: string, socketId: string) {
+    if (!this.onlineUsers.has(userId)) {
+      this.onlineUsers.set(userId, new Set());
+    }
+    const wasOffline = this.onlineUsers.get(userId)!.size === 0;
+    this.onlineUsers.get(userId)!.add(socketId);
+    if (wasOffline) {
+      // Broadcast: usuário ficou online
+      this.server?.emit('user_presence', { userId, online: true });
+      this.logger.log(`[PRESENCE] User ${userId} ONLINE (${this.onlineUsers.get(userId)!.size} tab(s))`);
+      // Atribuir conversas pendentes que a IA estava atendendo (fire-and-forget)
+      this.assignPendingConversations(userId).catch(e =>
+        this.logger.warn(`[PRESENCE] Falha ao atribuir pendentes para ${userId}: ${e.message}`),
+      );
+    }
+  }
+
+  /**
+   * Quando um operador fica online, atribui conversas sem operador dos inboxes dele
+   * usando round-robin entre TODOS os operadores online (não só o que acabou de entrar).
+   */
+  private async assignPendingConversations(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { inboxes: { select: { id: true } } },
+    });
+    if (!user?.inboxes?.length) return;
+
+    const inboxIds = user.inboxes.map((i: any) => i.id);
+
+    // Busca conversas sem operador nos inboxes desse user
+    const pending = await this.prisma.conversation.findMany({
+      where: {
+        assigned_user_id: null,
+        inbox_id: { in: inboxIds },
+        status: { notIn: ['FECHADO'] },
+        lead: { stage: { notIn: ['PERDIDO', 'FINALIZADO'] } },
+      },
+      select: { id: true, tenant_id: true, inbox_id: true },
+      orderBy: { last_message_at: 'asc' }, // Mais antiga primeiro
+    });
+
+    if (pending.length === 0) return;
+
+    this.logger.log(`[PRESENCE] User ${userId} online — distribuindo ${pending.length} conversa(s) pendente(s) via round-robin`);
+
+    const onlineUserIds = this.getOnlineUserIds();
+
+    for (const conv of pending) {
+      // Round-robin por inbox — distribui entre todos os operadores online
+      const assigneeId = conv.inbox_id
+        ? await this.inboxesService.getNextAssignee(conv.inbox_id, onlineUserIds)
+        : userId; // Sem inbox → atribui ao que entrou
+
+      if (assigneeId) {
+        await this.prisma.conversation.update({
+          where: { id: conv.id },
+          data: { assigned_user_id: assigneeId },
+        });
+        this.logger.log(`[AUTO-ASSIGN] Conversa pendente ${conv.id} → operador online ${assigneeId}`);
+      }
+    }
+
+    // Refresh sidebar de todos
+    if (pending[0]?.tenant_id) {
+      this.emitConversationsUpdate(pending[0].tenant_id);
+    }
+  }
+
+  private trackUserOffline(userId: string, socketId: string) {
+    const sockets = this.onlineUsers.get(userId);
+    if (sockets) {
+      sockets.delete(socketId);
+      if (sockets.size === 0) {
+        this.onlineUsers.delete(userId);
+        // Broadcast: usuário ficou offline
+        this.server?.emit('user_presence', { userId, online: false });
+        this.logger.log(`[PRESENCE] User ${userId} OFFLINE`);
+      }
+    }
+  }
+
+  /** Retorna lista de userIds online */
+  getOnlineUserIds(): string[] {
+    return Array.from(this.onlineUsers.keys());
+  }
+
+  /** Verifica se um usuário específico está online */
+  isUserOnline(userId: string): boolean {
+    return (this.onlineUsers.get(userId)?.size ?? 0) > 0;
   }
 
   async handleJoinConversation(conversationId: string, client: Socket) {
@@ -26,7 +135,8 @@ export class ChatGateway {
     }
 
     // Admin pode entrar em qualquer sala
-    if (socketUser.role === 'ADMIN') {
+    const userRoles = Array.isArray(socketUser.roles) ? socketUser.roles : (socketUser.role ? [socketUser.role] : []);
+    if (userRoles.includes('ADMIN')) {
       client.join(conversationId);
       this.logger.log(`[SOCKET] Client ${client.id} (ADMIN) joined room: ${conversationId}`);
       this.server.to(client.id).emit('joined_room', { room: conversationId });
@@ -36,7 +146,7 @@ export class ChatGateway {
     // Verificar se a conversa existe
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
-      select: { inbox_id: true, assigned_user_id: true },
+      select: { inbox_id: true, assigned_user_id: true, assigned_lawyer_id: true },
     });
 
     if (!conversation) {
@@ -53,6 +163,7 @@ export class ChatGateway {
     const userInboxIds = (user?.inboxes || []).map((i: any) => i.id);
     const hasAccess =
       conversation.assigned_user_id === socketUser.sub ||
+      conversation.assigned_lawyer_id === socketUser.sub ||
       ((conversation as any).inbox_id && userInboxIds.includes((conversation as any).inbox_id));
 
     if (!hasAccess) {
@@ -91,6 +202,11 @@ export class ChatGateway {
     this.server.to(`user:${fromUserId}`).emit('transfer_response', data);
   }
 
+  emitTransferCancelled(toUserId: string, data: { conversationId: string }) {
+    this.logger.log(`[SOCKET] Emitting transfer_cancelled to user:${toUserId}`);
+    this.server.to(`user:${toUserId}`).emit('transfer_cancelled', data);
+  }
+
   emitTransferReturned(toUserId: string, data: any) {
     this.logger.log(`[SOCKET] Emitting transfer_returned to user:${toUserId}`);
     this.server.to(`user:${toUserId}`).emit('transfer_returned', data);
@@ -99,6 +215,16 @@ export class ChatGateway {
   emitNewMessage(conversationId: string, message: any) {
     this.logger.log(`[SOCKET] Emitting newMessage to room ${conversationId}`);
     this.server.to(conversationId).emit('newMessage', message);
+  }
+
+  emitNewNote(conversationId: string, note: any) {
+    this.logger.log(`[SOCKET] Emitting newNote to room ${conversationId}`);
+    this.server.to(conversationId).emit('newNote', note);
+  }
+
+  emitNoteUpdated(conversationId: string, note: any) {
+    this.logger.log(`[SOCKET] Emitting noteUpdated to room ${conversationId}`);
+    this.server.to(conversationId).emit('noteUpdated', note);
   }
 
   emitMessageUpdate(conversationId: string, message: any) {
@@ -111,16 +237,55 @@ export class ChatGateway {
       this.logger.log(`[SOCKET] Emitting inboxUpdate to tenant:${tenantId}`);
       this.server.to(`tenant:${tenantId}`).emit('inboxUpdate');
     } else {
-      // Fallback global para single-tenant (sem tenant_id) — broadcast para todos
-      this.logger.log(`[SOCKET] Emitting inboxUpdate to all clients (no tenant)`);
-      this.server.emit('inboxUpdate');
+      // SEGURANCA: sem tenantId, busca o tenant padrao em vez de broadcast global.
+      // Isso evita vazamento de dados entre tenants em ambiente multi-tenant.
+      this.logger.warn(`[SOCKET] inboxUpdate sem tenantId — resolvendo tenant padrao`);
+      this.prisma.tenant.findFirst().then((t) => {
+        if (t) {
+          this.server.to(`tenant:${t.id}`).emit('inboxUpdate');
+        }
+      }).catch(() => {});
     }
   }
 
-  /** Broadcast incoming message notification to all clients; each client filters by assignedUserId */
-  emitIncomingMessageNotification(assignedUserId: string | null, data: { conversationId: string; contactName?: string }) {
-    this.logger.log(`[SOCKET] Emitting incoming_message_notification (assignedUserId: ${assignedUserId ?? 'none'})`);
-    this.server.emit('incoming_message_notification', { ...data, assignedUserId });
+  /**
+   * Emit incoming message notification.
+   *
+   * Regra de negócio:
+   *  - Lead com operador atribuído   → notifica SOMENTE o operador (assigned_user_id)
+   *  - Cliente com operador atribuído → notifica operador E advogado (assigned_lawyer_id), se distintos
+   *  - Sem operador atribuído        → notifica todo o tenant para alguém assumir
+   */
+  emitIncomingMessageNotification(
+    tenantId: string | null,
+    assignedUserId: string | null,
+    data: { conversationId: string; contactName?: string },
+    assignedLawyerId?: string | null,
+    isClient?: boolean,
+  ) {
+    const payload = { ...data, assignedUserId };
+
+    if (assignedUserId) {
+      // Notifica o operador responsável
+      this.logger.log(`[SOCKET] incoming_message_notification → user:${assignedUserId}`);
+      this.server.to(`user:${assignedUserId}`).emit('incoming_message_notification', payload);
+
+      // Para clientes: notifica também o advogado responsável (se diferente do operador)
+      if (isClient && assignedLawyerId && assignedLawyerId !== assignedUserId) {
+        this.logger.log(`[SOCKET] incoming_message_notification → lawyer:${assignedLawyerId} (cliente)`);
+        this.server.to(`user:${assignedLawyerId}`).emit('incoming_message_notification', payload);
+      }
+    } else if (tenantId) {
+      // Sem operador: notifica todos do tenant para alguém assumir
+      this.logger.log(`[SOCKET] incoming_message_notification → tenant:${tenantId} (sem atribuicao)`);
+      this.server.to(`tenant:${tenantId}`).emit('incoming_message_notification', payload);
+    } else {
+      this.prisma.tenant.findFirst().then((t) => {
+        if (t) {
+          this.server.to(`tenant:${t.id}`).emit('incoming_message_notification', payload);
+        }
+      }).catch(() => {});
+    }
   }
 
   // ─── Legal Cases ────────────────────────────────────────────────
@@ -184,5 +349,31 @@ export class ChatGateway {
   emitMessagesSynced(conversationId: string, imported: number) {
     this.logger.log(`[SOCKET] Emitting messages_synced to room ${conversationId}: ${imported} imported`);
     this.server.to(conversationId).emit('messages_synced', { conversationId, imported });
+  }
+
+  // ─── Petitions ─────────────────────────────────────────────
+
+  emitPetitionStatusChange(userId: string, data: {
+    petitionId: string;
+    title: string;
+    status: string;
+    previousStatus: string;
+    action?: string;
+    reviewNotes?: string;
+    caseId?: string;
+  }) {
+    this.logger.log(`[SOCKET] Emitting petition_status_change to user:${userId} — ${data.title} → ${data.status}`);
+    this.server.to(`user:${userId}`).emit('petition_status_change', data);
+  }
+
+  emitPetitionCreated(userId: string, data: {
+    petitionId: string;
+    title: string;
+    type: string;
+    caseId: string;
+    createdBy: string;
+  }) {
+    this.logger.log(`[SOCKET] Emitting petition_created to user:${userId} — ${data.title}`);
+    this.server.to(`user:${userId}`).emit('petition_created', data);
   }
 }

@@ -13,35 +13,34 @@ export class EvolutionController {
 
   @Post()
   @HttpCode(200)
-  handleWebhook(@Body() payload: any) {
-    // Responde imediatamente para evitar timeout na Evolution (60s)
-    // O processamento ocorre em background via setImmediate
+  async handleWebhook(@Body() payload: any) {
+    // Basic support for different event types
     const eventType = payload.event as string;
 
-    setImmediate(() => {
-      if (eventType === 'messages.upsert' || eventType === 'send.message') {
-        this.evolutionService.handleMessagesUpsert(payload).catch(() => {});
-      } else if (eventType === 'messages.update') {
-        this.evolutionService.handleMessagesUpdate(payload).catch(() => {});
-      } else if (eventType === 'contacts.upsert') {
-        this.evolutionService.handleContactsUpsert(payload).catch(() => {});
-      } else if (eventType === 'chats.upsert' || eventType === 'chats.set') {
-        this.evolutionService.handleChatsUpsert(payload).catch(() => {});
-      } else if (eventType === 'chats.update') {
-        this.evolutionService.handleChatsUpsert(payload).catch(() => {});
-      } else if (eventType === 'chats.delete') {
-        this.evolutionService.handleChatsDelete(payload).catch(() => {});
-      } else if (eventType === 'messages.delete') {
-        this.evolutionService.handleMessagesDelete(payload).catch(() => {});
-      } else if (eventType === 'contacts.update') {
-        this.evolutionService.handleContactsUpdate(payload).catch(() => {});
-      } else if (eventType === 'connection.update') {
-        this.evolutionService.handleConnectionUpdate(payload).catch(() => {});
-      } else if (eventType === 'presence.update') {
-        this.evolutionService.handlePresenceUpdate(payload).catch(() => {});
-      }
-    });
-
+    if (eventType === 'messages.upsert' || eventType === 'send.message') {
+      // send.message = echo de mensagens enviadas pela API (IA, operador via Evolution)
+      // Mesmo formato de payload que messages.upsert, com fromMe=true
+      await this.evolutionService.handleMessagesUpsert(payload);
+    } else if (eventType === 'messages.update') {
+      await this.evolutionService.handleMessagesUpdate(payload);
+    } else if (eventType === 'contacts.upsert') {
+      await this.evolutionService.handleContactsUpsert(payload);
+    } else if (eventType === 'chats.upsert' || eventType === 'chats.set') {
+      await this.evolutionService.handleChatsUpsert(payload);
+    } else if (eventType === 'chats.update') {
+      await this.evolutionService.handleChatsUpsert(payload);
+    } else if (eventType === 'chats.delete') {
+      await this.evolutionService.handleChatsDelete(payload);
+    } else if (eventType === 'messages.delete') {
+      await this.evolutionService.handleMessagesDelete(payload);
+    } else if (eventType === 'contacts.update') {
+      await this.evolutionService.handleContactsUpdate(payload);
+    } else if (eventType === 'connection.update') {
+      await this.evolutionService.handleConnectionUpdate(payload);
+    } else if (eventType === 'presence.update') {
+      await this.evolutionService.handlePresenceUpdate(payload);
+    }
+    // Ack the webhook quickly
     return { received: true };
   }
 }

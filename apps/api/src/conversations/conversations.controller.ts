@@ -1,9 +1,10 @@
-import { Controller, Get, Param, Patch, Body, Post, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Param, Patch, Body, Post, Query, UseGuards, Request, Req } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TransferRequestDto, TransferToLawyerDto, ReturnToOriginDto } from './dto/transfer-request.dto';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { SendPresenceDto } from './dto/presence.dto';
+import { CreateNoteDto } from './dto/create-note.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('conversations')
@@ -25,6 +26,11 @@ export class ConversationsController {
   @Get('pending-transfers')
   getPendingTransfers(@Request() req: any) {
     return this.conversationsService.findPendingTransfers(req.user.id);
+  }
+
+  @Get('unread-counts')
+  getUnreadCounts(@Request() req: any) {
+    return this.conversationsService.getUnreadCounts(req.user?.tenant_id, req.user?.id);
   }
 
   @Get('open-count')
@@ -89,6 +95,11 @@ export class ConversationsController {
     return this.conversationsService.declineTransfer(id, reason || null);
   }
 
+  @Patch(':id/transfer-cancel')
+  transferCancel(@Param('id') id: string, @Request() req: any) {
+    return this.conversationsService.cancelTransfer(id, req.user.id);
+  }
+
   @Patch(':id/close')
   close(@Param('id') id: string) {
     return this.conversationsService.close(id);
@@ -146,5 +157,22 @@ export class ConversationsController {
     @Body('legalArea') legalArea: string | null,
   ) {
     return this.conversationsService.setLegalArea(id, legalArea ?? null);
+  }
+
+  // ── Notas internas fixas ──────────────────────────────────────
+
+  @Get(':id/notes')
+  listNotes(@Param('id') id: string, @Req() req: any) {
+    return this.conversationsService.listNotes(id, req.user?.tenant_id);
+  }
+
+  @Post(':id/notes')
+  createNote(@Param('id') id: string, @Body() dto: CreateNoteDto, @Req() req: any) {
+    return this.conversationsService.createNote(id, req.user.id, dto.text, req.user?.tenant_id);
+  }
+
+  @Patch(':id/notes/:noteId')
+  updateNote(@Param('noteId') noteId: string, @Body() dto: CreateNoteDto, @Req() req: any) {
+    return this.conversationsService.updateNote(noteId, req.user.id, dto.text);
   }
 }

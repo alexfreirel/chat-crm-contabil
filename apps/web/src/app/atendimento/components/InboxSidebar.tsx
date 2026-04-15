@@ -8,6 +8,8 @@ import {
 } from '@/lib/desktopNotifications';
 import { showSuccess } from '@/lib/toast';
 import { normalizeStage } from '@/lib/crmStages';
+import { useRole } from '@/lib/useRole';
+import { getDateKey, formatDateLabel, formatTime, getInitial } from '@/lib/chatUtils';
 import type { ConversationSummary } from '../types';
 import { ContactAvatar } from './ContactAvatar';
 
@@ -32,29 +34,7 @@ function DateSeparator({ label }: { label: string }) {
   );
 }
 
-function getDateKey(dateStr: string): string {
-  return new Date(dateStr).toDateString();
-}
-
-function formatDateLabel(dateStr: string): string {
-  const date = new Date(dateStr);
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (date.toDateString() === today.toDateString()) return 'Hoje';
-  if (date.toDateString() === yesterday.toDateString()) return 'Ontem';
-  return date.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
-}
-
-function formatTime(dateStr?: string) {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
-
-function getInitial(name?: string) {
-  return (name || 'V')[0].toUpperCase();
-}
+// getDateKey, formatDateLabel, formatTime, getInitial — importados de @/lib/chatUtils
 
 // ─── Lead Score ──────────────────────────────────────────────────
 
@@ -185,9 +165,14 @@ export function InboxSidebar({
   onLightbox,
   hasDisconnectedInstance,
 }: InboxSidebarProps) {
+  const { isAdmin } = useRole();
 
   const myActiveConvs = (c: ConversationSummary) =>
     (c.status === 'ACTIVE' || c.status === 'MONITORING') && c.assignedAgentId === currentUserId;
+
+  // Contadores de nao-lidos por modo (Leads vs Clientes)
+  const unreadLeadsCount = conversations.filter(c => !c.isClient && (unreadCounts[c.id] ?? 0) > 0).reduce((sum, c) => sum + (unreadCounts[c.id] ?? 0), 0);
+  const unreadClientsCount = conversations.filter(c => c.isClient && (unreadCounts[c.id] ?? 0) > 0).reduce((sum, c) => sum + (unreadCounts[c.id] ?? 0), 0);
 
   // ─── Saved Filters ────────────────────────────────────────────
   const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
@@ -265,6 +250,9 @@ export function InboxSidebar({
           >
             <UserSearch size={13} />
             Leads
+            {unreadLeadsCount > 0 && (
+              <span className="ml-1 min-w-[18px] h-[18px] flex items-center justify-center text-[9px] font-bold rounded-full bg-red-500 text-white">{unreadLeadsCount > 99 ? '99+' : unreadLeadsCount}</span>
+            )}
           </button>
           <button
             onClick={() => onSetClientMode(true)}
@@ -276,6 +264,9 @@ export function InboxSidebar({
           >
             <UserCheck size={13} />
             Clientes
+            {unreadClientsCount > 0 && (
+              <span className="ml-1 min-w-[18px] h-[18px] flex items-center justify-center text-[9px] font-bold rounded-full bg-red-500 text-white">{unreadClientsCount > 99 ? '99+' : unreadClientsCount}</span>
+            )}
           </button>
         </div>
 
@@ -372,8 +363,8 @@ export function InboxSidebar({
           </div>
         )}
 
-        {/* Seletor de Setores (Inboxes) */}
-        {userInboxes.length > 0 && (
+        {/* Seletor de Setores (Inboxes) — so mostra quando ha 2+ setores */}
+        {userInboxes.length > 1 && (
           <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar no-scrollbar">
             <button
               onClick={() => onSetSelectedInboxId(null)}
@@ -396,8 +387,9 @@ export function InboxSidebar({
         <div className="flex items-center gap-2">
           <div className="flex bg-muted rounded-xl p-1 flex-1 relative">
             {[
-              { value: '', label: 'Tudo', count: conversations.filter(c => normalizeStage(c.leadStage) !== 'PERDIDO').length },
-              { value: 'MINE', label: 'Minhas', count: conversations.filter(c => c.assignedAgentId === currentUserId && c.status !== 'CLOSED' && normalizeStage(c.leadStage) !== 'PERDIDO').length },
+              // "Tudo" só visível para ADMIN — outros usuários veem apenas suas conversas
+              ...(isAdmin ? [{ value: '', label: 'Tudo', count: conversations.filter(c => normalizeStage(c.leadStage) !== 'PERDIDO').length }] : []),
+              { value: 'MINE', label: 'Minhas', count: conversations.filter(c => c.assignedAgentId === currentUserId && !c.aiMode && c.status !== 'CLOSED' && normalizeStage(c.leadStage) !== 'PERDIDO').length },
               { value: 'WAITING', label: 'Espera', count: conversations.filter(c => c.status === 'WAITING' && normalizeStage(c.leadStage) !== 'PERDIDO').length },
               { value: 'BOT', label: 'SophIA', count: conversations.filter(c => c.aiMode && c.assignedAgentId === currentUserId && normalizeStage(c.leadStage) !== 'PERDIDO').length },
               { value: 'ADIADO', label: 'Adiados', count: adiadoConversations.filter(c => normalizeStage(c.leadStage) !== 'PERDIDO').length },

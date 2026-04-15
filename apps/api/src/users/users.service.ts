@@ -1,10 +1,11 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import { Injectable, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, User } from '@crm/shared';
 import * as argon2 from 'argon2';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
   constructor(private prisma: PrismaService) {}
 
   private tenantWhere(tenantId?: string) {
@@ -83,7 +84,7 @@ export class UsersService {
         email: data.email,
         phone: data.phone || null,
         password_hash,
-        role: data.role,
+        roles: data.role ? [data.role] : ['OPERADOR'],
         tenant_id: data.tenant_id,
         inboxes: data.inboxIds ? { connect: data.inboxIds.map(id => ({ id })) } : undefined
       },
@@ -95,12 +96,17 @@ export class UsersService {
     return result as any;
   }
 
-  async update(id: string, data: { name?: string; email?: string; role?: string; password?: string; inboxIds?: string[]; specialties?: string[]; phone?: string }, tenantId?: string): Promise<Omit<User, 'password_hash'>> {
+  async update(id: string, data: { name?: string; email?: string; role?: string; roles?: string[]; password?: string; inboxIds?: string[]; specialties?: string[]; phone?: string }, tenantId?: string): Promise<Omit<User, 'password_hash'>> {
     await this.verifyTenantOwnership(id, tenantId);
     const updateData: Prisma.UserUpdateInput = {};
     if (data.name) updateData.name = data.name;
     if (data.email) updateData.email = data.email;
-    if (data.role) updateData.role = data.role;
+    // Multi-role: aceita roles[] (array) OU role (string legado)
+    if (data.roles && data.roles.length > 0) {
+      (updateData as any).roles = { set: data.roles };
+    } else if (data.role) {
+      (updateData as any).roles = { set: [data.role] };
+    }
     if (data.phone !== undefined) updateData.phone = data.phone || null;
     if (data.password) updateData.password_hash = await argon2.hash(data.password);
     if (data.specialties !== undefined) (updateData as any).specialties = { set: data.specialties };
@@ -124,7 +130,20 @@ export class UsersService {
     return result as any;
   }
 
-  async remove(id: string, tenantId?: string): Promise<void> {
+  /** Retorna contadores do que o usuário possui (para o modal de transferência) */
+  async getTransferSummary(id: string, tenantId?: string) {
+    await this.verifyTenantOwnership(id, tenantId);
+    const [cases, conversations, tasks, events, leads] = await Promise.all([
+      this.prisma.legalCase.count({ where: { lawyer_id: id } }),
+      this.prisma.conversation.count({ where: { OR: [{ assigned_user_id: id }, { assigned_lawyer_id: id }] } }),
+      this.prisma.calendarEvent.count({ where: { OR: [{ assigned_user_id: id }, { created_by_id: id }] } }),
+      this.prisma.calendarEvent.count({ where: { created_by_id: id } }),
+      this.prisma.lead.count({ where: { cs_user_id: id } }),
+    ]);
+    return { cases, conversations, tasks, events, leads };
+  }
+
+  async remove(id: string, tenantId?: string, transferToId?: string): Promise<void> {
     await this.verifyTenantOwnership(id, tenantId);
 
     // Verificar se o usuario possui registros que impedem exclusao (FKs required)
@@ -144,14 +163,6 @@ export class UsersService {
       );
     }
 
-    // Desassociar conversas atribuidas (SetNull via schema, mas limpar explicitamente)
-    await this.prisma.conversation.updateMany({
-      where: { assigned_user_id: id },
-      data: { assigned_user_id: null },
-    });
-
-    // As demais relacoes (Task, TaskComment, CalendarEventComment, UserSchedule, AuditLog)
-    // sao tratadas pelo onDelete: SetNull/Cascade no schema Prisma
     await this.prisma.user.delete({ where: { id } });
   }
 
@@ -165,15 +176,15 @@ export class UsersService {
         AND: [
           {
             OR: [
-              { role: 'ADVOGADO' },
-              { role: 'ADMIN', specialties: { isEmpty: false } },
+              { roles: { has: 'ADVOGADO' } },
+              { roles: { has: 'ADMIN' }, specialties: { isEmpty: false } },
             ],
           },
           // Isolamento multi-tenant combinado via AND para não sobrescrever o OR acima
           ...(Object.keys(tenantFilter).length > 0 ? [tenantFilter] : []),
         ],
       },
-      select: { id: true, name: true, role: true, specialties: true },
+      select: { id: true, name: true, roles: true, specialties: true },
       orderBy: { name: 'asc' },
     });
   }
@@ -182,7 +193,7 @@ export class UsersService {
   async findInterns(supervisorId: string) {
     return this.prisma.user.findMany({
       where: { supervisors: { some: { id: supervisorId } } },
-      select: { id: true, name: true, email: true, role: true },
+      select: { id: true, name: true, email: true, roles: true },
       orderBy: { name: 'asc' },
     });
   }

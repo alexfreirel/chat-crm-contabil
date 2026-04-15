@@ -54,6 +54,7 @@ export const FICHA_SECTIONS: FichaSection[] = [
     fields: [
       { key: 'nome_empregador', label: 'Nome do Empregador', type: 'text', required: true, colSpan: 2 },
       { key: 'cnpjcpf_empregador', label: 'CNPJ/CPF do Empregador', type: 'text' },
+      { key: 'cidade_trabalho', label: 'Cidade do Local de Trabalho', type: 'text', placeholder: 'Ex: São Paulo/SP' },
       { key: 'funcao', label: 'Função/Cargo', type: 'text', required: true },
       { key: 'data_admissao', label: 'Data de Admissão', type: 'date', required: true },
       { key: 'data_saida', label: 'Data de Saída', type: 'date' },
@@ -155,6 +156,11 @@ export const FICHA_SECTIONS: FichaSection[] = [
     ],
   },
 ];
+
+// Lista de keys dos campos obrigatórios (required: true)
+export const REQUIRED_FIELD_KEYS: string[] = FICHA_SECTIONS.flatMap((s) =>
+  s.fields.filter((f) => f.required).map((f) => f.key),
+);
 
 // Default empty form data
 export function getEmptyFormData(): Record<string, string> {

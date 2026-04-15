@@ -9,6 +9,7 @@ import { InboxesService } from '../inboxes/inboxes.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { FollowupService } from '../followup/followup.service';
 import { AdminBotService } from '../admin-bot/admin-bot.service';
+import { MediaDownloadService } from '../media/media-download.service';
 
 interface EvolutionWebhookPayload {
   event: string;
@@ -85,6 +86,7 @@ export class EvolutionService {
     private whatsappService: WhatsappService,
     private moduleRef: ModuleRef,
     private adminBotService: AdminBotService,
+    private mediaDownloadService: MediaDownloadService,
   ) {}
 
   async handleMessagesUpsert(payload: EvolutionWebhookPayload) {
@@ -162,7 +164,6 @@ export class EvolutionService {
       // Only use it as the contact name for incoming messages.
       const isFromMe = key.fromMe === true;
       const pushName = !isFromMe ? ((data.pushName as string) || null) : null;
-      const externalMessageIdCheck = key.id as string;
       const messageContentCheck =
         (data.message?.conversation as string) ||
         (data.message?.extendedTextMessage?.text as string) ||
@@ -193,6 +194,9 @@ export class EvolutionService {
       const messageContent =
         (data.message?.conversation as string) ||
         (data.message?.extendedTextMessage?.text as string) ||
+        (data.message?.listResponseMessage?.singleSelectReply?.selectedRowId as string) ||
+        (data.message?.listResponseMessage?.title as string) ||
+        (data.message?.buttonsResponseMessage?.selectedDisplayText as string) ||
         '';
       const messageType = (data.messageType as string) || 'text';
 
@@ -204,6 +208,21 @@ export class EvolutionService {
         name: pushName,
         origin: 'whatsapp',
       });
+
+      // 1b. Lead PERDIDO/FINALIZADO voltou a falar → reativar para QUALIFICANDO
+      // Sem isso, a conversa existe mas fica invisível no inbox (filtro de stage).
+      if (!isFromMe && ['PERDIDO', 'FINALIZADO'].includes(lead.stage)) {
+        await this.prisma.lead.update({
+          where: { id: lead.id },
+          data: {
+            stage: 'QUALIFICANDO',
+            stage_entered_at: new Date(),
+            loss_reason: null,
+          },
+        });
+        (lead as any).stage = 'QUALIFICANDO';
+        this.logger.log(`[REACTIVATE] Lead ${lead.id} (${phone}) voltou a falar — stage ${lead.stage} → QUALIFICANDO`);
+      }
 
       // 2. Find or Create Conversation
       let conv = await this.prisma.conversation.findFirst({
@@ -226,10 +245,11 @@ export class EvolutionService {
             data: {
               status: 'ABERTO',
               last_message_at: new Date(),
+              assigned_user_id: null, // Reset para reatribuição via round-robin
               ...(inboxId && !closedConv.inbox_id ? { inbox_id: inboxId } : {}),
             },
           });
-          this.logger.log(`[REOPEN] Conversa ${conv.id} reaberta para lead ${lead.id}`);
+          this.logger.log(`[REOPEN] Conversa ${conv.id} reaberta para lead ${lead.id} (operador resetado)`);
         }
         // 2) Se não achou FECHADO, checar ADIADO — mantém status, só atualiza timestamp
         if (!conv) {
@@ -299,16 +319,26 @@ export class EvolutionService {
       }
       // ──────────────────────────────────────────────────────────────────────
 
-      // Auto-assign via round-robin se conversa sem operador atribuído
-      if (inboxId && !conv.assigned_user_id) {
-        const nextUserId = await this.inboxesService.getNextAssignee(inboxId);
+      // Auto-assign via round-robin — apenas entre operadores ONLINE
+      // Se ninguém online: IA atende sozinha (ai_mode permanece true, sem assigned_user_id)
+      // Quando o primeiro operador ficar online, as conversas pendentes serão atribuídas
+      // automaticamente via ChatGateway.assignPendingConversations()
+      if (!conv.assigned_user_id) {
+        const onlineUserIds = this.chatGateway.getOnlineUserIds();
+        const nextUserId: string | null = inboxId
+          ? await this.inboxesService.getNextAssignee(inboxId, onlineUserIds)
+          : null;
+
         if (nextUserId) {
           conv = await this.prisma.conversation.update({
             where: { id: conv.id },
             data: { assigned_user_id: nextUserId },
             // ai_mode NÃO é alterado: operador monitora, IA continua respondendo
           });
-          this.logger.log(`[AUTO-ASSIGN] Conversa ${conv.id} → operador ${nextUserId}`);
+          this.logger.log(`[AUTO-ASSIGN] Conversa ${conv.id} → operador online ${nextUserId}`);
+        } else {
+          // Ninguém online → IA atende sozinha (ai_mode já é true por default)
+          this.logger.log(`[AUTO-ASSIGN] Nenhum operador online — IA atende conversa ${conv.id}`);
         }
       }
 
@@ -322,7 +352,7 @@ export class EvolutionService {
         // Re-emite WebSocket para cobrir o caso em que o BullMQ QueueEvents perdeu o evento
         // (mensagem já está no banco mas o frontend pode não ter sido notificado em tempo real)
         this.chatGateway.emitNewMessage(existingMsg.conversation_id, existingMsg);
-        this.chatGateway.emitConversationsUpdate(null);
+        this.chatGateway.emitConversationsUpdate(conv.tenant_id ?? null);
         continue;
       }
 
@@ -409,19 +439,70 @@ export class EvolutionService {
         data: { last_message_at: new Date() },
       });
 
-      // Emit real-time events via WebSocket
-      this.chatGateway.emitNewMessage(conv.id, msg);
-      this.chatGateway.emitConversationsUpdate(null);
+      // ─── 4. Mídia: download síncrono (estilo Chatwoot) ───────────────────
+      // Para mensagens com mídia, tenta baixar ANTES de emitir WebSocket.
+      // Se o download falhar, emite sem mídia e enfileira fallback no BullMQ.
+      let msgToEmit: any = msg;
+
+      if (msgType !== 'text') {
+        const mediaData = (data.message as any)?.[messageType];
+        try {
+          const mediaRecord = await this.mediaDownloadService.downloadAndStore({
+            messageId: msg.id,
+            conversationId: conv.id,
+            externalMessageId,
+            instanceName,
+            mediaData,
+          });
+
+          if (mediaRecord) {
+            // Busca mensagem completa com mídia para emitir via WebSocket
+            const fullMsg = await this.prisma.message.findUnique({
+              where: { id: msg.id },
+              include: { media: true, skill: { select: { id: true, name: true, area: true } } },
+            });
+            if (fullMsg) msgToEmit = fullMsg;
+          } else {
+            // Download retornou null — enfileira fallback no worker
+            this.logger.warn(`[MEDIA-SYNC] Fallback BullMQ para msg ${msg.id}`);
+            await this.mediaQueue.add('download_media', {
+              message_id: msg.id,
+              conversation_id: conv.id,
+              media_data: mediaData,
+              remote_jid: remoteJid,
+              msg_id: externalMessageId,
+              instance_name: instanceName,
+            }, { delay: 5000 });
+          }
+        } catch (err: any) {
+          // Erro inesperado — enfileira fallback
+          this.logger.error(`[MEDIA-SYNC] Erro inesperado para msg ${msg.id}: ${err.message}`);
+          await this.mediaQueue.add('download_media', {
+            message_id: msg.id,
+            conversation_id: conv.id,
+            media_data: mediaData,
+            remote_jid: remoteJid,
+            msg_id: externalMessageId,
+            instance_name: instanceName,
+          }, { delay: 5000 });
+        }
+      }
+
+      // ─── 5. Emit WebSocket (com mídia se download foi OK) ─────────────
+      this.chatGateway.emitNewMessage(conv.id, msgToEmit);
+      this.chatGateway.emitConversationsUpdate(conv.tenant_id ?? null);
 
       // Notify operator(s) about incoming message (sound + unread badge)
       if (!isOutgoing) {
-        this.chatGateway.emitIncomingMessageNotification(conv.assigned_user_id || null, {
-          conversationId: conv.id,
-          contactName: lead.name || lead.phone,
-        });
+        this.chatGateway.emitIncomingMessageNotification(
+          conv.tenant_id ?? null,
+          conv.assigned_user_id || null,
+          { conversationId: conv.id, contactName: lead.name || lead.phone },
+          conv.assigned_lawyer_id || null,
+          lead.is_client,
+        );
 
         // ─── Response Listener: verifica se é resposta a um follow-up ─────
-        // Roda de forma assíncrona (fire-and-forget) para não bloquear o webhook
         if (messageContent && messageContent.length >= 3) {
           this.checkFollowupResponse(lead.id, messageContent).catch(e =>
             this.logger.warn(`[FOLLOWUP-LISTENER] ${e.message}`),
@@ -429,66 +510,72 @@ export class EvolutionService {
         }
       }
 
-      // 4. Se mídia, enfileira download
-      if (msgType !== 'text') {
-        const mediaData = (data.message as any)?.[messageType];
-        await this.mediaQueue.add('download_media', {
-          message_id: msg.id,
-          conversation_id: conv.id,
-          media_data: mediaData,
-          remote_jid: remoteJid,
-          msg_id: externalMessageId,
-          instance_name: instanceName,
-        });
-      }
-
       // 5. Se AI_Mode ativo e mensagem recebida (não enviada), agenda job para a IA responder
       // Debounce: cancela job pendente e cria novo com timer resetado, acumulando mensagens
       // rápidas. Quando o lead para de digitar, o job dispara e a IA responde tudo de uma vez.
+      this.logger.debug(`[AI-CHECK] conv=${conv.id} ai_mode=${conv.ai_mode} isOutgoing=${isOutgoing}`);
       if (!isOutgoing && conv.ai_mode) {
-        const cooldownRaw = await this.prisma.globalSetting.findUnique({
-          where: { key: 'AI_COOLDOWN_SECONDS' },
-        });
-        const cooldownSeconds = cooldownRaw?.value ? parseInt(cooldownRaw.value, 10) : 8;
-        const debounceMs = (isNaN(cooldownSeconds) ? 8 : Math.max(0, cooldownSeconds)) * 1000;
-        const jobId = `ai-debounce-${conv.id}`;
-
-        if (debounceMs > 0) {
-          // Tenta remover job pendente com o mesmo ID para resetar o timer.
-          // Se o job já estiver ATIVO (locked pelo worker), não pode ser removido;
-          // nesse caso agendamos um novo job SEM jobId fixo para que o BullMQ
-          // não faça deduplicação — garantindo que a nova mensagem seja processada
-          // assim que o job atual terminar.
-          let useFixedId = true;
-          const existing = await this.aiQueue.getJob(jobId);
-          if (existing) {
-            try {
-              await existing.remove();
-              this.logger.log(`[AI] Debounce: job ${jobId} removido, timer resetado`);
-            } catch {
-              // Job está bloqueado (em execução) — não pode ser cancelado.
-              // Agendamos novo job sem ID fixo para processar a nova mensagem em seguida.
-              useFixedId = false;
-              this.logger.warn(
-                `[AI] Debounce: job ${jobId} ativo/bloqueado — novo job agendado sem ID fixo`,
-              );
-            }
-          }
-
-          await this.aiQueue.add(
-            'process_ai_response',
-            { conversation_id: conv.id, lead_id: lead.id },
-            useFixedId
-              ? { jobId, delay: debounceMs, removeOnComplete: true, removeOnFail: false }
-              : { delay: debounceMs, removeOnComplete: true, removeOnFail: false },
-          );
-        } else {
-          // Sem debounce: processa imediatamente
-          await this.aiQueue.add('process_ai_response', {
-            conversation_id: conv.id,
-            lead_id: lead.id,
+        try {
+          const cooldownRaw = await this.prisma.globalSetting.findUnique({
+            where: { key: 'AI_COOLDOWN_SECONDS' },
           });
+          const cooldownSeconds = cooldownRaw?.value ? parseInt(cooldownRaw.value, 10) : 8;
+          const debounceMs = (isNaN(cooldownSeconds) ? 8 : Math.max(0, cooldownSeconds)) * 1000;
+          const jobId = `ai-debounce-${conv.id}`;
+
+          if (debounceMs > 0) {
+            let useFixedId = true;
+            const existing = await this.aiQueue.getJob(jobId);
+            if (existing) {
+              try {
+                await existing.remove();
+                this.logger.log(`[AI] Debounce: job ${jobId} removido, timer resetado`);
+              } catch {
+                useFixedId = false;
+                this.logger.warn(
+                  `[AI] Debounce: job ${jobId} ativo/bloqueado — novo job agendado sem ID fixo`,
+                );
+              }
+            }
+
+            await this.aiQueue.add(
+              'process_ai_response',
+              { conversation_id: conv.id, lead_id: lead.id },
+              useFixedId
+                ? { jobId, delay: debounceMs, removeOnComplete: true, removeOnFail: false }
+                : { delay: debounceMs, removeOnComplete: true, removeOnFail: false },
+            );
+            this.logger.log(`[AI] Job enfileirado: ${useFixedId ? jobId : '(sem ID fixo)'} delay=${debounceMs}ms`);
+          } else {
+            await this.aiQueue.add('process_ai_response', {
+              conversation_id: conv.id,
+              lead_id: lead.id,
+            });
+            this.logger.log(`[AI] Job enfileirado imediato para conv ${conv.id}`);
+          }
+        } catch (queueErr: any) {
+          this.logger.error(`[AI] ERRO ao enfileirar job de IA: ${queueErr.message}`);
         }
+      }
+
+      // 5b. Conversa do operador humano (ai_mode=false): enfileira job apenas para
+      // atualizar a Long Memory. O worker detecta ai_mode=false e só extrai fatos,
+      // sem gerar resposta IA. Debounce de 15s para acumular mensagens rápidas.
+      if (!isOutgoing && !conv.ai_mode) {
+        const memJobId = `memory-debounce-${conv.id}`;
+        const existing = await this.aiQueue.getJob(memJobId);
+        if (existing) {
+          try {
+            await existing.remove();
+          } catch {
+            // Job ativo — será processado; a próxima mensagem pega no próximo ciclo
+          }
+        }
+        await this.aiQueue.add(
+          'process_ai_response',
+          { conversation_id: conv.id, lead_id: lead.id },
+          { jobId: memJobId, delay: 15_000, removeOnComplete: true, removeOnFail: false },
+        );
       }
     }
   }
@@ -756,7 +843,7 @@ export class EvolutionService {
       });
 
       if (updated.count > 0) {
-        this.chatGateway.emitConversationsUpdate(null);
+        this.chatGateway.emitConversationsUpdate(lead.tenant_id ?? null);
         this.logger.log(`[WEBHOOK] chats.delete: ${updated.count} conversa(s) de ${phone} arquivadas`);
       }
     }
@@ -790,7 +877,7 @@ export class EvolutionService {
         const updated = await this.prisma.message.update({
           where: { id: msg.id },
           data: { status: newStatus },
-          include: { media: true },
+          include: { media: true, skill: { select: { id: true, name: true, area: true } } },
         });
 
         this.chatGateway.emitMessageUpdate(msg.conversation_id, updated);
@@ -866,7 +953,7 @@ export class EvolutionService {
     const updated = await this.prisma.message.update({
       where: { id: msg.id },
       data: { status: 'apagado_pelo_contato' },
-      include: { media: true },
+      include: { media: true, skill: { select: { id: true, name: true, area: true } } },
     });
 
     // Emite messageUpdate — frontend ja escuta e atualiza
@@ -927,7 +1014,7 @@ export class EvolutionService {
         data: updates,
       });
 
-      this.chatGateway.emitConversationsUpdate(null);
+      this.chatGateway.emitConversationsUpdate(lead.tenant_id ?? null);
       this.logger.log(`[WEBHOOK] Lead ${lead.id} updated: ${JSON.stringify(updates)}`);
     }
   }

@@ -37,42 +37,36 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
-    let retries = 0;
-    const MAX_RETRIES = 10;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let consecutiveFailures = 0;
 
     const checkDb = async () => {
       const controller = new AbortController();
-      // Timeout de 5s para evitar fetch pendurado quando a API está subindo
       const timeoutId = setTimeout(() => controller.abort(), 5000);
       try {
         const res = await fetch(`${API_BASE_URL}/health/db`, { signal: controller.signal });
         clearTimeout(timeoutId);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (data.status === 'ok') {
           setDbStatus('online');
-          retries = 0; // reset para próximas verificações periódicas
+          consecutiveFailures = 0;
         } else {
-          throw new Error('not ok');
+          throw new Error(data.message || 'DB not ok');
         }
       } catch {
         clearTimeout(timeoutId);
-        if (retries < MAX_RETRIES) {
-          // Nos primeiros 10 erros, tenta novamente a cada 3s (cobre startup da API)
-          retries++;
-          retryTimer = setTimeout(checkDb, 3000);
-        } else {
+        consecutiveFailures++;
+        // Marca offline após 2 falhas consecutivas (evita false positive por 1 timeout)
+        if (consecutiveFailures >= 2) {
           setDbStatus('offline');
         }
       }
     };
 
     checkDb();
-    const interval = setInterval(() => { retries = 0; checkDb(); }, 30000);
-    return () => {
-      clearInterval(interval);
-      if (retryTimer) clearTimeout(retryTimer);
-    };
+    // Verifica a cada 10 segundos — sem reset de contador
+    const interval = setInterval(checkDb, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleSubmit = async (e: FormEvent) => {

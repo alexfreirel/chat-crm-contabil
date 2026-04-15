@@ -2,23 +2,35 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { io } from 'socket.io-client';
 import { Sidebar } from '@/components/Sidebar';
 import { GlobalCommandPalette, useGlobalCommandPalette } from './components/GlobalCommandPalette';
+import { TaskAlertPopup } from './components/TaskAlertPopup';
 import {
   MessageSquare, Briefcase, Users, Check, FileEdit, BookOpen,
   Megaphone, Settings, Palette, LogOut, MoreHorizontal, X, Calendar,
-  LayoutDashboard, FileText, Gavel,
+  LayoutDashboard, FileText, Gavel, FileSpreadsheet,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useRole } from '@/lib/useRole';
+import { playNotificationSound, unlockAudioContext } from '@/lib/notificationSounds';
+import toast from 'react-hot-toast';
 
-const THEMES = [
-  { id: 'logo-dark', name: 'Dark (Logo)', color: '#000000' },
-  { id: 'logo-light', name: 'Light (Logo)', color: '#fafafa' },
-  { id: 'modern-dark', name: 'Modern Dark', color: '#0a0a0f' },
-  { id: 'modern-light', name: 'Modern Light', color: '#f8fafc' },
-  { id: 'rose-light', name: 'Rose Light', color: '#fff1f2' },
-];
+import { THEMES } from '@/components/ThemeSwitcher';
+
+function getWsUrl(): string {
+  if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005';
+  if (apiUrl.startsWith('http')) {
+    try { return new URL(apiUrl).origin; } catch { /* fall through */ }
+  }
+  return typeof window !== 'undefined' ? window.location.origin : '';
+}
+
+function getSocketPath(): string {
+  if (process.env.NEXT_PUBLIC_SOCKET_PATH) return process.env.NEXT_PUBLIC_SOCKET_PATH;
+  return '/socket.io/';
+}
 
 export default function AtendimentoLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -35,6 +47,8 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [overdueCount, setOverdueCount] = useState(0);
+  const pathnameRef = useRef(pathname);
+  useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
 
   // ─── Auth check ───────────────────────────────────────────
   useEffect(() => {
@@ -60,6 +74,121 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
     window.addEventListener('auth:logout', handleAuthLogout);
     return () => window.removeEventListener('auth:logout', handleAuthLogout);
   }, [pathname, router]);
+
+  // ─── Unlock áudio no primeiro gesto do usuário (necessário para autoplay) ──
+  useEffect(() => {
+    const unlock = () => unlockAudioContext();
+    document.addEventListener('click', unlock, { once: true });
+    document.addEventListener('keydown', unlock, { once: true });
+    return () => {
+      document.removeEventListener('click', unlock);
+      document.removeEventListener('keydown', unlock);
+    };
+  }, []);
+
+  // ─── Token reativo (cobre login → dashboard, pois o layout persiste) ───
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  useEffect(() => {
+    setAuthToken(localStorage.getItem('token'));
+  }, [pathname]); // re-lê token a cada navegação (captura momento pós-login)
+
+  // ─── Fetch unread counts do servidor na montagem (fonte de verdade) ──────
+  useEffect(() => {
+    if (!authToken) return;
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005';
+    fetch(`${apiUrl}/conversations/unread-counts`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+      signal: AbortSignal.timeout(5000),
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && typeof data === 'object' && !Array.isArray(data)) {
+          const total = Object.values(data as Record<string, number>).reduce((s: number, n: number) => s + n, 0);
+          setUnreadTotal(total);
+          window.dispatchEvent(new CustomEvent('unread_count_update', { detail: { total } }));
+          try { sessionStorage.setItem('unreadCounts', JSON.stringify(data)); } catch {}
+        }
+      })
+      .catch(() => {});
+  }, [authToken]);
+
+  // ─── Socket global de notificações (persiste em todas as rotas) ──────────
+  // page.tsx cuida do som e dos badges quando o usuário está na tela do chat.
+  // Este socket garante que o som toque em QUALQUER outra rota do sistema.
+  useEffect(() => {
+    if (!authToken) return;
+
+    let myId: string | null = null;
+    try {
+      let b64 = authToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      myId = JSON.parse(atob(b64)).sub || null;
+    } catch { /* ignora */ }
+
+    const socket = io(getWsUrl(), {
+      path: getSocketPath(),
+      transports: ['polling', 'websocket'],
+      auth: { token: authToken },
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 2000,
+    });
+
+    socket.on('connect', () => {
+      if (myId) socket.emit('join_user', myId);
+    });
+
+    // Backend envia incoming_message_notification para user:${assignedUserId}
+    // (ou tenant se sem atribuição). Se chegou, é para mim.
+    // Na tela de chat, page.tsx já cuida → evita som duplo.
+    socket.on('incoming_message_notification', (data: { conversationId?: string; contactName?: string }) => {
+      const onChatPage = pathnameRef.current === '/atendimento' ||
+        pathnameRef.current.startsWith('/atendimento/chat');
+      if (onChatPage) return;
+
+      playNotificationSound();
+
+      // Persiste unreadCounts em sessionStorage para page.tsx ler ao montar
+      if (data?.conversationId) {
+        try {
+          const raw = sessionStorage.getItem('unreadCounts');
+          const counts: Record<string, number> = raw ? JSON.parse(raw) : {};
+          counts[data.conversationId] = (counts[data.conversationId] || 0) + 1;
+          sessionStorage.setItem('unreadCounts', JSON.stringify(counts));
+          const total = Object.values(counts).reduce((s, n) => s + n, 0);
+          setUnreadTotal(total);
+          // Propaga para o Sidebar (que ouve este evento para atualizar o badge)
+          window.dispatchEvent(new CustomEvent('unread_count_update', { detail: { total } }));
+        } catch {
+          setUnreadTotal(prev => prev + 1);
+        }
+      }
+
+      // Toast in-app (visível mesmo com a aba focada)
+      const name = data?.contactName || 'Novo contato';
+      toast(`Nova mensagem de ${name}`, { icon: '💬', duration: 4000 });
+
+      // Desktop notification (browser nativo — só aparece com aba desfocada)
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && !document.hasFocus()) {
+        const n = new Notification(name, {
+          body: 'Nova mensagem recebida',
+          silent: true,
+        });
+        setTimeout(() => n.close(), 6000);
+      }
+    });
+
+    // Transferências: toast + som em qualquer rota (page.tsx cuida do popup no chat)
+    socket.on('transfer_request', (data: { contactName?: string; fromUserName?: string }) => {
+      const onChatPage = pathnameRef.current === '/atendimento' ||
+        pathnameRef.current.startsWith('/atendimento/chat');
+      if (onChatPage) return; // page.tsx já exibe o popup
+      playNotificationSound();
+      toast(`Transferência de ${data?.fromUserName || 'Operador'}: ${data?.contactName || 'Contato'}`, { icon: '📨', duration: 6000 });
+    });
+
+    return () => { socket.disconnect(); };
+  }, [authToken]);
 
   // ─── Mobile detection ─────────────────────────────────────
   useEffect(() => {
@@ -144,6 +273,7 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
   const mainTabs = [
     { label: 'CRM', href: '/atendimento/crm', icon: Briefcase, match: (p: string) => p.startsWith('/atendimento/crm') },
     { label: 'Chat', href: '/atendimento', icon: MessageSquare, match: (p: string) => p === '/atendimento' || p.startsWith('/atendimento/chat'), isCenter: true, badge: unreadTotal },
+    { label: 'Fiscal', href: '/atendimento/agente-fiscal', icon: FileSpreadsheet, match: (p: string) => p.startsWith('/atendimento/agente-fiscal') },
     { label: 'Contatos', href: '/atendimento/contacts', icon: Users, match: (p: string) => p.startsWith('/atendimento/contacts') },
   ];
 
@@ -151,8 +281,7 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
     { label: 'Dashboard', href: '/atendimento/dashboard', icon: LayoutDashboard, match: (p: string) => p.startsWith('/atendimento/dashboard'), show: perms.canViewDashboard },
     { label: 'Agenda & Tarefas', href: '/atendimento/agenda', icon: Calendar, match: (p: string) => p.startsWith('/atendimento/agenda') || p.startsWith('/atendimento/tasks'), badge: overdueCount, show: true },
     { label: 'Triagem e Peticionamento', href: '/atendimento/advogado', icon: FileEdit, match: (p: string) => p.startsWith('/atendimento/advogado'), show: perms.canViewAdvogado },
-    { label: 'Processos', href: '/atendimento/processos', icon: BookOpen, match: (p: string) => p.startsWith('/atendimento/processos'), show: perms.canViewLegalCases },
-    { label: 'DJEN', href: '/atendimento/djen', icon: Gavel, match: (p: string) => p.startsWith('/atendimento/djen'), show: perms.canViewDjen },
+    { label: 'Agente Fiscal', href: '/atendimento/agente-fiscal', icon: FileSpreadsheet, match: (p: string) => p.startsWith('/atendimento/agente-fiscal'), show: true },
     { label: 'Marketing', href: '/atendimento/marketing/analytics', icon: Megaphone, match: (p: string) => p.startsWith('/atendimento/marketing'), show: perms.canViewAnalytics },
     { label: 'Ajustes', href: '/atendimento/settings', icon: Settings, match: (p: string) => p.startsWith('/atendimento/settings'), show: perms.canManageSettings },
   ];
@@ -172,6 +301,9 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
       <main className="flex-1 overflow-hidden">
         {children}
       </main>
+
+      {/* ─── Popup de alertas de tarefas (tempo real) ──────── */}
+      <TaskAlertPopup />
 
       {/* ─── Global Command Palette (Ctrl+K) ────────────────── */}
       <GlobalCommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />

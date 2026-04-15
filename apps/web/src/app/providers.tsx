@@ -7,7 +7,8 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <NextThemesProvider
       attribute="data-theme"
-      defaultTheme="logo-dark"
+      defaultTheme="escuro"
+      themes={['escuro', 'claro', 'rose', 'azul', 'verde']}
       enableSystem={false}
     >
       {children}

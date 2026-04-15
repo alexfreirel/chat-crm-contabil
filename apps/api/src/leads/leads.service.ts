@@ -5,6 +5,8 @@ import { ChatGateway } from '../gateway/chat.gateway';
 import { Prisma, Lead } from '@crm/shared';
 import { AutomationsService } from '../automations/automations.service';
 import { FollowupService } from '../followup/followup.service';
+import { GoogleDriveService } from '../google-drive/google-drive.service';
+import { effectiveRole, normalizeRoles } from '../common/utils/permissions.util';
 import OpenAI from 'openai';
 
 /**
@@ -29,6 +31,7 @@ export class LeadsService {
     private chatGateway: ChatGateway,
     private automationsService: AutomationsService,
     private moduleRef: ModuleRef,
+    private googleDriveService: GoogleDriveService,
   ) {}
 
   async create(data: Prisma.LeadCreateInput): Promise<Lead> {
@@ -40,7 +43,7 @@ export class LeadsService {
     return lead;
   }
 
-  async findAll(tenant_id?: string, inbox_id?: string, page?: number, limit?: number, search?: string, stage?: string) {
+  async findAll(tenant_id?: string, inbox_id?: string, page?: number, limit?: number, search?: string, stage?: string, userId?: string) {
     const baseWhere: any = tenant_id
       ? { OR: [{ tenant_id }, { tenant_id: null }] }
       : {};
@@ -67,6 +70,47 @@ export class LeadsService {
     const where = inbox_id
       ? { ...baseWhere, conversations: { some: { inbox_id } } }
       : baseWhere;
+
+    // ─── Controle de acesso por role (mesmo padrão de conversations) ────
+    if (userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { roles: true, inboxes: { select: { id: true } } },
+      });
+
+      const userRoles = normalizeRoles(user?.roles as any);
+      const isAdminUser = userRoles.includes('ADMIN');
+      const isAdvogadoUser = userRoles.includes('ADVOGADO');
+      const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL');
+      const userInboxIds = (user?.inboxes ?? []).map((i: any) => i.id);
+
+      if (!isAdminUser) {
+        // CRM Pipeline: operador/advogado vê apenas leads explicitamente atribuídos.
+        // Diferente do chat inbox (que mostra fila da inbox), aqui só mostra leads
+        // onde o usuário é assigned_user, assigned_lawyer, cs_user ou lawyer do caso.
+        const orConditions: any[] = [];
+
+        if (isAdvogadoUser) {
+          orConditions.push({ conversations: { some: { assigned_lawyer_id: userId } } });
+          orConditions.push({ legal_cases: { some: { lawyer_id: userId } } });
+        }
+
+        if (isOperadorUser || isAdvogadoUser) {
+          orConditions.push({ conversations: { some: { assigned_user_id: userId } } });
+          orConditions.push({ cs_user_id: userId });
+        }
+
+        // Fallback: se nenhuma condição (ex: estagiário), ver só os atribuídos
+        if (orConditions.length === 0) {
+          orConditions.push({ conversations: { some: { assigned_user_id: userId } } });
+        }
+
+        // Combina com AND para manter os filtros de tenant/stage/search
+        if (!where.AND) where.AND = [];
+        if (!Array.isArray(where.AND)) where.AND = [where.AND];
+        where.AND.push({ OR: orConditions });
+      }
+    }
 
     const includeOpts = {
       _count: { select: { conversations: true } },
@@ -177,7 +221,7 @@ export class LeadsService {
     return { exists: true, lead: found };
   }
 
-  async update(id: string, data: { name?: string; email?: string; tags?: string[] }, tenantId?: string): Promise<Lead> {
+  async update(id: string, data: { name?: string; email?: string; cpf_cnpj?: string; tags?: string[] }, tenantId?: string): Promise<Lead> {
     if (tenantId) {
       const existing = await this.prisma.lead.findUnique({ where: { id }, select: { tenant_id: true } });
       if (existing?.tenant_id && existing.tenant_id !== tenantId) {
@@ -452,7 +496,7 @@ export class LeadsService {
 
     const openai = new OpenAI({ apiKey });
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4.1-mini',
       max_tokens: 300,
       messages: [
         {
@@ -477,6 +521,36 @@ export class LeadsService {
         { name: { contains: search, mode: 'insensitive' } },
         { phone: { contains: search } },
       ];
+    }
+
+    // Controle de acesso por role (mesmo padrão do findAll)
+    if (userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { roles: true },
+      });
+      const userRoles = normalizeRoles(user?.roles as any);
+      const isAdminUser = userRoles.includes('ADMIN');
+      const isAdvogadoUser = userRoles.includes('ADVOGADO');
+      const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL');
+
+      if (!isAdminUser) {
+        const orConditions: any[] = [];
+        if (isAdvogadoUser) {
+          orConditions.push({ conversations: { some: { assigned_lawyer_id: userId } } });
+          orConditions.push({ legal_cases: { some: { lawyer_id: userId } } });
+        }
+        if (isOperadorUser || isAdvogadoUser) {
+          orConditions.push({ conversations: { some: { assigned_user_id: userId } } });
+          orConditions.push({ cs_user_id: userId });
+        }
+        if (orConditions.length === 0) {
+          orConditions.push({ conversations: { some: { assigned_user_id: userId } } });
+        }
+        if (!where.AND) where.AND = [];
+        if (!Array.isArray(where.AND)) where.AND = [where.AND];
+        where.AND.push({ OR: orConditions });
+      }
     }
 
     const leads = await this.prisma.lead.findMany({

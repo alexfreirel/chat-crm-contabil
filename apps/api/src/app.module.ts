@@ -26,7 +26,12 @@ import { S3Module } from './s3/s3.module';
 import { McpModule } from './mcp/mcp.module';
 import { AutomationsModule } from './automations/automations.module';
 import { FollowupModule } from './followup/followup.module';
+import { GoogleDriveModule } from './google-drive/google-drive.module';
+import { InternModule } from './intern/intern.module';
 import { AdminBotModule } from './admin-bot/admin-bot.module';
+import { FinanceiroModule } from './financeiro/financeiro.module';
+import { PaymentGatewayModule } from './payment-gateway/payment-gateway.module';
+import { NotaFiscalModule } from './nota-fiscal/nota-fiscal.module';
 
 // ─── Módulos Contábeis ────────────────────────
 import { ClientesContabilModule } from './clientes-contabil/clientes-contabil.module';
@@ -49,6 +54,7 @@ import { RolesGuard } from './auth/guards/roles.guard';
     ScheduleModule.forRoot(),
     BullModule.forRootAsync({
       useFactory: () => ({
+        prefix: process.env.BULL_PREFIX || 'bull',
         connection: {
           host: process.env.REDIS_HOST || 'localhost',
           port: parseInt(process.env.REDIS_PORT || '6379'),
@@ -86,6 +92,7 @@ import { RolesGuard } from './auth/guards/roles.guard';
     McpModule,
     AutomationsModule,
     FollowupModule,
+    InternModule,
     AdminBotModule,
     // ─── Módulos Contábeis ───────────────────────
     ClientesContabilModule,

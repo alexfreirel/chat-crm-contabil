@@ -7,6 +7,7 @@ import {
   Trash2, Play, Pause, X, Search, Filter, ChevronDown,
   MessageSquare, Settings, BarChart2, List, Shield, AlertOctagon,
   Phone, Mail, Smartphone, Eye, Download, Sprout, FileJson,
+  Radio, Calendar, MapPin, Hash,
 } from 'lucide-react';
 import { showError, showSuccess } from '@/lib/toast';
 import { API_BASE_URL } from '@/lib/api';
@@ -93,6 +94,47 @@ interface LeadSearchResult {
   stage: string;
 }
 
+interface BroadcastTarget {
+  event_id: string;
+  event_title: string;
+  event_date: string;
+  event_location?: string;
+  lead_id: string;
+  lead_name?: string;
+  lead_phone: string;
+  lead_stage: string;
+  case_number?: string;
+  case_type?: string;
+  court?: string;
+}
+
+interface BroadcastJob {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  total_targets: number;
+  sent_count: number;
+  failed_count: number;
+  interval_ms: number;
+  started_at?: string;
+  completed_at?: string;
+  created_at: string;
+  created_by?: { name: string };
+  items?: BroadcastItem[];
+  _count?: { items: number };
+}
+
+interface BroadcastItem {
+  id: string;
+  lead_id: string;
+  phone: string;
+  generated_text?: string;
+  status: string;
+  sent_at?: string;
+  error?: string;
+}
+
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const API = API_BASE_URL;
@@ -102,6 +144,7 @@ const TABS = [
   { id: 'sequencias', label: 'Sequências', icon: List },
   { id: 'enrollments', label: 'Enrollments', icon: Users },
   { id: 'aprovacoes', label: 'Aprovações', icon: MessageSquare },
+  { id: 'disparos', label: 'Disparos', icon: Radio },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -123,6 +166,7 @@ const STAGES = [
 const CHANNELS = [
   { id: 'whatsapp', label: 'WhatsApp' },
   { id: 'email', label: 'E-mail' },
+  { id: 'ligacao', label: 'Ligação' },
 ];
 
 const TONES = [
@@ -157,7 +201,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 const STATUS_COLORS: Record<string, string> = {
   ATIVO: 'text-green-400 bg-green-400/10',
   PAUSADO: 'text-yellow-400 bg-yellow-400/10',
-  CONCLUIDO: 'text-gray-400 bg-gray-400/10',
+  CONCLUIDO: 'text-muted-foreground bg-gray-400/10',
   CANCELADO: 'text-red-400 bg-red-400/10',
   CONVERTIDO: 'text-purple-400 bg-purple-400/10',
 };
@@ -207,12 +251,12 @@ function Modal({ onClose, children, title, large }: ModalProps) {
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className={`relative z-10 w-full ${large ? 'max-w-3xl' : 'max-w-lg'} bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-4 duration-200`}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 shrink-0">
-          <h2 className="text-lg font-semibold text-white">{title}</h2>
+      <div className={`relative z-10 w-full ${large ? 'max-w-3xl' : 'max-w-lg'} bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-4 duration-200`}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-all duration-200"
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-all duration-200"
           >
             <X size={18} />
           </button>
@@ -224,11 +268,11 @@ function Modal({ onClose, children, title, large }: ModalProps) {
 }
 
 function inputCls(extra = '') {
-  return `w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-colors ${extra}`;
+  return `w-full bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors ${extra}`;
 }
 
 function labelCls() {
-  return 'block text-xs font-medium text-gray-400 mb-1';
+  return 'block text-xs font-medium text-muted-foreground mb-1';
 }
 
 // ─── Modal: Criar/Editar Sequência ────────────────────────────────────────────
@@ -323,8 +367,8 @@ function SequenceModal({
                 onClick={() => toggleStage(s.id)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200 ${
                   form.auto_enroll_stages.includes(s.id)
-                    ? 'bg-blue-600 border-blue-500 text-white'
-                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
+                    ? 'bg-blue-600 border-blue-500 text-foreground'
+                    : 'bg-muted border-border text-muted-foreground hover:border-border'
                 }`}
               >
                 {s.label}
@@ -349,14 +393,14 @@ function SequenceModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 px-4 py-2 rounded-lg border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 text-sm transition-all duration-200"
+            className="flex-1 px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-border text-sm transition-all duration-200"
           >
             Cancelar
           </button>
           <button
             type="submit"
             disabled={saving}
-            className="flex-1 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium transition-all duration-200"
+            className="flex-1 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-foreground text-sm font-medium transition-all duration-200"
           >
             {saving ? 'Salvando...' : 'Salvar'}
           </button>
@@ -483,16 +527,16 @@ function StepModal({
           />
         </div>
 
-        <div className="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
+        <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
           <div>
-            <p className="text-sm font-medium text-white">Envio automático</p>
-            <p className="text-xs text-gray-500 mt-0.5">Envia sem aprovação humana</p>
+            <p className="text-sm font-medium text-foreground">Envio automático</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Envia sem aprovação humana</p>
           </div>
           <button
             type="button"
             onClick={() => setForm(f => ({ ...f, auto_send: !f.auto_send }))}
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-200 ${
-              form.auto_send ? 'bg-blue-600' : 'bg-gray-700'
+              form.auto_send ? 'bg-blue-600' : 'bg-muted'
             }`}
           >
             <span
@@ -507,14 +551,14 @@ function StepModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 px-4 py-2 rounded-lg border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 text-sm transition-all duration-200"
+            className="flex-1 px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-border text-sm transition-all duration-200"
           >
             Cancelar
           </button>
           <button
             type="submit"
             disabled={saving}
-            className="flex-1 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium transition-all duration-200"
+            className="flex-1 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-foreground text-sm font-medium transition-all duration-200"
           >
             {saving ? 'Salvando...' : 'Salvar Step'}
           </button>
@@ -527,43 +571,54 @@ function StepModal({
 // ─── MELHORIA 1: Modal Ver Contexto ──────────────────────────────────────────
 
 interface ContextData {
-  lead?: {
-    name?: string;
-    stage?: string;
-    type?: string;
-    days_without_contact?: number;
-    sentiment?: string;
-    preferred_channel?: string;
-    best_time?: string;
+  pessoa?: {
+    id?: string;
+    nome?: string;
+    telefone?: string;
+    email?: string;
+    tipo?: string;
+    estagio?: string;
+    canal_preferido?: string;
+    horario_responde_mais?: string;
+    dias_sem_contato?: number;
+    inadimplente?: boolean;
+    valor_devido?: number;
+    advogado_responsavel?: string;
+    origem?: string;
   };
   historico?: {
-    total_messages?: number;
-    general_sentiment?: string;
-    last_message_summary?: string;
-    last_message_from?: string;
+    total_msgs?: number;
+    sentimento_geral?: string;
+    sentimento?: string;
+    ultima_msg_resumo?: string;
+    ultima_msg_direcao?: string;
+    dias_sem_resposta?: number;
+    ultimas_msgs?: Array<{ direcao: string; text: string; created_at: string }>;
   };
-  processos?: Array<{
-    number?: string;
-    type?: string;
-    status?: string;
-  }>;
+  processual?: {
+    processos?: Array<{
+      numero?: string;
+      tipo?: string;
+      area?: string;
+      status?: string;
+    }>;
+  };
   financeiro?: {
     inadimplente?: boolean;
     valor_devido?: number;
+    dias_atraso?: number;
   };
-  sequencia?: {
-    name?: string;
-    step_objective?: string;
-    tone?: string;
-    channel?: string;
-    attempt_number?: number;
+  tarefa?: {
+    sequencia_nome?: string;
+    categoria?: string;
+    step_position?: number;
+    total_steps?: number;
+    tentativa_numero?: number;
+    objetivo?: string;
+    tom?: string;
+    canal?: string;
+    mensagens_anteriores?: string[];
   };
-  mensagens_anteriores?: Array<{
-    text?: string;
-    sent_at?: string;
-    channel?: string;
-    status?: string;
-  }>;
 }
 
 function ContextModal({ msg, onClose }: { msg: FollowupMessage; onClose: () => void }) {
@@ -571,7 +626,7 @@ function ContextModal({ msg, onClose }: { msg: FollowupMessage; onClose: () => v
 
   const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
     <div className="space-y-2">
-      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-700/60 pb-1.5">
+      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border/60 pb-1.5">
         {title}
       </h3>
       {children}
@@ -582,7 +637,7 @@ function ContextModal({ msg, onClose }: { msg: FollowupMessage; onClose: () => v
     if (value === undefined || value === null || value === '') return null;
     return (
       <div className="flex items-start justify-between gap-3 text-sm">
-        <span className="text-gray-500 shrink-0">{label}</span>
+        <span className="text-muted-foreground shrink-0">{label}</span>
         <span className="text-gray-200 text-right">{String(value)}</span>
       </div>
     );
@@ -593,37 +648,40 @@ function ContextModal({ msg, onClose }: { msg: FollowupMessage; onClose: () => v
       <div className="space-y-6">
         {/* Lead */}
         <Section title="Dados do Lead">
-          <div className="bg-gray-800/60 rounded-xl p-4 space-y-2">
-            <Row label="Nome" value={msg.enrollment.lead.name || msg.enrollment.lead.phone} />
-            <Row label="Stage" value={msg.enrollment.lead.stage} />
-            <Row label="Tipo" value={ctx.lead?.type} />
-            <Row label="Dias sem contato" value={ctx.lead?.days_without_contact !== undefined ? `${ctx.lead.days_without_contact} dias` : undefined} />
-            <Row label="Sentimento" value={ctx.lead?.sentiment} />
-            <Row label="Canal preferido" value={ctx.lead?.preferred_channel} />
-            <Row label="Melhor horário" value={ctx.lead?.best_time} />
-            {!ctx.lead && <p className="text-xs text-gray-600 italic">Dados do lead não disponíveis no contexto.</p>}
+          <div className="bg-muted/60 rounded-xl p-4 space-y-2">
+            <Row label="Nome" value={ctx.pessoa?.nome || msg.enrollment.lead.name || msg.enrollment.lead.phone} />
+            <Row label="Stage" value={ctx.pessoa?.estagio || msg.enrollment.lead.stage} />
+            <Row label="Tipo" value={ctx.pessoa?.tipo} />
+            <Row label="Dias sem contato" value={ctx.pessoa?.dias_sem_contato !== undefined ? `${ctx.pessoa.dias_sem_contato} dias` : undefined} />
+            <Row label="Canal preferido" value={ctx.pessoa?.canal_preferido} />
+            <Row label="Horário que mais responde" value={ctx.pessoa?.horario_responde_mais} />
+            <Row label="Advogado responsável" value={ctx.pessoa?.advogado_responsavel} />
+            <Row label="Origem" value={ctx.pessoa?.origem} />
+            {!ctx.pessoa && <p className="text-xs text-muted-foreground/60 italic">Dados do lead não disponíveis no contexto.</p>}
           </div>
         </Section>
 
         {/* Histórico */}
         <Section title="Histórico de Conversa">
-          <div className="bg-gray-800/60 rounded-xl p-4 space-y-2">
-            <Row label="Total de mensagens" value={ctx.historico?.total_messages} />
-            <Row label="Sentimento geral" value={ctx.historico?.general_sentiment} />
-            <Row label="Resumo da última msg" value={ctx.historico?.last_message_summary} />
-            <Row label="Quem enviou por último" value={ctx.historico?.last_message_from} />
-            {!ctx.historico && <p className="text-xs text-gray-600 italic">Histórico não disponível no contexto.</p>}
+          <div className="bg-muted/60 rounded-xl p-4 space-y-2">
+            <Row label="Total de mensagens" value={ctx.historico?.total_msgs} />
+            <Row label="Sentimento geral" value={ctx.historico?.sentimento_geral || ctx.historico?.sentimento} />
+            <Row label="Dias sem resposta" value={ctx.historico?.dias_sem_resposta !== undefined ? `${ctx.historico.dias_sem_resposta} dias` : undefined} />
+            <Row label="Resumo da última msg" value={ctx.historico?.ultima_msg_resumo} />
+            <Row label="Última msg enviada por" value={ctx.historico?.ultima_msg_direcao === 'in' ? 'Cliente' : ctx.historico?.ultima_msg_direcao === 'out' ? 'Escritório' : ctx.historico?.ultima_msg_direcao} />
+            {!ctx.historico && <p className="text-xs text-muted-foreground/60 italic">Histórico não disponível no contexto.</p>}
           </div>
         </Section>
 
         {/* Processos */}
-        {(ctx.processos?.length ?? 0) > 0 ? (
+        {(ctx.processual?.processos?.length ?? 0) > 0 ? (
           <Section title="Dados Processuais">
             <div className="space-y-2">
-              {ctx.processos!.map((p, i) => (
-                <div key={i} className="bg-gray-800/60 rounded-xl p-3 flex flex-wrap gap-3 text-sm">
-                  {p.number ? <span className="text-blue-300 font-mono text-xs">{p.number}</span> : null}
-                  {p.type ? <Badge label={p.type} colorClass="text-gray-300 bg-gray-700/50" /> : null}
+              {ctx.processual!.processos!.map((p, i) => (
+                <div key={i} className="bg-muted/60 rounded-xl p-3 flex flex-wrap gap-3 text-sm">
+                  {p.numero ? <span className="text-blue-300 font-mono text-xs">{p.numero}</span> : null}
+                  {p.tipo ? <Badge label={p.tipo} colorClass="text-foreground/80 bg-muted/50" /> : null}
+                  {p.area ? <Badge label={p.area} colorClass="text-blue-400 bg-blue-400/10" /> : null}
                   {p.status ? <Badge label={p.status} colorClass="text-green-400 bg-green-400/10" /> : null}
                 </div>
               ))}
@@ -634,7 +692,7 @@ function ContextModal({ msg, onClose }: { msg: FollowupMessage; onClose: () => v
         {/* Financeiro */}
         {ctx.financeiro ? (
           <Section title="Dados Financeiros">
-            <div className="bg-gray-800/60 rounded-xl p-4 space-y-2">
+            <div className="bg-muted/60 rounded-xl p-4 space-y-2">
               <Row
                 label="Inadimplente"
                 value={ctx.financeiro.inadimplente ? 'Sim' : 'Não'}
@@ -651,14 +709,15 @@ function ContextModal({ msg, onClose }: { msg: FollowupMessage; onClose: () => v
 
         {/* Sequência */}
         <Section title="Informações da Sequência">
-          <div className="bg-gray-800/60 rounded-xl p-4 space-y-2">
-            <Row label="Nome da sequência" value={msg.enrollment.sequence.name} />
-            <Row label="Objetivo do step" value={msg.step.objective} />
-            <Row label="Tom" value={msg.step.tone} />
-            <Row label="Canal" value={msg.step.channel} />
-            <Row label="Step #" value={msg.step.position} />
-            {ctx.sequencia?.attempt_number !== undefined && (
-              <Row label="Tentativa" value={`#${ctx.sequencia.attempt_number}`} />
+          <div className="bg-muted/60 rounded-xl p-4 space-y-2">
+            <Row label="Nome da sequência" value={ctx.tarefa?.sequencia_nome || msg.enrollment.sequence.name} />
+            <Row label="Categoria" value={ctx.tarefa?.categoria} />
+            <Row label="Objetivo do step" value={ctx.tarefa?.objetivo || msg.step.objective} />
+            <Row label="Tom" value={ctx.tarefa?.tom || msg.step.tone} />
+            <Row label="Canal" value={ctx.tarefa?.canal || msg.step.channel} />
+            <Row label="Step" value={ctx.tarefa?.step_position !== undefined ? `${ctx.tarefa.step_position} de ${ctx.tarefa.total_steps}` : String(msg.step.position)} />
+            {ctx.tarefa?.tentativa_numero !== undefined && (
+              <Row label="Tentativa" value={`#${ctx.tarefa.tentativa_numero}`} />
             )}
           </div>
         </Section>
@@ -668,12 +727,12 @@ function ContextModal({ msg, onClose }: { msg: FollowupMessage; onClose: () => v
           <Section title="Mensagens Anteriores nesta Sequência">
             <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
               {(msg.enrollment.messages as Array<{ id: string; generated_text?: string; sent_text?: string; status: string; created_at: string; channel: string }>).map((m, i) => (
-                <div key={m.id ?? i} className="bg-gray-800/60 rounded-lg p-3 text-xs space-y-1">
+                <div key={m.id ?? i} className="bg-muted/60 rounded-lg p-3 text-xs space-y-1">
                   <div className="flex items-center justify-between gap-2">
-                    <Badge label={m.status} colorClass={STATUS_COLORS[m.status] ?? 'text-gray-400 bg-gray-700/50'} />
-                    <span className="text-gray-500">{formatDate(m.created_at)}</span>
+                    <Badge label={m.status} colorClass={STATUS_COLORS[m.status] ?? 'text-muted-foreground bg-muted/50'} />
+                    <span className="text-muted-foreground">{formatDate(m.created_at)}</span>
                   </div>
-                  <p className="text-gray-300 line-clamp-3">{m.sent_text || m.generated_text || '—'}</p>
+                  <p className="text-foreground/80 line-clamp-3">{m.sent_text || m.generated_text || '—'}</p>
                 </div>
               ))}
             </div>
@@ -681,16 +740,16 @@ function ContextModal({ msg, onClose }: { msg: FollowupMessage; onClose: () => v
         )}
 
         {/* Contexto bruto se não houver estrutura */}
-        {!ctx.lead && !ctx.historico && !ctx.processos && !ctx.financeiro && !ctx.sequencia && msg.context_json && (
+        {!ctx.pessoa && !ctx.historico && !ctx.processual && !ctx.financeiro && !ctx.tarefa && msg.context_json && (
           <Section title="Contexto Bruto (JSON)">
-            <pre className="bg-gray-800/60 rounded-xl p-4 text-xs text-gray-300 overflow-auto max-h-64 whitespace-pre-wrap">
+            <pre className="bg-muted/60 rounded-xl p-4 text-xs text-foreground/80 overflow-auto max-h-64 whitespace-pre-wrap">
               {JSON.stringify(msg.context_json, null, 2)}
             </pre>
           </Section>
         )}
 
         {!msg.context_json && (
-          <div className="text-center py-8 text-gray-600">
+          <div className="text-center py-8 text-muted-foreground/60">
             <FileJson size={32} className="mx-auto mb-2 opacity-40" />
             <p className="text-sm">Nenhum contexto disponível para esta mensagem.</p>
           </div>
@@ -759,9 +818,9 @@ function EnrollLeadModal({
         <div>
           <label className={labelCls()}>Buscar Lead</label>
           <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-8 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-colors"
+              className="w-full bg-muted border border-border rounded-lg pl-8 pr-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
               placeholder="Nome ou telefone..."
               value={search}
               onChange={e => { setSearch(e.target.value); setSelectedLead(null); }}
@@ -772,13 +831,13 @@ function EnrollLeadModal({
 
         {/* Lista de leads */}
         {search.trim() && (
-          <div className="border border-gray-700 rounded-lg overflow-hidden max-h-48 overflow-y-auto">
+          <div className="border border-border rounded-lg overflow-hidden max-h-48 overflow-y-auto">
             {searching ? (
-              <div className="flex items-center justify-center py-6 text-gray-500 text-sm gap-2">
+              <div className="flex items-center justify-center py-6 text-muted-foreground text-sm gap-2">
                 <RefreshCw size={14} className="animate-spin" /> Buscando...
               </div>
             ) : leads.length === 0 ? (
-              <div className="py-6 text-center text-gray-600 text-sm">
+              <div className="py-6 text-center text-muted-foreground/60 text-sm">
                 Nenhum lead encontrado
               </div>
             ) : (
@@ -786,18 +845,18 @@ function EnrollLeadModal({
                 <button
                   key={lead.id}
                   onClick={() => setSelectedLead(lead)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 text-left text-sm transition-all duration-200 border-b border-gray-800 last:border-0 ${
+                  className={`w-full flex items-center gap-3 px-4 py-3 text-left text-sm transition-all duration-200 border-b border-border last:border-0 ${
                     selectedLead?.id === lead.id
                       ? 'bg-blue-600/20 text-blue-300'
-                      : 'hover:bg-gray-800 text-gray-300'
+                      : 'hover:bg-muted text-foreground/80'
                   }`}
                 >
-                  <div className="w-7 h-7 rounded-full bg-gray-700 flex items-center justify-center text-xs font-bold text-gray-400 shrink-0">
+                  <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground shrink-0">
                     {(lead.name?.[0] ?? lead.phone[0]).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{lead.name || '—'}</p>
-                    <p className="text-xs text-gray-500">{lead.phone} · {lead.stage}</p>
+                    <p className="text-xs text-muted-foreground">{lead.phone} · {lead.stage}</p>
                   </div>
                   {selectedLead?.id === lead.id && <CheckCircle size={14} className="text-blue-400 shrink-0" />}
                 </button>
@@ -831,14 +890,14 @@ function EnrollLeadModal({
         <div className="flex gap-3 pt-2">
           <button
             onClick={onClose}
-            className="flex-1 px-4 py-2 rounded-lg border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 text-sm transition-all duration-200"
+            className="flex-1 px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-border text-sm transition-all duration-200"
           >
             Cancelar
           </button>
           <button
             onClick={handleConfirm}
             disabled={enrolling || !selectedLead}
-            className="flex-1 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium transition-all duration-200 flex items-center justify-center gap-2"
+            className="flex-1 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-foreground text-sm font-medium transition-all duration-200 flex items-center justify-center gap-2"
           >
             {enrolling ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
             {enrolling ? 'Enrolando...' : 'Enrolar'}
@@ -909,40 +968,40 @@ function ApprovalCard({
   };
 
   return (
-    <div className="bg-gray-800/60 border border-gray-700 rounded-xl p-5 space-y-4 transition-all duration-200 hover:border-gray-600">
+    <div className="bg-card border border-border rounded-xl p-5 space-y-4 transition-all duration-200 hover:border-border">
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1">
-          <p className="text-sm font-semibold text-white">
+          <p className="text-sm font-semibold text-foreground">
             {msg.enrollment.lead.name || msg.enrollment.lead.phone}
           </p>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             {msg.enrollment.sequence.name} · Step {msg.step.position} · {msg.step.channel.toUpperCase()}
           </p>
-          <p className="text-xs text-gray-500">
-            Stage: <span className="text-gray-300">{msg.enrollment.lead.stage}</span>
-            {' · '}Tom: <span className="text-gray-300 capitalize">{msg.step.tone}</span>
+          <p className="text-xs text-muted-foreground">
+            Stage: <span className="text-foreground/80">{msg.enrollment.lead.stage}</span>
+            {' · '}Tom: <span className="text-foreground/80 capitalize">{msg.step.tone}</span>
           </p>
         </div>
         <div className="flex flex-col items-end gap-1.5 shrink-0">
           <RiskBadge level={msg.risk_level} />
-          <span className="text-xs text-gray-500">{formatDate(msg.created_at)}</span>
+          <span className="text-xs text-muted-foreground">{formatDate(msg.created_at)}</span>
         </div>
       </div>
 
       {/* Objetivo */}
-      <div className="bg-gray-900/50 rounded-lg px-3 py-2">
-        <p className="text-xs text-gray-500 font-medium mb-0.5">Objetivo</p>
-        <p className="text-xs text-gray-300">{msg.step.objective}</p>
+      <div className="bg-background/50 rounded-lg px-3 py-2">
+        <p className="text-xs text-muted-foreground font-medium mb-0.5">Objetivo</p>
+        <p className="text-xs text-foreground/80">{msg.step.objective}</p>
       </div>
 
       {/* Texto gerado (editável) */}
       <div>
-        <label className="block text-xs font-medium text-gray-400 mb-1">
+        <label className="block text-xs font-medium text-muted-foreground mb-1">
           Mensagem gerada pela IA (editável)
         </label>
         <textarea
-          className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-colors"
+          className="w-full bg-background border border-gray-600 rounded-lg px-3 py-2 text-sm text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
           rows={4}
           value={text}
           onChange={e => setText(e.target.value)}
@@ -952,7 +1011,12 @@ function ApprovalCard({
       {/* Ações */}
       <div className="flex gap-2 flex-wrap">
         <button
-          onClick={() => handle(() => onApprove(msg.id, text), 'approve')}
+          onClick={() => {
+            if (msg.risk_level?.toUpperCase() === 'ALTO') {
+              if (!confirm('Esta mensagem tem risco ALTO. Tem certeza que deseja aprovar e enviar?')) return;
+            }
+            handle(() => onApprove(msg.id, text), 'approve');
+          }}
           disabled={!!loading}
           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-green-600/20 border border-green-600/30 text-green-400 hover:bg-green-600/30 disabled:opacity-50 text-sm font-medium transition-all duration-200"
         >
@@ -980,7 +1044,7 @@ function ApprovalCard({
 
         <button
           onClick={() => onViewContext(msg)}
-          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-gray-700/50 border border-gray-600/30 text-gray-300 hover:bg-gray-700 hover:text-white text-sm font-medium transition-all duration-200"
+          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-muted/50 border border-gray-600/30 text-foreground/80 hover:bg-muted/80 hover:text-foreground text-sm font-medium transition-all duration-200"
           title="Ver contexto usado pela IA"
         >
           <Eye size={14} />
@@ -1042,7 +1106,7 @@ function ChannelEffectivityCards({ stats, enrollments }: { stats: Stats; enrollm
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <TrendingUp size={16} className="text-blue-400" />
-        <h3 className="text-sm font-semibold text-white">Efetividade por Canal</h3>
+        <h3 className="text-sm font-semibold text-foreground">Efetividade por Canal</h3>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {channels.map(ch => {
@@ -1053,26 +1117,26 @@ function ChannelEffectivityCards({ stats, enrollments }: { stats: Stats; enrollm
               className={`bg-gradient-to-br ${ch.bg} border ${ch.border} rounded-2xl p-5 space-y-3 transition-all duration-200`}
             >
               <div className="flex items-center gap-2">
-                <div className={`p-2 rounded-lg bg-gray-900/40 ${ch.color}`}>
+                <div className={`p-2 rounded-lg bg-background/40 ${ch.color}`}>
                   <Icon size={16} />
                 </div>
                 <span className={`text-sm font-semibold ${ch.color}`}>{ch.label}</span>
               </div>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-500 text-xs">Enviados</span>
-                  <span className="text-white font-semibold">{ch.data.enviados}</span>
+                  <span className="text-muted-foreground text-xs">Enviados</span>
+                  <span className="text-foreground font-semibold">{ch.data.enviados}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-500 text-xs">Convertidos</span>
-                  <span className="text-white font-semibold">{ch.data.respondidos}</span>
+                  <span className="text-muted-foreground text-xs">Convertidos</span>
+                  <span className="text-foreground font-semibold">{ch.data.respondidos}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-500 text-xs">Taxa</span>
+                  <span className="text-muted-foreground text-xs">Taxa</span>
                   <span className={`font-bold ${ch.color}`}>{ch.data.taxa}%</span>
                 </div>
                 {/* Barra de progresso */}
-                <div className="w-full bg-gray-700/50 rounded-full h-1.5 mt-1">
+                <div className="w-full bg-muted/50 rounded-full h-1.5 mt-1">
                   <div
                     className={`h-1.5 rounded-full transition-all duration-500 ${ch.color.replace('text-', 'bg-')}`}
                     style={{ width: `${Math.min(100, parseFloat(ch.data.taxa))}%` }}
@@ -1091,7 +1155,7 @@ function ChannelEffectivityCards({ stats, enrollments }: { stats: Stats; enrollm
 
 function LeadResponseStatus({ enrollment }: { enrollment: FollowupEnrollment }) {
   if (!enrollment.last_sent_at) {
-    return <span className="text-gray-500 text-xs">—</span>;
+    return <span className="text-muted-foreground text-xs">—</span>;
   }
 
   // Se tiver dados de mensagens com detalhes, podemos inferir
@@ -1161,6 +1225,20 @@ export default function FollowupPage() {
   const [enrollFilter, setEnrollFilter] = useState('');
   const [enrollSearch, setEnrollSearch] = useState('');
 
+  // Disparos
+  const [broadcastTargets, setBroadcastTargets] = useState<BroadcastTarget[]>([]);
+  const [broadcasts, setBroadcasts] = useState<BroadcastJob[]>([]);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [loadingBroadcasts, setLoadingBroadcasts] = useState(false);
+  const [dispatchingBroadcast, setDispatchingBroadcast] = useState(false);
+  const [broadcastType, setBroadcastType] = useState<'AUDIENCIA' | 'COMUNICADO'>('AUDIENCIA');
+  const [broadcastDaysAhead, setBroadcastDaysAhead] = useState(7);
+  const [broadcastInterval, setBroadcastInterval] = useState(10);
+  const [broadcastCustomPrompt, setBroadcastCustomPrompt] = useState('');
+  const [activeBroadcast, setActiveBroadcast] = useState<BroadcastJob | null>(null);
+  const [expandedBroadcast, setExpandedBroadcast] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // ── Fetch functions ─────────────────────────────────────────────────────────
 
   const fetchStats = useCallback(async () => {
@@ -1212,13 +1290,106 @@ export default function FollowupPage() {
     }
   }, []);
 
+  // ── Broadcast fetch functions ────────────────────────────────────────────────
+
+  const fetchBroadcastPreview = useCallback(async () => {
+    setLoadingPreview(true);
+    try {
+      const data = await apiFetch(`/followup/broadcasts/preview?type=${broadcastType}&days_ahead=${broadcastDaysAhead}`);
+      setBroadcastTargets(Array.isArray(data) ? data : []);
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Erro ao carregar preview');
+    } finally {
+      setLoadingPreview(false);
+    }
+  }, [broadcastType, broadcastDaysAhead]);
+
+  const fetchBroadcasts = useCallback(async () => {
+    setLoadingBroadcasts(true);
+    try {
+      const data = await apiFetch('/followup/broadcasts');
+      setBroadcasts(Array.isArray(data) ? data : []);
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Erro ao carregar disparos');
+    } finally {
+      setLoadingBroadcasts(false);
+    }
+  }, []);
+
+  const handleDispatchBroadcast = async () => {
+    if (broadcastTargets.length === 0) { showError('Nenhum alvo encontrado'); return; }
+    const confirmMsg = broadcastType === 'COMUNICADO'
+      ? `Disparar comunicado para ${broadcastTargets.length} clientes com intervalo de ${broadcastInterval}s entre cada?`
+      : `Disparar ${broadcastTargets.length} mensagens com intervalo de ${broadcastInterval}s entre cada? As mensagens serão geradas por IA individualmente.`;
+    if (!confirm(confirmMsg)) return;
+    setDispatchingBroadcast(true);
+    try {
+      const result = await apiFetch('/followup/broadcasts', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: broadcastType,
+          days_ahead: broadcastDaysAhead,
+          interval_ms: broadcastInterval * 1000,
+          custom_prompt: broadcastCustomPrompt || undefined,
+        }),
+      });
+      showSuccess(`Disparo iniciado! ${result.items?.length || result.total_targets} mensagens sendo enviadas.`);
+      setActiveBroadcast(result);
+      setBroadcastTargets([]);
+      fetchBroadcasts();
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Erro ao criar disparo');
+    } finally {
+      setDispatchingBroadcast(false);
+    }
+  };
+
+  const handleCancelBroadcast = async (id: string) => {
+    if (!confirm('Cancelar este disparo? Mensagens já enviadas não serão revertidas.')) return;
+    try {
+      await apiFetch(`/followup/broadcasts/${id}/cancel`, { method: 'PATCH' });
+      showSuccess('Disparo cancelado');
+      setActiveBroadcast(null);
+      fetchBroadcasts();
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Erro ao cancelar');
+    }
+  };
+
+  const handleViewBroadcast = async (id: string) => {
+    try {
+      const data = await apiFetch(`/followup/broadcasts/${id}`);
+      setActiveBroadcast(data);
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Erro ao carregar detalhes');
+    }
+  };
+
+  // Poll active broadcast progress
+  useEffect(() => {
+    if (activeBroadcast && activeBroadcast.status === 'ENVIANDO') {
+      pollRef.current = setInterval(async () => {
+        try {
+          const data = await apiFetch(`/followup/broadcasts/${activeBroadcast.id}`);
+          setActiveBroadcast(data);
+          if (data.status !== 'ENVIANDO') {
+            if (pollRef.current) clearInterval(pollRef.current);
+            fetchBroadcasts();
+          }
+        } catch { /* ignore */ }
+      }, 3000);
+      return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    }
+  }, [activeBroadcast?.id, activeBroadcast?.status, fetchBroadcasts]);
+
   // Fetch inicial por tab
   useEffect(() => {
-    if (activeTab === 'dashboard') fetchStats();
+    if (activeTab === 'dashboard') { fetchStats(); fetchEnrollments(); }
     if (activeTab === 'sequencias') fetchSequences();
     if (activeTab === 'enrollments') fetchEnrollments();
     if (activeTab === 'aprovacoes') fetchApprovals();
-  }, [activeTab, fetchStats, fetchSequences, fetchEnrollments, fetchApprovals]);
+    if (activeTab === 'disparos') fetchBroadcasts();
+  }, [activeTab, fetchStats, fetchSequences, fetchEnrollments, fetchApprovals, fetchBroadcasts]);
 
   useEffect(() => {
     if (activeTab === 'enrollments') fetchEnrollments();
@@ -1301,12 +1472,12 @@ export default function FollowupPage() {
 
   const handleEnrollmentAction = async (
     id: string,
-    action: 'pause' | 'cancel' | 'converted',
+    action: 'pause' | 'cancel' | 'converted' | 'resume',
   ) => {
     try {
       await apiFetch(`/followup/enrollments/${id}/${action}`, { method: 'PATCH' });
       const labels: Record<string, string> = {
-        pause: 'Pausado', cancel: 'Cancelado', converted: 'Marcado como convertido',
+        pause: 'Pausado', cancel: 'Cancelado', converted: 'Marcado como convertido', resume: 'Retomado',
       };
       showSuccess(labels[action]);
       fetchEnrollments();
@@ -1346,8 +1517,8 @@ export default function FollowupPage() {
 
   const handleRegenerate = async (id: string) => {
     await apiFetch(`/followup/messages/${id}/regenerate`, { method: 'POST' });
-    showSuccess('Regenerando mensagem...');
-    setTimeout(() => fetchApprovals(), 2000);
+    showSuccess('Mensagem regenerada!');
+    fetchApprovals();
   };
 
   // MELHORIA 7: Criar Sequências Padrão
@@ -1408,16 +1579,16 @@ export default function FollowupPage() {
   // ────────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="h-full overflow-y-auto bg-background text-foreground">
       {/* Header */}
-      <div className="border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-blue-600/20 border border-blue-500/30">
-            <Bot size={22} className="text-blue-400" />
+      <div className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-20">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-primary/20 border border-primary/30">
+            <Bot size={22} className="text-primary" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-white">Follow-up IA</h1>
-            <p className="text-xs text-gray-500">Automação inteligente de mensagens</p>
+            <h1 className="text-xl font-bold text-foreground">Follow-up IA</h1>
+            <p className="text-xs text-muted-foreground">Automação inteligente de mensagens</p>
           </div>
           {approvals.length > 0 && (
             <div className="ml-auto flex items-center gap-2 px-3 py-1.5 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
@@ -1430,7 +1601,7 @@ export default function FollowupPage() {
         </div>
 
         {/* MELHORIA 5: Tabs com badge de aprovações */}
-        <div className="max-w-7xl mx-auto px-6 flex gap-1">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 flex gap-1 overflow-x-auto">
           {TABS.map(tab => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -1438,16 +1609,16 @@ export default function FollowupPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all duration-200 ${
+                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all duration-200 whitespace-nowrap ${
                   active
-                    ? 'text-blue-400 border-blue-500'
-                    : 'text-gray-500 border-transparent hover:text-gray-300'
+                    ? 'text-primary border-primary'
+                    : 'text-muted-foreground border-transparent hover:text-foreground'
                 }`}
               >
                 <Icon size={15} />
                 {tab.label}
                 {tab.id === 'aprovacoes' && pendingCount > 0 && (
-                  <span className="ml-1 px-1.5 py-0.5 rounded-full bg-red-500 text-white text-xs font-bold leading-none animate-pulse">
+                  <span className="ml-1 px-1.5 py-0.5 rounded-full bg-red-500 text-foreground text-xs font-bold leading-none animate-pulse">
                     {pendingCount}
                   </span>
                 )}
@@ -1457,13 +1628,13 @@ export default function FollowupPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 pb-28 md:pb-6">
 
         {/* ── TAB: DASHBOARD ─────────────────────────────────────────────────── */}
         {activeTab === 'dashboard' && (
           <div className="space-y-8">
             {loadingStats ? (
-              <div className="flex items-center justify-center py-20 text-gray-500">
+              <div className="flex items-center justify-center py-20 text-muted-foreground">
                 <RefreshCw size={20} className="animate-spin mr-2" />
                 Carregando...
               </div>
@@ -1527,12 +1698,12 @@ export default function FollowupPage() {
                         key={card.label}
                         className={`bg-gradient-to-br ${card.grad} border ${card.border} rounded-2xl p-5 flex flex-col gap-3 transition-all duration-200`}
                       >
-                        <div className={`p-2 rounded-lg bg-gray-900/40 w-fit ${card.text}`}>
+                        <div className={`p-2 rounded-lg bg-background/40 w-fit ${card.text}`}>
                           <Icon size={18} />
                         </div>
                         <div>
                           <p className={`text-2xl font-bold ${card.text}`}>{card.value}</p>
-                          <p className="text-xs text-gray-500 mt-0.5">{card.label}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{card.label}</p>
                         </div>
                       </div>
                     );
@@ -1540,55 +1711,55 @@ export default function FollowupPage() {
                 </div>
 
                 {/* MELHORIA 2: Efetividade por Canal */}
-                <div className="bg-gray-800/50 border border-gray-700 rounded-2xl p-6">
+                <div className="bg-card/50 border border-border rounded-2xl p-6">
                   <ChannelEffectivityCards stats={stats} enrollments={enrollments} />
                 </div>
 
                 {/* Quick actions */}
                 <div className="grid md:grid-cols-2 gap-4">
-                  <div className="bg-gray-800/50 border border-gray-700 rounded-2xl p-6">
+                  <div className="bg-card/50 border border-border rounded-2xl p-6">
                     <div className="flex items-center gap-2 mb-4">
                       <Zap size={16} className="text-yellow-400" />
-                      <h3 className="text-sm font-semibold text-white">Ações Rápidas</h3>
+                      <h3 className="text-sm font-semibold text-foreground">Ações Rápidas</h3>
                     </div>
                     <div className="space-y-2">
                       <button
                         onClick={() => { setActiveTab('sequencias'); setSeqModal({ open: true }); }}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-900/60 hover:bg-gray-900 border border-gray-700 hover:border-gray-600 text-sm text-gray-300 hover:text-white transition-all duration-200"
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-background/60 hover:bg-background border border-border hover:border-border text-sm text-foreground/80 hover:text-foreground transition-all duration-200"
                       >
                         <Plus size={15} className="text-blue-400" />
                         Nova sequência de follow-up
-                        <ChevronRight size={14} className="ml-auto text-gray-600" />
+                        <ChevronRight size={14} className="ml-auto text-muted-foreground/60" />
                       </button>
                       <button
                         onClick={() => setActiveTab('aprovacoes')}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-900/60 hover:bg-gray-900 border border-gray-700 hover:border-gray-600 text-sm text-gray-300 hover:text-white transition-all duration-200"
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-background/60 hover:bg-background border border-border hover:border-border text-sm text-foreground/80 hover:text-foreground transition-all duration-200"
                       >
                         <MessageSquare size={15} className="text-yellow-400" />
                         Revisar aprovações pendentes
                         {stats.pendentes_aprovacao > 0 && (
-                          <span className="ml-auto px-2 py-0.5 rounded-full bg-red-500 text-white text-xs font-bold">
+                          <span className="ml-auto px-2 py-0.5 rounded-full bg-red-500 text-foreground text-xs font-bold">
                             {stats.pendentes_aprovacao}
                           </span>
                         )}
                         {stats.pendentes_aprovacao === 0 && (
-                          <ChevronRight size={14} className="ml-auto text-gray-600" />
+                          <ChevronRight size={14} className="ml-auto text-muted-foreground/60" />
                         )}
                       </button>
                       <button
                         onClick={() => setActiveTab('enrollments')}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-900/60 hover:bg-gray-900 border border-gray-700 hover:border-gray-600 text-sm text-gray-300 hover:text-white transition-all duration-200"
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-background/60 hover:bg-background border border-border hover:border-border text-sm text-foreground/80 hover:text-foreground transition-all duration-200"
                       >
                         <Users size={15} className="text-green-400" />
                         Ver todos os enrollments
-                        <ChevronRight size={14} className="ml-auto text-gray-600" />
+                        <ChevronRight size={14} className="ml-auto text-muted-foreground/60" />
                       </button>
 
                       {/* MELHORIA 7: Criar Sequências Padrão */}
                       <button
                         onClick={handleSeedDefaults}
                         disabled={loadingSeed}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-900/60 hover:bg-gray-900 border border-gray-700 hover:border-emerald-600/30 text-sm text-gray-300 hover:text-emerald-400 transition-all duration-200 disabled:opacity-50"
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-background/60 hover:bg-background border border-border hover:border-emerald-600/30 text-sm text-foreground/80 hover:text-emerald-400 transition-all duration-200 disabled:opacity-50"
                       >
                         {loadingSeed ? (
                           <RefreshCw size={15} className="text-emerald-400 animate-spin" />
@@ -1596,27 +1767,27 @@ export default function FollowupPage() {
                           <Sprout size={15} className="text-emerald-400" />
                         )}
                         {loadingSeed ? 'Criando sequências...' : 'Criar Sequências Padrão'}
-                        {!loadingSeed && <ChevronRight size={14} className="ml-auto text-gray-600" />}
+                        {!loadingSeed && <ChevronRight size={14} className="ml-auto text-muted-foreground/60" />}
                       </button>
 
                       {/* MELHORIA 7: Exportar Dados */}
                       <button
                         onClick={handleExportData}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-900/60 hover:bg-gray-900 border border-gray-700 hover:border-blue-600/30 text-sm text-gray-300 hover:text-blue-400 transition-all duration-200"
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-background/60 hover:bg-background border border-border hover:border-blue-600/30 text-sm text-foreground/80 hover:text-blue-400 transition-all duration-200"
                       >
                         <Download size={15} className="text-blue-400" />
                         Exportar Dados (JSON)
-                        <ChevronRight size={14} className="ml-auto text-gray-600" />
+                        <ChevronRight size={14} className="ml-auto text-muted-foreground/60" />
                       </button>
                     </div>
                   </div>
 
-                  <div className="bg-gray-800/50 border border-gray-700 rounded-2xl p-6">
+                  <div className="bg-card/50 border border-border rounded-2xl p-6">
                     <div className="flex items-center gap-2 mb-4">
                       <Bot size={16} className="text-blue-400" />
-                      <h3 className="text-sm font-semibold text-white">Como funciona</h3>
+                      <h3 className="text-sm font-semibold text-foreground">Como funciona</h3>
                     </div>
-                    <ol className="space-y-3 text-sm text-gray-400">
+                    <ol className="space-y-3 text-sm text-muted-foreground">
                       {[
                         'Crie uma sequência com os steps e delays desejados',
                         'Leads são enrollados automaticamente ao entrar em um stage configurado',
@@ -1636,12 +1807,12 @@ export default function FollowupPage() {
                 </div>
               </>
             ) : (
-              <div className="text-center py-20 text-gray-500">
+              <div className="text-center py-20 text-muted-foreground">
                 <Bot size={40} className="mx-auto mb-3 opacity-30" />
                 <p>Não foi possível carregar os dados.</p>
                 <button
                   onClick={fetchStats}
-                  className="mt-3 px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm text-gray-300 transition-all duration-200"
+                  className="mt-3 px-4 py-2 rounded-lg bg-muted hover:bg-muted/80 text-sm text-foreground/80 transition-all duration-200"
                 >
                   Tentar novamente
                 </button>
@@ -1655,14 +1826,14 @@ export default function FollowupPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-white">Sequências</h2>
-                <p className="text-sm text-gray-500 mt-0.5">
+                <h2 className="text-lg font-semibold text-foreground">Sequências</h2>
+                <p className="text-sm text-muted-foreground mt-0.5">
                   {sequences.length} sequência{sequences.length !== 1 ? 's' : ''} configurada{sequences.length !== 1 ? 's' : ''}
                 </p>
               </div>
               <button
                 onClick={() => setSeqModal({ open: true })}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-all duration-200"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-foreground text-sm font-medium transition-all duration-200"
               >
                 <Plus size={15} />
                 Nova Sequência
@@ -1670,17 +1841,17 @@ export default function FollowupPage() {
             </div>
 
             {loadingSeq ? (
-              <div className="flex items-center justify-center py-20 text-gray-500">
+              <div className="flex items-center justify-center py-20 text-muted-foreground">
                 <RefreshCw size={20} className="animate-spin mr-2" />
                 Carregando...
               </div>
             ) : sequences.length === 0 ? (
-              <div className="text-center py-20 border border-dashed border-gray-700 rounded-2xl">
+              <div className="text-center py-20 border border-dashed border-border rounded-2xl">
                 <Bot size={40} className="mx-auto mb-3 text-gray-700" />
-                <p className="text-gray-500">Nenhuma sequência criada ainda.</p>
+                <p className="text-muted-foreground">Nenhuma sequência criada ainda.</p>
                 <button
                   onClick={() => setSeqModal({ open: true })}
-                  className="mt-4 flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-all duration-200 mx-auto"
+                  className="mt-4 flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-foreground text-sm font-medium transition-all duration-200 mx-auto"
                 >
                   <Plus size={15} />
                   Criar primeira sequência
@@ -1691,13 +1862,13 @@ export default function FollowupPage() {
                 {sequences.map(seq => (
                   <div
                     key={seq.id}
-                    className="bg-gray-800/60 border border-gray-700 rounded-xl overflow-hidden transition-all duration-200"
+                    className="bg-card border border-border rounded-xl overflow-hidden transition-all duration-200"
                   >
                     {/* Sequence header */}
                     <div className="flex items-center gap-4 px-5 py-4">
                       <button
                         onClick={() => setExpandedSeq(expandedSeq === seq.id ? null : seq.id)}
-                        className="p-1 text-gray-500 hover:text-gray-300 transition-all duration-200"
+                        className="p-1 text-muted-foreground hover:text-foreground/80 transition-all duration-200"
                       >
                         <ChevronDown
                           size={16}
@@ -1707,19 +1878,19 @@ export default function FollowupPage() {
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-white text-sm">{seq.name}</span>
+                          <span className="font-semibold text-foreground text-sm">{seq.name}</span>
                           <Badge
                             label={CATEGORIES.find(c => c.id === seq.category)?.label ?? seq.category}
-                            colorClass={CATEGORY_COLORS[seq.category] ?? 'text-gray-400 bg-gray-400/10'}
+                            colorClass={CATEGORY_COLORS[seq.category] ?? 'text-muted-foreground bg-gray-400/10'}
                           />
                           {!seq.active && (
-                            <Badge label="Inativo" colorClass="text-gray-500 bg-gray-500/10" />
+                            <Badge label="Inativo" colorClass="text-muted-foreground bg-gray-500/10" />
                           )}
                         </div>
                         {seq.description && (
-                          <p className="text-xs text-gray-500 mt-0.5 truncate">{seq.description}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5 truncate">{seq.description}</p>
                         )}
-                        <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-500">
+                        <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
                           <span>{seq.steps.length} step{seq.steps.length !== 1 ? 's' : ''}</span>
                           <span>·</span>
                           <span>{seq._count?.enrollments ?? 0} enrollment{(seq._count?.enrollments ?? 0) !== 1 ? 's' : ''}</span>
@@ -1742,7 +1913,7 @@ export default function FollowupPage() {
                           className={`p-2 rounded-lg border transition-all duration-200 ${
                             seq.active
                               ? 'bg-green-600/10 border-green-600/20 text-green-400 hover:bg-green-600/20'
-                              : 'bg-gray-700/50 border-gray-700 text-gray-500 hover:text-gray-300'
+                              : 'bg-muted/50 border-border text-muted-foreground hover:text-foreground/80'
                           }`}
                         >
                           {seq.active ? <Pause size={14} /> : <Play size={14} />}
@@ -1750,14 +1921,14 @@ export default function FollowupPage() {
                         <button
                           onClick={() => setSeqModal({ open: true, seq })}
                           title="Editar"
-                          className="p-2 rounded-lg border border-gray-700 bg-gray-700/50 text-gray-400 hover:text-white hover:border-gray-500 transition-all duration-200"
+                          className="p-2 rounded-lg border border-border bg-muted/50 text-muted-foreground hover:text-foreground hover:border-border transition-all duration-200"
                         >
                           <Edit2 size={14} />
                         </button>
                         <button
                           onClick={() => handleDeleteSequence(seq.id)}
                           title="Deletar"
-                          className="p-2 rounded-lg border border-gray-700 bg-gray-700/50 text-gray-400 hover:text-red-400 hover:border-red-500/30 transition-all duration-200"
+                          className="p-2 rounded-lg border border-border bg-muted/50 text-muted-foreground hover:text-red-400 hover:border-red-500/30 transition-all duration-200"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -1766,9 +1937,9 @@ export default function FollowupPage() {
 
                     {/* Steps (expandido) */}
                     {expandedSeq === seq.id && (
-                      <div className="border-t border-gray-700 bg-gray-900/40 px-5 py-4 space-y-3">
+                      <div className="border-t border-border bg-background/40 px-5 py-4 space-y-3">
                         <div className="flex items-center justify-between">
-                          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                             Steps
                           </p>
                           <button
@@ -1781,7 +1952,7 @@ export default function FollowupPage() {
                         </div>
 
                         {seq.steps.length === 0 ? (
-                          <p className="text-xs text-gray-600 py-2 text-center">
+                          <p className="text-xs text-muted-foreground/60 py-2 text-center">
                             Nenhum step configurado.
                           </p>
                         ) : (
@@ -1791,7 +1962,7 @@ export default function FollowupPage() {
                               .map((step) => (
                                 <div
                                   key={step.id}
-                                  className="flex items-center gap-3 p-3 bg-gray-800/60 border border-gray-700 rounded-lg transition-all duration-200"
+                                  className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg transition-all duration-200"
                                 >
                                   {/* Position indicator */}
                                   <div className="w-7 h-7 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center shrink-0">
@@ -1800,33 +1971,33 @@ export default function FollowupPage() {
 
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="text-xs font-medium text-white capitalize">
+                                      <span className="text-xs font-medium text-foreground capitalize">
                                         {step.channel === 'whatsapp' ? '📱 WhatsApp' : '📧 E-mail'}
                                       </span>
-                                      <span className="text-xs text-gray-500">
+                                      <span className="text-xs text-muted-foreground">
                                         após {step.delay_hours}h
                                       </span>
                                       <Badge
                                         label={TONES.find(t => t.id === step.tone)?.label ?? step.tone}
-                                        colorClass="text-gray-400 bg-gray-700/50"
+                                        colorClass="text-muted-foreground bg-muted/50"
                                       />
                                       {step.auto_send && (
                                         <Badge label="Auto-envio" colorClass="text-green-400 bg-green-400/10" />
                                       )}
                                     </div>
-                                    <p className="text-xs text-gray-500 mt-0.5 truncate">{step.objective}</p>
+                                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{step.objective}</p>
                                   </div>
 
                                   <div className="flex items-center gap-1.5 shrink-0">
                                     <button
                                       onClick={() => setStepModal({ open: true, seqId: seq.id, step })}
-                                      className="p-1.5 rounded text-gray-500 hover:text-white hover:bg-gray-700 transition-all duration-200"
+                                      className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-all duration-200"
                                     >
                                       <Edit2 size={12} />
                                     </button>
                                     <button
                                       onClick={() => handleDeleteStep(step.id)}
-                                      className="p-1.5 rounded text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200"
+                                      className="p-1.5 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-all duration-200"
                                     >
                                       <Trash2 size={12} />
                                     </button>
@@ -1849,8 +2020,8 @@ export default function FollowupPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-white">Enrollments</h2>
-                <p className="text-sm text-gray-500 mt-0.5">
+                <h2 className="text-lg font-semibold text-foreground">Enrollments</h2>
+                <p className="text-sm text-muted-foreground mt-0.5">
                   {filteredEnrollments.length} resultado{filteredEnrollments.length !== 1 ? 's' : ''}
                 </p>
               </div>
@@ -1858,23 +2029,23 @@ export default function FollowupPage() {
               <div className="flex items-center gap-2 flex-wrap">
                 {/* Busca */}
                 <div className="relative">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   <input
                     type="text"
                     placeholder="Buscar lead..."
                     value={enrollSearch}
                     onChange={e => setEnrollSearch(e.target.value)}
-                    className="pl-8 pr-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 w-48 transition-all duration-200"
+                    className="pl-8 pr-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary w-48 transition-all duration-200"
                   />
                 </div>
 
                 {/* Filtro status */}
                 <div className="relative">
-                  <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   <select
                     value={enrollFilter}
                     onChange={e => setEnrollFilter(e.target.value)}
-                    className="pl-8 pr-8 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all duration-200 appearance-none cursor-pointer"
+                    className="pl-8 pr-8 py-2 bg-muted border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-200 appearance-none cursor-pointer"
                   >
                     {ENROLLMENT_STATUSES.map(s => (
                       <option key={s.id} value={s.id}>{s.label}</option>
@@ -1884,7 +2055,7 @@ export default function FollowupPage() {
 
                 <button
                   onClick={fetchEnrollments}
-                  className="p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 transition-all duration-200"
+                  className="p-2 rounded-lg bg-muted border border-border text-muted-foreground hover:text-foreground hover:border-border transition-all duration-200"
                   title="Atualizar"
                 >
                   <RefreshCw size={15} className={loadingEnroll ? 'animate-spin' : ''} />
@@ -1893,7 +2064,7 @@ export default function FollowupPage() {
                 {/* MELHORIA 4: Botão Enrolar Lead */}
                 <button
                   onClick={() => setEnrollModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-all duration-200"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-foreground text-sm font-medium transition-all duration-200"
                 >
                   <Plus size={14} />
                   Enrolar Lead
@@ -1902,22 +2073,22 @@ export default function FollowupPage() {
             </div>
 
             {loadingEnroll ? (
-              <div className="flex items-center justify-center py-20 text-gray-500">
+              <div className="flex items-center justify-center py-20 text-muted-foreground">
                 <RefreshCw size={20} className="animate-spin mr-2" />
                 Carregando...
               </div>
             ) : filteredEnrollments.length === 0 ? (
-              <div className="text-center py-20 border border-dashed border-gray-700 rounded-2xl">
+              <div className="text-center py-20 border border-dashed border-border rounded-2xl">
                 <Users size={40} className="mx-auto mb-3 text-gray-700" />
-                <p className="text-gray-500">Nenhum enrollment encontrado.</p>
+                <p className="text-muted-foreground">Nenhum enrollment encontrado.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-xl border border-gray-700">
+              <div className="overflow-x-auto rounded-xl border border-border">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-gray-800/80 border-b border-gray-700">
-                      {['Lead', 'Sequência', 'Step', 'Status', 'Última Resposta', 'Próximo envio', 'Inscrito em', 'Ações'].map(h => (
-                        <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                    <tr className="bg-muted/80 border-b border-border">
+                      {['Lead', 'Sequência', 'Step', 'Status', 'Última Resposta', 'Último envio', 'Próximo envio', 'Inscrito em', 'Ações'].map(h => (
+                        <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
                           {h}
                         </th>
                       ))}
@@ -1927,43 +2098,46 @@ export default function FollowupPage() {
                     {filteredEnrollments.map(enroll => (
                       <tr
                         key={enroll.id}
-                        className="bg-gray-900/40 hover:bg-gray-800/60 transition-all duration-200"
+                        className="bg-background/40 hover:bg-muted/60 transition-all duration-200"
                       >
                         <td className="px-4 py-3">
                           <div>
-                            <p className="font-medium text-white text-sm">
+                            <p className="font-medium text-foreground text-sm">
                               {enroll.lead.name || '—'}
                             </p>
-                            <p className="text-xs text-gray-500">{enroll.lead.phone}</p>
-                            <p className="text-xs text-gray-600">{enroll.lead.stage}</p>
+                            <p className="text-xs text-muted-foreground">{enroll.lead.phone}</p>
+                            <p className="text-xs text-muted-foreground/60">{enroll.lead.stage}</p>
                           </div>
                         </td>
                         <td className="px-4 py-3">
                           <div>
-                            <p className="text-white text-sm">{enroll.sequence.name}</p>
+                            <p className="text-foreground text-sm">{enroll.sequence.name}</p>
                             <Badge
                               label={CATEGORIES.find(c => c.id === enroll.sequence.category)?.label ?? enroll.sequence.category}
-                              colorClass={CATEGORY_COLORS[enroll.sequence.category] ?? 'text-gray-400 bg-gray-700/50'}
+                              colorClass={CATEGORY_COLORS[enroll.sequence.category] ?? 'text-muted-foreground bg-muted/50'}
                             />
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-white font-medium">#{enroll.current_step}</span>
+                          <span className="text-foreground font-medium">#{enroll.current_step}</span>
                         </td>
                         <td className="px-4 py-3">
                           <Badge
                             label={enroll.status}
-                            colorClass={STATUS_COLORS[enroll.status] ?? 'text-gray-400 bg-gray-700/50'}
+                            colorClass={STATUS_COLORS[enroll.status] ?? 'text-muted-foreground bg-muted/50'}
                           />
                         </td>
-                        {/* MELHORIA 6: Coluna Última Resposta */}
+                        {/* Coluna Última Resposta */}
                         <td className="px-4 py-3">
                           <LeadResponseStatus enrollment={enroll} />
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                          {formatDate(enroll.last_sent_at)}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                           {formatDate(enroll.next_send_at)}
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                           {formatDate(enroll.enrolled_at)}
                         </td>
                         <td className="px-4 py-3">
@@ -1979,7 +2153,7 @@ export default function FollowupPage() {
                             )}
                             {enroll.status === 'PAUSADO' && (
                               <button
-                                onClick={() => handleEnrollmentAction(enroll.id, 'pause')}
+                                onClick={() => handleEnrollmentAction(enroll.id, 'resume')}
                                 title="Retomar"
                                 className="p-1.5 rounded text-green-400 hover:bg-green-400/10 transition-all duration-200"
                               >
@@ -2020,14 +2194,14 @@ export default function FollowupPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-white">Fila de Aprovação</h2>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  {approvals.length} mensagem{approvals.length !== 1 ? 'ns' : ''} aguardando revisão
+                <h2 className="text-lg font-semibold text-foreground">Fila de Aprovação</h2>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {approvals.length} {approvals.length === 1 ? 'mensagem' : 'mensagens'} aguardando revisão
                 </p>
               </div>
               <button
                 onClick={fetchApprovals}
-                className="p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 transition-all duration-200"
+                className="p-2 rounded-lg bg-muted border border-border text-muted-foreground hover:text-foreground hover:border-border transition-all duration-200"
                 title="Atualizar"
               >
                 <RefreshCw size={15} className={loadingApprovals ? 'animate-spin' : ''} />
@@ -2035,15 +2209,15 @@ export default function FollowupPage() {
             </div>
 
             {loadingApprovals ? (
-              <div className="flex items-center justify-center py-20 text-gray-500">
+              <div className="flex items-center justify-center py-20 text-muted-foreground">
                 <RefreshCw size={20} className="animate-spin mr-2" />
                 Carregando...
               </div>
             ) : approvals.length === 0 ? (
-              <div className="text-center py-20 border border-dashed border-gray-700 rounded-2xl">
+              <div className="text-center py-20 border border-dashed border-border rounded-2xl">
                 <CheckCircle size={40} className="mx-auto mb-3 text-gray-700" />
-                <p className="text-gray-500">Nenhuma mensagem aguardando aprovação.</p>
-                <p className="text-xs text-gray-600 mt-1">
+                <p className="text-muted-foreground">Nenhuma mensagem aguardando aprovação.</p>
+                <p className="text-xs text-muted-foreground/60 mt-1">
                   Tudo certo! As mensagens de baixo risco são enviadas automaticamente.
                 </p>
               </div>
@@ -2061,6 +2235,362 @@ export default function FollowupPage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── TAB: DISPAROS ──────────────────────────────────────────────────── */}
+        {activeTab === 'disparos' && (
+          <div className="space-y-6">
+            {/* Card: Novo Disparo */}
+            <div className="bg-card/50 border border-border rounded-2xl p-6 space-y-5">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-primary/20">
+                  <Radio size={16} className="text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">
+                    {broadcastType === 'COMUNICADO' ? 'Novo Disparo — Comunicado Geral' : 'Novo Disparo — Lembrete de Audiência'}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    {broadcastType === 'COMUNICADO'
+                      ? 'Envie uma mensagem fixa para todos os clientes com processo ativo'
+                      : 'Envie mensagens personalizadas por IA para clientes com audiências próximas'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Seletor de tipo de disparo */}
+              <div className="flex rounded-xl border border-border overflow-hidden">
+                <button
+                  onClick={() => { setBroadcastType('AUDIENCIA'); setBroadcastTargets([]); setBroadcastCustomPrompt(''); }}
+                  className={`flex-1 py-2 text-xs font-semibold transition-colors ${broadcastType === 'AUDIENCIA' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'}`}
+                >
+                  📅 Lembrete de Audiência
+                </button>
+                <button
+                  onClick={() => {
+                    setBroadcastType('COMUNICADO');
+                    setBroadcastTargets([]);
+                    setBroadcastCustomPrompt(`⚖️ *André Lustosa Advogados — Comunicado Importante*\n\nOlá {{nome}}! Aqui é da equipe do escritório André Lustosa Advogados. 😊\n\nGostaríamos de compartilhar um alerta importante com você.\n\nInfelizmente, tem crescido em todo o Brasil uma prática criminosa conhecida como o *golpe do falso advogado*. Pessoas mal-intencionadas se passam por advogados ou funcionários de escritórios para pedir depósitos, dados bancários ou pagamentos por fora.\n\n🔒 *Para sua segurança, lembre-se:*\n\n✅ Nossos únicos números oficiais são:\n• (82) 99913-0127\n• (82) 99631-6935\n• (82) 99639-0799\n\n✅ Nosso endereço: Rua Francisco Rodrigues Viana, 242 — Baixa Grande, Arapiraca/AL\n\n⚠️ *Nós NUNCA pedimos:*\n• Depósitos ou PIX em contas de pessoa física\n• Senhas, dados bancários ou códigos por mensagem\n• Pagamentos por links desconhecidos\n\nSe alguém entrar em contato se passando pelo nosso escritório por um número diferente dos listados acima, *não faça nenhum pagamento* e nos avise imediatamente por um dos nossos canais oficiais.\n\nSua segurança é nossa prioridade. Estamos sempre à disposição para qualquer dúvida! 💛\n\nAndré Lustosa Advogados`);
+                  }}
+                  className={`flex-1 py-2 text-xs font-semibold transition-colors ${broadcastType === 'COMUNICADO' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'}`}
+                >
+                  📢 Comunicado Geral
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {broadcastType !== 'COMUNICADO' && (
+                  <div>
+                    <label className={labelCls()}>Próximos dias</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={90}
+                      className={inputCls()}
+                      value={broadcastDaysAhead}
+                      onChange={e => setBroadcastDaysAhead(Math.max(1, Number(e.target.value)))}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Audiências nos próximos X dias</p>
+                  </div>
+                )}
+                <div>
+                  <label className={labelCls()}>Intervalo entre mensagens (seg)</label>
+                  <input
+                    type="number"
+                    min={5}
+                    max={60}
+                    className={inputCls()}
+                    value={broadcastInterval}
+                    onChange={e => setBroadcastInterval(Math.max(5, Math.min(60, Number(e.target.value))))}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Mín 5s, recomendado 10s+</p>
+                </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={fetchBroadcastPreview}
+                    disabled={loadingPreview}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground text-sm font-medium transition-all duration-200"
+                  >
+                    {loadingPreview ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
+                    {broadcastType === 'COMUNICADO' ? 'Carregar Clientes' : 'Pré-visualizar'}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className={labelCls()}>
+                  {broadcastType === 'COMUNICADO' ? 'Mensagem do comunicado' : 'Instrução adicional para IA (opcional)'}
+                </label>
+                <textarea
+                  className={inputCls('resize-none font-mono')}
+                  rows={broadcastType === 'COMUNICADO' ? 12 : 2}
+                  value={broadcastCustomPrompt}
+                  onChange={e => setBroadcastCustomPrompt(e.target.value)}
+                  placeholder={broadcastType === 'COMUNICADO'
+                    ? 'Digite a mensagem do comunicado. Use {{nome}} para personalizar com o nome do cliente.'
+                    : 'Ex: Mencionar que devem levar documentos originais, perguntar se precisam de transporte...'}
+                />
+                {broadcastType === 'COMUNICADO' && (
+                  <p className="text-xs text-muted-foreground mt-1">Use <code className="text-[10px] bg-muted px-1 rounded">{'{{nome}}'}</code> para inserir o primeiro nome do cliente automaticamente.</p>
+                )}
+              </div>
+
+              {/* Preview de alvos */}
+              {broadcastTargets.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Users size={14} className="text-green-400" />
+                      <span className="text-sm font-medium text-foreground">
+                        {broadcastTargets.length} {broadcastTargets.length === 1 ? 'cliente encontrado' : 'clientes encontrados'}
+                      </span>
+                    </div>
+                    <button
+                      onClick={handleDispatchBroadcast}
+                      disabled={dispatchingBroadcast}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 disabled:opacity-50 text-foreground text-sm font-medium transition-all duration-200"
+                    >
+                      {dispatchingBroadcast ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
+                      {dispatchingBroadcast ? 'Disparando...' : 'Disparar Mensagens'}
+                    </button>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-xl border border-border">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-muted/80 border-b border-border">
+                          {['Cliente', 'Telefone', 'Audiência', 'Data/Hora', 'Local', 'Processo'].map(h => (
+                            <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {broadcastTargets.map(t => (
+                          <tr key={`${t.lead_id}-${t.event_id}`} className="hover:bg-muted/40 transition-all duration-200">
+                            <td className="px-4 py-3 text-foreground font-medium">{t.lead_name || '—'}</td>
+                            <td className="px-4 py-3 text-muted-foreground text-xs font-mono">{t.lead_phone}</td>
+                            <td className="px-4 py-3 text-foreground/80 text-xs">{t.event_title}</td>
+                            <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">
+                              <div className="flex items-center gap-1">
+                                <Calendar size={12} />
+                                {formatDate(t.event_date)}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-muted-foreground text-xs">
+                              {t.event_location ? (
+                                <div className="flex items-center gap-1">
+                                  <MapPin size={12} />
+                                  <span className="truncate max-w-[200px]">{t.event_location}</span>
+                                </div>
+                              ) : '—'}
+                            </td>
+                            <td className="px-4 py-3 text-muted-foreground text-xs">
+                              {t.case_number ? (
+                                <div className="flex items-center gap-1">
+                                  <Hash size={12} />
+                                  <span className="font-mono">{t.case_number}</span>
+                                </div>
+                              ) : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground">
+                    Tempo estimado: ~{Math.ceil(broadcastTargets.length * broadcastInterval / 60)} min ({broadcastTargets.length} msgs × {broadcastInterval}s)
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Progresso do disparo ativo */}
+            {activeBroadcast && activeBroadcast.status === 'ENVIANDO' && (
+              <div className="bg-card border border-blue-500/30 rounded-2xl p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <RefreshCw size={16} className="text-blue-400 animate-spin" />
+                    <h3 className="text-sm font-semibold text-foreground">Disparo em andamento</h3>
+                    <span className="text-xs text-muted-foreground">— {activeBroadcast.name}</span>
+                  </div>
+                  <button
+                    onClick={() => handleCancelBroadcast(activeBroadcast.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600/20 border border-red-600/30 text-red-400 hover:bg-red-600/30 text-xs font-medium transition-all duration-200"
+                  >
+                    <XCircle size={13} />
+                    Cancelar
+                  </button>
+                </div>
+
+                {/* Barra de progresso */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Progresso</span>
+                    <span className="text-foreground font-medium">
+                      {activeBroadcast.sent_count + activeBroadcast.failed_count} / {activeBroadcast.total_targets}
+                    </span>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-3 overflow-hidden">
+                    <div className="h-full flex">
+                      <div
+                        className="bg-green-500 transition-all duration-500"
+                        style={{ width: `${activeBroadcast.total_targets > 0 ? (activeBroadcast.sent_count / activeBroadcast.total_targets) * 100 : 0}%` }}
+                      />
+                      <div
+                        className="bg-red-500 transition-all duration-500"
+                        style={{ width: `${activeBroadcast.total_targets > 0 ? (activeBroadcast.failed_count / activeBroadcast.total_targets) * 100 : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-4 text-xs">
+                    <span className="text-green-400">Enviados: {activeBroadcast.sent_count}</span>
+                    {activeBroadcast.failed_count > 0 && (
+                      <span className="text-red-400">Falhas: {activeBroadcast.failed_count}</span>
+                    )}
+                    <span className="text-muted-foreground">
+                      Restante: {activeBroadcast.total_targets - activeBroadcast.sent_count - activeBroadcast.failed_count}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Histórico de disparos */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-foreground">Histórico de Disparos</h3>
+                <button
+                  onClick={fetchBroadcasts}
+                  className="p-2 rounded-lg bg-muted border border-border text-muted-foreground hover:text-foreground hover:border-border transition-all duration-200"
+                  title="Atualizar"
+                >
+                  <RefreshCw size={14} className={loadingBroadcasts ? 'animate-spin' : ''} />
+                </button>
+              </div>
+
+              {loadingBroadcasts ? (
+                <div className="flex items-center justify-center py-12 text-muted-foreground">
+                  <RefreshCw size={18} className="animate-spin mr-2" />
+                  Carregando...
+                </div>
+              ) : broadcasts.length === 0 ? (
+                <div className="text-center py-12 border border-dashed border-border rounded-2xl">
+                  <Radio size={32} className="mx-auto mb-3 opacity-30 text-muted-foreground" />
+                  <p className="text-muted-foreground text-sm">Nenhum disparo realizado ainda.</p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">Use o formulário acima para criar o primeiro disparo.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {broadcasts.map(b => {
+                    const progress = b.total_targets > 0 ? Math.round(((b.sent_count + b.failed_count) / b.total_targets) * 100) : 0;
+                    const statusColors: Record<string, string> = {
+                      PENDENTE: 'text-yellow-400 bg-yellow-400/10',
+                      ENVIANDO: 'text-blue-400 bg-blue-400/10',
+                      CONCLUIDO: 'text-green-400 bg-green-400/10',
+                      CANCELADO: 'text-red-400 bg-red-400/10',
+                    };
+
+                    return (
+                      <div key={b.id} className="bg-card border border-border rounded-xl overflow-hidden transition-all duration-200">
+                        <div className="flex items-center gap-4 px-5 py-4">
+                          <button
+                            onClick={() => setExpandedBroadcast(expandedBroadcast === b.id ? null : b.id)}
+                            className="p-1 text-muted-foreground hover:text-foreground/80 transition-all duration-200"
+                          >
+                            <ChevronDown
+                              size={16}
+                              className={`transition-transform duration-200 ${expandedBroadcast === b.id ? 'rotate-180' : ''}`}
+                            />
+                          </button>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-foreground text-sm">{b.name}</span>
+                              <Badge label={b.status} colorClass={statusColors[b.status] ?? 'text-muted-foreground bg-muted/50'} />
+                            </div>
+                            <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                              <span>{b.sent_count}/{b.total_targets} enviados</span>
+                              {b.failed_count > 0 && <span className="text-red-400">{b.failed_count} falhas</span>}
+                              <span>·</span>
+                              <span>{formatDate(b.created_at)}</span>
+                              {b.created_by?.name && <><span>·</span><span>{b.created_by.name}</span></>}
+                            </div>
+                          </div>
+
+                          {/* Mini progress bar */}
+                          <div className="w-24 shrink-0">
+                            <div className="w-full bg-muted rounded-full h-1.5">
+                              <div
+                                className={`h-1.5 rounded-full transition-all duration-500 ${b.status === 'CONCLUIDO' ? 'bg-green-500' : b.status === 'CANCELADO' ? 'bg-red-500' : 'bg-blue-500'}`}
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                            <p className="text-xs text-muted-foreground text-center mt-1">{progress}%</p>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {b.status === 'ENVIANDO' && (
+                              <button
+                                onClick={() => handleCancelBroadcast(b.id)}
+                                title="Cancelar"
+                                className="p-1.5 rounded text-red-400 hover:bg-red-400/10 transition-all duration-200"
+                              >
+                                <XCircle size={14} />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleViewBroadcast(b.id)}
+                              title="Ver detalhes"
+                              className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-all duration-200"
+                            >
+                              <Eye size={14} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Items expandidos */}
+                        {expandedBroadcast === b.id && activeBroadcast?.id === b.id && activeBroadcast.items && (
+                          <div className="border-t border-border bg-background/40 px-5 py-4">
+                            <div className="max-h-64 overflow-y-auto space-y-1.5">
+                              {activeBroadcast.items.map(item => {
+                                const itemStatusColors: Record<string, string> = {
+                                  PENDENTE: 'text-yellow-400',
+                                  ENVIADO: 'text-green-400',
+                                  FALHOU: 'text-red-400',
+                                  PULADO: 'text-muted-foreground',
+                                };
+                                const itemStatusIcons: Record<string, React.ReactNode> = {
+                                  PENDENTE: <Clock size={12} />,
+                                  ENVIADO: <CheckCircle size={12} />,
+                                  FALHOU: <XCircle size={12} />,
+                                  PULADO: <Pause size={12} />,
+                                };
+                                return (
+                                  <div key={item.id} className="flex items-center gap-3 px-3 py-2 bg-muted/60 rounded-lg text-xs">
+                                    <span className={itemStatusColors[item.status] ?? 'text-muted-foreground'}>
+                                      {itemStatusIcons[item.status] ?? <Clock size={12} />}
+                                    </span>
+                                    <span className="text-foreground font-medium min-w-[120px]">{(item as any).lead?.name || '—'}</span>
+                                    <span className="text-muted-foreground font-mono">{item.phone}</span>
+                                    <Badge label={item.status} colorClass={`${itemStatusColors[item.status] ?? 'text-muted-foreground'} bg-muted/50`} />
+                                    {item.sent_at && <span className="text-muted-foreground ml-auto">{formatDate(item.sent_at)}</span>}
+                                    {item.error && <span className="text-red-400 truncate max-w-[200px]" title={item.error}>{item.error}</span>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

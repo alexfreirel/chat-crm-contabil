@@ -5,6 +5,7 @@ import { LeadsCleanupService } from './leads-cleanup.service';
 import { LeadNotesService } from './lead-notes.service';
 import { LeadNotesController } from './lead-notes.controller';
 import { AutomationsModule } from '../automations/automations.module';
+import { GoogleDriveModule } from '../google-drive/google-drive.module';
 
 @Module({
   imports: [AutomationsModule],

@@ -1,7 +1,7 @@
 {
   "name": "crm-juridico-mcp",
   "version": "1.0.0",
-  "description": "Servidor MCP para integração do CRM Jurídico com o Claude",
+  "description": "Servidor MCP para integração do CRM Contábil com o Claude",
   "type": "module",
   "bin": {
     "crm-juridico-mcp": "./dist/index.js"

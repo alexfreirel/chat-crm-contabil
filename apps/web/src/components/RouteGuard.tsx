@@ -24,17 +24,19 @@ export function RouteGuard({
   children,
 }: RouteGuardProps) {
   const router = useRouter();
-  const { role } = useRole();
+  const { role, roles } = useRole();
   const [checked, setChecked] = useState(false);
   const [allowed, setAllowed] = useState(false);
 
   useEffect(() => {
-    if (!role) {
+    if (!role && roles.length === 0) {
       // Sem role → não autenticado → redireciona para login
       router.replace('/atendimento/login');
       return;
     }
-    if (allowedRoles.length === 0 || allowedRoles.includes(role)) {
+    // Multi-role: verifica se QUALQUER role do usuário está na lista permitida
+    const hasAccess = allowedRoles.length === 0 || roles.some(r => allowedRoles.includes(r));
+    if (hasAccess) {
       setAllowed(true);
     } else {
       // Tem role mas não tem acesso → redireciona

@@ -2,7 +2,7 @@ version: "3.9"
 
 # ============================================================
 # LexCRM — Stack completa para Portainer
-# Imagens publicadas no Docker Hub (andreflustosa/*)
+# Imagens publicadas no Docker Hub (lexconassessoria/*)
 # ============================================================
 
 services:
@@ -52,7 +52,7 @@ services:
 
   # ── Aplicações ────────────────────────────────────────────
   api:
-    image: andreflustosa/chat-crm-juridico-api:latest
+    image: lexconassessoria/chat-crm-contabil-api:latest
     container_name: crm-api
     restart: unless-stopped
     depends_on:
@@ -76,7 +76,7 @@ services:
       - crm-net
 
   worker:
-    image: andreflustosa/chat-crm-juridico-worker:latest
+    image: lexconassessoria/chat-crm-contabil-worker:latest
     container_name: crm-worker
     restart: unless-stopped
     depends_on:
@@ -94,7 +94,7 @@ services:
       - crm-net
 
   web:
-    image: andreflustosa/chat-crm-juridico-web:latest
+    image: lexconassessoria/chat-crm-contabil-web:latest
     container_name: crm-web
     restart: unless-stopped
     ports:

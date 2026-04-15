@@ -27,6 +27,10 @@ jobs:
               NEXT_PUBLIC_API_URL=https://lexconassessoriacontabil.com.br/api
               NEXT_PUBLIC_WS_URL=wss://lexconassessoriacontabil.com.br
               NEXT_PUBLIC_GTM_ID=${{ vars.NEXT_PUBLIC_GTM_ID }}
+          - name: agente-fiscal
+            dockerfile: infra/Dockerfile.agente-fiscal
+            suffix: agente-fiscal
+            build-args: ""
 
     steps:
       - name: Checkout repository

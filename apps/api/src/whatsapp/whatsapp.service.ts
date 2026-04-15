@@ -27,6 +27,7 @@ export class WhatsappService {
     method: 'GET' | 'POST' | 'DELETE',
     path: string,
     body?: any,
+    timeoutMs = 15000,
   ) {
     const config = await this.settingsService.getWhatsAppConfig();
     const baseUrl = this.normalizeUrl(config.apiUrl || '');
@@ -39,6 +40,7 @@ export class WhatsappService {
           apikey: config.apiKey || '',
         },
         body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(timeoutMs),
       });
 
       if (!response.ok) {
@@ -50,7 +52,11 @@ export class WhatsappService {
       }
 
       return await response.json();
-    } catch (e) {
+    } catch (e: any) {
+      if (e?.name === 'TimeoutError' || e?.name === 'AbortError') {
+        this.logger.error(`Timeout na requisição Evolution API (${path}) após ${timeoutMs}ms`);
+        return { statusCode: 408, error: `Request timeout after ${timeoutMs}ms` };
+      }
       this.logger.error(`Exceção na requisição Evolution API (${path}): ${e}`);
       throw e;
     }
@@ -59,14 +65,14 @@ export class WhatsappService {
   // --- MENSAGENS ---
 
   async sendText(number: string, text: string, instanceName?: string, quoted?: { key: { remoteJid: string; fromMe: boolean; id: string }; message: { conversation: string } }) {
-    const targetInstance = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'crm_instance';
+    const targetInstance = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'whatsapp';
     const payload: any = { number, text };
     if (quoted) payload.quoted = quoted;
     return this.request('POST', `message/sendText/${targetInstance}`, payload);
   }
 
   async deleteForEveryone(instanceName: string, remoteJid: string, externalMessageId: string, fromMe: boolean) {
-    const targetInstance = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'crm_instance';
+    const targetInstance = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'whatsapp';
     return this.request('DELETE', `chat/deleteMessageForEveryone/${targetInstance}`, {
       id: externalMessageId,
       remoteJid,
@@ -75,7 +81,7 @@ export class WhatsappService {
   }
 
   async editMessage(instanceName: string, number: string, externalMessageId: string, newText: string) {
-    const targetInstance = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'crm_instance';
+    const targetInstance = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'whatsapp';
     const remoteJid = `${number}@s.whatsapp.net`;
     return this.request('POST', `chat/updateMessage/${targetInstance}`, {
       number,
@@ -96,7 +102,7 @@ export class WhatsappService {
     instanceName?: string,
     fileName?: string,
   ) {
-    const targetInstance = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'crm_instance';
+    const targetInstance = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'whatsapp';
 
     if (mediaType === 'audio') {
       return this.request('POST', `message/sendWhatsAppAudio/${targetInstance}`, {
@@ -114,22 +120,44 @@ export class WhatsappService {
     });
   }
 
+  // --- MENSAGENS INTERATIVAS ---
+
+  async sendList(
+    number: string,
+    title: string,
+    description: string,
+    buttonText: string,
+    sections: { title: string; rows: { title: string; description?: string; rowId: string }[] }[],
+    instanceName?: string,
+    footerText?: string,
+  ) {
+    const targetInstance = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'whatsapp';
+    return this.request('POST', `message/sendList/${targetInstance}`, {
+      number,
+      title,
+      description,
+      buttonText,
+      footerText: footerText || '',
+      sections,
+    });
+  }
+
   // --- REAÇÕES ---
 
   async sendReaction(instanceName: string, key: { remoteJid: string; fromMe: boolean; id: string }, emoji: string) {
-    const inst = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'crm_instance';
+    const inst = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'whatsapp';
     return this.request('POST', `message/sendReaction/${inst}`, { key, reaction: emoji });
   }
 
   // --- PRESENÇA & LEITURA ---
 
   async markAsRead(instanceName: string, readMessages: { remoteJid: string; fromMe: false; id: string }[]) {
-    const inst = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'crm_instance';
+    const inst = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'whatsapp';
     return this.request('POST', `chat/markMessageAsRead/${inst}`, { readMessages });
   }
 
   async sendPresence(instanceName: string, number: string, presence: 'composing' | 'recording' | 'paused') {
-    const inst = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'crm_instance';
+    const inst = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'whatsapp';
     return this.request('POST', `chat/sendPresence/${inst}`, {
       number,
       options: { delay: 2000, presence },
@@ -139,7 +167,7 @@ export class WhatsappService {
   // --- CONFIGURAÇÕES DE INSTÂNCIA ---
 
   async setInstanceSettings(instanceName: string, settings: Record<string, any>) {
-    const inst = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'crm_instance';
+    const inst = instanceName || process.env.EVOLUTION_INSTANCE_NAME || 'whatsapp';
     return this.request('POST', `settings/set/${inst}`, settings);
   }
 
@@ -342,6 +370,7 @@ export class WhatsappService {
           'POST',
           `chat/findMessages/${instanceName}`,
           { where: { key: { remoteJid } }, page: currentPage },
+          30000, // fetchMessages pode ser lento com historicos grandes
         );
 
         if (data?.error || data?.statusCode >= 400) {

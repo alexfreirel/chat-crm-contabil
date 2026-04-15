@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef, KeyboardEvent } from 'react';
-import { Search, User, Phone, Loader2, X, MessageSquare, Calendar, Brain, ChevronDown, ChevronUp, Mail, Pencil, Check, UserCheck, FolderOpen, FileText, Image as ImageIcon, Mic, Video, Download, Trash2, RotateCcw, AlertCircle, ClipboardList, StickyNote, Plus, Send, Scale, CheckSquare, ExternalLink, Clock, ArrowRight } from 'lucide-react';
+import { Search, User, Phone, Loader2, X, MessageSquare, Calendar, Brain, ChevronDown, ChevronUp, Mail, Pencil, Check, UserCheck, FolderOpen, FileText, Image as ImageIcon, Mic, Video, Download, Trash2, RotateCcw, AlertCircle, ClipboardList, StickyNote, Plus, Send, Scale, CheckSquare, ExternalLink, Clock, ArrowRight, DollarSign } from 'lucide-react';
 import FichaTrabalhista from '@/components/FichaTrabalhista';
 import { useRouter } from 'next/navigation';
 import api, { getMediaUrl } from '@/lib/api';
+import { showError, showSuccess } from '@/lib/toast';
 import { formatPhone } from '@/lib/utils';
 
 interface LeadDetail {
@@ -17,6 +18,7 @@ interface LeadDetail {
   tags: string[];
   created_at: string;
   profile_picture_url?: string;
+  google_drive_folder_id?: string | null;
   memory?: {
     summary: string;
     facts_json: any;
@@ -122,6 +124,13 @@ function formatDateShort(iso: string) {
   return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
+function formatCpfCnpj(v: string): string {
+  const clean = v.replace(/\D/g, '');
+  if (clean.length === 11) return clean.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  if (clean.length === 14) return clean.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+  return v;
+}
+
 function InlineInput({ value, onSave, onCancel, placeholder }: { value: string; onSave: (v: string) => void; onCancel: () => void; placeholder?: string }) {
   const [val, setVal] = useState(value);
   const ref = useRef<HTMLInputElement>(null);
@@ -171,7 +180,7 @@ export function ClientPanel({
   const [loading, setLoading] = useState(true);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [resettingMemory, setResettingMemory] = useState(false);
-  const [editing, setEditing] = useState<'name' | 'email' | null>(null);
+  const [editing, setEditing] = useState<'name' | 'email' | 'cpf_cnpj' | null>(null);
   const [saving, setSaving] = useState(false);
   const [resolvedAgent, setResolvedAgent] = useState<{ id: string; name: string } | null>(null);
   const [resolvedConvId, setResolvedConvId] = useState<string | null>(null);
@@ -195,12 +204,21 @@ export function ClientPanel({
   const [savingTask, setSavingTask] = useState(false);
   const [agents, setAgents] = useState<AgentUser[]>([]);
 
+  // Resumo financeiro
+  const [financeOpen, setFinanceOpen] = useState(false);
+  const [financeSummary, setFinanceSummary] = useState<{ contracted: number; received: number; pending: number; overdue: number } | null>(null);
+  const [financeLoading, setFinanceLoading] = useState(false);
+
   // Notas internas
   const [notesOpen, setNotesOpen] = useState(false);
   const [notes, setNotes] = useState<LeadNote[]>([]);
   const [noteText, setNoteText] = useState('');
   const [addingNote, setAddingNote] = useState(false);
   const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
+
+  // Histórico de transferências
+  const [transfersOpen, setTransfersOpen] = useState(false);
+  const [transfers, setTransfers] = useState<{ id: string; text: string; created_at: string }[]>([]);
 
   // Histórico de atividades (timeline)
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -211,6 +229,12 @@ export function ClientPanel({
   const [convHistory, setConvHistory] = useState<any[]>([]);
   const [convHistoryOpen, setConvHistoryOpen] = useState(false);
 
+  // Google Drive
+  const [driveFolderId, setDriveFolderId] = useState<string | null>(null);
+  const [creatingDriveFolder, setCreatingDriveFolder] = useState(false);
+  const [driveFiles, setDriveFiles] = useState<any[]>([]);
+  const [loadingDriveFiles, setLoadingDriveFiles] = useState(false);
+
   useEffect(() => {
     setLoading(true);
     setResolvedAgent(null);
@@ -218,6 +242,14 @@ export function ClientPanel({
     setDocuments([]);
     api.get(`/leads/${leadId}`).then(r => {
       setLead(r.data);
+      setDriveFolderId(r.data.google_drive_folder_id ?? null);
+      // Buscar arquivos do Drive se tem pasta
+      if (r.data.google_drive_folder_id) {
+        setLoadingDriveFiles(true);
+        api.get(`/google-drive/leads/${leadId}/files`).then(dr => {
+          setDriveFiles(dr.data || []);
+        }).catch(() => {}).finally(() => setLoadingDriveFiles(false));
+      }
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [leadId]);
@@ -287,11 +319,50 @@ export function ClientPanel({
     } catch { /* silencioso */ } finally { setSavingTask(false); }
   };
 
+  // Buscar resumo financeiro quando seção abrir
+  useEffect(() => {
+    if (!financeOpen || !leadId || financeSummary) return;
+    setFinanceLoading(true);
+    api.get(`/financeiro/transactions`, { params: { leadId, limit: 200 } })
+      .then(r => {
+        const txs: any[] = r.data?.data || r.data || [];
+        const sum = { contracted: 0, received: 0, pending: 0, overdue: 0 };
+        txs.forEach((t: any) => {
+          if (t.type !== 'RECEITA') return;
+          const amt = parseFloat(t.amount) || 0;
+          if (t.status === 'PAGO') sum.received += amt;
+          else if (t.status === 'PENDENTE' && t.due_date && new Date(t.due_date) < new Date()) sum.overdue += amt;
+          else if (t.status === 'PENDENTE') sum.pending += amt;
+          sum.contracted += amt;
+        });
+        setFinanceSummary(sum);
+      })
+      .catch(() => setFinanceSummary({ contracted: 0, received: 0, pending: 0, overdue: 0 }))
+      .finally(() => setFinanceLoading(false));
+  }, [financeOpen, leadId, financeSummary]);
+
   // Buscar notas quando seção abrir
   useEffect(() => {
     if (!notesOpen || !leadId) return;
     api.get(`/leads/${leadId}/notes`).then(r => setNotes(r.data || [])).catch(() => {});
   }, [notesOpen, leadId]);
+
+  // Buscar histórico de transferências quando seção abrir
+  useEffect(() => {
+    if (!transfersOpen || !lead?.conversations?.length) return;
+    const convId = lead.conversations[0]?.id;
+    if (!convId) return;
+    api.get(`/messages/conversation/${convId}`, { params: { limit: 500 } })
+      .then(r => {
+        const msgs = Array.isArray(r.data) ? r.data : (r.data?.data || []);
+        setTransfers(msgs.filter((m: any) => m.type === 'transfer_event').map((m: any) => ({
+          id: m.id,
+          text: m.text || '',
+          created_at: m.created_at,
+        })));
+      })
+      .catch(() => {});
+  }, [transfersOpen, lead]);
 
   // Buscar timeline quando seção abrir
   useEffect(() => {
@@ -322,12 +393,26 @@ export function ClientPanel({
     } catch { /* silencioso */ } finally { setDeletingNoteId(null); }
   };
 
+  const createDriveFolder = async () => {
+    if (creatingDriveFolder) return;
+    setCreatingDriveFolder(true);
+    try {
+      const r = await api.post(`/google-drive/leads/${leadId}/folder`);
+      setDriveFolderId(r.data.folderId);
+      showSuccess('Pasta criada no Google Drive!');
+    } catch (e: any) {
+      showError(e?.response?.data?.message || 'Erro ao criar pasta no Drive');
+    } finally {
+      setCreatingDriveFolder(false);
+    }
+  };
+
   const deleteDoc = (messageId: string) => {
     if (!confirm('Remover do Banco de Documentos?\n(O arquivo permanece no chat e no banco de dados)')) return;
     setDocuments(prev => prev.filter(d => d.messageId !== messageId));
   };
 
-  const saveField = async (field: 'name' | 'email', value: string) => {
+  const saveField = async (field: 'name' | 'email' | 'cpf_cnpj', value: string) => {
     if (!lead) return;
     setSaving(true);
     try {
@@ -434,6 +519,19 @@ export function ClientPanel({
                         <>
                           <span className="truncate">{lead.email || <span className="italic opacity-50">Sem e-mail</span>}</span>
                           <button onClick={() => setEditing('email')} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground shrink-0">
+                            <Pencil size={11} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                    <div className="group flex items-center gap-2 text-[13px] text-muted-foreground min-w-0">
+                      <FileText size={13} className="shrink-0" />
+                      {editing === 'cpf_cnpj' ? (
+                        <InlineInput value={(lead as any).cpf_cnpj || ''} placeholder="000.000.000-00" onSave={v => saveField('cpf_cnpj', v.replace(/\D/g, ''))} onCancel={() => setEditing(null)} />
+                      ) : (
+                        <>
+                          <span className="truncate font-mono text-[12px]">{(lead as any).cpf_cnpj ? formatCpfCnpj((lead as any).cpf_cnpj) : <span className="italic opacity-50">Sem CPF/CNPJ</span>}</span>
+                          <button onClick={() => setEditing('cpf_cnpj')} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground shrink-0">
                             <Pencil size={11} />
                           </button>
                         </>
@@ -549,9 +647,65 @@ export function ClientPanel({
                 </div>
                 {docsOpen ? <ChevronUp size={15} className="text-muted-foreground" /> : <ChevronDown size={15} className="text-muted-foreground" />}
               </button>
+
+              {/* Ações Google Drive */}
+              <div className="px-6 pb-3 flex items-center gap-2">
+                {driveFolderId ? (
+                  <a
+                    href={`https://drive.google.com/drive/folders/${driveFolderId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors font-medium"
+                  >
+                    <FolderOpen size={13} />
+                    Abrir pasta no Drive
+                    <ExternalLink size={11} className="opacity-60" />
+                  </a>
+                ) : (
+                  <button
+                    onClick={createDriveFolder}
+                    disabled={creatingDriveFolder}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium disabled:opacity-50"
+                  >
+                    {creatingDriveFolder ? <Loader2 size={13} className="animate-spin" /> : <FolderOpen size={13} />}
+                    {creatingDriveFolder ? 'Criando pasta...' : 'Criar pasta no Drive'}
+                  </button>
+                )}
+              </div>
+
               {docsOpen && (
                 <div className="px-6 pb-5">
-                  {documents.length === 0 ? (
+                  {/* Arquivos do Google Drive */}
+                  {driveFiles.length > 0 && (
+                    <div className="mb-4">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">📁 Arquivos no Drive</p>
+                      <div className="space-y-1.5">
+                        {driveFiles.map((f: any) => (
+                          <a key={f.id} href={f.webViewLink || `https://drive.google.com/file/d/${f.id}`} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/20 hover:bg-accent/40 transition-colors group">
+                            <span className="text-sm">{f.mimeType?.startsWith('image/') ? '🖼️' : f.mimeType?.includes('pdf') ? '📄' : f.mimeType?.includes('document') || f.mimeType?.includes('word') ? '📝' : f.mimeType?.includes('sheet') ? '📊' : '📁'}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[12px] font-medium text-foreground truncate">{f.name}</p>
+                              <p className="text-[10px] text-muted-foreground">
+                                {f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString('pt-BR') : ''}
+                                {f.size ? ` · ${(parseInt(f.size) / 1024).toFixed(0)} KB` : ''}
+                              </p>
+                            </div>
+                            <ExternalLink size={11} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {loadingDriveFiles && (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 size={14} className="animate-spin text-muted-foreground" />
+                      <span className="text-[11px] text-muted-foreground ml-2">Carregando arquivos do Drive...</span>
+                    </div>
+                  )}
+
+                  {/* Arquivos do Chat */}
+                  {documents.length === 0 && driveFiles.length === 0 && !loadingDriveFiles ? (
                     <p className="text-[13px] text-muted-foreground text-center py-6 opacity-40 italic">Nenhum documento enviado</p>
                   ) : (() => {
                     const getCategory = (mime: string) => {
@@ -795,6 +949,94 @@ export function ClientPanel({
               </button>
             </div>
 
+            {/* Resumo Financeiro */}
+            <div className="border-t border-border">
+              <button
+                className="w-full px-6 py-4 flex items-center justify-between hover:bg-accent/30 transition-colors"
+                onClick={() => setFinanceOpen(!financeOpen)}
+              >
+                <div className="flex items-center gap-2.5">
+                  <DollarSign size={15} className="text-emerald-400" />
+                  <span className="text-[13px] font-bold text-foreground">Resumo Financeiro</span>
+                </div>
+                {financeOpen ? <ChevronUp size={15} className="text-muted-foreground" /> : <ChevronDown size={15} className="text-muted-foreground" />}
+              </button>
+              {financeOpen && (
+                <div className="px-6 pb-5">
+                  {financeLoading ? (
+                    <div className="text-center py-4"><Loader2 size={16} className="animate-spin text-muted-foreground mx-auto" /></div>
+                  ) : financeSummary ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2.5 text-center">
+                        <p className="text-[9px] text-blue-400 uppercase tracking-wider font-medium">Contratado</p>
+                        <p className="text-sm font-bold text-blue-400 mt-0.5">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(financeSummary.contracted)}
+                        </p>
+                      </div>
+                      <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2.5 text-center">
+                        <p className="text-[9px] text-emerald-400 uppercase tracking-wider font-medium">Recebido</p>
+                        <p className="text-sm font-bold text-emerald-400 mt-0.5">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(financeSummary.received)}
+                        </p>
+                      </div>
+                      <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5 text-center">
+                        <p className="text-[9px] text-amber-400 uppercase tracking-wider font-medium">Pendente</p>
+                        <p className="text-sm font-bold text-amber-400 mt-0.5">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(financeSummary.pending)}
+                        </p>
+                      </div>
+                      <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-2.5 text-center">
+                        <p className="text-[9px] text-red-400 uppercase tracking-wider font-medium">Atrasado</p>
+                        <p className="text-sm font-bold text-red-400 mt-0.5">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(financeSummary.overdue)}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground text-center py-2">Sem dados financeiros</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Histórico de Transferências */}
+            <div className="border-t border-border">
+              <button
+                className="w-full px-6 py-4 flex items-center justify-between hover:bg-accent/30 transition-colors"
+                onClick={() => setTransfersOpen(!transfersOpen)}
+              >
+                <div className="flex items-center gap-2.5">
+                  <ArrowRight size={15} className="text-sky-400" />
+                  <span className="text-[13px] font-bold text-foreground">Transferências</span>
+                  {transfers.length > 0 && (
+                    <span className="text-[11px] text-muted-foreground bg-foreground/[0.06] px-2 py-0.5 rounded-full font-mono">{transfers.length}</span>
+                  )}
+                </div>
+                {transfersOpen ? <ChevronUp size={15} className="text-muted-foreground" /> : <ChevronDown size={15} className="text-muted-foreground" />}
+              </button>
+              {transfersOpen && (
+                <div className="px-6 pb-5">
+                  {transfers.length === 0 ? (
+                    <p className="text-[12px] text-muted-foreground/50 italic text-center py-3">Nenhuma transferência registrada</p>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {transfers.map(t => (
+                        <div key={t.id} className="flex items-start gap-2.5 py-2 border-b border-border/50 last:border-0">
+                          <span className="text-sky-400 text-sm shrink-0 mt-0.5">{t.text.startsWith('↩') ? '↩' : '📨'}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[12px] text-foreground leading-relaxed">{t.text}</p>
+                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">
+                              {new Date(t.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Notas Internas */}
             <div className="border-t border-border">
               <button
@@ -1029,11 +1271,29 @@ export function ClientPanel({
           <div className="px-6 py-4 border-t border-border shrink-0 space-y-2">
             <button
               className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-[13px] font-semibold flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors shadow-sm"
-              onClick={() => {
-                const convId = resolvedConvId || lead.conversations?.[0]?.id;
-                if (convId) sessionStorage.setItem('crm_open_conv', convId);
-                router.push('/atendimento');
-                onClose();
+              onClick={async () => {
+                let convId = resolvedConvId || lead.conversations?.[0]?.id;
+                // Se não tem conversa, criar uma
+                if (!convId && lead.phone) {
+                  try {
+                    const res = await api.post('/conversations', { lead_id: lead.id, channel: 'whatsapp', instance_name: 'whatsapp' });
+                    convId = res.data?.id;
+                  } catch {
+                    // Fallback: tenta buscar conversa existente
+                    try {
+                      const res = await api.get(`/conversations?leadId=${lead.id}&limit=1`);
+                      const convs = res.data?.data || res.data || [];
+                      if (convs.length > 0) convId = convs[0].id;
+                    } catch {}
+                  }
+                }
+                if (convId) {
+                  sessionStorage.setItem('crm_open_conv', convId);
+                  router.push('/atendimento');
+                  onClose();
+                } else {
+                  showError('Nao foi possivel abrir o chat. Verifique se o contato tem telefone valido.');
+                }
               }}
             >
               <MessageSquare size={15} />

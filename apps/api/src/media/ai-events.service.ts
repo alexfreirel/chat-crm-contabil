@@ -27,8 +27,9 @@ export class AiEventsService implements OnModuleInit, OnModuleDestroy {
       enableReadyCheck: false,
     };
 
-    this.queue = new Queue('ai-jobs', { connection });
-    this.queueEvents = new QueueEvents('ai-jobs', { connection });
+    const prefix = process.env.BULL_PREFIX || 'bull';
+    this.queue = new Queue('ai-jobs', { connection, prefix });
+    this.queueEvents = new QueueEvents('ai-jobs', { connection, prefix });
 
     // O worker retorna { conversationId, messageId } ao concluir com sucesso
     this.queueEvents.on('completed', async ({ jobId, returnvalue }) => {
@@ -57,11 +58,15 @@ export class AiEventsService implements OnModuleInit, OnModuleDestroy {
           return;
         }
 
-        // Emite para todos os clientes conectados na sala da conversa
+        // Emite para todos os clientes conectados na sala da conversa.
+        // emitNewMessage: adiciona mensagem se ainda não está no estado.
+        // emitMessageUpdate: atualiza a mensagem caso o echo da Evolution já a
+        //   tenha adicionado sem skill (race condition), garantindo que o badge apareça.
         this.chatGateway.emitNewMessage(conversationId, message);
+        this.chatGateway.emitMessageUpdate(conversationId, message);
         this.chatGateway.emitConversationsUpdate(null);
         this.logger.log(
-          `[WS-AI] newMessage emitido: msg=${messageId} conv=${conversationId}`,
+          `[WS-AI] newMessage+messageUpdate emitidos: msg=${messageId} conv=${conversationId} skill=${(message as any).skill?.name || 'null'}`,
         );
       } catch (e: any) {
         this.logger.error(`Erro no AiEventsService: ${e.message}`);

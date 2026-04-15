@@ -11,8 +11,9 @@ export class DashboardService {
       : {};
   }
 
-  async aggregate(userId: string, role: string, tenantId?: string) {
-    const isAdmin = role === 'ADMIN';
+  async aggregate(userId: string, roles: string | string[], tenantId?: string) {
+    const roleArr = Array.isArray(roles) ? roles : (roles ? [roles] : []);
+    const isAdmin = roleArr.includes('ADMIN');
     const tw = this.tenantWhere(tenantId);
     const now = new Date();
     const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -176,7 +177,7 @@ export class DashboardService {
       isAdmin
         ? this.prisma.user.findMany({
             where: tw,
-            select: { id: true, name: true, role: true },
+            select: { id: true, name: true, roles: true },
             orderBy: { name: 'asc' },
           })
         : Promise.resolve([]),
@@ -238,7 +239,7 @@ export class DashboardService {
           return {
             userId: member.id,
             name: member.name,
-            role: member.role,
+            role: member.roles?.[0] ?? 'OPERADOR',
             openConversations,
             activeCases,
             pendingTasks,
@@ -257,7 +258,7 @@ export class DashboardService {
       user: {
         id: userId,
         name: userName?.name || 'Usuário',
-        role,
+        roles: roleArr,
       },
       conversations: {
         open: openConvCount,

@@ -8,6 +8,9 @@ import { MediaModule } from './media/media.module';
 import { AiModule } from './ai/ai.module';
 import { ReminderModule } from './reminder/reminder.module';
 import { FollowupModule } from './followup/followup.module';
+import { PaymentAlertsModule } from './payment/payment-alerts.module';
+import { TaskAlertsModule } from './task/task-alerts.module';
+import { FinanceiroRecurringModule } from './financeiro/financeiro-recurring.module';
 
 @Module({
   imports: [
@@ -16,6 +19,7 @@ import { FollowupModule } from './followup/followup.module';
     SettingsModule,
     ScheduleModule.forRoot(),
     BullModule.forRoot({
+      prefix: process.env.BULL_PREFIX || 'bull',
       connection: {
         host: process.env.REDIS_HOST || 'localhost',
         port: parseInt(process.env.REDIS_PORT || '6379'),
@@ -28,6 +32,9 @@ import { FollowupModule } from './followup/followup.module';
     AiModule,
     ReminderModule,
     FollowupModule,
+    PaymentAlertsModule,
+    TaskAlertsModule,
+    FinanceiroRecurringModule,
   ],
 })
 export class AppModule {}
