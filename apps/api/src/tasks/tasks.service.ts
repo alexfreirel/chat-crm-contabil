@@ -98,7 +98,7 @@ export class TasksService {
       include: {
         assigned_user: { select: { id: true, name: true } },
         lead: { select: { id: true, name: true, phone: true } },
-        legal_case: { select: { id: true, case_number: true } },
+        cliente_contabil: { select: { id: true, service_type: true } },
         comments: {
           include: { user: { select: { id: true, name: true } } },
           orderBy: { created_at: 'asc' },
@@ -138,7 +138,7 @@ export class TasksService {
     description?: string;
     lead_id?: string;
     conversation_id?: string;
-    legal_case_id?: string;
+    cliente_contabil_id?: string;
     assigned_user_id?: string;
     due_at?: string | Date;
     tenant_id?: string;
@@ -150,7 +150,7 @@ export class TasksService {
         description: data.description,
         lead_id: data.lead_id,
         conversation_id: data.conversation_id,
-        legal_case_id: data.legal_case_id,
+        cliente_contabil_id: data.cliente_contabil_id,
         assigned_user_id: data.assigned_user_id,
         due_at: data.due_at ? new Date(data.due_at) : null,
         tenant_id: data.tenant_id,
@@ -374,7 +374,7 @@ export class TasksService {
         end_at: new Date(task.due_at.getTime() + 30 * 60000).toISOString(),
         assigned_user_id: task.assigned_user_id || createdById,
         lead_id: task.lead_id || undefined,
-        legal_case_id: task.legal_case_id || undefined,
+        cliente_contabil_id: task.cliente_contabil_id || undefined,
         created_by_id: createdById,
         tenant_id: task.tenant_id || undefined,
         // Lembretes PUSH: no momento exato + 15min antes + 1h antes
@@ -397,11 +397,11 @@ export class TasksService {
     }
   }
 
-  // ─── Legal Case Tasks ──────────────────────────────────────────
+  // ─── Cliente Contabil Tasks ──────────────────────────────────────────
 
   async findByLegalCase(legalCaseId: string, tenantId?: string) {
     if (tenantId) {
-      const lc = await this.prisma.legalCase.findUnique({
+      const lc = await this.prisma.clienteContabil.findUnique({
         where: { id: legalCaseId },
         select: { tenant_id: true },
       });
@@ -410,7 +410,7 @@ export class TasksService {
       }
     }
     return this.prisma.task.findMany({
-      where: { legal_case_id: legalCaseId },
+      where: { cliente_contabil_id: legalCaseId },
       include: {
         assigned_user: { select: { id: true, name: true } },
         _count: { select: { comments: true } },
@@ -580,7 +580,7 @@ export class TasksService {
       const safeCase       = sanitize(context.caseSummary, 300) || 'Não disponível';
       const safeTasks      = (context.recentTasks || []).map(t => sanitize(t, 80)).join('; ') || 'Nenhuma';
       const safeAssigned   = sanitize(context.assignedTo, 100)  || 'Não definido';
-      const prompt = `Você é um assistente jurídico especializado. Analise o contexto abaixo e sugira a próxima ação mais importante que o responsável deveria tomar.
+      const prompt = `Você é um assistente contábil especializado. Analise o contexto abaixo e sugira a próxima ação mais importante que o responsável deveria tomar.
 
 Contexto:
 - Tarefa/Situação: ${safeTitle}

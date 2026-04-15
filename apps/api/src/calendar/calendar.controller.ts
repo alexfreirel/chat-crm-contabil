@@ -26,7 +26,7 @@ export class CalendarController {
     @Query('type') type: string | undefined,
     @Query('userId') userId: string | undefined,
     @Query('leadId') leadId: string | undefined,
-    @Query('legalCaseId') legalCaseId: string | undefined,
+    @Query('clienteContabilId') clienteContabilId: string | undefined,
     @Query('search') search: string | undefined,
     @Query('showAll') showAll: string | undefined,
     @Request() req: any,
@@ -41,16 +41,16 @@ export class CalendarController {
       type,
       userId: effectiveUserId,
       leadId,
-      legalCaseId,
+      clienteContabilId,
       search,
       tenantId: req.user?.tenant_id,
     });
   }
 
   // IMPORTANTE: rotas com paths fixos ANTES de :id para evitar conflito
-  @Get('events/legal-case/:caseId')
-  findByLegalCase(@Param('caseId') caseId: string, @Query('type') type: string | undefined, @Request() req: any) {
-    return this.calendarService.findByLegalCase(caseId, type, req.user?.tenant_id);
+  @Get('events/cliente-contabil/:clienteId')
+  findByClienteContabil(@Param('clienteId') clienteId: string, @Query('type') type: string | undefined, @Request() req: any) {
+    return this.calendarService.findByClienteContabil(clienteId, type, req.user?.tenant_id);
   }
 
   @Get('events/:id')

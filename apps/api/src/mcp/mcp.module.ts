@@ -3,17 +3,17 @@ import { JwtModule } from '@nestjs/jwt';
 import { McpController } from './mcp.controller';
 import { McpToolsService } from './mcp-tools.service';
 import { LeadsModule } from '../leads/leads.module';
-import { LegalCasesModule } from '../legal-cases/legal-cases.module';
-import { CaseDocumentsModule } from '../case-documents/case-documents.module';
-import { HonorariosModule } from '../honorarios/honorarios.module';
+import { ClientesContabilModule } from '../clientes-contabil/clientes-contabil.module';
+import { DocumentosContabilModule } from '../documentos-contabil/documentos-contabil.module';
+import { HonorariosContabilModule } from '../honorarios-contabil/honorarios-contabil.module';
 
 @Module({
   imports: [
     JwtModule.register({ secret: process.env.JWT_SECRET || 'fallback-secret' }),
     LeadsModule,
-    LegalCasesModule,
-    CaseDocumentsModule,
-    HonorariosModule,
+    ClientesContabilModule,
+    DocumentosContabilModule,
+    HonorariosContabilModule,
   ],
   controllers: [McpController],
   providers: [McpToolsService],

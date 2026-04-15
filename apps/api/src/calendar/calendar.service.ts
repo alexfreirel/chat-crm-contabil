@@ -25,7 +25,7 @@ export class CalendarService {
     type?: string;
     userId?: string;
     leadId?: string;
-    legalCaseId?: string;
+    clienteContabilId?: string;
     tenantId?: string;
     search?: string;
   }) {
@@ -36,7 +36,7 @@ export class CalendarService {
     }
     if (query.type) where.type = query.type;
     if (query.leadId) where.lead_id = query.leadId;
-    if (query.legalCaseId) where.legal_case_id = query.legalCaseId;
+    if (query.clienteContabilId) where.cliente_contabil_id = query.clienteContabilId;
 
     // Filtrar por userId:
     // - Se o evento TEM um responsável (assigned_user_id preenchido), apenas ele vê.
@@ -106,7 +106,7 @@ export class CalendarService {
         assigned_user: { select: { id: true, name: true } },
         created_by: { select: { id: true, name: true } },
         lead: { select: { id: true, name: true, phone: true } },
-        legal_case: { select: { id: true, case_number: true, legal_area: true, lead: { select: { name: true } } } },
+        cliente_contabil: { select: { id: true, service_type: true, regime_tributario: true, lead: { select: { name: true } } } },
         appointment_type: true,
         reminders: true,
         _count: { select: { comments: true } },
@@ -122,7 +122,7 @@ export class CalendarService {
         assigned_user: { select: { id: true, name: true } },
         created_by: { select: { id: true, name: true } },
         lead: { select: { id: true, name: true, phone: true } },
-        legal_case: { select: { id: true, case_number: true, legal_area: true, lead: { select: { name: true } } } },
+        cliente_contabil: { select: { id: true, service_type: true, regime_tributario: true, lead: { select: { name: true } } } },
         appointment_type: true,
         reminders: true,
         _count: { select: { comments: true } },
@@ -145,7 +145,7 @@ export class CalendarService {
     location?: string;
     lead_id?: string;
     conversation_id?: string;
-    legal_case_id?: string;
+    cliente_contabil_id?: string;
     assigned_user_id?: string;
     created_by_id: string;
     appointment_type_id?: string;
@@ -173,7 +173,7 @@ export class CalendarService {
         location: data.location,
         lead_id: data.lead_id,
         conversation_id: data.conversation_id,
-        legal_case_id: data.legal_case_id,
+        cliente_contabil_id: data.cliente_contabil_id,
         assigned_user_id: data.assigned_user_id,
         created_by_id: data.created_by_id,
         appointment_type_id: data.appointment_type_id,
@@ -303,7 +303,7 @@ export class CalendarService {
       type?: string;
       lead_id?: string | null;
       conversation_id?: string | null;
-      legal_case_id?: string | null;
+      cliente_contabil_id?: string | null;
       assigned_user_id?: string | null;
       appointment_type_id?: string | null;
     },
@@ -798,7 +798,7 @@ export class CalendarService {
           color: parentEvent.color,
           location: parentEvent.location,
           lead_id: parentEvent.lead_id,
-          legal_case_id: parentEvent.legal_case_id,
+          cliente_contabil_id: parentEvent.cliente_contabil_id,
           assigned_user_id: parentEvent.assigned_user_id,
           created_by_id: parentEvent.created_by_id,
           appointment_type_id: parentEvent.appointment_type_id,
@@ -997,12 +997,12 @@ export class CalendarService {
     });
   }
 
-  // ─── Legal Case Tasks ─────────────────────────────────
+  // ─── Cliente Contábil Events ──────────────────────────
 
-  async findByLegalCase(legalCaseId: string, type?: string, tenantId?: string) {
+  async findByClienteContabil(clienteContabilId: string, type?: string, tenantId?: string) {
     return this.prisma.calendarEvent.findMany({
       where: {
-        legal_case_id: legalCaseId,
+        cliente_contabil_id: clienteContabilId,
         ...(type ? { type } : {}),
         ...(tenantId ? { OR: [{ tenant_id: tenantId }, { tenant_id: null }] } : {}),
       },
@@ -1042,7 +1042,7 @@ export class CalendarService {
           created_by_id: creatorId,
           lead_id: task.lead_id,
           conversation_id: task.conversation_id,
-          legal_case_id: task.legal_case_id,
+          cliente_contabil_id: task.cliente_contabil_id,
           tenant_id: task.tenant_id,
         },
       });

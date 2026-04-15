@@ -16,7 +16,6 @@ export class DashboardService {
     const tw = this.tenantWhere(tenantId);
     const now = new Date();
     const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
     const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay()); startOfWeek.setHours(0, 0, 0, 0);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -45,11 +44,6 @@ export class DashboardService {
       ? { pending_transfer_to_id: { not: null }, status: { not: 'FECHADO' }, ...tw }
       : { pending_transfer_to_id: userId, status: { not: 'FECHADO' } };
 
-    // ─── Case filters ──
-    const caseWhere = isAdmin
-      ? { archived: false, ...tw }
-      : { archived: false, lawyer_id: userId, ...tw };
-
     // ─── Task filters (CalendarEvent type=TAREFA) ──
     const calTaskWhere = (statuses: string[]) =>
       isAdmin
@@ -64,19 +58,14 @@ export class DashboardService {
       ...tw,
     };
 
-    // ─── Honorário payment filters ──
-    const paymentCaseFilter = isAdmin
-      ? { honorario: { legal_case: { ...tw } } }
-      : { honorario: { legal_case: { lawyer_id: userId, ...tw } } };
-
     // ─── Run all queries in parallel ──
     const [
       userName,
       openConvCount,
       pendingTransferCount,
       leadPipelineRaw,
-      legalCasesRaw,
-      trackingCasesRaw,
+      clientesContabilRaw,
+      _unused,
       upcomingEvents,
       tasksPending,
       tasksInProgress,
@@ -86,7 +75,7 @@ export class DashboardService {
       totalReceivable,
       totalOverdue,
       overdueCount,
-      recentDjen,
+      obrigacoesFiscaisRaw,
       teamUsers,
       closedToday,
       closedThisWeek,
@@ -107,18 +96,14 @@ export class DashboardService {
         _count: true,
         where: tw,
       }),
-      // 5. Legal cases (pre-tracking)
-      this.prisma.legalCase.groupBy({
+      // 5. Clientes contábeis por stage
+      this.prisma.clienteContabil.groupBy({
         by: ['stage'],
         _count: true,
-        where: { ...caseWhere, in_tracking: false },
+        where: tw,
       }),
-      // 6. Tracking cases
-      this.prisma.legalCase.groupBy({
-        by: ['tracking_stage'],
-        _count: true,
-        where: { ...caseWhere, in_tracking: true },
-      }),
+      // 6. (removed — sem tracking separado)
+      Promise.resolve([]),
       // 7. Upcoming events
       this.prisma.calendarEvent.findMany({
         where: eventWhere,
@@ -131,7 +116,7 @@ export class DashboardService {
           status: true,
           priority: true,
           lead: { select: { name: true } },
-          legal_case_id: true,
+          cliente_contabil_id: true,
         },
         orderBy: { start_at: 'asc' },
         take: 20,
@@ -147,61 +132,44 @@ export class DashboardService {
           start_at: { lt: now },
         },
       }),
-      // 11. Total contracted (sum of honorario total_value)
-      this.prisma.caseHonorario.aggregate({
-        _sum: { total_value: true },
-        where: isAdmin
-          ? { legal_case: { archived: false, ...tw } }
-          : { legal_case: { lawyer_id: userId, archived: false, ...tw } },
+      // 11. Total contratado (honoráriosContabil ativos)
+      this.prisma.honorarioContabil.aggregate({
+        _sum: { valor: true },
+        where: { ativo: true, ...(isAdmin ? {} : { cliente: { accountant_id: userId } }) },
       }),
-      // 12. Total collected (PAGO payments)
-      this.prisma.honorarioPayment.aggregate({
+      // 12. Total recebido (parcelas PAGO)
+      this.prisma.honorarioParcela.aggregate({
         _sum: { amount: true },
-        where: { status: 'PAGO', ...paymentCaseFilter },
+        where: { status: 'PAGO' },
       }),
-      // 13. Total receivable (PENDENTE payments)
-      this.prisma.honorarioPayment.aggregate({
+      // 13. Total a receber (parcelas PENDENTE)
+      this.prisma.honorarioParcela.aggregate({
         _sum: { amount: true },
-        where: { status: 'PENDENTE', ...paymentCaseFilter },
+        where: { status: 'PENDENTE' },
       }),
-      // 14. Total overdue (PENDENTE + due_date < now)
-      this.prisma.honorarioPayment.aggregate({
+      // 14. Total em atraso (PENDENTE + due_date < now)
+      this.prisma.honorarioParcela.aggregate({
         _sum: { amount: true },
-        where: {
-          status: 'PENDENTE',
-          due_date: { lt: now },
-          ...paymentCaseFilter,
-        },
+        where: { status: 'PENDENTE', due_date: { lt: now } },
       }),
-      // 15. Overdue count
-      this.prisma.honorarioPayment.count({
-        where: {
-          status: 'PENDENTE',
-          due_date: { lt: now },
-          ...paymentCaseFilter,
-        },
+      // 15. Contagem de parcelas em atraso
+      this.prisma.honorarioParcela.count({
+        where: { status: 'PENDENTE', due_date: { lt: now } },
       }),
-      // 16. Recent DJEN
-      this.prisma.djenPublication.findMany({
+      // 16. Obrigações fiscais próximas (7 dias)
+      this.prisma.obrigacaoFiscal.findMany({
         where: {
-          data_disponibilizacao: { gte: sevenDaysAgo },
-          ...(isAdmin
-            ? {}
-            : { legal_case: { lawyer_id: userId } }),
+          completed: false,
+          due_at: { gte: now, lte: new Date(now.getTime() + 7 * 86400000) },
         },
         select: {
           id: true,
-          numero_processo: true,
-          tipo_comunicacao: true,
-          data_disponibilizacao: true,
-          legal_case: {
-            select: {
-              id: true,
-              lead: { select: { name: true } },
-            },
-          },
+          titulo: true,
+          tipo: true,
+          due_at: true,
+          cliente: { select: { id: true, lead: { select: { name: true } } } },
         },
-        orderBy: { data_disponibilizacao: 'desc' },
+        orderBy: { due_at: 'asc' },
         take: 10,
       }),
       // 17. Team users (ADMIN only)
@@ -230,7 +198,7 @@ export class DashboardService {
     let teamMetrics: any[] = [];
     if (isAdmin && teamUsers.length > 0) {
       teamMetrics = await Promise.all(
-        teamUsers.map(async (member) => {
+        teamUsers.map(async (member: any) => {
           const [
             openConversations,
             activeCases,
@@ -245,8 +213,8 @@ export class DashboardService {
                 status: { not: 'FECHADO' },
               },
             }),
-            this.prisma.legalCase.count({
-              where: { lawyer_id: member.id, archived: false, ...tw },
+            this.prisma.clienteContabil.count({
+              where: { accountant_id: member.id, archived: false, ...tw },
             }),
             this.prisma.calendarEvent.count({
               where: {
@@ -263,20 +231,8 @@ export class DashboardService {
                 start_at: { lt: now },
               },
             }),
-            this.prisma.honorarioPayment.aggregate({
-              _sum: { amount: true },
-              where: {
-                status: 'PAGO',
-                honorario: { legal_case: { lawyer_id: member.id, ...tw } },
-              },
-            }),
-            this.prisma.honorarioPayment.aggregate({
-              _sum: { amount: true },
-              where: {
-                status: 'PENDENTE',
-                honorario: { legal_case: { lawyer_id: member.id, ...tw } },
-              },
-            }),
+            Promise.resolve({ _sum: { amount: null } }),
+            Promise.resolve({ _sum: { amount: null } }),
           ]);
 
           return {
@@ -295,8 +251,7 @@ export class DashboardService {
     }
 
     // ─── Assemble response ──
-    const legalTotal = legalCasesRaw.reduce((s, g) => s + g._count, 0);
-    const trackingTotal = trackingCasesRaw.reduce((s, g) => s + g._count, 0);
+    const clientesContabilTotal = (clientesContabilRaw as any[]).reduce((s: number, g: any) => s + g._count, 0);
 
     return {
       user: {
@@ -308,25 +263,18 @@ export class DashboardService {
         open: openConvCount,
         pendingTransfers: pendingTransferCount,
       },
-      leadPipeline: leadPipelineRaw.map((g) => ({
+      leadPipeline: (leadPipelineRaw as any[]).map((g: any) => ({
         stage: g.stage || 'INICIAL',
         count: g._count,
       })),
-      legalCases: {
-        total: legalTotal,
-        byStage: legalCasesRaw.map((g) => ({
+      clientesContabil: {
+        total: clientesContabilTotal,
+        byStage: (clientesContabilRaw as any[]).map((g: any) => ({
           stage: g.stage,
           count: g._count,
         })),
       },
-      trackingCases: {
-        total: trackingTotal,
-        byStage: trackingCasesRaw.map((g) => ({
-          stage: g.tracking_stage || 'DISTRIBUIDO',
-          count: g._count,
-        })),
-      },
-      upcomingEvents: upcomingEvents.map((e) => ({
+      upcomingEvents: (upcomingEvents as any[]).map((e: any) => ({
         id: e.id,
         type: e.type,
         title: e.title,
@@ -335,7 +283,7 @@ export class DashboardService {
         status: e.status,
         priority: e.priority,
         lead_name: e.lead?.name || null,
-        legal_case_id: e.legal_case_id,
+        cliente_contabil_id: e.cliente_contabil_id,
       })),
       tasks: {
         pending: tasksPending,
@@ -343,19 +291,19 @@ export class DashboardService {
         overdue: tasksOverdue,
       },
       financials: {
-        totalContracted: Number(totalContracted._sum.total_value || 0),
+        totalContracted: Number((totalContracted as any)._sum.valor || 0),
         totalCollected: Number(totalCollected._sum.amount || 0),
         totalReceivable: Number(totalReceivable._sum.amount || 0),
         totalOverdue: Number(totalOverdue._sum.amount || 0),
         overdueCount,
       },
-      recentDjen: recentDjen.map((d) => ({
-        id: d.id,
-        numero_processo: d.numero_processo,
-        tipo_comunicacao: d.tipo_comunicacao,
-        data_disponibilizacao: d.data_disponibilizacao,
-        lead_name: d.legal_case?.lead?.name || null,
-        legal_case_id: d.legal_case?.id || null,
+      obrigacoesFiscais: (obrigacoesFiscaisRaw as any[]).map((o: any) => ({
+        id: o.id,
+        titulo: o.titulo,
+        tipo: o.tipo,
+        due_at: o.due_at,
+        lead_name: o.cliente?.lead?.name || null,
+        cliente_contabil_id: o.cliente?.id || null,
       })),
       teamMetrics,
       inboxStats: {

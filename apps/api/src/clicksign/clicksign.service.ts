@@ -221,7 +221,7 @@ export class ClicksignService {
     // 1. Gerar buffer do documento
     const buffer = await this.contracts.generateBuffer(variaveis);
     const safeName = clientName.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_');
-    const filename = `Contrato_Trabalhista_${safeName}_${Date.now()}.docx`;
+    const filename = `Contrato_Servicos_Contabeis_${safeName}_${Date.now()}.docx`;
 
     // 2. Upload para Clicksign
     const documentKey = await this.uploadDocument(buffer, filename);

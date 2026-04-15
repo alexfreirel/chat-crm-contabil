@@ -213,14 +213,14 @@ export class AutomationsService {
     if (rules.length === 0) return;
 
     const now = new Date();
-    // HonorarioPayment → honorario (CaseHonorario) → legal_case (LegalCase) → lead_id + conversation_id
-    const overduePayments = await this.prisma.honorarioPayment.findMany({
+    // HonorarioParcela → honorario (HonorarioContabil) → cliente (ClienteContabil) → lead_id + conversation_id
+    const overduePayments = await this.prisma.honorarioParcela.findMany({
       where: { status: 'PENDENTE', due_date: { lt: now } },
       select: {
         id: true,
         honorario: {
           select: {
-            legal_case: {
+            cliente: {
               select: {
                 lead_id: true,
                 conversation_id: true,
@@ -232,8 +232,8 @@ export class AutomationsService {
     });
 
     for (const payment of overduePayments) {
-      const leadId = payment.honorario?.legal_case?.lead_id ?? undefined;
-      const conversationId = payment.honorario?.legal_case?.conversation_id ?? undefined;
+      const leadId = payment.honorario?.cliente?.lead_id ?? undefined;
+      const conversationId = payment.honorario?.cliente?.conversation_id ?? undefined;
       if (!leadId && !conversationId) continue;
       for (const rule of rules) {
         await this.executeAction(rule, { leadId, conversationId });

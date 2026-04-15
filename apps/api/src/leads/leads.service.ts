@@ -3,20 +3,19 @@ import { ModuleRef } from '@nestjs/core';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatGateway } from '../gateway/chat.gateway';
 import { Prisma, Lead } from '@crm/shared';
-import { LegalCasesService } from '../legal-cases/legal-cases.service';
 import { AutomationsService } from '../automations/automations.service';
 import { FollowupService } from '../followup/followup.service';
 import OpenAI from 'openai';
 
 /**
- * Remove o nono digito de celulares brasileiros.
- * 13 digitos (55+DD+9+8dig) -> 12 digitos (55+DD+8dig)
- * Ex: 5582999130127 -> 558299130127
+ * Remove o nono dígito de celulares brasileiros.
+ * 13 dígitos (55+DD+9+8dig) → 12 dígitos (55+DD+8dig)
+ * Ex: 5582999130127 → 558299130127
  */
 function to12Digits(phone: string): string {
   const d = phone.replace(/\D/g, '');
   if (d.length === 13 && d.startsWith('55') && d[4] === '9') {
-    return d.slice(0, 4) + d.slice(5); // remove o 5o caractere (o 9)
+    return d.slice(0, 4) + d.slice(5);
   }
   return d;
 }
@@ -27,7 +26,6 @@ export class LeadsService {
 
   constructor(
     private prisma: PrismaService,
-    private legalCasesService: LegalCasesService,
     private chatGateway: ChatGateway,
     private automationsService: AutomationsService,
     private moduleRef: ModuleRef,
@@ -36,7 +34,6 @@ export class LeadsService {
   async create(data: Prisma.LeadCreateInput): Promise<Lead> {
     if (data.phone) data = { ...data, phone: to12Digits(data.phone) };
     const lead = await this.prisma.lead.create({ data });
-    // Fire automation hooks asynchronously (don't block the response)
     this.automationsService.onNewLead(lead.id, lead.tenant_id ?? undefined).catch(err =>
       this.logger.warn(`onNewLead automation error for lead ${lead.id}: ${err}`),
     );
@@ -48,17 +45,12 @@ export class LeadsService {
       ? { OR: [{ tenant_id }, { tenant_id: null }] }
       : {};
 
-    // Filtro por stage:
-    //  - stage=PERDIDO  → busca arquivados
-    //  - stage=<outro>  → filtra pelo stage específico
-    //  - sem stage      → exclui PERDIDO (visão ativa, paginação correta)
     if (stage) {
       baseWhere.stage = stage;
     } else {
       baseWhere.stage = { not: 'PERDIDO' };
     }
 
-    // Busca server-side por nome ou telefone
     if (search && search.trim()) {
       const s = search.trim();
       baseWhere.AND = [
@@ -73,27 +65,19 @@ export class LeadsService {
     }
 
     const where = inbox_id
-      ? {
-          ...baseWhere,
-          conversations: { some: { inbox_id } },
-        }
+      ? { ...baseWhere, conversations: { some: { inbox_id } } }
       : baseWhere;
 
     const includeOpts = {
-      _count: {
-        select: { conversations: true },
-      },
+      _count: { select: { conversations: true } },
       conversations: {
         where: inbox_id ? { inbox_id } : undefined,
         orderBy: { last_message_at: 'desc' as const },
         take: 1,
         include: {
-          messages: {
-            orderBy: { created_at: 'desc' as const },
-            take: 1,
-          },
+          messages: { orderBy: { created_at: 'desc' as const }, take: 1 },
           assigned_user: { select: { id: true, name: true } },
-          assigned_lawyer: { select: { id: true, name: true } },
+          assigned_accountant: { select: { id: true, name: true } },
         },
       },
       calendar_events: {
@@ -134,26 +118,20 @@ export class LeadsService {
           orderBy: { last_message_at: 'desc' },
           include: {
             assigned_user: { select: { id: true, name: true } },
-            messages: {
-              orderBy: { created_at: 'desc' },
-              take: 1,
-            },
+            assigned_accountant: { select: { id: true, name: true } },
+            messages: { orderBy: { created_at: 'desc' }, take: 1 },
           },
         },
-        tasks: {
-          orderBy: { created_at: 'desc' },
-          take: 10,
-        },
-        legal_cases: {
+        tasks: { orderBy: { created_at: 'desc' }, take: 10 },
+        clientes_contabil: {
           where: { archived: false },
           orderBy: { created_at: 'desc' },
           include: {
-            lawyer: { select: { id: true, name: true } },
+            accountant: { select: { id: true, name: true } },
           },
         },
-        _count: {
-          select: { conversations: true },
-        },
+        ficha_contabil: true,
+        _count: { select: { conversations: true } },
       },
     }) as any;
     if (lead && tenantId && lead.tenant_id && lead.tenant_id !== tenantId) {
@@ -164,16 +142,10 @@ export class LeadsService {
 
   async upsert(data: Prisma.LeadCreateInput): Promise<Lead> {
     const phone = to12Digits(data.phone);
-    // No UPDATE nunca sobrescreve nome, stage nem foto com valores piores:
-    // - nome: só atualiza se o lead ainda não tem nome (null/vazio) E veio um nome no payload.
-    //   Evita sobrescrever o nome real do cliente com o pushName do escritório.
-    // - stage: webhook sempre envia 'NOVO', mas o stage é gerenciado pela IA.
-    // - profile_picture_url: só atualiza se o lead não tem foto OU se chegou uma URL válida.
     const { phone: _phone, name: incomingName, stage: _stage, profile_picture_url: incomingPhoto, ...updateData } = data as any;
 
     this.logger.debug(`Upsert lead: raw=${data.phone} → stored=${phone}`);
 
-    // Tenta atualizar o nome apenas se o lead existente não tiver nome
     if (incomingName) {
       await this.prisma.lead.updateMany({
         where: { phone, name: null },
@@ -181,9 +153,6 @@ export class LeadsService {
       });
     }
 
-    // profile_picture_url: só incluir no update quando vier URL válida.
-    // URLs do WhatsApp expiram (~24-48h) — URL nova é sempre melhor que a guardada.
-    // Nunca limpar foto existente com null (se webhook não enviou foto, não toca no campo).
     if (incomingPhoto) {
       updateData.profile_picture_url = incomingPhoto;
     }
@@ -215,10 +184,7 @@ export class LeadsService {
         throw new ForbiddenException('Acesso negado a este recurso');
       }
     }
-    return this.prisma.lead.update({
-      where: { id },
-      data,
-    });
+    return this.prisma.lead.update({ where: { id }, data });
   }
 
   async updateStatus(id: string, stage: string, tenantId?: string, lossReason?: string, actorId?: string): Promise<Lead> {
@@ -229,27 +195,23 @@ export class LeadsService {
       }
     }
 
-    // Stage gate: PERDIDO exige motivo
     if (stage === 'PERDIDO' && !lossReason) {
       throw new ForbiddenException('Motivo de perda é obrigatório ao marcar como PERDIDO');
     }
 
-    // Stage gate: FINALIZADO exige area juridica
     if (stage === 'FINALIZADO') {
       const conv = await this.prisma.conversation.findFirst({
         where: { lead_id: id },
         orderBy: { last_message_at: 'desc' },
-        select: { legal_area: true, assigned_lawyer_id: true },
+        select: { service_type: true, assigned_accountant_id: true },
       });
-      if (!conv?.legal_area) {
-        throw new ForbiddenException('Lead precisa ter área jurídica definida para ser finalizado');
+      if (!conv?.service_type) {
+        throw new ForbiddenException('Lead precisa ter tipo de serviço definido para ser finalizado');
       }
     }
 
-    // Captura o stage atual antes de alterar (para o histórico)
     const current = await this.prisma.lead.findUnique({ where: { id }, select: { stage: true } });
 
-    // Ao finalizar: busca o operador que fechou a venda para registrar como CS
     let csUserId: string | undefined;
     if (stage === 'FINALIZADO') {
       const lastConv = await this.prisma.conversation.findFirst({
@@ -266,7 +228,6 @@ export class LeadsService {
         stage,
         stage_entered_at: new Date(),
         ...(stage === 'PERDIDO' && lossReason ? { loss_reason: lossReason } : {}),
-        // Marcar como cliente ao FINALIZAR
         ...(stage === 'FINALIZADO' ? {
           is_client: true,
           became_client_at: new Date(),
@@ -275,7 +236,6 @@ export class LeadsService {
       },
     });
 
-    // Registra o histórico de mudança de stage
     this.prisma.leadStageHistory.create({
       data: {
         lead_id: id,
@@ -286,21 +246,16 @@ export class LeadsService {
       },
     }).catch(err => this.logger.warn(`Failed to record stage history for lead ${id}: ${err}`));
 
-    // Salva avanço de etapa na memória do lead (contexto para IA)
     this.appendLeadStageToMemory(id, current?.stage ?? null, stage, lossReason ?? null).catch(err =>
       this.logger.warn(`[MEMORY] Falha ao registrar etapa CRM na memória do lead ${id}: ${err}`),
     );
 
-    // Broadcast: notificar outros clientes sobre mudanca de stage do lead
     this.chatGateway.emitConversationsUpdate(tenantId ?? null);
 
-    // Fire stage-change automation hooks asynchronously
     this.automationsService.onStageChange(id, stage, tenantId).catch(err =>
       this.logger.warn(`onStageChange automation error for lead ${id}: ${err}`),
     );
 
-    // Auto-enroll em sequências de follow-up configuradas para o novo stage
-    // Resolve via ModuleRef para evitar dependência circular na inicialização do módulo
     try {
       const followupService = this.moduleRef.get(FollowupService, { strict: false });
       if (followupService) {
@@ -309,28 +264,32 @@ export class LeadsService {
         );
       }
     } catch {
-      // FollowupModule pode não estar carregado em contextos de teste — ignorar silenciosamente
+      // FollowupModule pode não estar carregado em contextos de teste
     }
 
-    // Auto-criacao de LegalCase quando lead atinge FINALIZADO
+    // Auto-criação de ClienteContabil quando lead atinge FINALIZADO
     if (stage === 'FINALIZADO') {
       try {
         const conv = await this.prisma.conversation.findFirst({
-          where: { lead_id: id, assigned_lawyer_id: { not: null } },
+          where: { lead_id: id, assigned_accountant_id: { not: null } },
           orderBy: { last_message_at: 'desc' },
-          select: { id: true, assigned_lawyer_id: true, tenant_id: true, legal_area: true },
+          select: { id: true, assigned_accountant_id: true, tenant_id: true, service_type: true },
         });
-        if (conv?.assigned_lawyer_id) {
-          await this.legalCasesService.createFromFinalizado(
-            id,
-            conv.assigned_lawyer_id,
-            conv.id,
-            conv.tenant_id ?? undefined,
-          );
-          this.logger.log(`Auto-created LegalCase for lead ${id} -> lawyer ${conv.assigned_lawyer_id}`);
+        if (conv?.assigned_accountant_id) {
+          await this.prisma.clienteContabil.create({
+            data: {
+              lead_id: id,
+              conversation_id: conv.id,
+              accountant_id: conv.assigned_accountant_id,
+              service_type: conv.service_type ?? 'OUTRO',
+              tenant_id: conv.tenant_id ?? undefined,
+              stage: 'ONBOARDING',
+            },
+          });
+          this.logger.log(`Auto-created ClienteContabil for lead ${id} → accountant ${conv.assigned_accountant_id}`);
         }
       } catch (err) {
-        this.logger.warn(`Failed to auto-create LegalCase for lead ${id}: ${err}`);
+        this.logger.warn(`Failed to auto-create ClienteContabil for lead ${id}: ${err}`);
       }
     }
 
@@ -348,32 +307,19 @@ export class LeadsService {
     return { ok: true };
   }
 
-  // ─── DELETE CONTACT (somente ADMIN) ──────────────────────────────────────
-  // Exclui o contato e TODOS os seus dados: conversas, mensagens, memória IA,
-  // casos jurídicos, tarefas, eventos, publicações DJEN.
   async deleteContact(id: string): Promise<{ ok: boolean }> {
     const lead = await this.prisma.lead.findUnique({ where: { id }, select: { id: true } });
     if (!lead) throw new NotFoundException('Contato não encontrado');
 
     await this.prisma.$transaction(async (tx) => {
-      // 1. Coleta todos os IDs relacionados
-      const conversations = await tx.conversation.findMany({
-        where: { lead_id: id },
-        select: { id: true },
-      });
+      const conversations = await tx.conversation.findMany({ where: { lead_id: id }, select: { id: true } });
       const convIds = conversations.map(c => c.id);
 
-      const legalCases = await tx.legalCase.findMany({
-        where: { lead_id: id },
-        select: { id: true },
-      });
-      const caseIds = legalCases.map(c => c.id);
+      const clientes = await tx.clienteContabil.findMany({ where: { lead_id: id }, select: { id: true } });
+      const clienteIds = clientes.map(c => c.id);
 
       const messages = convIds.length > 0
-        ? await tx.message.findMany({
-            where: { conversation_id: { in: convIds } },
-            select: { id: true },
-          })
+        ? await tx.message.findMany({ where: { conversation_id: { in: convIds } }, select: { id: true } })
         : [];
       const msgIds = messages.map(m => m.id);
 
@@ -381,7 +327,7 @@ export class LeadsService {
         where: {
           OR: [
             { lead_id: id },
-            ...(caseIds.length > 0 ? [{ legal_case_id: { in: caseIds } }] : []),
+            ...(clienteIds.length > 0 ? [{ cliente_contabil_id: { in: clienteIds } }] : []),
             ...(convIds.length > 0 ? [{ conversation_id: { in: convIds } }] : []),
           ],
         },
@@ -389,56 +335,23 @@ export class LeadsService {
       });
       const taskIds = allTasks.map(t => t.id);
 
-      // 2. Exclui na ordem correta (filhos antes de pais)
-
-      // Comentários de tarefas
-      if (taskIds.length > 0) {
-        await tx.taskComment.deleteMany({ where: { task_id: { in: taskIds } } });
-      }
-
-      // Publicações DJEN dos casos
-      if (caseIds.length > 0) {
-        await tx.djenPublication.deleteMany({ where: { legal_case_id: { in: caseIds } } });
-      }
-
-      // Eventos dos casos
-      if (caseIds.length > 0) {
-        await tx.caseEvent.deleteMany({ where: { case_id: { in: caseIds } } });
-      }
-
-      // Tarefas (do lead, dos casos e das conversas)
-      if (taskIds.length > 0) {
-        await tx.task.deleteMany({ where: { id: { in: taskIds } } });
-      }
-
-      // Casos jurídicos
-      if (caseIds.length > 0) {
-        await tx.legalCase.deleteMany({ where: { id: { in: caseIds } } });
-      }
-
-      // Mídia das mensagens
+      if (taskIds.length > 0) await tx.taskComment.deleteMany({ where: { task_id: { in: taskIds } } });
+      if (clienteIds.length > 0) await tx.clienteEvento.deleteMany({ where: { cliente_id: { in: clienteIds } } });
+      if (taskIds.length > 0) await tx.task.deleteMany({ where: { id: { in: taskIds } } });
+      if (clienteIds.length > 0) await tx.clienteContabil.deleteMany({ where: { id: { in: clienteIds } } });
       if (msgIds.length > 0) {
         await tx.media.deleteMany({ where: { message_id: { in: msgIds } } });
         await tx.message.deleteMany({ where: { id: { in: msgIds } } });
       }
-
-      // Conversas
-      if (convIds.length > 0) {
-        await tx.conversation.deleteMany({ where: { id: { in: convIds } } });
-      }
-
-      // Memória IA
+      if (convIds.length > 0) await tx.conversation.deleteMany({ where: { id: { in: convIds } } });
       await tx.aiMemory.deleteMany({ where: { lead_id: id } });
-
-      // Lead em si
       await tx.lead.delete({ where: { id } });
-    }, { timeout: 30000 }); // timeout generoso para contatos com muito histórico
+    }, { timeout: 30000 });
 
     this.logger.log(`[deleteContact] Contato ${id} e todos os seus dados foram excluídos.`);
     return { ok: true };
   }
 
-  // ─── TIMELINE ─────────────────────────────────────────────────────────────
   async getTimeline(leadId: string, tenantId?: string): Promise<any[]> {
     if (tenantId) {
       const lead = await this.prisma.lead.findUnique({ where: { id: leadId }, select: { tenant_id: true } });
@@ -464,61 +377,41 @@ export class LeadsService {
     ]);
 
     let facts: any = {};
-    try { facts = memory?.facts_json ? (typeof memory.facts_json === 'string' ? JSON.parse(memory.facts_json as string) : memory.facts_json) : {}; } catch { facts = {}; }
+    try {
+      facts = memory?.facts_json
+        ? (typeof memory.facts_json === 'string' ? JSON.parse(memory.facts_json as string) : memory.facts_json)
+        : {};
+    } catch { facts = {}; }
 
     const items: any[] = [
       ...stageHistory.map(h => ({
-        type: 'stage_change',
-        id: h.id,
-        from_stage: h.from_stage,
-        to_stage: h.to_stage,
-        actor: (h as any).actor ?? null,
-        loss_reason: h.loss_reason,
+        type: 'stage_change', id: h.id,
+        from_stage: h.from_stage, to_stage: h.to_stage,
+        actor: (h as any).actor ?? null, loss_reason: h.loss_reason,
         created_at: h.created_at,
       })),
       ...notes.map(n => ({
-        type: 'note',
-        id: n.id,
-        text: n.text,
-        author: (n as any).user ?? null,
-        created_at: n.created_at,
+        type: 'note', id: n.id, text: n.text,
+        author: (n as any).user ?? null, created_at: n.created_at,
       })),
-      // Etapas do processo judicial (de AiMemory)
-      ...(facts.case_timeline || []).map((e: any, i: number) => ({
-        type: 'case_stage',
-        id: `case_${i}`,
-        from_stage: e.from,
-        to_stage: e.to,
-        case_number: e.case_number,
-        legal_area: e.legal_area,
-        created_at: new Date(e.date + 'T12:00:00Z'),
+      // Etapas do cliente contábil (da AiMemory)
+      ...(facts.crm_timeline || []).map((e: any, i: number) => ({
+        type: 'service_stage', id: `service_${i}`,
+        from_stage: e.from, to_stage: e.to,
+        service_type: e.service_type,
+        created_at: new Date((e.date || new Date().toISOString().slice(0, 10)) + 'T12:00:00Z'),
       })),
-      // Petições aprovadas/protocoladas (de AiMemory)
-      ...(facts.petitions || []).map((p: any, i: number) => ({
-        type: 'petition',
-        id: `petition_${i}`,
-        petition_type: p.type,
-        title: p.title,
-        status: p.status,
-        case_number: p.case_number,
-        created_at: new Date(p.date + 'T12:00:00Z'),
-      })),
-      // Publicações DJEN analisadas (de AiMemory)
-      ...(facts.djen_publications || []).map((d: any, i: number) => ({
-        type: 'djen',
-        id: `djen_${i}`,
-        djen_tipo: d.tipo,
-        djen_assunto: d.assunto,
-        resumo: d.resumo,
-        urgencia: d.urgencia,
-        created_at: new Date(d.date + 'T12:00:00Z'),
+      // Eventos contábeis relevantes (da AiMemory)
+      ...(facts.service_events || []).map((ev: any, i: number) => ({
+        type: 'service_event', id: `ev_${i}`,
+        title: ev.title, description: ev.description,
+        created_at: new Date((ev.date || new Date().toISOString().slice(0, 10)) + 'T12:00:00Z'),
       })),
     ];
 
     return items.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }
 
-  // ─── IA SUMMARY ───────────────────────────────────────────────────────────
   async summarizeLead(leadId: string, tenantId?: string): Promise<{ summary: string }> {
     const lead = await this.prisma.lead.findUnique({
       where: { id: leadId },
@@ -534,6 +427,7 @@ export class LeadsService {
           },
           take: 1,
         },
+        ficha_contabil: true,
       },
     });
     if (!lead) throw new NotFoundException('Lead não encontrado');
@@ -551,6 +445,11 @@ export class LeadsService {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) throw new BadRequestException('API key OpenAI não configurada.');
 
+    const ficha = (lead as any).ficha_contabil;
+    const fichaInfo = ficha
+      ? `CNPJ: ${ficha.cnpj || '-'} | Regime: ${ficha.regime_tributario || '-'} | Serviços: ${(ficha.servicos || []).join(', ') || '-'}`
+      : 'Ficha contábil não preenchida';
+
     const openai = new OpenAI({ apiKey });
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -558,11 +457,11 @@ export class LeadsService {
       messages: [
         {
           role: 'system',
-          content: 'Você é um assistente jurídico. Produza um briefing conciso (3-5 linhas) sobre o lead: quem é, qual é o problema jurídico, o que já foi tratado e qual o próximo passo recomendado. Responda em português, sem tópicos, em texto corrido.',
+          content: 'Você é um assistente de escritório contábil. Produza um briefing conciso (3-5 linhas) sobre o prospecto: quem é, qual serviço contábil precisa, o que já foi tratado e qual o próximo passo recomendado. Responda em português, sem tópicos, em texto corrido.',
         },
         {
           role: 'user',
-          content: `Lead: ${lead.name || 'Sem nome'} | Etapa: ${lead.stage} | Área: ${(conv as any)?.legal_area || 'não definida'}\n\nConversa:\n${messagesText || 'Sem mensagens registradas.'}`,
+          content: `Lead: ${lead.name || 'Sem nome'} | Etapa: ${lead.stage} | Serviço: ${(conv as any)?.service_type || 'não definido'}\n${fichaInfo}\n\nConversa:\n${messagesText || 'Sem mensagens registradas.'}`,
         },
       ],
     });
@@ -570,7 +469,6 @@ export class LeadsService {
     return { summary: completion.choices[0]?.message?.content ?? 'Não foi possível gerar o resumo.' };
   }
 
-  // ─── EXPORT CSV ───────────────────────────────────────────────────────────
   async exportCsv(tenantId?: string, search?: string): Promise<string> {
     const where: any = {};
     if (tenantId) where.tenant_id = tenantId;
@@ -588,8 +486,12 @@ export class LeadsService {
         conversations: {
           orderBy: { last_message_at: 'desc' },
           take: 1,
-          select: { legal_area: true, assigned_lawyer: { select: { name: true } } },
+          select: {
+            service_type: true,
+            assigned_accountant: { select: { name: true } },
+          },
         },
+        ficha_contabil: { select: { regime_tributario: true, cnpj: true } },
       },
     });
 
@@ -603,16 +505,19 @@ export class LeadsService {
     const daysInStage = (d: Date | string) =>
       Math.floor((Date.now() - new Date(d).getTime()) / msPerDay);
 
-    const header = ['Nome', 'Telefone', 'Email', 'Estágio', 'Área Jurídica', 'Advogado', 'Tags', 'Dias no Estágio', 'Criado em'];
+    const header = ['Nome', 'Telefone', 'Email', 'Estágio', 'Tipo de Serviço', 'Regime', 'CNPJ', 'Especialista', 'Tags', 'Dias no Estágio', 'Criado em'];
     const rows = leads.map(l => {
       const conv = (l as any).conversations?.[0];
+      const ficha = (l as any).ficha_contabil;
       return [
         escape(l.name),
         escape(l.phone),
         escape(l.email),
         escape(l.stage),
-        escape(conv?.legal_area),
-        escape(conv?.assigned_lawyer?.name),
+        escape(conv?.service_type),
+        escape(ficha?.regime_tributario),
+        escape(ficha?.cnpj),
+        escape(conv?.assigned_accountant?.name),
         escape((l.tags || []).join('; ')),
         escape(String(daysInStage(l.stage_entered_at))),
         escape(new Date(l.created_at).toLocaleDateString('pt-BR')),
@@ -622,14 +527,10 @@ export class LeadsService {
     return [header.join(','), ...rows].join('\n');
   }
 
-  // ─── Memória: registra avanço de etapa CRM ────────────────────────────────
-
   private async appendLeadStageToMemory(leadId: string, fromStage: string | null, toStage: string, lossReason: string | null): Promise<void> {
     const STAGE_LABELS: Record<string, string> = {
-      NOVO: 'Novo', INICIAL: 'Inicial', QUALIFICANDO: 'Qualificando',
-      AGUARDANDO_FORM: 'Aguardando Formulário', REUNIAO_AGENDADA: 'Reunião Agendada',
-      AGUARDANDO_DOCS: 'Aguardando Documentos', AGUARDANDO_PROC: 'Aguardando Processo',
-      FINALIZADO: 'Finalizado', PERDIDO: 'Perdido',
+      NOVO: 'Novo', QUALIFICANDO: 'Qualificando', PROPOSTA: 'Proposta',
+      NEGOCIANDO: 'Negociando', FINALIZADO: 'Finalizado', PERDIDO: 'Perdido',
     };
     const today = new Date().toISOString().slice(0, 10);
     const entry = {
@@ -638,7 +539,12 @@ export class LeadsService {
     };
     const existing = await this.prisma.aiMemory.findUnique({ where: { lead_id: leadId } });
     let facts: any = {};
-    try { facts = existing?.facts_json ? (typeof existing.facts_json === 'string' ? JSON.parse(existing.facts_json as string) : existing.facts_json) : {}; } catch { facts = {}; }
+    try {
+      facts = existing?.facts_json
+        ? (typeof existing.facts_json === 'string' ? JSON.parse(existing.facts_json as string) : existing.facts_json)
+        : {};
+    } catch { facts = {}; }
+
     const timeline: any[] = facts.crm_timeline || [];
     timeline.push(entry);
     if (timeline.length > 30) timeline.splice(0, timeline.length - 30);

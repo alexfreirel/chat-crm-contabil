@@ -19,23 +19,22 @@ import { SectorsModule } from './sectors/sectors.module';
 import { MediaModule } from './media/media.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { TransferAudioModule } from './transfer-audio/transfer-audio.module';
-import { LegalCasesModule } from './legal-cases/legal-cases.module';
-import { DjenModule } from './djen/djen.module';
-import { FichaTrabalhistaModule } from './ficha-trabalhista/ficha-trabalhista.module';
 import { CalendarModule } from './calendar/calendar.module';
-import { CaseDocumentsModule } from './case-documents/case-documents.module';
-import { CaseDeadlinesModule } from './case-deadlines/case-deadlines.module';
-import { PetitionsModule } from './petitions/petitions.module';
-import { LegalTemplatesModule } from './legal-templates/legal-templates.module';
-import { HonorariosModule } from './honorarios/honorarios.module';
 import { DashboardModule } from './dashboard/dashboard.module';
-import { ContractsModule } from './contracts/contracts.module';
 import { ClicksignModule } from './clicksign/clicksign.module';
 import { S3Module } from './s3/s3.module';
 import { McpModule } from './mcp/mcp.module';
 import { AutomationsModule } from './automations/automations.module';
 import { FollowupModule } from './followup/followup.module';
 import { AdminBotModule } from './admin-bot/admin-bot.module';
+
+// ─── Módulos Contábeis ────────────────────────
+import { ClientesContabilModule } from './clientes-contabil/clientes-contabil.module';
+import { FichaContabilModule } from './ficha-contabil/ficha-contabil.module';
+import { ObrigacoesModule } from './obrigacoes/obrigacoes.module';
+import { DocumentosContabilModule } from './documentos-contabil/documentos-contabil.module';
+import { HonorariosContabilModule } from './honorarios-contabil/honorarios-contabil.module';
+import { TemplatesContabilModule } from './templates-contabil/templates-contabil.module';
 
 import { HealthController } from './common/controllers/health.controller';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
@@ -62,11 +61,12 @@ import { RolesGuard } from './auth/guards/roles.guard';
         },
       }),
     }),
+    // ─── Core ────────────────────────────────────
     PrismaModule,
     S3Module,
     UsersModule,
     AuthModule,
-    LeadsModule, 
+    LeadsModule,
     ConversationsModule,
     WebhooksModule,
     MessagesModule,
@@ -79,22 +79,21 @@ import { RolesGuard } from './auth/guards/roles.guard';
     MediaModule,
     AnalyticsModule,
     TransferAudioModule,
-    LegalCasesModule,
-    DjenModule,
-    FichaTrabalhistaModule,
     CalendarModule,
-    CaseDocumentsModule,
-    CaseDeadlinesModule,
-    PetitionsModule,
-    LegalTemplatesModule,
-    HonorariosModule,
     DashboardModule,
-    ContractsModule,
     ClicksignModule,
+    // ─── IA / Automações ─────────────────────────
     McpModule,
     AutomationsModule,
     FollowupModule,
     AdminBotModule,
+    // ─── Módulos Contábeis ───────────────────────
+    ClientesContabilModule,
+    FichaContabilModule,
+    ObrigacoesModule,
+    DocumentosContabilModule,
+    HonorariosContabilModule,
+    TemplatesContabilModule,
   ],
   controllers: [AppController, HealthController],
   providers: [
@@ -107,7 +106,6 @@ import { RolesGuard } from './auth/guards/roles.guard';
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
-    // JwtAuthGuard deve vir ANTES de RolesGuard para popular req.user antes da checagem de roles
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,

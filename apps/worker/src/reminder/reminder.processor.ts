@@ -158,7 +158,7 @@ export class ReminderProcessor extends WorkerHost {
       include: {
         assigned_user: { select: { id: true, name: true, phone: true } },
         lead: { select: { id: true, name: true, phone: true } },
-        legal_case: { select: { id: true, case_number: true, legal_area: true } },
+        cliente_contabil: { select: { id: true, service_type: true } },
       },
     });
 
@@ -170,12 +170,13 @@ export class ReminderProcessor extends WorkerHost {
       this.logger.log(`[HEARING-NOTIFY] Evento ${eventId} está ${event.status} — ignorado`);
       return;
     }
-    if (!event.lead?.phone) {
+    const eventLead = (event as any).lead;
+    if (!eventLead?.phone) {
       this.logger.log(`[HEARING-NOTIFY] Evento ${eventId} sem telefone do cliente — ignorado`);
       return;
     }
 
-    const firstName = (event.lead.name || 'Cliente').split(' ')[0];
+    const firstName = (eventLead.name || 'Cliente').split(' ')[0];
     const dateStr = event.start_at.toLocaleString('pt-BR', {
       weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit', timeZone: 'America/Maceio',
@@ -211,13 +212,13 @@ export class ReminderProcessor extends WorkerHost {
 
     // Busca conversa ativa para obter a instance correta e salvar a mensagem
     const lastConvo = await this.prisma.conversation.findFirst({
-      where: { lead_id: event.lead.id, status: { not: 'ENCERRADO' } },
+      where: { lead_id: eventLead.id, status: { not: 'ENCERRADO' } },
       orderBy: { last_message_at: 'desc' },
       select: { id: true, instance_name: true },
     }).catch(() => null);
 
     const instance = lastConvo?.instance_name || process.env.EVOLUTION_INSTANCE_NAME || '';
-    const clientPhone = event.lead.phone.replace(/\D/g, '');
+    const clientPhone = eventLead.phone.replace(/\D/g, '');
 
     let sentMsgId: string | null = null;
     try {

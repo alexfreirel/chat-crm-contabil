@@ -74,7 +74,7 @@ export class AdminBotService implements OnModuleInit, OnModuleDestroy {
   // ─── Public API ───────────────────────────────────────────────────────────
 
   /**
-   * Verifica se o telefone pertence a um usuário ADMIN ou ADVOGADO do sistema.
+   * Verifica se o telefone pertence a um usuário ADMIN ou ESPECIALISTA do sistema.
    * Retorna o user se encontrado, null caso contrário.
    */
   async findAdminByPhone(phone: string): Promise<any | null> {
@@ -82,7 +82,7 @@ export class AdminBotService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.user.findFirst({
       where: {
         phone: { in: [normalized, phone] },
-        role: { in: ['ADMIN', 'ADVOGADO'] },
+        role: { in: ['ADMIN', 'ESPECIALISTA'] },
       },
       select: { id: true, name: true, role: true, tenant_id: true },
     });
@@ -249,15 +249,15 @@ export class AdminBotService implements OnModuleInit, OnModuleDestroy {
       timeZone: 'America/Sao_Paulo',
     });
 
-    return `Você é o assistente administrativo do CRM Jurídico — acessível via WhatsApp pelo administrador.
+    return `Você é o assistente administrativo do CRM Contábil — acessível via WhatsApp pelo administrador.
 
 📅 Hoje: ${dateStr} às ${timeStr} (Horário de Brasília)
 
 ## O que você pode fazer
-- Criar tarefas para clientes e processos
-- Agendar eventos: consultas, audiências, prazos, reuniões
+- Criar tarefas para clientes contábeis
+- Agendar eventos: reuniões, prazos, entregas, consultas
 - Listar tarefas pendentes do usuário
-- Buscar clientes e processos
+- Buscar clientes contábeis
 
 ## Regras de Resposta
 - Português brasileiro, linguagem direta
@@ -278,26 +278,26 @@ export class AdminBotService implements OnModuleInit, OnModuleDestroy {
 ## Fluxo Criar Tarefa
 1. Buscar cliente pelo nome (search_leads)
 2. Se múltiplos: listar e perguntar qual
-3. Buscar processos do cliente (get_legal_cases)
-4. Perguntar o processo (ou "nenhum")
+3. Buscar clientes contábeis (get_clientes_contabil)
+4. Perguntar o cliente contábil (ou "nenhum")
 5. Confirmar/perguntar título da tarefa
 6. Perguntar data/hora de vencimento
 7. Criar a tarefa (create_task) e confirmar com ✅
 
 ## Fluxo Agendar Evento
-1. Identificar tipo: consulta, audiência, prazo ou reunião
+1. Identificar tipo: reunião, prazo, entrega ou outro
 2. Buscar cliente se mencionado
-3. Buscar processos se aplicável
+3. Buscar clientes contábeis se aplicável
 4. Perguntar data e hora
 5. Criar o evento (create_calendar_event) e confirmar com ✅
 
 ## Exemplo de resposta de lista
-Encontrei 3 processos de Beatriz:
-1️⃣ Trabalhista — Rescisão indireta (ativo)
-2️⃣ Consumidor — Plano de saúde (ativo)
-3️⃣ Civil — Indenização (arquivado)
+Encontrei 3 clientes contábeis de Beatriz:
+1️⃣ Contabilidade — Simples Nacional (ativo)
+2️⃣ Fiscal — Lucro Presumido (ativo)
+3️⃣ Folha — MEI (arquivado)
 
-Para qual processo? (responda 1, 2, 3 ou "nenhum")`;
+Para qual cliente contábil? (responda 1, 2, 3 ou "nenhum")`;
   }
 
   // ─── Tools Definition ─────────────────────────────────────────────────────
@@ -321,8 +321,8 @@ Para qual processo? (responda 1, 2, 3 ou "nenhum")`;
       {
         type: 'function',
         function: {
-          name: 'get_legal_cases',
-          description: 'Lista os processos jurídicos de um cliente. Use após identificar o lead_id.',
+          name: 'get_clientes_contabil',
+          description: 'Lista os clientes contábeis ativos de um lead.',
           parameters: {
             type: 'object',
             properties: {
@@ -336,7 +336,7 @@ Para qual processo? (responda 1, 2, 3 ou "nenhum")`;
         type: 'function',
         function: {
           name: 'list_users',
-          description: 'Lista usuários do CRM (advogados e operadores) para atribuição.',
+          description: 'Lista usuários do CRM (contadores e operadores) para atribuição.',
           parameters: { type: 'object', properties: {} },
         },
       },
@@ -351,7 +351,7 @@ Para qual processo? (responda 1, 2, 3 ou "nenhum")`;
               title: { type: 'string', description: 'Título claro e objetivo da tarefa' },
               description: { type: 'string', description: 'Detalhes adicionais (opcional)' },
               lead_id: { type: 'string', description: 'ID do cliente (opcional)' },
-              legal_case_id: { type: 'string', description: 'ID do processo (opcional)' },
+              cliente_contabil_id: { type: 'string', description: 'ID do cliente contábil (opcional)' },
               assigned_user_id: { type: 'string', description: 'ID do responsável (opcional — padrão: usuário atual)' },
               due_at: { type: 'string', description: 'Vencimento em ISO 8601 com fuso -03:00 (ex: 2026-04-15T14:00:00-03:00)' },
             },
@@ -370,13 +370,13 @@ Para qual processo? (responda 1, 2, 3 ou "nenhum")`;
               title: { type: 'string', description: 'Título do evento' },
               type: {
                 type: 'string',
-                enum: ['CONSULTA', 'AUDIENCIA', 'PRAZO', 'TAREFA', 'OUTRO'],
+                enum: ['CONSULTA', 'REUNIAO', 'PRAZO', 'ENTREGA', 'OUTRO'],
                 description: 'Tipo do evento',
               },
               start_at: { type: 'string', description: 'Início em ISO 8601 com fuso -03:00' },
               end_at: { type: 'string', description: 'Fim em ISO 8601 (opcional — padrão: início +1h)' },
               lead_id: { type: 'string', description: 'ID do cliente (opcional)' },
-              legal_case_id: { type: 'string', description: 'ID do processo (opcional)' },
+              cliente_contabil_id: { type: 'string', description: 'ID do cliente contábil (opcional)' },
               assigned_user_id: { type: 'string', description: 'ID do responsável (opcional)' },
             },
             required: ['title', 'type', 'start_at'],
@@ -427,26 +427,25 @@ Para qual processo? (responda 1, 2, 3 ou "nenhum")`;
           return { found: true, count: leads.length, leads };
         }
 
-        case 'get_legal_cases': {
-          const cases = await this.prisma.legalCase.findMany({
+        case 'get_clientes_contabil': {
+          const clientes = await this.prisma.clienteContabil.findMany({
             where: { lead_id: args.lead_id },
             select: {
-              id: true, case_number: true,
-              legal_area: true, action_type: true,
-              stage: true, opposing_party: true,
+              id: true, service_type: true, regime_tributario: true,
+              stage: true, priority: true,
             },
             orderBy: { created_at: 'desc' },
             take: 8,
           });
-          if (!cases.length) {
-            return { found: false, message: 'Nenhum processo encontrado para este cliente.' };
+          if (!clientes.length) {
+            return { found: false, message: 'Nenhum cliente contábil encontrado para este lead.' };
           }
-          return { found: true, count: cases.length, cases };
+          return { found: true, count: clientes.length, clientes };
         }
 
         case 'list_users': {
           const users = await this.prisma.user.findMany({
-            where: { role: { in: ['ADMIN', 'ADVOGADO', 'OPERADOR'] } },
+            where: { role: { in: ['ADMIN', 'ESPECIALISTA', 'OPERADOR'] } },
             select: { id: true, name: true, role: true },
             orderBy: { name: 'asc' },
           });
@@ -458,7 +457,7 @@ Para qual processo? (responda 1, 2, 3 ou "nenhum")`;
             title: args.title,
             description: args.description,
             lead_id: args.lead_id,
-            legal_case_id: args.legal_case_id,
+            cliente_contabil_id: args.cliente_contabil_id,
             assigned_user_id: args.assigned_user_id || userId,
             due_at: args.due_at,
             tenant_id: tenantId || undefined,
@@ -488,7 +487,7 @@ Para qual processo? (responda 1, 2, 3 ou "nenhum")`;
             start_at: startAt.toISOString(),
             end_at: endAt.toISOString(),
             lead_id: args.lead_id,
-            legal_case_id: args.legal_case_id,
+            cliente_contabil_id: args.cliente_contabil_id,
             assigned_user_id: args.assigned_user_id || userId,
             created_by_id: userId,
             tenant_id: tenantId || undefined,

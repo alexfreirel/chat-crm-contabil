@@ -53,7 +53,7 @@ function templateAdvogado(event: any, minutesBefore: number): string {
   const prazo = minutesLabel(minutesBefore);
   const dateStr = formatDateTime(event.start_at);
   const tipo = event.type;
-  const caseNum = event.legal_case?.case_number || event.title;
+  const caseNum = event.cliente_contabil?.service_type || event.title;
   const advNome = (event.assigned_user?.name || 'Advogado').split(' ').slice(0, 2).join(' ');
 
   if (tipo === 'AUDIENCIA') {
@@ -107,17 +107,12 @@ function buildContext(event: any, memory: any, legalCase: any, ficha: any, djenP
     lines.push(`Nome: ${event.assigned_user.name}`);
   }
 
-  // Processo
+  // Cliente Contábil
   if (legalCase) {
-    lines.push(`\n## PROCESSO`);
-    if (legalCase.case_number) lines.push(`Número: ${legalCase.case_number}`);
-    if (legalCase.legal_area) lines.push(`Área: ${legalCase.legal_area}`);
-    if (legalCase.action_type) lines.push(`Tipo de ação: ${legalCase.action_type}`);
-    if (legalCase.opposing_party) lines.push(`Parte contrária: ${legalCase.opposing_party}`);
-    if (legalCase.court) lines.push(`Tribunal/Vara: ${legalCase.court}`);
-    if (legalCase.judge) lines.push(`Juiz/Desembargador: ${legalCase.judge}`);
-    if (legalCase.claim_value) lines.push(`Valor da causa: R$ ${Number(legalCase.claim_value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
-    if (legalCase.notes) lines.push(`Notas do advogado: ${legalCase.notes}`);
+    lines.push(`\n## CLIENTE CONTÁBIL`);
+    if (legalCase.service_type) lines.push(`Tipo de serviço: ${legalCase.service_type}`);
+    if (legalCase.regime_tributario) lines.push(`Regime tributário: ${legalCase.regime_tributario}`);
+    if (legalCase.stage) lines.push(`Estágio: ${legalCase.stage}`);
   }
 
   // Memória do cliente (AiMemory)
@@ -157,7 +152,7 @@ function buildContext(event: any, memory: any, legalCase: any, ficha: any, djenP
     }
   }
 
-  // Ficha trabalhista (resumo)
+  // Ficha contábil (resumo)
   if (ficha && ficha.data) {
     let fichaData: any = {};
     try { fichaData = typeof ficha.data === 'string' ? JSON.parse(ficha.data) : (ficha.data || {}); } catch { fichaData = {}; }
@@ -167,7 +162,7 @@ function buildContext(event: any, memory: any, legalCase: any, ficha: any, djenP
     if (fichaData.tipo_rescisao) fichaLines.push(`Tipo de rescisão: ${fichaData.tipo_rescisao}`);
     if (fichaData.ultimo_salario) fichaLines.push(`Último salário: ${fichaData.ultimo_salario}`);
     if (fichaLines.length > 0) {
-      lines.push(`\n## FICHA TRABALHISTA`);
+      lines.push(`\n## FICHA CONTÁBIL`);
       fichaLines.forEach(l => lines.push(l));
     }
   }
@@ -241,17 +236,12 @@ export class CalendarReminderWorker extends WorkerHost {
       include: {
         assigned_user: { select: { id: true, name: true, phone: true } },
         lead: { select: { id: true, name: true, phone: true } },
-        legal_case: {
+        cliente_contabil: {
           select: {
             id: true,
-            case_number: true,
-            legal_area: true,
-            action_type: true,
-            opposing_party: true,
-            court: true,
-            judge: true,
-            claim_value: true,
-            notes: true,
+            service_type: true,
+            regime_tributario: true,
+            stage: true,
           },
         },
       },
@@ -287,25 +277,17 @@ export class CalendarReminderWorker extends WorkerHost {
 
     // Carrega contexto adicional do cliente (memória + ficha + publicações DJEN)
     const leadId = event.lead?.id;
-    const legalCaseId = event.legal_case?.id;
-    const [memory, ficha, djenPubs] = await Promise.all([
+    const [memory, ficha] = await Promise.all([
       leadId
         ? this.prisma.aiMemory.findUnique({ where: { lead_id: leadId } }).catch(() => null)
         : null,
-      leadId && (event.legal_case?.legal_area?.toUpperCase().includes('TRABALHIST'))
-        ? this.prisma.fichaTrabalhista.findUnique({ where: { lead_id: leadId } }).catch(() => null)
+      leadId
+        ? this.prisma.fichaContabil.findUnique({ where: { lead_id: leadId } }).catch(() => null)
         : null,
-      legalCaseId
-        ? (this.prisma as any).djenPublication.findMany({
-            where: { legal_case_id: legalCaseId },
-            orderBy: { data_disponibilizacao: 'desc' },
-            take: 5,
-            select: { tipo_comunicacao: true, assunto: true, conteudo: true, data_disponibilizacao: true },
-          }).catch(() => [])
-        : Promise.resolve([]),
     ]);
+    const djenPubs = await Promise.resolve([]);
 
-    const context = buildContext(event, memory, event.legal_case, ficha, djenPubs);
+    const context = buildContext(event, memory, event.cliente_contabil, ficha, djenPubs);
 
     // ── 1. Mensagem para o Advogado (sempre) ─────────────────────────
     if (event.assigned_user?.phone) {
@@ -399,10 +381,12 @@ export class CalendarReminderWorker extends WorkerHost {
       include: {
         assigned_user: { select: { id: true, name: true, phone: true } },
         lead: { select: { id: true, name: true, phone: true } },
-        legal_case: {
+        cliente_contabil: {
           select: {
-            id: true, case_number: true, legal_area: true, action_type: true,
-            opposing_party: true, court: true, judge: true, claim_value: true, notes: true,
+            id: true,
+            service_type: true,
+            regime_tributario: true,
+            stage: true,
           },
         },
       },
@@ -422,23 +406,13 @@ export class CalendarReminderWorker extends WorkerHost {
     }
 
     const leadId = event.lead.id;
-    const legalCaseId = event.legal_case?.id;
-    const [memory, ficha, djenPubs] = await Promise.all([
+    const [memory, ficha] = await Promise.all([
       this.prisma.aiMemory.findUnique({ where: { lead_id: leadId } }).catch(() => null),
-      event.legal_case?.legal_area?.toUpperCase().includes('TRABALHIST')
-        ? this.prisma.fichaTrabalhista.findUnique({ where: { lead_id: leadId } }).catch(() => null)
-        : null,
-      legalCaseId
-        ? (this.prisma as any).djenPublication.findMany({
-            where: { legal_case_id: legalCaseId },
-            orderBy: { data_disponibilizacao: 'desc' },
-            take: 5,
-            select: { tipo_comunicacao: true, assunto: true, conteudo: true, data_disponibilizacao: true },
-          }).catch(() => [])
-        : Promise.resolve([]),
+      this.prisma.fichaContabil.findUnique({ where: { lead_id: leadId } }).catch(() => null),
     ]);
+    const djenPubs = await Promise.resolve([]);
 
-    const context = buildContext(event, memory, event.legal_case, ficha, djenPubs);
+    const context = buildContext(event, memory, event.cliente_contabil, ficha, djenPubs);
     const clientPhone = event.lead.phone.replace(/\D/g, '');
     const firstName = (event.lead.name || 'Cliente').split(' ')[0];
 

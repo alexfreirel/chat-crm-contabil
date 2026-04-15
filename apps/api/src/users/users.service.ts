@@ -129,13 +129,13 @@ export class UsersService {
 
     // Verificar se o usuario possui registros que impedem exclusao (FKs required)
     const [caseCount, createdEventCount] = await Promise.all([
-      this.prisma.legalCase.count({ where: { lawyer_id: id } }),
+      this.prisma.clienteContabil.count({ where: { accountant_id: id } }),
       this.prisma.calendarEvent.count({ where: { created_by_id: id } }),
     ]);
 
     if (caseCount > 0) {
       throw new ForbiddenException(
-        `Nao e possivel excluir: usuario possui ${caseCount} caso(s) juridico(s) como advogado. Reatribua os casos antes.`,
+        `Nao e possivel excluir: usuario possui ${caseCount} cliente(s) contábil(is). Reatribua antes.`,
       );
     }
     if (createdEventCount > 0) {

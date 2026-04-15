@@ -1,13 +1,9 @@
 import { Module } from '@nestjs/common';
-import { ContractsController } from './contracts.controller';
 import { ContractsService } from './contracts.service';
-import { MediaModule } from '../media/media.module';
-import { WhatsappModule } from '../whatsapp/whatsapp.module';
-import { GatewayModule } from '../gateway/gateway.module';
+import { TemplatesContabilModule } from '../templates-contabil/templates-contabil.module';
 
 @Module({
-  imports: [MediaModule, WhatsappModule, GatewayModule],
-  controllers: [ContractsController],
+  imports: [TemplatesContabilModule],
   providers: [ContractsService],
   exports: [ContractsService],
 })

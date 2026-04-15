@@ -1,8 +1,8 @@
 import type { ToolHandler, ToolContext } from '../tool-executor';
 
 /**
- * Salva campo(s) da ficha trabalhista (ou outra ficha futura).
- * Usa o mesmo endpoint interno que o frontend usa.
+ * Salva campo(s) da ficha contábil do cliente.
+ * Usada pela IA durante a triagem para capturar dados da empresa.
  */
 export class SaveFormFieldHandler implements ToolHandler {
   name = 'save_form_field';
@@ -16,33 +16,50 @@ export class SaveFormFieldHandler implements ToolHandler {
       return { success: false, message: 'Nenhum campo fornecido' };
     }
 
-    // Find or create ficha
-    const existing = await context.prisma.fichaTrabalhista.upsert({
+    // Campos principais da ficha contábil para cálculo do completion_pct
+    const FICHA_FIELDS = [
+      'razao_social', 'cnpj', 'regime_tributario', 'porte',
+      'cnae_principal', 'cep', 'logradouro', 'numero', 'cidade', 'estado',
+      'email_contabil', 'telefone_empresa',
+      'banco', 'agencia', 'conta',
+    ];
+
+    // Busca ou cria a ficha contábil do lead
+    const existing = await context.prisma.fichaContabil.findUnique({
       where: { lead_id: context.leadId },
-      update: {},
-      create: { lead_id: context.leadId, data: {} },
     });
 
-    const oldData = (existing.data as Record<string, any>) || {};
+    // Mescla com dados existentes
+    const oldData: Record<string, any> = existing ? { ...existing } : {};
     const merged = { ...oldData, ...fields };
 
-    // Calculate completion
-    const TOTAL_FIELDS = 75;
-    const filled = Object.values(merged).filter(
-      (v) => v !== null && v !== undefined && v !== '',
+    // Calcula completion_pct com base nos campos principais
+    const filled = FICHA_FIELDS.filter(
+      f => merged[f] != null && merged[f] !== '',
     ).length;
-    const pct = Math.min(100, Math.round((filled / TOTAL_FIELDS) * 100));
+    const pct = Math.min(100, Math.round((filled / FICHA_FIELDS.length) * 100));
 
-    await context.prisma.fichaTrabalhista.update({
-      where: { lead_id: context.leadId },
-      data: {
-        data: merged,
-        completion_pct: pct,
-        filled_by: 'ai',
-        ...(fields.nome_completo ? { nome_completo: fields.nome_completo } : {}),
-        ...(fields.nome_empregador ? { nome_empregador: fields.nome_empregador } : {}),
-      },
-    });
+    if (existing) {
+      await context.prisma.fichaContabil.update({
+        where: { lead_id: context.leadId },
+        data: {
+          ...fields,
+          completion_pct: pct,
+          filled_by: 'ai',
+          status: pct >= 80 ? 'em_andamento' : 'pendente',
+        },
+      });
+    } else {
+      await context.prisma.fichaContabil.create({
+        data: {
+          lead_id: context.leadId,
+          ...fields,
+          completion_pct: pct,
+          filled_by: 'ai',
+          status: 'pendente',
+        },
+      });
+    }
 
     return {
       success: true,

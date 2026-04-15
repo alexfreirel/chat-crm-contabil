@@ -18,7 +18,7 @@ interface DossieCompleto {
     ultimas_msgs: Array<{ direcao: string; text: string; created_at: string }>;
   };
   processual?: {
-    processos: Array<{ numero: string; tipo: string; status: string; proximo_andamento?: string }>;
+    processos: Array<{ tipo: any; regime: any; status: any }>;
   };
   tarefa: {
     sequencia_nome: string; step_position: number; total_steps: number;
@@ -249,10 +249,10 @@ export class FollowupService {
     const diasSemContato = convo?.last_message_at
       ? Math.floor((Date.now() - convo.last_message_at.getTime()) / 86400000) : 999;
 
-    // Processos
-    const casos = await this.prisma.legalCase.findMany({
+    // Clientes contábeis
+    const clientes = await this.prisma.clienteContabil.findMany({
       where: { lead_id: lead.id },
-      select: { case_number: true, action_type: true, stage: true, legal_area: true },
+      select: { service_type: true, regime_tributario: true, stage: true },
       take: 5,
     });
 
@@ -269,7 +269,7 @@ export class FollowupService {
     return {
       pessoa: {
         id: lead.id, nome: lead.name || 'Cliente', telefone: lead.phone,
-        email: lead.email, tipo: casos.length > 0 ? 'cliente' : 'lead',
+        email: lead.email, tipo: clientes.length > 0 ? 'cliente' : 'lead',
         estagio: lead.stage, canal_preferido: 'whatsapp',
         dias_sem_contato: diasSemContato, inadimplente: false, origin: lead.origin,
       },
@@ -279,14 +279,14 @@ export class FollowupService {
         ultima_msg_direcao: ultimasMsgs[0]?.direction || 'N/A',
         dias_sem_resposta: diasSemContato,
         sentimento: diasSemContato > 14 ? 'frio' : diasSemContato > 7 ? 'morno' : 'ativo',
-        ultimas_msgs: ultimasMsgs.reverse().map(m => ({
+        ultimas_msgs: ultimasMsgs.reverse().map((m: any) => ({
           direcao: m.direction, text: m.text?.substring(0, 300) || '', created_at: m.created_at.toISOString(),
         })),
       },
-      processual: casos.length > 0 ? {
-        processos: casos.map(c => ({
-          numero: c.case_number || 'Sem número', tipo: c.action_type || 'Geral',
-          area: c.legal_area || 'Geral', status: c.stage || 'Em andamento',
+      processual: clientes.length > 0 ? {
+        processos: clientes.map((c: any) => ({
+          tipo: c.service_type || 'Geral',
+          regime: c.regime_tributario || 'Geral', status: c.stage || 'Em andamento',
         })),
       } : undefined,
       tarefa: {

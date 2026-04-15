@@ -42,22 +42,27 @@ export class FollowupService {
     const ultimaMsgDirecao = ultimasMsgs[0]?.direction || 'N/A';
     const sentimentoGeral = this.avaliarSentimento(diasSemContato, ultimaMsgDirecao, ultimasMsgs);
 
-    // Processos jurídicos — campos reais do schema: case_number, action_type, stage, legal_area
-    const casos = await this.prisma.legalCase.findMany({
+    // Clientes contábeis
+    const casos = await this.prisma.clienteContabil.findMany({
       where: { lead_id: lead.id },
-      select: { case_number: true, action_type: true, stage: true, legal_area: true },
+      select: { service_type: true, regime_tributario: true, stage: true },
       take: 5,
     });
 
-    // Verificar inadimplência via honorários
-    const honorarios = await this.prisma.caseHonorario.findMany({
-      where: { legal_case: { lead_id: lead.id } },
-      include: { payments: { where: { status: 'PENDENTE' }, select: { amount: true, due_date: true } } },
-      take: 5,
+    // Verificar inadimplência via parcelas de honorários
+    const clientes = await this.prisma.clienteContabil.findMany({
+      where: { lead_id: lead.id },
+      select: { id: true },
     });
-    const pagamentosPendentes = honorarios.flatMap(h => h.payments);
-    const inadimplente = pagamentosPendentes.some(p => p.due_date && new Date(p.due_date) < new Date());
-    const valorDevido = pagamentosPendentes.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const clienteIds = clientes.map((c: any) => c.id);
+    const parcelasPendentes = clienteIds.length > 0
+      ? await this.prisma.honorarioParcela.findMany({
+          where: { honorario: { cliente_id: { in: clienteIds } }, status: 'PENDENTE' },
+          select: { amount: true, due_date: true },
+        })
+      : [];
+    const inadimplente = parcelasPendentes.some((p: any) => p.due_date && new Date(p.due_date) < new Date());
+    const valorDevido = parcelasPendentes.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
 
     // Advogado responsável
     const advogadoNome = (convo as any)?.assigned_user?.name || 'André Lustosa';
@@ -100,9 +105,10 @@ export class FollowupService {
         })),
       },
       processual: casos.length > 0 ? {
-        processos: casos.map(c => ({
-          numero: c.case_number || 'Sem número', tipo: c.action_type || 'Geral',
-          area: c.legal_area || 'Geral', status: c.stage || 'Em andamento',
+        processos: casos.map((c: any) => ({
+          tipo: c.service_type || 'Geral',
+          regime: c.regime_tributario || 'Geral',
+          status: c.stage || 'Em andamento',
         })),
         total_encerrados: 0,
       } : undefined,
