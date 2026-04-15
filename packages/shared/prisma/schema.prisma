@@ -26,6 +26,14 @@ model Tenant {
   templates_contabil TemplateContabil[]
   ai_chats           AiChat[]
   followup_sequences FollowupSequence[]
+  broadcast_jobs     BroadcastJob[]
+  financial_transactions FinancialTransaction[]
+  financial_categories FinancialCategory[]
+  payment_gateway_customers PaymentGatewayCustomer[]
+  payment_gateway_charges PaymentGatewayCharge[]
+  notas_fiscais      NotaFiscal[]
+  tax_records        TaxRecord[]
+  djen_ignored       DjenIgnoredProcess[]
 }
 
 model User {
@@ -110,7 +118,6 @@ model Lead {
   payment_gateway_customers PaymentGatewayCustomer[]
   notas_fiscais             NotaFiscal[]
   broadcast_items           BroadcastItem[]
-  lead_honorarios           LeadHonorario[]
   cpf_cnpj                  String? // CPF ou CNPJ — facilita match com Asaas
 
   @@index([tenant_id, phone])
@@ -243,6 +250,7 @@ model Task {
   calendar_event        CalendarEvent?      @relation(fields: [calendar_event_id], references: [id], onDelete: SetNull)
   comments              TaskComment[]
   checklist_items       TaskChecklistItem[]
+  postponements         TaskPostponement[]
 
   @@index([assigned_user_id, due_at])
   @@index([status])
@@ -1144,27 +1152,20 @@ model FinancialTransaction {
   parent_transaction_id String?   // Referência à transação mãe
 
   // Vínculos opcionais
-  legal_case_id        String?
   lead_id              String?
   lawyer_id            String?
-  honorario_payment_id        String?   @unique // 1:1 com HonorarioPayment
-  lead_honorario_payment_id   String?   @unique // 1:1 com LeadHonorarioPayment
 
   created_at           DateTime  @default(now())
   updated_at           DateTime  @updatedAt
 
   tenant            Tenant?           @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-  legal_case        LegalCase?        @relation(fields: [legal_case_id], references: [id], onDelete: SetNull)
   lead              Lead?             @relation(fields: [lead_id], references: [id], onDelete: SetNull)
   lawyer            User?             @relation("FinancialLawyer", fields: [lawyer_id], references: [id], onDelete: SetNull)
-  honorario_payment      HonorarioPayment?      @relation(fields: [honorario_payment_id], references: [id], onDelete: SetNull)
-  lead_honorario_payment LeadHonorarioPayment?  @relation(fields: [lead_honorario_payment_id], references: [id], onDelete: SetNull)
   gateway_charge         PaymentGatewayCharge?
   nota_fiscal       NotaFiscal?
 
   @@index([tenant_id, date])
   @@index([type, status])
-  @@index([legal_case_id])
   @@index([lead_id])
   @@index([lawyer_id])
   @@index([category])
@@ -1213,9 +1214,7 @@ model PaymentGatewayCustomer {
 model PaymentGatewayCharge {
   id                   String    @id @default(uuid())
   tenant_id            String?
-  honorario_payment_id String?   @unique
   transaction_id       String?   @unique
-  legal_case_id        String?
   gateway              String    @default("ASAAS")
   external_id          String    @unique // ID da cobrança no gateway
   customer_external_id String // ID do cliente no gateway
@@ -1245,18 +1244,12 @@ model PaymentGatewayCharge {
   created_at           DateTime  @default(now())
   updated_at           DateTime  @updatedAt
 
-  lead_honorario_payment_id String?  @unique
-
-  honorario_payment      HonorarioPayment?      @relation(fields: [honorario_payment_id], references: [id], onDelete: SetNull)
-  lead_honorario_payment LeadHonorarioPayment?  @relation(fields: [lead_honorario_payment_id], references: [id], onDelete: SetNull)
   transaction            FinancialTransaction?  @relation(fields: [transaction_id], references: [id], onDelete: SetNull)
-  legal_case             LegalCase?             @relation(fields: [legal_case_id], references: [id], onDelete: SetNull)
   tenant                 Tenant?                @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
 
   @@index([tenant_id, status])
   @@index([customer_external_id])
   @@index([due_date, status])
-  @@index([legal_case_id])
 }
 
 // ===============================================

@@ -75,12 +75,12 @@ export class LeadsService {
     if (userId) {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
-        select: { roles: true, inboxes: { select: { id: true } } },
+        select: { role: true, inboxes: { select: { id: true } } },
       });
 
-      const userRoles = normalizeRoles(user?.roles as any);
+      const userRoles = normalizeRoles(user?.role as any);
       const isAdminUser = userRoles.includes('ADMIN');
-      const isAdvogadoUser = userRoles.includes('ADVOGADO');
+      const isAdvogadoUser = userRoles.includes('ADVOGADO') || userRoles.includes('ESPECIALISTA');
       const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL');
       const userInboxIds = (user?.inboxes ?? []).map((i: any) => i.id);
 
@@ -91,8 +91,7 @@ export class LeadsService {
         const orConditions: any[] = [];
 
         if (isAdvogadoUser) {
-          orConditions.push({ conversations: { some: { assigned_lawyer_id: userId } } });
-          orConditions.push({ legal_cases: { some: { lawyer_id: userId } } });
+          orConditions.push({ conversations: { some: { assigned_accountant_id: userId } } });
         }
 
         if (isOperadorUser || isAdvogadoUser) {
@@ -100,7 +99,7 @@ export class LeadsService {
           orConditions.push({ cs_user_id: userId });
         }
 
-        // Fallback: se nenhuma condição (ex: estagiário), ver só os atribuídos
+        // Fallback: se nenhuma condição (ex: assistente), ver só os atribuídos
         if (orConditions.length === 0) {
           orConditions.push({ conversations: { some: { assigned_user_id: userId } } });
         }
@@ -521,36 +520,6 @@ export class LeadsService {
         { name: { contains: search, mode: 'insensitive' } },
         { phone: { contains: search } },
       ];
-    }
-
-    // Controle de acesso por role (mesmo padrão do findAll)
-    if (userId) {
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: { roles: true },
-      });
-      const userRoles = normalizeRoles(user?.roles as any);
-      const isAdminUser = userRoles.includes('ADMIN');
-      const isAdvogadoUser = userRoles.includes('ADVOGADO');
-      const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL');
-
-      if (!isAdminUser) {
-        const orConditions: any[] = [];
-        if (isAdvogadoUser) {
-          orConditions.push({ conversations: { some: { assigned_lawyer_id: userId } } });
-          orConditions.push({ legal_cases: { some: { lawyer_id: userId } } });
-        }
-        if (isOperadorUser || isAdvogadoUser) {
-          orConditions.push({ conversations: { some: { assigned_user_id: userId } } });
-          orConditions.push({ cs_user_id: userId });
-        }
-        if (orConditions.length === 0) {
-          orConditions.push({ conversations: { some: { assigned_user_id: userId } } });
-        }
-        if (!where.AND) where.AND = [];
-        if (!Array.isArray(where.AND)) where.AND = [where.AND];
-        where.AND.push({ OR: orConditions });
-      }
     }
 
     const leads = await this.prisma.lead.findMany({

@@ -59,19 +59,18 @@ export class PaymentGatewayService {
         phone: true,
         email: true,
         tenant_id: true,
-        ficha_trabalhista: { select: { data: true } },
+        cpf_cnpj: true,
       },
     });
 
     if (!lead) throw new NotFoundException('Lead nao encontrado');
 
-    // Extrair CPF/CNPJ da ficha trabalhista (campo "cpf" no JSON data)
-    const fichaData = (lead.ficha_trabalhista as any)?.data as Record<string, any> | undefined;
-    const cpfCnpj = fichaData?.cpf || fichaData?.cpfCnpj || fichaData?.cnpj || null;
+    // Extrair CPF/CNPJ do lead (campo cpf_cnpj)
+    const cpfCnpj = lead.cpf_cnpj || null;
 
     if (!cpfCnpj) {
       throw new BadRequestException(
-        'Lead nao possui CPF/CNPJ cadastrado. Preencha a ficha trabalhista antes de criar o cliente no gateway.',
+        'Lead nao possui CPF/CNPJ cadastrado. Preencha os dados do cliente antes de criar o cliente no gateway.',
       );
     }
 
@@ -113,7 +112,7 @@ export class PaymentGatewayService {
   ) {
     // Verificar se ja existe cobranca para este pagamento
     const existingCharge = await this.prisma.paymentGatewayCharge.findUnique({
-      where: { honorario_payment_id: honorarioPaymentId },
+      where: { honorario_payment_id: honorarioPaymentId } as any,
     });
     if (existingCharge) {
       this.logger.warn(`[CHARGE] Ja existe cobranca para payment ${honorarioPaymentId}: ${existingCharge.external_id}`);
@@ -121,7 +120,7 @@ export class PaymentGatewayService {
     }
 
     // Buscar pagamento com relacoes
-    const payment = await this.prisma.honorarioPayment.findUnique({
+    const payment = await (this.prisma as any).honorarioPayment.findUnique({
       where: { id: honorarioPaymentId },
       include: {
         honorario: {
@@ -188,7 +187,6 @@ export class PaymentGatewayService {
       data: {
         tenant_id: tenantId || legalCase.tenant_id,
         honorario_payment_id: honorarioPaymentId,
-        legal_case_id: legalCase?.id || null,
         gateway: 'ASAAS',
         external_id: asaasCharge.id,
         customer_external_id: customer.external_id,
@@ -205,7 +203,7 @@ export class PaymentGatewayService {
         boleto_url: asaasCharge.bankSlipUrl || null,
         boleto_barcode: asaasCharge.nossoNumero || null,
         invoice_url: asaasCharge.invoiceUrl || null,
-      },
+      } as any,
     });
 
     return {
@@ -233,7 +231,7 @@ export class PaymentGatewayService {
     billingType: string,
     tenantId?: string,
   ) {
-    const payments = await this.prisma.honorarioPayment.findMany({
+    const payments = await (this.prisma as any).honorarioPayment.findMany({
       where: {
         honorario_id: honorarioId,
         status: 'PENDENTE',
@@ -276,7 +274,7 @@ export class PaymentGatewayService {
 
   async getChargeDetails(honorarioPaymentId: string, tenantId?: string) {
     const charge = await this.prisma.paymentGatewayCharge.findUnique({
-      where: { honorario_payment_id: honorarioPaymentId },
+      where: { honorario_payment_id: honorarioPaymentId } as any,
     });
 
     if (!charge) {
@@ -386,15 +384,16 @@ export class PaymentGatewayService {
       },
     });
 
+    const chargeAny = charge as any;
     // Se pagamento RECEIVED ou CONFIRMED, marcar HonorarioPayment como PAGO
     if (
       (mappedStatus === 'RECEIVED' || mappedStatus === 'CONFIRMED') &&
-      charge.honorario_payment_id
+      chargeAny.honorario_payment_id
     ) {
       try {
         // Atualizar parcela do honorario
-        await this.prisma.honorarioPayment.update({
-          where: { id: charge.honorario_payment_id },
+        await (this.prisma as any).honorarioPayment.update({
+          where: { id: chargeAny.honorario_payment_id },
           data: {
             status: 'PAGO',
             paid_at: new Date(),
@@ -403,13 +402,13 @@ export class PaymentGatewayService {
         });
 
         this.logger.log(
-          `[WEBHOOK] HonorarioPayment ${charge.honorario_payment_id} marcado como PAGO`,
+          `[WEBHOOK] HonorarioPayment ${chargeAny.honorario_payment_id} marcado como PAGO`,
         );
 
         // Criar transacao financeira via FinanceiroService
         try {
           const transaction = await this.financeiroService.createFromHonorarioPayment(
-            charge.honorario_payment_id,
+            chargeAny.honorario_payment_id,
             charge.tenant_id || undefined,
           );
 
@@ -434,7 +433,7 @@ export class PaymentGatewayService {
         this.emitFinancialUpdate(charge.tenant_id, {
           type: 'payment_confirmed',
           chargeId: charge.id,
-          honorarioPaymentId: charge.honorario_payment_id,
+          honorarioPaymentId: chargeAny.honorario_payment_id,
           status: mappedStatus,
           amount: Number(charge.amount),
         });
@@ -450,7 +449,7 @@ export class PaymentGatewayService {
     if (
       (mappedStatus === 'RECEIVED' || mappedStatus === 'CONFIRMED') &&
       charge.transaction_id &&
-      !charge.honorario_payment_id
+      !chargeAny.honorario_payment_id
     ) {
       try {
         await this.prisma.financialTransaction.update({
@@ -613,10 +612,10 @@ export class PaymentGatewayService {
         });
         if (lead) leadId = lead.id;
 
-        // Fallback: busca na ficha trabalhista
+        // Fallback: busca na ficha contabil por cpf_cnpj
         if (!leadId) {
-          const fichas = await this.prisma.fichaTrabalhista.findMany({
-            where: { data: { path: ['cpf'], equals: cpfClean } },
+          const fichas = await (this.prisma as any).fichaContabil.findMany({
+            where: { cpf: cpfClean },
             select: { lead_id: true },
             take: 1,
           });

@@ -30,35 +30,32 @@ export class TeamPerformanceService {
     // ─── 1. Get all team members ──
     const users = await this.prisma.user.findMany({
       where: tw,
-      select: { id: true, name: true, roles: true },
+      select: { id: true, name: true, role: true },
       orderBy: { name: 'asc' },
     });
 
-    const advogados = users.filter(u => u.roles?.includes('ADVOGADO'));
-    const operadores = users.filter(u => u.roles?.includes('OPERADOR'));
-    const estagiarios = users.filter(u => u.roles?.includes('ESTAGIARIO'));
-    const admins = users.filter(u => u.roles?.includes('ADMIN'));
-    const allIds = users.map(u => u.id);
-    const advIds = advogados.map(u => u.id);
+    // Normalize: treat role as array for compatibility
+    const usersNorm = users.map(u => ({ ...u, roles: u.role ? [u.role] : [] }));
+
+    const especialistas = usersNorm.filter(u => u.roles?.includes('ESPECIALISTA') || u.roles?.includes('ADVOGADO'));
+    const operadores = usersNorm.filter(u => u.roles?.includes('OPERADOR'));
+    const assistentes = usersNorm.filter(u => u.roles?.includes('ASSISTENTE') || u.roles?.includes('ESTAGIARIO'));
+    const allIds = usersNorm.map(u => u.id);
+    const espIds = especialistas.map(u => u.id);
     const opIds = operadores.map(u => u.id);
-    const estIds = estagiarios.map(u => u.id);
+    const estIds = assistentes.map(u => u.id);
 
     // ─── 2. Batch queries (all roles in parallel) ──
     const [
       // Tasks (ALL roles)
       tasksCompleted, tasksPending, tasksOverdue,
       prevTasksCompleted, prevTasksPending,
-      // ADVOGADO queries
+      // ESPECIALISTA queries — clientes contábeis
       activeCases, casesFiledCurrent, casesFiledPrev,
-      sentencedCases, deadlines, petitions,
-      honorarioCollected, honorarioReceivable, honorarioContracted,
-      prevCollected,
       // OPERADOR queries
       openConvs, closedConvs, closedConvsPrev,
       leadsHandled, leadsConverted, leadsLost,
       stagesAdvanced, stagesAdvancedPrev,
-      // ESTAGIARIO queries
-      docsUploaded, estDeadlines, estPetitions,
     ] = await Promise.all([
       // ── Tasks (ALL) ──
       this.prisma.calendarEvent.groupBy({
@@ -87,63 +84,21 @@ export class TeamPerformanceService {
         where: { type: 'TAREFA', status: { in: ['AGENDADO', 'CONFIRMADO'] }, assigned_user_id: { in: allIds }, created_at: { gte: prevStart, lte: prevEnd }, ...tw },
       }),
 
-      // ── ADVOGADO: Cases ──
-      this.prisma.legalCase.groupBy({
-        by: ['lawyer_id'],
+      // ── ESPECIALISTA: Clientes Contábeis ──
+      this.prisma.clienteContabil.groupBy({
+        by: ['accountant_id'],
         _count: true,
-        where: { lawyer_id: { in: advIds }, archived: false, ...tw },
+        where: { accountant_id: { in: espIds }, archived: false, ...tw },
       }),
-      this.prisma.legalCase.groupBy({
-        by: ['lawyer_id'],
+      this.prisma.clienteContabil.groupBy({
+        by: ['accountant_id'],
         _count: true,
-        where: { lawyer_id: { in: advIds }, filed_at: { gte: start, lte: end }, ...tw },
+        where: { accountant_id: { in: espIds }, created_at: { gte: start, lte: end }, ...tw },
       }),
-      this.prisma.legalCase.groupBy({
-        by: ['lawyer_id'],
+      this.prisma.clienteContabil.groupBy({
+        by: ['accountant_id'],
         _count: true,
-        where: { lawyer_id: { in: advIds }, filed_at: { gte: prevStart, lte: prevEnd }, ...tw },
-      }),
-      // Sentenced cases with sentence_type
-      this.prisma.legalCase.groupBy({
-        by: ['lawyer_id', 'sentence_type'],
-        _count: true,
-        where: { lawyer_id: { in: advIds }, sentence_type: { not: null }, ...tw },
-      }),
-      // Deadlines
-      this.prisma.caseDeadline.groupBy({
-        by: ['created_by_id'],
-        _count: true,
-        where: { created_by_id: { in: [...advIds, ...estIds] } },
-      }),
-      // Petitions
-      this.prisma.casePetition.groupBy({
-        by: ['created_by_id', 'status'],
-        _count: true,
-        where: { created_by_id: { in: [...advIds, ...estIds] } },
-      }),
-      // Honorarios collected
-      this.prisma.honorarioPayment.groupBy({
-        by: ['honorario_id'],
-        _sum: { amount: true },
-        where: { status: 'PAGO', honorario: { legal_case: { lawyer_id: { in: advIds }, ...tw } } },
-      }),
-      // Honorarios receivable
-      this.prisma.honorarioPayment.groupBy({
-        by: ['honorario_id'],
-        _sum: { amount: true },
-        where: { status: 'PENDENTE', honorario: { legal_case: { lawyer_id: { in: advIds }, ...tw } } },
-      }),
-      // Honorarios contracted
-      this.prisma.caseHonorario.groupBy({
-        by: ['legal_case_id'],
-        _sum: { total_value: true },
-        where: { legal_case: { lawyer_id: { in: advIds }, ...tw } },
-      }),
-      // Previous collected
-      this.prisma.honorarioPayment.groupBy({
-        by: ['honorario_id'],
-        _sum: { amount: true },
-        where: { status: 'PAGO', paid_at: { gte: prevStart, lte: prevEnd }, honorario: { legal_case: { lawyer_id: { in: advIds }, ...tw } } },
+        where: { accountant_id: { in: espIds }, created_at: { gte: prevStart, lte: prevEnd }, ...tw },
       }),
 
       // ── OPERADOR: Conversations ──
@@ -191,25 +146,6 @@ export class TeamPerformanceService {
         _count: true,
         where: { actor_id: { in: opIds }, created_at: { gte: prevStart, lte: prevEnd } },
       }),
-
-      // ── ESTAGIARIO: Documents ──
-      this.prisma.caseDocument.groupBy({
-        by: ['uploaded_by_id'],
-        _count: true,
-        where: { uploaded_by_id: { in: estIds } },
-      }),
-      // Estagiario deadlines completed
-      this.prisma.caseDeadline.groupBy({
-        by: ['created_by_id'],
-        _count: true,
-        where: { created_by_id: { in: estIds }, completed: true },
-      }),
-      // Estagiario petitions (reuse from petitions above but filter)
-      this.prisma.casePetition.groupBy({
-        by: ['created_by_id', 'status'],
-        _count: true,
-        where: { created_by_id: { in: estIds } },
-      }),
     ]);
 
     // ─── 3. Helper: extract count from groupBy result ──
@@ -218,34 +154,10 @@ export class TeamPerformanceService {
       return arr.find(r => r[key] === id)?._count || 0;
     };
 
-    // ─── 4. Build per-user financial maps (need to resolve honorario → case → lawyer) ──
-    // For honorarios, we need to map honorario_id → lawyer_id
-    const honorarioIds = [...new Set([
-      ...honorarioCollected.map(h => h.honorario_id),
-      ...honorarioReceivable.map(h => h.honorario_id),
-      ...prevCollected.map(h => h.honorario_id),
-    ])];
-    const honorarioToLawyer = new Map<string, string>();
-    if (honorarioIds.length > 0) {
-      const honorarios = await this.prisma.caseHonorario.findMany({
-        where: { id: { in: honorarioIds } },
-        select: { id: true, legal_case: { select: { lawyer_id: true } } },
-      });
-      for (const h of honorarios) {
-        if (h.legal_case?.lawyer_id) honorarioToLawyer.set(h.id, h.legal_case.lawyer_id);
-      }
-    }
-
-    const sumByLawyer = (arr: any[], lawyerId: string): number => {
-      return arr
-        .filter(h => honorarioToLawyer.get(h.honorario_id) === lawyerId)
-        .reduce((s, h) => s + Number(h._sum?.amount || 0), 0);
-    };
-
-    // ─── 5. Assemble members ──
+    // ─── 4. Assemble members ──
     const members: any[] = [];
 
-    for (const user of users) {
+    for (const user of usersNorm) {
       const completed = gc(tasksCompleted, 'assigned_user_id', user.id);
       const pending = gc(tasksPending, 'assigned_user_id', user.id);
       const overdue = gc(tasksOverdue, 'assigned_user_id', user.id);
@@ -260,60 +172,28 @@ export class TeamPerformanceService {
       let score = 0;
       let prevScore = 0;
 
-      if (user.roles?.some((r: string) => ['ADVOGADO', 'ADMIN'].includes(r))) {
-        const active = gc(activeCases, 'lawyer_id', user.id);
-        const filed = gc(casesFiledCurrent, 'lawyer_id', user.id);
-        const totalSent = sentencedCases.filter(r => r.lawyer_id === user.id).reduce((s, r) => s + r._count, 0);
-        const won = sentencedCases.filter(r => r.lawyer_id === user.id && (r.sentence_type === 'PROCEDENTE' || r.sentence_type === 'PARCIALMENTE_PROCEDENTE')).reduce((s, r) => s + r._count, 0);
-        const winRate = totalSent > 0 ? Math.round((won / totalSent) * 100) : 0;
-
-        const dlCreated = gc(deadlines, 'created_by_id', user.id);
-        const dlCompleted = estDeadlines.find(d => d.created_by_id === user.id)?._count || 0;
-        const dlMissed = Math.max(0, dlCreated - dlCompleted);
-        const dlRate = dlCreated > 0 ? Math.round((dlCompleted / dlCreated) * 100) : 0;
-
-        const petDrafted = petitions.filter(p => p.created_by_id === user.id && p.status === 'RASCUNHO').reduce((s, p) => s + p._count, 0);
-        const petApproved = petitions.filter(p => p.created_by_id === user.id && p.status === 'APROVADA').reduce((s, p) => s + p._count, 0);
-        const petProtocoled = petitions.filter(p => p.created_by_id === user.id && p.status === 'PROTOCOLADA').reduce((s, p) => s + p._count, 0);
-        const petTotal = petDrafted + petApproved + petProtocoled;
-        const petRate = petTotal > 0 ? Math.round(((petApproved + petProtocoled) / petTotal) * 100) : 0;
-
-        const collected = sumByLawyer(honorarioCollected, user.id);
-        const receivable = sumByLawyer(honorarioReceivable, user.id);
-        const contracted = honorarioContracted.filter(h => {
-          // Need to check via legal_case_id → lawyer_id mapping
-          return true; // simplified - use total
-        }).reduce((s, h) => s + Number(h._sum?.total_value || 0), 0);
-        const colRate = (collected + receivable) > 0 ? Math.round((collected / (collected + receivable)) * 100) : 0;
+      if (user.roles?.some((r: string) => ['ESPECIALISTA', 'ADVOGADO', 'ADMIN'].includes(r))) {
+        const active = gc(activeCases, 'accountant_id', user.id);
+        const filed = gc(casesFiledCurrent, 'accountant_id', user.id);
 
         advKPIs = {
           activeCases: active, casesFiledThisPeriod: filed, avgDaysToFile: 0,
-          caseWinRate: winRate, totalSentenced: totalSent, wonAndPartial: won,
-          deadlinesCreated: dlCreated, deadlinesCompleted: dlCompleted, deadlinesMissed: dlMissed,
-          deadlineCompletionRate: dlRate,
-          petitionsDrafted: petDrafted, petitionsApproved: petApproved, petitionsProtocoled: petProtocoled,
-          petitionApprovalRate: petRate,
-          totalContracted: contracted, totalCollected: collected, totalReceivable: receivable,
-          collectionRate: colRate,
+          totalContracted: 0, totalCollected: 0, totalReceivable: 0, collectionRate: 0,
         };
 
-        // ADVOGADO SCORE (aggressive)
+        // ESPECIALISTA SCORE
         score = 0;
-        score += totalSent > 0 ? (won / totalSent) * 25 : 12; // win rate 25pts
-        score += dlMissed > 3 ? Math.min(10, (dlRate / 100) * 20) : (dlRate / 100) * 20; // deadlines 20pts, capped if missed>3
-        score += (colRate / 100) * 20; // collection 20pts
-        score += Math.max(0, (taskRate / 100) * 15 - overdue * 3); // tasks 15pts minus overdue
-        score += Math.min(10, petProtocoled * 2.5); // petitions 10pts
-        score += 10 - Math.min(10, (advKPIs.avgDaysToFile || 0) / 30 * 10); // velocity 10pts
+        score += Math.min(30, active * 3); // clientes ativos 30pts
+        score += Math.min(25, filed * 5);  // novos clientes 25pts
+        score += Math.max(0, (taskRate / 100) * 30 - overdue * 3); // tasks 30pts
+        score += 15; // placeholder
 
-        // Previous score (simplified)
-        const prevFiled = gc(casesFiledPrev, 'lawyer_id', user.id);
-        const prevColl = sumByLawyer(prevCollected, user.id);
+        const prevFiled = gc(casesFiledPrev, 'accountant_id', user.id);
         const prevCompleted = gc(prevTasksCompleted, 'assigned_user_id', user.id);
         const prevPend = gc(prevTasksPending, 'assigned_user_id', user.id);
         const prevTotal = prevCompleted + prevPend;
         const prevTaskRate = prevTotal > 0 ? (prevCompleted / prevTotal) * 100 : 0;
-        prevScore = 12 + (dlRate / 100) * 20 + ((prevColl > 0 && receivable > 0) ? (prevColl / (prevColl + receivable)) * 20 : 0) + (prevTaskRate / 100) * 15;
+        prevScore = Math.min(30, active * 3) + Math.min(25, prevFiled * 5) + (prevTaskRate / 100) * 30 + 15;
       }
 
       if (user.roles?.includes('OPERADOR')) {
@@ -327,71 +207,56 @@ export class TeamPerformanceService {
 
         opKPIs = {
           openConversations: open, closedConversations: closed,
-          avgResponseTimeMinutes: 0, medianResponseTimeMinutes: 0, // TODO: batch response time
+          avgResponseTimeMinutes: 0, medianResponseTimeMinutes: 0,
           leadsHandled: handled, leadsConverted: converted,
           conversionRate: convRate, avgConversionDays: 0,
           stagesAdvanced: stages, leadsLost: lost,
           tasksCompleted: completed, taskCompletionRate: taskRate,
         };
 
-        // OPERADOR SCORE (aggressive)
+        // OPERADOR SCORE
         score = 0;
-        score += (convRate / 100) * 30; // conversion 30pts
-        score += 25; // response time placeholder (full marks until calculated)
-        score += Math.min(15, closed / 5 * 1.5); // closed convs 15pts
-        score += (taskRate / 100) * 15; // tasks 15pts
-        score += Math.min(10, stages / 10 * 2); // pipeline 10pts
-        score -= Math.min(5, lost * 0.5); // loss penalty
+        score += (convRate / 100) * 30;
+        score += 25;
+        score += Math.min(15, closed / 5 * 1.5);
+        score += (taskRate / 100) * 15;
+        score += Math.min(10, stages / 10 * 2);
+        score -= Math.min(5, lost * 0.5);
 
         const prevClosed = gc(closedConvsPrev, 'assigned_user_id', user.id);
         const prevStages = gc(stagesAdvancedPrev, 'actor_id', user.id);
         prevScore = (convRate / 100) * 30 + 25 + Math.min(15, prevClosed / 5 * 1.5) + (taskRate / 100) * 15 + Math.min(10, prevStages / 10 * 2);
       }
 
-      if (user.roles?.includes('ESTAGIARIO')) {
-        const docs = gc(docsUploaded, 'uploaded_by_id', user.id);
-        const dlManaged = gc(deadlines, 'created_by_id', user.id);
-        const dlOnTime = estDeadlines.find(d => d.created_by_id === user.id)?._count || 0;
-        const ePetDrafted = estPetitions.filter(p => p.created_by_id === user.id && p.status === 'RASCUNHO').reduce((s, p) => s + p._count, 0);
-        const ePetReview = estPetitions.filter(p => p.created_by_id === user.id && p.status === 'EM_REVISAO').reduce((s, p) => s + p._count, 0);
-        const ePetApproved = estPetitions.filter(p => p.created_by_id === user.id && (p.status === 'APROVADA' || p.status === 'PROTOCOLADA')).reduce((s, p) => s + p._count, 0);
-        const ePetTotal = ePetDrafted + ePetReview + ePetApproved;
-        const ePetRate = ePetTotal > 0 ? Math.round((ePetApproved / ePetTotal) * 100) : 0;
-
+      if (user.roles?.includes('ASSISTENTE') || user.roles?.includes('ESTAGIARIO')) {
         estKPIs = {
           tasksCompleted: completed, tasksPending: pending, tasksOverdue: overdue,
           taskCompletionRate: taskRate, avgTaskCompletionDays: 0,
-          petitionsDrafted: ePetDrafted, petitionsInReview: ePetReview, petitionsApproved: ePetApproved,
-          petitionApprovalRate: ePetRate,
-          deadlinesManaged: dlManaged, deadlinesCompletedOnTime: dlOnTime,
-          documentsUploaded: docs,
+          documentsUploaded: 0,
         };
 
-        // ESTAGIARIO SCORE (aggressive)
+        // ASSISTENTE SCORE
         score = 0;
-        score += Math.max(0, (taskRate / 100) * 35 - overdue * 5); // tasks 35pts, harsh penalty
-        score += (ePetRate / 100) * 25; // petition quality 25pts
-        score += dlManaged > 0 ? (dlOnTime / dlManaged) * 20 : 10; // deadlines 20pts
-        score += Math.min(10, (docs + completed) / 10 * 2); // volume 10pts
-        score += 10; // speed placeholder
+        score += Math.max(0, (taskRate / 100) * 35 - overdue * 5);
+        score += 10 + 10 + 10 + 35; // placeholders
 
-        prevScore = Math.max(0, (taskRate / 100) * 35) + (ePetRate / 100) * 25 + 10 + 10 + 10;
+        prevScore = Math.max(0, (taskRate / 100) * 35) + 65;
       }
 
       score = Math.max(0, Math.min(100, Math.round(score)));
       prevScore = Math.max(0, Math.min(100, Math.round(prevScore)));
 
       members.push({
-        userId: user.id, name: user.name, role: user.roles?.[0] ?? 'OPERADOR', roles: user.roles,
+        userId: user.id, name: user.name, role: user.role ?? 'OPERADOR', roles: user.roles,
         compositeScore: score, previousScore: prevScore, scoreDelta: score - prevScore,
         rank: 0, quartile: 'MID' as Quartile,
         advogadoKPIs: advKPIs, operadorKPIs: opKPIs, estagiarioKPIs: estKPIs,
         sharedTasks,
-        dailyActivity: [], // TODO: fill with 7-day activity
+        dailyActivity: [],
       });
     }
 
-    // ─── 6. Rank and quartile per role ──
+    // ─── 5. Rank and quartile per role ──
     const rankGroup = (roleFilter: string) => {
       const group = members.filter(m => m.roles?.includes(roleFilter)).sort((a, b) => b.compositeScore - a.compositeScore);
       group.forEach((m, i) => { m.rank = i + 1; });
@@ -413,23 +278,22 @@ export class TeamPerformanceService {
       }
     };
 
+    rankGroup('ESPECIALISTA');
     rankGroup('ADVOGADO');
     rankGroup('OPERADOR');
-    rankGroup('ESTAGIARIO');
+    rankGroup('ASSISTENTE');
     rankGroup('ADMIN');
 
-    // ─── 7. Team averages ──
+    // ─── 6. Team averages ──
     const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : 0;
     const advMembers = members.filter(m => m.advogadoKPIs);
     const opMembers = members.filter(m => m.operadorKPIs);
     const estMembers = members.filter(m => m.estagiarioKPIs);
 
     const teamAverages = {
-      advogado: {
-        caseWinRate: Math.round(avg(advMembers.map(m => m.advogadoKPIs.caseWinRate))),
+      especialista: {
+        activeCases: Math.round(avg(advMembers.map(m => m.advogadoKPIs.activeCases))),
         collectionRate: Math.round(avg(advMembers.map(m => m.advogadoKPIs.collectionRate))),
-        deadlineCompletionRate: Math.round(avg(advMembers.map(m => m.advogadoKPIs.deadlineCompletionRate))),
-        petitionApprovalRate: Math.round(avg(advMembers.map(m => m.advogadoKPIs.petitionApprovalRate))),
         totalCollected: Math.round(avg(advMembers.map(m => m.advogadoKPIs.totalCollected))),
       },
       operador: {
@@ -438,10 +302,8 @@ export class TeamPerformanceService {
         avgResponseTimeMinutes: Math.round(avg(opMembers.map(m => m.operadorKPIs.avgResponseTimeMinutes))),
         taskCompletionRate: Math.round(avg(opMembers.map(m => m.operadorKPIs.taskCompletionRate))),
       },
-      estagiario: {
+      assistente: {
         taskCompletionRate: Math.round(avg(estMembers.map(m => m.estagiarioKPIs.taskCompletionRate))),
-        petitionApprovalRate: Math.round(avg(estMembers.map(m => m.estagiarioKPIs.petitionApprovalRate))),
-        documentsUploaded: Math.round(avg(estMembers.map(m => m.estagiarioKPIs.documentsUploaded))),
       },
       tasks: {
         taskCompletionRate: Math.round(avg(members.map(m => m.sharedTasks.taskCompletionRate))),

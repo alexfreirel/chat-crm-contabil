@@ -498,7 +498,7 @@ export class EvolutionService {
           conv.tenant_id ?? null,
           conv.assigned_user_id || null,
           { conversationId: conv.id, contactName: lead.name || lead.phone },
-          conv.assigned_lawyer_id || null,
+          (conv as any).assigned_accountant_id || null,
           lead.is_client,
         );
 

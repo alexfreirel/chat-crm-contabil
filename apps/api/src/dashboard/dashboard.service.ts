@@ -177,7 +177,7 @@ export class DashboardService {
       isAdmin
         ? this.prisma.user.findMany({
             where: tw,
-            select: { id: true, name: true, roles: true },
+            select: { id: true, name: true, role: true },
             orderBy: { name: 'asc' },
           })
         : Promise.resolve([]),
@@ -239,7 +239,7 @@ export class DashboardService {
           return {
             userId: member.id,
             name: member.name,
-            role: member.roles?.[0] ?? 'OPERADOR',
+            role: member.role ?? 'OPERADOR',
             openConversations,
             activeCases,
             pendingTasks,

@@ -38,14 +38,6 @@ export class InternService {
       },
       include: {
         lead: { select: { id: true, name: true, phone: true } },
-        legal_case: {
-          select: {
-            id: true, case_number: true, legal_area: true, stage: true,
-            tracking_stage: true, opposing_party: true,
-            lead: { select: { id: true, name: true, phone: true } },
-            lawyer: { select: { id: true, name: true } },
-          },
-        },
         assigned_user: { select: { id: true, name: true } },
         created_by: { select: { id: true, name: true } },
       },
@@ -108,9 +100,6 @@ export class InternService {
       },
       include: {
         lead: { select: { id: true, name: true } },
-        legal_case: {
-          select: { id: true, case_number: true, legal_area: true },
-        },
       },
       orderBy: { start_at: 'desc' },
       take: 20,

@@ -92,7 +92,7 @@ export class AdminBotService implements OnModuleInit, OnModuleDestroy {
         phone: { in: [normalized, phone] },
         role: { in: ['ADMIN', 'ESPECIALISTA'] },
       },
-      select: { id: true, name: true, roles: true, tenant_id: true },
+      select: { id: true, name: true, role: true, tenant_id: true },
     });
   }
 
@@ -678,7 +678,7 @@ Para qual cliente contábil? (responda 1, 2, 3 ou "nenhum")`;
 
         case 'list_overdue_payments': {
           const limit = Math.min(args.limit || 10, 20);
-          const overdue = await this.prisma.honorarioPayment.findMany({
+          const overdue = await (this.prisma as any).honorarioPayment.findMany({
             where: { status: { in: ['ATRASADO', 'PENDENTE'] }, due_date: { lt: new Date() } },
             include: {
               honorario: { include: { legal_case: { select: { case_number: true, lead: { select: { name: true, phone: true } } } } } },
@@ -688,7 +688,7 @@ Para qual cliente contábil? (responda 1, 2, 3 ou "nenhum")`;
           });
           return {
             count: overdue.length,
-            inadimplentes: overdue.map(p => ({
+            inadimplentes: overdue.map((p: any) => ({
               parcela_id: p.id,
               cliente: (p as any).honorario?.legal_case?.lead?.name || 'Desconhecido',
               telefone: (p as any).honorario?.legal_case?.lead?.phone || '',
@@ -764,7 +764,7 @@ Para qual cliente contábil? (responda 1, 2, 3 ou "nenhum")`;
           if (!leads.length) return { error: `Nenhum cliente encontrado com nome "${args.lead_name}"` };
 
           // Buscar parcelas pendentes do lead
-          const payments = await this.prisma.honorarioPayment.findMany({
+          const payments = await (this.prisma as any).honorarioPayment.findMany({
             where: {
               status: { in: ['PENDENTE', 'ATRASADO'] },
               honorario: { legal_case: { lead_id: { in: leads.map(l => l.id) } } },
@@ -777,7 +777,7 @@ Para qual cliente contábil? (responda 1, 2, 3 ou "nenhum")`;
           if (!payments.length) return { error: `Nenhuma parcela pendente encontrada para "${args.lead_name}"${args.amount ? ` no valor de R$ ${args.amount}` : ''}` };
 
           const payment = payments[0];
-          await this.prisma.honorarioPayment.update({
+          await (this.prisma as any).honorarioPayment.update({
             where: { id: payment.id },
             data: { status: 'PAGO', paid_at: new Date(), payment_method: args.payment_method || null },
           });

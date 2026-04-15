@@ -41,7 +41,7 @@ export class ConversationsService {
         })
       : null;
 
-    const userRole = effectiveRole(user?.roles ?? 'OPERADOR');
+    const userRole = effectiveRole((user as any)?.roles ?? user?.role ?? 'OPERADOR');
     const userInboxIds = (user?.inboxes ?? []).map((i: any) => i.id);
 
     // ─── Filtro por clientMode (modo Leads vs Clientes) ──────────────────
@@ -58,9 +58,9 @@ export class ConversationsService {
     }
 
     // ─── Controle de acesso por role (multi-role aware) ────────────────
-    const userRoles: string[] = Array.isArray(user?.roles) ? user.roles : [userRole];
+    const userRoles: string[] = Array.isArray((user as any)?.roles) ? (user as any).roles : [userRole];
     const isAdminUser = userRoles.includes('ADMIN');
-    const isAdvogadoUser = userRoles.includes('ADVOGADO');
+    const isAdvogadoUser = userRoles.includes('ADVOGADO') || userRoles.includes('ESPECIALISTA');
     const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL');
 
     if (isAdminUser) {
@@ -85,8 +85,7 @@ export class ConversationsService {
         // Visibilidade de ADVOGADO: apenas CLIENTES atribuídos como advogada + processos
         // Na aba Leads: advogado NÃO vê leads de outros operadores via assigned_lawyer_id
         if (isAdvogadoUser && clientMode === true) {
-          orConditions.push({ assigned_lawyer_id: userId, lead: { is_client: true } });
-          orConditions.push({ lead: { is_client: true, legal_cases: { some: { lawyer_id: userId } } } });
+          orConditions.push({ assigned_accountant_id: userId, lead: { is_client: true } });
         }
 
         // Conversas atribuídas diretamente ao usuário (qualquer role)
@@ -642,7 +641,7 @@ export class ConversationsService {
         where: { id: userId },
         include: { inboxes: { select: { id: true } } },
       });
-      if (!user?.roles?.includes('ADMIN') && user?.inboxes && user.inboxes.length > 0) {
+      if (!(user as any)?.roles?.includes('ADMIN') && user?.role !== 'ADMIN' && user?.inboxes && user.inboxes.length > 0) {
         where.inbox_id = { in: user.inboxes.map((i: any) => i.id) };
       }
     }
@@ -693,9 +692,9 @@ export class ConversationsService {
         include: { inboxes: { select: { id: true } } },
       });
 
-      const userRoles: string[] = Array.isArray(user?.roles)
-        ? user.roles
-        : [effectiveRole(user?.roles ?? 'OPERADOR')];
+      const userRoles: string[] = Array.isArray((user as any)?.roles)
+        ? (user as any).roles
+        : [effectiveRole((user as any)?.roles ?? user?.role ?? 'OPERADOR')];
       const isAdvogadoUser = userRoles.includes('ADVOGADO');
       const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL');
       const isAdminUser = userRoles.includes('ADMIN');

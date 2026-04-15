@@ -84,7 +84,7 @@ export class UsersService {
         email: data.email,
         phone: data.phone || null,
         password_hash,
-        roles: data.role ? [data.role] : ['OPERADOR'],
+        role: data.role || 'OPERADOR',
         tenant_id: data.tenant_id,
         inboxes: data.inboxIds ? { connect: data.inboxIds.map(id => ({ id })) } : undefined
       },
@@ -134,8 +134,8 @@ export class UsersService {
   async getTransferSummary(id: string, tenantId?: string) {
     await this.verifyTenantOwnership(id, tenantId);
     const [cases, conversations, tasks, events, leads] = await Promise.all([
-      this.prisma.legalCase.count({ where: { lawyer_id: id } }),
-      this.prisma.conversation.count({ where: { OR: [{ assigned_user_id: id }, { assigned_lawyer_id: id }] } }),
+      this.prisma.clienteContabil.count({ where: { accountant_id: id } }),
+      this.prisma.conversation.count({ where: { OR: [{ assigned_user_id: id }, { assigned_accountant_id: id }] } }),
       this.prisma.calendarEvent.count({ where: { OR: [{ assigned_user_id: id }, { created_by_id: id }] } }),
       this.prisma.calendarEvent.count({ where: { created_by_id: id } }),
       this.prisma.lead.count({ where: { cs_user_id: id } }),
@@ -168,7 +168,7 @@ export class UsersService {
 
   // ─── Lawyer / Intern helpers ──────────────────────────────────
 
-  /** Lista advogados (role ADVOGADO ou ADMIN com specialties) */
+  /** Lista especialistas/contadores (role ESPECIALISTA ou ADMIN com specialties) */
   async findLawyers(tenantId?: string) {
     const tenantFilter = this.tenantWhere(tenantId);
     return this.prisma.user.findMany({
@@ -176,24 +176,23 @@ export class UsersService {
         AND: [
           {
             OR: [
-              { roles: { has: 'ADVOGADO' } },
-              { roles: { has: 'ADMIN' }, specialties: { isEmpty: false } },
+              { role: { in: ['ESPECIALISTA', 'ADVOGADO', 'ADMIN'] } },
             ],
           },
           // Isolamento multi-tenant combinado via AND para não sobrescrever o OR acima
           ...(Object.keys(tenantFilter).length > 0 ? [tenantFilter] : []),
         ],
       },
-      select: { id: true, name: true, roles: true, specialties: true },
+      select: { id: true, name: true, role: true },
       orderBy: { name: 'asc' },
     });
   }
 
-  /** Lista estagiários vinculados a um advogado */
+  /** Lista assistentes vinculados a um especialista */
   async findInterns(supervisorId: string) {
     return this.prisma.user.findMany({
       where: { supervisors: { some: { id: supervisorId } } },
-      select: { id: true, name: true, email: true, roles: true },
+      select: { id: true, name: true, email: true, role: true },
       orderBy: { name: 'asc' },
     });
   }

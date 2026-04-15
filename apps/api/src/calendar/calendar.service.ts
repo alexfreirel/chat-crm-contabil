@@ -147,6 +147,7 @@ export class CalendarService {
     lead_id?: string;
     conversation_id?: string;
     cliente_contabil_id?: string;
+    legal_case_id?: string;
     assigned_user_id?: string;
     created_by_id: string;
     appointment_type_id?: string;
@@ -163,7 +164,7 @@ export class CalendarService {
     // Auto-preencher lead_id a partir do processo vinculado, se não informado
     let resolvedLeadId = data.lead_id;
     if (!resolvedLeadId && data.legal_case_id) {
-      const legalCase = await this.prisma.legalCase.findUnique({
+      const legalCase = await (this.prisma as any).legalCase.findUnique({
         where: { id: data.legal_case_id },
         select: { lead_id: true },
       });
@@ -228,7 +229,7 @@ export class CalendarService {
     let leadPhone: string | undefined = event.lead?.phone || undefined;
     if (!leadPhone && data.legal_case_id) {
       try {
-        const lc = await this.prisma.legalCase.findUnique({
+        const lc = await (this.prisma as any).legalCase.findUnique({
           where: { id: data.legal_case_id },
           select: { lead_id: true, lead: { select: { phone: true } } },
         });
@@ -334,6 +335,7 @@ export class CalendarService {
       lead_id?: string | null;
       conversation_id?: string | null;
       cliente_contabil_id?: string | null;
+      legal_case_id?: string;
       assigned_user_id?: string | null;
       appointment_type_id?: string | null;
     },
@@ -352,7 +354,7 @@ export class CalendarService {
 
     // Auto-preencher lead_id a partir do processo vinculado, se legal_case_id mudou e lead_id não foi informado
     if (data.legal_case_id && data.lead_id === undefined) {
-      const legalCase = await this.prisma.legalCase.findUnique({
+      const legalCase = await (this.prisma as any).legalCase.findUnique({
         where: { id: data.legal_case_id },
         select: { lead_id: true },
       });
@@ -1063,7 +1065,7 @@ export class CalendarService {
 
     let migrated = 0;
     for (const task of orphanTasks) {
-      const creatorId = task.assigned_user_id || (await this.prisma.user.findFirst({ where: { roles: { has: 'ADMIN' } }, select: { id: true } }))?.id;
+      const creatorId = task.assigned_user_id || (await this.prisma.user.findFirst({ where: { role: 'ADMIN' }, select: { id: true } }))?.id;
       if (!creatorId) continue;
 
       const event = await this.prisma.calendarEvent.create({

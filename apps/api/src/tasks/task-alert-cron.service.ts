@@ -37,7 +37,6 @@ export class TaskAlertCronService {
         select: {
           id: true, title: true, due_at: true, assigned_user_id: true,
           lead: { select: { name: true } },
-          legal_case: { select: { case_number: true } },
         },
       });
 
@@ -52,7 +51,6 @@ export class TaskAlertCronService {
         select: {
           id: true, title: true, start_at: true, type: true, assigned_user_id: true,
           lead: { select: { name: true } },
-          legal_case: { select: { case_number: true } },
         },
       });
 
@@ -69,8 +67,8 @@ export class TaskAlertCronService {
           title: task.title,
           level: mins <= 5 ? 'critical' : 'urgent',
           message: `Vence em ${mins} min`,
-          client: task.lead?.name || null,
-          caseNumber: task.legal_case?.case_number || null,
+          client: (task as any).lead?.name || null,
+          caseNumber: null,
         });
       }
 
@@ -83,8 +81,8 @@ export class TaskAlertCronService {
           title: `${emoji} ${evt.title}`,
           level: mins <= 5 ? 'critical' : 'urgent',
           message: `Vence em ${mins} min`,
-          client: evt.lead?.name || null,
-          caseNumber: evt.legal_case?.case_number || null,
+          client: (evt as any).lead?.name || null,
+          caseNumber: null,
         });
       }
     } catch (e: any) {

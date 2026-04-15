@@ -102,27 +102,8 @@ export class PaymentGatewayController {
       ...(tenantId ? { tenant_id: tenantId } : {}),
       ...(status ? { status } : {}),
     };
-    // Filtrar por advogado: cobranças vinculadas a processos do advogado
-    if (lawyerId) {
-      where.honorario_payment = {
-        honorario: { legal_case: { lawyer_id: lawyerId } },
-      };
-    }
     return this.prisma.paymentGatewayCharge.findMany({
       where,
-      include: {
-        honorario_payment: {
-          include: {
-            honorario: {
-              include: {
-                legal_case: {
-                  select: { id: true, case_number: true, lawyer_id: true, lead: { select: { id: true, name: true, phone: true } } },
-                },
-              },
-            },
-          },
-        },
-      },
       orderBy: { created_at: 'desc' },
       take: parseInt(limit || '50'),
       skip: parseInt(offset || '0'),

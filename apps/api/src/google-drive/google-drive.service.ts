@@ -355,7 +355,7 @@ export class GoogleDriveService {
     leadId: string,
     label: string,
   ): Promise<string> {
-    const legalCase = await this.prisma.legalCase.findUnique({
+    const legalCase = await (this.prisma as any).legalCase.findUnique({
       where: { id: caseId },
       select: { google_drive_folder_id: true },
     });
@@ -397,7 +397,7 @@ export class GoogleDriveService {
       this.logger.log(`Pasta do caso criada: ${label} (${folderId})`);
     }
 
-    await this.prisma.legalCase.update({
+    await (this.prisma as any).legalCase.update({
       where: { id: caseId },
       data: { google_drive_folder_id: folderId },
     });

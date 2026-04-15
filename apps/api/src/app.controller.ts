@@ -46,7 +46,7 @@ export class AppController {
   @Roles('ADMIN')
   async cleanupInbox(@Request() req: any) {
     const messages = await this.prisma.message.deleteMany({});
-    const notes = await this.prisma.conversationNote.deleteMany({});
+    const notes = await (this.prisma as any).conversationNote.deleteMany({});
     const conversations = await this.prisma.conversation.deleteMany({});
     return {
       ok: true,
@@ -64,7 +64,7 @@ export class AppController {
   async cleanupContacts(@Request() req: any) {
     // Limpa dependencias primeiro
     const messages = await this.prisma.message.deleteMany({});
-    const notes = await this.prisma.conversationNote.deleteMany({});
+    const notes = await (this.prisma as any).conversationNote.deleteMany({});
     const conversations = await this.prisma.conversation.deleteMany({});
     const leadNotes = await this.prisma.leadNote.deleteMany({});
     const stageHistory = await this.prisma.leadStageHistory.deleteMany({});

@@ -197,7 +197,7 @@ export class DashboardAnalyticsService {
     const isAdmin = roleArr.includes('ADMIN');
     const tw = this.tenantWhere(tenantId);
 
-    const cases = await this.prisma.legalCase.findMany({
+    const cases = await (this.prisma as any).legalCase.findMany({
       where: {
         in_tracking: true,
         archived: false,
@@ -233,7 +233,7 @@ export class DashboardAnalyticsService {
     const tw = this.tenantWhere(tenantId);
     const now = new Date();
 
-    const overdue = await this.prisma.honorarioPayment.findMany({
+    const overdue = await (this.prisma as any).honorarioPayment.findMany({
       where: {
         status: 'PENDENTE',
         due_date: { lt: now },

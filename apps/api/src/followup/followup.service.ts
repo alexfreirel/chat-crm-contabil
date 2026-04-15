@@ -421,7 +421,7 @@ Gere APENAS o texto da mensagem, sem introduções ou explicações.`;
   async previewBroadcast(type: string, daysAhead: number, tenantId?: string) {
     // COMUNICADO: busca todos os clientes com processo ativo (não depende de CalendarEvent)
     if (type === 'COMUNICADO') {
-      const cases = await this.prisma.legalCase.findMany({
+      const cases = await (this.prisma as any).legalCase.findMany({
         where: {
           archived: false,
           lead: {
@@ -439,8 +439,8 @@ Gere APENAS o texto da mensagem, sem introduções ou explicações.`;
       // Deduplica por lead_id (um lead pode ter vários processos)
       const seen = new Set<string>();
       return cases
-        .filter(c => { if (seen.has(c.lead_id)) return false; seen.add(c.lead_id); return true; })
-        .map(c => ({
+        .filter((c: any) => { if (seen.has(c.lead_id)) return false; seen.add(c.lead_id); return true; })
+        .map((c: any) => ({
           event_id: null,
           event_title: null,
           event_date: null,
@@ -469,12 +469,11 @@ Gere APENAS o texto da mensagem, sem introduções ou explicações.`;
       },
       include: {
         lead: { select: { id: true, name: true, phone: true, stage: true } },
-        legal_case: { select: { id: true, case_number: true, action_type: true, court: true, opposing_party: true } },
       },
       orderBy: { start_at: 'asc' },
     });
 
-    return events.map(e => ({
+    return events.map((e: any) => ({
       event_id: e.id,
       event_title: e.title,
       event_date: e.start_at,
@@ -483,9 +482,9 @@ Gere APENAS o texto da mensagem, sem introduções ou explicações.`;
       lead_name: e.lead!.name,
       lead_phone: e.lead!.phone,
       lead_stage: e.lead!.stage,
-      case_number: e.legal_case?.case_number,
-      case_type: e.legal_case?.action_type,
-      court: e.legal_case?.court,
+      case_number: null,
+      case_type: null,
+      court: null,
     }));
   }
 
@@ -494,7 +493,7 @@ Gere APENAS o texto da mensagem, sem introduções ou explicações.`;
     if (targets.length === 0) throw new BadRequestException('Nenhum alvo encontrado para este disparo');
 
     // Deduplicate by lead_id (same lead may have multiple events)
-    const uniqueTargets = targets.filter((t, i, arr) => arr.findIndex(x => x.lead_id === t.lead_id) === i);
+    const uniqueTargets = targets.filter((t: any, i: any, arr: any) => arr.findIndex((x: any) => x.lead_id === t.lead_id) === i);
 
     const typeLabels: Record<string, string> = { AUDIENCIA: 'Audiências', PERICIA: 'Perícias', PRAZO: 'Prazos', COMUNICADO: 'Comunicados' };
     const today = new Date().toLocaleDateString('pt-BR');
@@ -513,7 +512,7 @@ Gere APENAS o texto da mensagem, sem introduções ou explicações.`;
         status: 'ENVIANDO',
         started_at: new Date(),
         items: {
-          create: uniqueTargets.map(t => ({
+          create: uniqueTargets.map((t: any) => ({
             lead_id: t.lead_id,
             ...(t.event_id ? { event_id: t.event_id } : {}),
             phone: t.lead_phone,

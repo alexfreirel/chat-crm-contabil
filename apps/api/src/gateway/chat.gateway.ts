@@ -146,7 +146,7 @@ export class ChatGateway {
     // Verificar se a conversa existe
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
-      select: { inbox_id: true, assigned_user_id: true, assigned_lawyer_id: true },
+      select: { inbox_id: true, assigned_user_id: true, assigned_accountant_id: true },
     });
 
     if (!conversation) {
@@ -163,7 +163,7 @@ export class ChatGateway {
     const userInboxIds = (user?.inboxes || []).map((i: any) => i.id);
     const hasAccess =
       conversation.assigned_user_id === socketUser.sub ||
-      conversation.assigned_lawyer_id === socketUser.sub ||
+      (conversation as any).assigned_accountant_id === socketUser.sub ||
       ((conversation as any).inbox_id && userInboxIds.includes((conversation as any).inbox_id));
 
     if (!hasAccess) {

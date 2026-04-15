@@ -51,7 +51,7 @@ export class LeadsController {
     @Query('search') search: string,
     @Res() res: any,
   ) {
-    const csv = await this.leadsService.exportCsv(req.user?.tenant_id, search, req.user?.id);
+    const csv = await this.leadsService.exportCsv(req.user?.tenant_id, search);
     const filename = `leads_${new Date().toISOString().split('T')[0]}.csv`;
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
