@@ -33,7 +33,7 @@ export class OverdueAlertsService {
       });
 
       // 2. Honorários pendentes/atrasados (recebíveis vencidos)
-      const overdueHonorarios = await this.prisma.honorarioPayment.findMany({
+      const overdueHonorarios = await (this.prisma as any).honorarioPayment.findMany({
         where: {
           status: { in: ['PENDENTE', 'ATRASADO'] },
           due_date: { lt: now, not: null },
@@ -49,8 +49,8 @@ export class OverdueAlertsService {
         },
       });
 
-      const totalDespesasVencidas = overdueDespesas.reduce((s, d) => s + Number(d.amount), 0);
-      const totalRecebiveisVencidos = overdueHonorarios.reduce((s, h) => s + Number(h.amount), 0);
+      const totalDespesasVencidas = overdueDespesas.reduce((s: number, d: any) => s + Number(d.amount), 0);
+      const totalRecebiveisVencidos = overdueHonorarios.reduce((s: number, h: any) => s + Number(h.amount), 0);
 
       if (overdueDespesas.length === 0 && overdueHonorarios.length === 0) return;
 

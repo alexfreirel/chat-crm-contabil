@@ -204,6 +204,10 @@ export class ReminderProcessor extends WorkerHost {
       hour: '2-digit', minute: '2-digit', timeZone: 'America/Maceio',
     });
 
+    const isPericia = event.type === 'PERICIA';
+    const label = isPericia ? 'Perícia' : 'Audiência';
+    const emoji = isPericia ? '⚕️' : '⚖️';
+
     let msg: string;
     if (isRescheduled) {
       msg =

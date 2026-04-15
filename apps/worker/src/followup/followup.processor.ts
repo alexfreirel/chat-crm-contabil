@@ -263,11 +263,10 @@ export class FollowupProcessor extends WorkerHost {
       where: { id: item.event_id },
       include: {
         lead: true,
-        legal_case: { select: { case_number: true, action_type: true, court: true, opposing_party: true, judge: true, legal_area: true } },
       },
     }) : null;
 
-    const lead = event?.lead || await this.prisma.lead.findUnique({ where: { id: item.lead_id } });
+    const lead = (event as any)?.lead || await this.prisma.lead.findUnique({ where: { id: item.lead_id } });
     if (!lead) {
       await this.prisma.broadcastItem.update({ where: { id: itemId }, data: { status: 'FALHOU', error: 'Lead não encontrado' } });
       await this.prisma.broadcastJob.update({ where: { id: broadcastId }, data: { failed_count: { increment: 1 } } });

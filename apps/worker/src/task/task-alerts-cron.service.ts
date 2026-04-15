@@ -35,7 +35,6 @@ export class TaskAlertsCronService {
         include: {
           assigned_user: { select: { id: true, name: true, phone: true } },
           lead: { select: { name: true } },
-          legal_case: { select: { case_number: true } },
         },
       });
 
@@ -49,14 +48,13 @@ export class TaskAlertsCronService {
         include: {
           assigned_user: { select: { id: true, name: true, phone: true } },
           lead: { select: { name: true } },
-          legal_case: { select: { case_number: true } },
         },
       });
 
       // Unificar em lista comum
       const dueSoon: Array<{ id: string; title: string; dueAt: Date; user: any; lead: any; legalCase: any }> = [
-        ...tasksDueSoon.map(t => ({ id: t.id, title: t.title, dueAt: t.due_at!, user: t.assigned_user, lead: t.lead, legalCase: t.legal_case })),
-        ...eventsDueSoon.map(e => ({ id: e.id, title: e.title, dueAt: e.start_at, user: e.assigned_user, lead: e.lead, legalCase: e.legal_case })),
+        ...tasksDueSoon.map((t: any) => ({ id: t.id, title: t.title, dueAt: t.due_at!, user: t.assigned_user, lead: t.lead, legalCase: null })),
+        ...eventsDueSoon.map((e: any) => ({ id: e.id, title: e.title, dueAt: e.start_at, user: e.assigned_user, lead: e.lead, legalCase: null })),
       ];
 
       if (dueSoon.length === 0) return;
@@ -107,7 +105,6 @@ export class TaskAlertsCronService {
         include: {
           assigned_user: { select: { id: true, name: true, phone: true } },
           lead: { select: { name: true } },
-          legal_case: { select: { case_number: true } },
         },
         orderBy: { due_at: 'asc' },
         take: 30,
@@ -123,7 +120,6 @@ export class TaskAlertsCronService {
         include: {
           assigned_user: { select: { id: true, name: true, phone: true } },
           lead: { select: { name: true } },
-          legal_case: { select: { case_number: true } },
         },
         orderBy: { start_at: 'asc' },
         take: 30,
@@ -131,8 +127,8 @@ export class TaskAlertsCronService {
 
       // Unificar
       const overdue: Array<{ id: string; title: string; dueAt: Date; user: any }> = [
-        ...overdueTasks.map(t => ({ id: t.id, title: t.title, dueAt: t.due_at!, user: t.assigned_user })),
-        ...overdueEvents.map(e => ({ id: e.id, title: e.title, dueAt: e.start_at, user: e.assigned_user })),
+        ...overdueTasks.map((t: any) => ({ id: t.id, title: t.title, dueAt: t.due_at!, user: t.assigned_user })),
+        ...overdueEvents.map((e: any) => ({ id: e.id, title: e.title, dueAt: e.start_at, user: e.assigned_user })),
       ];
 
       if (overdue.length === 0) return;

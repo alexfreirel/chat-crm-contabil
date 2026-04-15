@@ -24,7 +24,7 @@ export class PaymentAlertsCronService {
   @Cron('5 0 * * *', { timeZone: 'America/Maceio' })
   async markOverduePayments() {
     try {
-      const result = await this.prisma.honorarioPayment.updateMany({
+      const result = await (this.prisma as any).honorarioPayment.updateMany({
         where: {
           status: 'PENDENTE',
           due_date: { lt: new Date() },
@@ -48,7 +48,7 @@ export class PaymentAlertsCronService {
       const now = new Date();
       const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
 
-      const dueSoon = await this.prisma.honorarioPayment.findMany({
+      const dueSoon = await (this.prisma as any).honorarioPayment.findMany({
         where: {
           status: 'PENDENTE',
           due_date: { gte: now, lte: threeDaysFromNow },
@@ -112,7 +112,7 @@ export class PaymentAlertsCronService {
   async sendOverdueAlerts() {
     this.logger.log('[PAYMENT-ALERTS] Verificando parcelas atrasadas...');
     try {
-      const overdue = await this.prisma.honorarioPayment.findMany({
+      const overdue = await (this.prisma as any).honorarioPayment.findMany({
         where: {
           status: { in: ['ATRASADO', 'PENDENTE'] },
           due_date: { lt: new Date() },
@@ -156,7 +156,7 @@ export class PaymentAlertsCronService {
 
         const { lead, payments } = group;
         const firstName = (lead.name || 'Cliente').split(' ')[0];
-        const totalOverdue = payments.reduce((s, p) => s + Number(p.amount), 0);
+        const totalOverdue = payments.reduce((s: number, p: any) => s + Number(p.amount), 0);
         const totalStr = totalOverdue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         const count = payments.length;
         const oldestDays = payments[0].due_date ? Math.ceil((Date.now() - new Date(payments[0].due_date).getTime()) / 86400000) : 0;
