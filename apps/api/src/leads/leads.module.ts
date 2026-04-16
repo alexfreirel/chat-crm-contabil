@@ -8,7 +8,7 @@ import { AutomationsModule } from '../automations/automations.module';
 import { GoogleDriveModule } from '../google-drive/google-drive.module';
 
 @Module({
-  imports: [AutomationsModule],
+  imports: [AutomationsModule, GoogleDriveModule],
   controllers: [LeadsController, LeadNotesController],
   providers: [LeadsService, LeadsCleanupService, LeadNotesService],
   exports: [LeadsService],

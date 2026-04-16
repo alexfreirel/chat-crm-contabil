@@ -43,7 +43,7 @@ model User {
   email                    String                 @unique
   phone                    String?
   password_hash            String
-  role                     String
+  role                     String                 @default("ADMIN")
   // Roles: ADMIN | ESPECIALISTA | ASSISTENTE | OPERADOR
   specialties              String[]               @default([])
   created_at               DateTime               @default(now())

@@ -30,8 +30,10 @@ services:
     ports:
       - "47379:6379"
     networks:
-      - default
-      - OrionNet
+      default:
+      OrionNet:
+        aliases:
+          - lexcon-redis
     volumes:
       - redisdata_lexcon:/data
     healthcheck:
@@ -71,7 +73,7 @@ services:
       - TZ=America/Sao_Paulo
       - RUN_MIGRATIONS=true
       - DATABASE_URL=postgresql://${POSTGRES_USER:-crm_user}:${POSTGRES_PASSWORD:-crm_pass}@postgres:5432/${POSTGRES_DB:-lexcon}?schema=public
-      - REDIS_HOST=redis
+      - REDIS_HOST=lexcon-redis
       - REDIS_PORT=6379
       - JWT_SECRET=lexcon-jwt-secret-2026-prod-k8s9x2m4
       - JWT_EXPIRES_IN=365d
@@ -120,7 +122,7 @@ services:
       - PORT=3002
       - TZ=America/Sao_Paulo
       - DATABASE_URL=postgresql://${POSTGRES_USER:-crm_user}:${POSTGRES_PASSWORD:-crm_pass}@postgres:5432/${POSTGRES_DB:-lexcon}?schema=public
-      - REDIS_HOST=redis
+      - REDIS_HOST=lexcon-redis
       - REDIS_PORT=6379
       - JWT_SECRET=lexcon-jwt-secret-2026-prod-k8s9x2m4
       - OPENAI_API_KEY=${OPENAI_API_KEY}
