@@ -735,11 +735,6 @@ function LeadDetailPanel({
                           iconBg = 'bg-emerald-500/15';
                           label = item.title || item.petition_type || '';
                           sub = item.status || '';
-                        } else if (item.type === 'djen') {
-                          icon = '📰';
-                          iconBg = 'bg-orange-500/15';
-                          label = item.djen_assunto || item.djen_tipo || 'Publicação DJEN';
-                          sub = item.urgencia ? `urgência: ${item.urgencia}` : '';
                         } else if (item.type === 'note') {
                           icon = '📝';
                           iconBg = 'bg-gray-500/15';

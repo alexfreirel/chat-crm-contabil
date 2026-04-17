@@ -1,12 +1,12 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Bell, X, Gavel, FileText, AlertTriangle, Calendar, ExternalLink } from 'lucide-react';
+import { Bell, X, FileText, AlertTriangle, Calendar, ExternalLink } from 'lucide-react';
 import api from '@/lib/api';
 import { useRouter } from 'next/navigation';
 
 interface NotifItem {
   id: string;
-  type: 'event' | 'task_overdue' | 'djen' | 'payment_overdue';
+  type: 'event' | 'task_overdue' | 'payment_overdue';
   title: string;
   subtitle?: string;
   time?: string;
@@ -70,17 +70,6 @@ export function NotificationCenter() {
           });
         });
 
-      // Recent DJEN
-      (data.recentDjen || []).slice(0, 3).forEach((d: any) => {
-        notifs.push({
-          id: d.id,
-          type: 'djen',
-          title: `DJEN: ${d.numero_processo}`,
-          subtitle: d.tipo_comunicacao || 'Publicação judicial',
-          href: d.legal_case_id ? `/atendimento/processos` : undefined,
-        });
-      });
-
       // Overdue payments
       if (data.financials?.overdueCount > 0) {
         notifs.push({
@@ -102,7 +91,6 @@ export function NotificationCenter() {
 
   const typeIcon = (type: string) => {
     if (type === 'task_overdue') return <AlertTriangle size={13} className="text-red-400" />;
-    if (type === 'djen') return <Gavel size={13} className="text-violet-400" />;
     if (type === 'payment_overdue') return <FileText size={13} className="text-amber-400" />;
     return <Calendar size={13} className="text-blue-400" />;
   };

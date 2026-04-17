@@ -96,7 +96,7 @@ function templateAdvogado(event: any, minutesBefore: number): string {
 
 // ─── Montagem do contexto para a IA ──────────────────────────────────────────
 
-function buildContext(event: any, memory: any, legalCase: any, ficha: any, djenPubs?: any[]): string {
+function buildContext(event: any, memory: any, legalCase: any, ficha: any): string {
   const lines: string[] = [];
 
   // Evento
@@ -179,18 +179,7 @@ function buildContext(event: any, memory: any, legalCase: any, ficha: any, djenP
     }
   }
 
-  // Publicações DJEN (histórico das movimentações do processo)
-  if (djenPubs && djenPubs.length > 0) {
-    lines.push(`\n## HISTÓRICO DJEN (${djenPubs.length} publicação(ões) recente(s))`);
-    djenPubs.forEach((pub, idx) => {
-      const date = new Date(pub.data_disponibilizacao).toLocaleDateString('pt-BR');
-      lines.push(`\nPublicação ${idx + 1} — ${date}:`);
-      if (pub.tipo_comunicacao) lines.push(`  Tipo: ${pub.tipo_comunicacao}`);
-      if (pub.assunto) lines.push(`  Assunto: ${pub.assunto}`);
-      const snippet = (pub.conteudo || '').slice(0, 400);
-      if (snippet) lines.push(`  Conteúdo: ${snippet}${pub.conteudo?.length > 400 ? '…' : ''}`);
-    });
-  }
+
 
   return lines.join('\n');
 }
@@ -300,9 +289,7 @@ export class CalendarReminderWorker extends WorkerHost {
         ? this.prisma.fichaContabil.findUnique({ where: { lead_id: leadId } }).catch(() => null)
         : null,
     ]);
-    const djenPubs = await Promise.resolve([]);
-
-    const context = buildContext(event, memory, event.cliente_contabil, ficha, djenPubs);
+    const context = buildContext(event, memory, event.cliente_contabil, ficha);
 
     // ── 1. Mensagem para o Advogado (sempre) ─────────────────────────
     if (event.assigned_user?.phone) {
@@ -435,9 +422,7 @@ export class CalendarReminderWorker extends WorkerHost {
       this.prisma.aiMemory.findUnique({ where: { lead_id: leadId } }).catch(() => null),
       this.prisma.fichaContabil.findUnique({ where: { lead_id: leadId } }).catch(() => null),
     ]);
-    const djenPubs = await Promise.resolve([]);
-
-    const context = buildContext(event, memory, event.cliente_contabil, ficha, djenPubs);
+    const context = buildContext(event, memory, event.cliente_contabil, ficha);
     const clientPhone = event.lead.phone.replace(/\D/g, '');
     const firstName = (event.lead.name || 'Cliente').split(' ')[0];
 

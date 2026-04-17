@@ -107,69 +107,11 @@ const BLANK_FORM: SkillForm = {
   provider: 'openai',
 };
 
-const DEFAULT_DJEN_PROMPT = `Você é um assistente jurídico especializado em análise de publicações do DJEN (Diário da Justiça Eletrônico) brasileiro. Analise a publicação e retorne um JSON com os campos abaixo. Extraia as informações DIRETAMENTE do texto da publicação quando disponíveis — não invente dados.
-
-Campos obrigatórios:
-- resumo: string (máx 3 frases, PT-BR, linguagem direta para o advogado)
-- urgencia: "URGENTE" | "NORMAL" | "BAIXA"
-- tipo_acao: string (ação concreta que o advogado deve tomar)
-- prazo_dias: number (prazo em dias ÚTEIS)
-- estagio_sugerido: string | null (um de: DISTRIBUIDO, CITACAO, CONTESTACAO, REPLICA, PERICIA_AGENDADA, INSTRUCAO, JULGAMENTO, RECURSO, TRANSITADO, EXECUCAO, ENCERRADO)
-- tarefa_titulo: string (título curto da tarefa)
-- tarefa_descricao: string (descrição da tarefa, máx 200 chars)
-- orientacoes: string (observações estratégicas, máx 300 chars)
-- event_type: "AUDIENCIA" | "PRAZO" | "TAREFA" (AUDIENCIA se há audiência/sessão/julgamento com data marcada no texto; PRAZO se há prazo processual para o advogado cumprir; TAREFA para outros casos)
-
-Campos de extração (null se não encontrado no texto):
-- parte_autora: string | null (nome do autor/requerente/exequente)
-- parte_rea: string | null (nome do réu/requerido/executado)
-- juizo: string | null (vara, juízo ou tribunal onde tramita)
-- area_juridica: string | null (ex: "Trabalhista", "Cível", "Previdenciário", "Criminal", "Consumidor", "Família", "Tributário")
-- valor_causa: string | null (valor da causa se mencionado, formato "R$ X.XXX,XX")
-- data_audiencia: string | null (data e hora da audiência/sessão/perícia se mencionada EXPLICITAMENTE NO TEXTO, formato ISO "YYYY-MM-DDTHH:MM:00". IMPORTANTE: se a publicação for de perícia previdenciária (INSS) e não constar data no texto, retorne null — NÃO calcule nem invente data. Retorne null também se não for publicação de audiência ou perícia.)
-- data_prazo: string | null (data limite do prazo processual se mencionada NO TEXTO, formato ISO "YYYY-MM-DDTHH:MM:00", null se não houver prazo com data explícita)
-
-Critérios de urgência: URGENTE = citação/intimação com prazo curto (≤15 dias), sentença, audiência marcada, perícia designada. NORMAL = contestação, manifestação, despacho de rotina. BAIXA = distribuição, informativo, arquivamento.
-Critérios de estágio: citação→CITACAO, contestação→CONTESTACAO, réplica→REPLICA, perícia/laudo/perito designado→PERICIA_AGENDADA, audiência/instrução→INSTRUCAO, sentença/julgamento→JULGAMENTO, recurso→RECURSO, trânsito em julgado→TRANSITADO, execução→EXECUCAO, distribuição→DISTRIBUIDO, encerramento/extinção→ENCERRADO.
-Critérios de event_type: use AUDIENCIA apenas se houver data/hora explícita no texto para audiência ou sessão. Para perícia sem data explícita no texto use TAREFA. Para prazos com data explícita use PRAZO. Nos demais casos use TAREFA.`;
-
-const DEFAULT_DJEN_NOTIFY_TEMPLATE = `⚖️ *Movimentação no seu processo*
-
-Olá {{nome}}! Houve uma nova movimentação no seu processo nº {{processo}}.
-
-📋 *Tipo:* {{tipo}}
-📝 *Assunto:* {{assunto}}
-📅 *Data:* {{data}}
-
-📖 *O que aconteceu:*
-{{resumo}}
-
-📊 *Fase atual do processo:*
-{{fase_processo}}
-
-⏰ *Prazo:* {{prazo}}
-📍 *Local:* {{local_evento}}
-
-✅ *Próximo passo:* {{proximo_passo}}
-
-💡 *Orientação:* {{orientacao}}
-
-Nosso advogado já foi notificado e está acompanhando. Se tiver dúvidas, pode nos chamar aqui!
-
-André Lustosa Advogados`;
-
 export default function AiSettingsPage() {
   // Config global
   const [apiKey, setApiKey] = useState('');
   const [adminKey, setAdminKey] = useState('');
   const [defaultModel, setDefaultModel] = useState('gpt-4o-mini');
-  const [djenModel, setDjenModel] = useState('gpt-4o-mini');
-  const [djenPrompt, setDjenPrompt] = useState(DEFAULT_DJEN_PROMPT);
-  const [djenPromptIsCustom, setDjenPromptIsCustom] = useState(false);
-  const [showDjenPrompt, setShowDjenPrompt] = useState(false);
-  const [djenNotifyTemplate, setDjenNotifyTemplate] = useState(DEFAULT_DJEN_NOTIFY_TEMPLATE);
-  const [djenNotifyTemplateIsCustom, setDjenNotifyTemplateIsCustom] = useState(false);
-  const [showDjenNotifyTemplate, setShowDjenNotifyTemplate] = useState(false);
   const [adminBotEnabled, setAdminBotEnabled] = useState(true);
   const [cooldownSeconds, setCooldownSeconds] = useState(8);
   const [isConfigured, setIsConfigured] = useState(false);
@@ -218,11 +160,6 @@ export default function AiSettingsPage() {
       setIsAdminKeyConfigured(configRes.data.isAdminKeyConfigured ?? false);
       setIsAnthropicKeyConfigured(configRes.data.isAnthropicKeyConfigured ?? false);
       setDefaultModel(configRes.data.defaultModel || 'gpt-4o-mini');
-      setDjenModel(configRes.data.djenModel || 'gpt-4o-mini');
-      setDjenPrompt(configRes.data.djenPrompt || DEFAULT_DJEN_PROMPT);
-      setDjenPromptIsCustom(configRes.data.djenPromptIsCustom ?? false);
-      setDjenNotifyTemplate(configRes.data.djenNotifyTemplate || DEFAULT_DJEN_NOTIFY_TEMPLATE);
-      setDjenNotifyTemplateIsCustom(configRes.data.djenNotifyTemplateIsCustom ?? false);
       setAdminBotEnabled(configRes.data.adminBotEnabled ?? true);
       setCooldownSeconds(configRes.data.cooldownSeconds ?? 8);
       setSkills(skillsRes.data);
@@ -242,11 +179,7 @@ export default function AiSettingsPage() {
   const handleSaveConfig = async () => {
     setSavingConfig(true);
     try {
-      // Se prompt/template é igual ao default do código, envia vazio para limpar o banco
-      // Isso garante que atualizações futuras do default no código sejam aplicadas automaticamente
-      const effectiveDjenPrompt = djenPrompt === DEFAULT_DJEN_PROMPT ? '' : djenPrompt;
-      const effectiveDjenNotifyTemplate = djenNotifyTemplate === DEFAULT_DJEN_NOTIFY_TEMPLATE ? '' : djenNotifyTemplate;
-      const payload: any = { defaultModel, djenModel, djenPrompt: effectiveDjenPrompt, djenNotifyTemplate: effectiveDjenNotifyTemplate, adminBotEnabled, cooldownSeconds };
+      const payload: any = { defaultModel, adminBotEnabled, cooldownSeconds };
       if (apiKey.trim())       payload.apiKey         = apiKey.trim();
       if (adminKey.trim())     payload.adminKey       = adminKey.trim();
       if (anthropicKey.trim()) payload.anthropicApiKey = anthropicKey.trim();
@@ -450,129 +383,6 @@ export default function AiSettingsPage() {
                   ))}
                 </select>
                 <p className="text-[11px] text-muted-foreground">Modelo usado quando a skill não define um modelo específico.</p>
-              </div>
-
-              {/* Modelo DJEN */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                  <span>⚖️</span> Modelo para análise DJEN
-                </label>
-                <select
-                  value={djenModel}
-                  onChange={(e) => setDjenModel(e.target.value)}
-                  className="w-full bg-muted/50 border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-primary/50 transition-all"
-                >
-                  <optgroup label="OpenAI">
-                    {[
-                      { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini — rápido, inteligente' },
-                      { value: 'gpt-4o-mini',  label: 'GPT-4o Mini — rápido, econômico' },
-                      { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini — balanceado' },
-                      { value: 'gpt-4.1',      label: 'GPT-4.1 — analítico avançado' },
-                      { value: 'gpt-4o',       label: 'GPT-4o — alta precisão' },
-                    ].map((m) => (
-                      <option key={m.value} value={m.value}>{m.label}</option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Anthropic (requer API Key Anthropic)">
-                    {[
-                      { value: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5 — rápido, econômico' },
-                      { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 — balanceado, preciso' },
-                      { value: 'claude-opus-4-6',   label: 'Claude Opus 4.6 — máxima capacidade' },
-                    ].map((m) => (
-                      <option key={m.value} value={m.value}>{m.label}</option>
-                    ))}
-                  </optgroup>
-                </select>
-                <p className="text-[11px] text-muted-foreground">
-                  Modelo usado pelo botão <strong>Analisar IA</strong> na página de publicações DJEN.
-                  Modelos Anthropic exigem a API Key Anthropic configurada abaixo.
-                </p>
-              </div>
-
-              {/* Prompt DJEN */}
-              <div className="space-y-1.5">
-                <button
-                  type="button"
-                  onClick={() => setShowDjenPrompt((v) => !v)}
-                  className="flex items-center gap-2 text-xs font-bold text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors w-full text-left"
-                >
-                  <span>⚖️</span> Prompt de análise DJEN
-                  <span className="ml-auto text-[10px] font-normal text-primary">
-                    {showDjenPrompt ? '▲ fechar' : '▼ editar'}
-                  </span>
-                </button>
-                {showDjenPrompt && (
-                  <div className="space-y-1.5">
-                    <textarea
-                      value={djenPrompt}
-                      onChange={(e) => setDjenPrompt(e.target.value)}
-                      rows={20}
-                      className="w-full bg-muted/50 border border-border rounded-xl px-3 py-2.5 text-xs font-mono outline-none focus:border-primary/50 transition-all resize-y"
-                    />
-                    <p className="text-[11px] text-muted-foreground">
-                      Prompt do sistema enviado à IA ao analisar publicações DJEN. Deixe vazio para usar o prompt padrão.<br />
-                      <strong>Atenção:</strong> o retorno deve ser sempre um JSON com os campos obrigatórios (resumo, urgencia, event_type, data_audiencia, data_prazo, etc.).
-                    </p>
-                    {djenPromptIsCustom && (
-                      <button
-                        type="button"
-                        onClick={() => { setDjenPrompt(DEFAULT_DJEN_PROMPT); setDjenPromptIsCustom(false); }}
-                        className="text-[11px] text-destructive hover:underline"
-                      >
-                        Restaurar prompt padrão do sistema
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Template de notificação ao cliente (DJEN) */}
-              <div className="space-y-1.5">
-                <button
-                  type="button"
-                  onClick={() => setShowDjenNotifyTemplate((v) => !v)}
-                  className="flex items-center gap-2 text-xs font-bold text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors w-full text-left"
-                >
-                  <span>📱</span> Template de notificação ao cliente (DJEN)
-                  <span className="ml-auto text-[10px] font-normal text-primary">
-                    {showDjenNotifyTemplate ? '▲ fechar' : '▼ editar'}
-                  </span>
-                </button>
-                {showDjenNotifyTemplate && (
-                  <div className="space-y-1.5">
-                    <textarea
-                      value={djenNotifyTemplate}
-                      onChange={(e) => setDjenNotifyTemplate(e.target.value)}
-                      rows={18}
-                      className="w-full bg-muted/50 border border-border rounded-xl px-3 py-2.5 text-xs font-mono outline-none focus:border-primary/50 transition-all resize-y"
-                    />
-                    <p className="text-[11px] text-muted-foreground">
-                      Mensagem enviada via WhatsApp ao cliente quando uma publicação DJEN é vinculada ao processo dele.<br />
-                      Linhas com variáveis vazias são removidas automaticamente.<br />
-                      <strong>Variáveis:</strong>{' '}
-                      <code className="text-[10px] bg-muted px-1 rounded">{'{{nome}}'}</code>{' '}
-                      <code className="text-[10px] bg-muted px-1 rounded">{'{{processo}}'}</code>{' '}
-                      <code className="text-[10px] bg-muted px-1 rounded">{'{{tipo}}'}</code>{' '}
-                      <code className="text-[10px] bg-muted px-1 rounded">{'{{data}}'}</code>{' '}
-                      <code className="text-[10px] bg-muted px-1 rounded">{'{{assunto}}'}</code>{' '}
-                      <code className="text-[10px] bg-muted px-1 rounded">{'{{resumo}}'}</code>{' '}
-                      <code className="text-[10px] bg-muted px-1 rounded">{'{{fase_processo}}'}</code>{' '}
-                      <code className="text-[10px] bg-muted px-1 rounded">{'{{prazo}}'}</code>{' '}
-                      <code className="text-[10px] bg-muted px-1 rounded">{'{{local_evento}}'}</code>{' '}
-                      <code className="text-[10px] bg-muted px-1 rounded">{'{{proximo_passo}}'}</code>{' '}
-                      <code className="text-[10px] bg-muted px-1 rounded">{'{{orientacao}}'}</code>
-                    </p>
-                    {djenNotifyTemplateIsCustom && (
-                      <button
-                        type="button"
-                        onClick={() => { setDjenNotifyTemplate(DEFAULT_DJEN_NOTIFY_TEMPLATE); setDjenNotifyTemplateIsCustom(false); }}
-                        className="text-[11px] text-destructive hover:underline"
-                      >
-                        Restaurar template padrão
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
 
               {/* Admin Command Bot */}

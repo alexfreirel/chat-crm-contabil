@@ -33,7 +33,6 @@ model Tenant {
   payment_gateway_charges PaymentGatewayCharge[]
   notas_fiscais      NotaFiscal[]
   tax_records        TaxRecord[]
-  djen_ignored       DjenIgnoredProcess[]
 }
 
 model User {
@@ -719,17 +718,6 @@ model TemplateContabil {
 
   @@index([tenant_id])
   @@index([tipo])
-}
-
-model DjenIgnoredProcess {
-  id              String   @id @default(uuid())
-  numero_processo String   @unique
-  tenant_id       String?
-  reason          String?
-  created_at      DateTime @default(now())
-  tenant          Tenant?  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-
-  @@index([tenant_id])
 }
 
 // ===============================================

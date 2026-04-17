@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   LogOut, Users, Briefcase, Settings, Palette, Check,
-  MessageSquare, BarChart2, Calendar, Gavel,
+  MessageSquare, BarChart2, Calendar,
   LayoutDashboard, Wallet, HelpCircle,
   ChevronRight, Plus, UserPlus, CheckSquare,
   CalendarPlus, ClipboardList, Sparkles,
@@ -48,7 +48,7 @@ export function Sidebar() {
   const [dbStatus, setDbStatus] = useState<'online' | 'offline' | 'checking'>('checking');
   const [unreadTotal, setUnreadTotal] = useState<number>(0);
   const [overdueCount, setOverdueCount] = useState<number>(0);
-  const [djenUnread, setDjenUnread] = useState<number>(0);
+
   const [mounted, setMounted] = useState(false);
 
   // Fixed-position tooltip state
@@ -147,29 +147,6 @@ export function Sidebar() {
     return () => window.removeEventListener('unread_count_update', handler);
   }, []);
 
-  // DJEN unread badge (a cada 5 min)
-  useEffect(() => {
-    const fetchDjenUnread = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-        const res = await fetch(`${API_BASE_URL}/djen/all?viewed=false&archived=false&limit=1`, {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-        if (!res.ok) return;
-        const data = await res.json();
-        setDjenUnread(data?.unreadCount ?? 0);
-      } catch { /* silencioso */ }
-    };
-    fetchDjenUnread();
-    const interval = setInterval(fetchDjenUnread, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
-
   // Overdue tasks badge (a cada 5 min)
   useEffect(() => {
     const fetchOverdue = async () => {
@@ -265,14 +242,6 @@ export function Sidebar() {
       match: (p) => p.startsWith('/atendimento/estagiario'),
       badge: internBadge,
       show: perms.isEstagiario,
-    },
-    djen: {
-      label: 'DJEN — Publicações',
-      href: '/atendimento/djen',
-      icon: <Gavel size={20} strokeWidth={2} />,
-      match: (p) => p.startsWith('/atendimento/djen'),
-      badge: djenUnread,
-      show: false,
     },
     followup: {
       label: 'Follow-up IA',

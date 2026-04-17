@@ -153,8 +153,6 @@ export class SettingsService {
     const adminKey = await this.get('OPENAI_ADMIN_KEY');
     const anthropicKey = await this.get('ANTHROPIC_API_KEY');
     const defaultModel = (await this.get('OPENAI_DEFAULT_MODEL')) || 'gpt-4o-mini';
-    const djenModel = (await this.get('DJEN_AI_MODEL')) || 'gpt-4o-mini';
-    const djenPrompt = await this.get('DJEN_SYSTEM_PROMPT');
     const adminBotEnabledRaw = await this.get('ADMIN_BOT_ENABLED');
     const adminBotEnabled = adminBotEnabledRaw !== 'false';
     const cooldownRaw = await this.get('AI_COOLDOWN_SECONDS');
@@ -165,8 +163,6 @@ export class SettingsService {
       isAdminKeyConfigured: !!adminKey,
       isAnthropicKeyConfigured: !!(anthropicKey || process.env.ANTHROPIC_API_KEY),
       defaultModel,
-      djenModel,
-      djenPrompt: djenPrompt || null,
       adminBotEnabled,
       cooldownSeconds: isNaN(cooldownSeconds) ? 8 : cooldownSeconds,
     };
@@ -190,30 +186,6 @@ export class SettingsService {
 
   async setDefaultModel(model: string): Promise<void> {
     await this.set('OPENAI_DEFAULT_MODEL', model);
-  }
-
-  async getDjenModel(): Promise<string> {
-    return (await this.get('DJEN_AI_MODEL')) || 'gpt-4o-mini';
-  }
-
-  async setDjenModel(model: string): Promise<void> {
-    await this.set('DJEN_AI_MODEL', model);
-  }
-
-  async getDjenPrompt(): Promise<string | null> {
-    return this.get('DJEN_SYSTEM_PROMPT');
-  }
-
-  async setDjenPrompt(prompt: string): Promise<void> {
-    await this.set('DJEN_SYSTEM_PROMPT', prompt);
-  }
-
-  async getDjenNotifyTemplate(): Promise<string | null> {
-    return this.get('DJEN_CLIENT_NOTIFY_TEMPLATE');
-  }
-
-  async setDjenNotifyTemplate(template: string): Promise<void> {
-    await this.set('DJEN_CLIENT_NOTIFY_TEMPLATE', template);
   }
 
   async getAdminBotEnabled(): Promise<boolean> {
