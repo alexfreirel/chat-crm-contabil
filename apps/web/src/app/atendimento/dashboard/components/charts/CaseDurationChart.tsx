@@ -3,7 +3,6 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Scale } from 'lucide-react';
 import { WidgetCard } from '../WidgetCard';
-import { TRACKING_STAGES } from '@/lib/legalStages';
 import type { CaseDurationData } from '../../types';
 
 interface Props {
@@ -12,7 +11,6 @@ interface Props {
 }
 
 const STAGE_MAP: Record<string, { label: string; color: string }> = {};
-TRACKING_STAGES.forEach((s) => { STAGE_MAP[s.id] = { label: s.label, color: s.color }; });
 
 const CustomTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null;

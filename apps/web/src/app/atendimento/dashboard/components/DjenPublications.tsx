@@ -3,7 +3,14 @@
 import { useRouter } from 'next/navigation';
 import { Bell, Gavel, ChevronRight } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
-import type { DjenItem } from '../types';
+interface DjenItem {
+  id: string;
+  numero_processo: string;
+  tipo_comunicacao: string | null;
+  data_disponibilizacao: string;
+  lead_name: string | null;
+  legal_case_id: string | null;
+}
 
 interface Props {
   items: DjenItem[];

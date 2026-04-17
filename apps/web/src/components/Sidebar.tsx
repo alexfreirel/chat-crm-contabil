@@ -272,7 +272,7 @@ export function Sidebar() {
       icon: <Gavel size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/djen'),
       badge: djenUnread,
-      show: perms.canViewDjen,
+      show: false,
     },
     followup: {
       label: 'Follow-up IA',
