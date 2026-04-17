@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   LogOut, Users, Briefcase, Settings, Palette, Check,
-  MessageSquare, BarChart2, Calendar,
+  MessageSquare, BarChart2, Calendar, Gavel,
   LayoutDashboard, Wallet, HelpCircle,
   ChevronRight, Plus, UserPlus, CheckSquare,
   CalendarPlus, ClipboardList, Sparkles,
