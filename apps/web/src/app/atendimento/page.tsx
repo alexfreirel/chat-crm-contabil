@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, UserCheck, PanelLeftOpen, CornerDownLeft, Inbox, Pencil, Search, ChevronDown, ClipboardList, ArrowLeft, MoreVertical, Clock, StickyNote } from 'lucide-react';
-import FichaTrabalhista from '@/components/FichaTrabalhista';
+
 import { EventModal, type UserOption } from '@/components/EventModal';
 import { AudioRecorder } from '@/components/AudioRecorder';
 import { useRole } from '@/lib/useRole';
@@ -30,7 +30,7 @@ import { MessageBubble } from './components/MessageBubble';
 import { TransferModals } from './components/TransferModals';
 import { CommandPalette } from './components/CommandPalette';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
-import ContratoTrabalhistaModal from '@/components/modals/ContratoTrabalhistaModal';
+
 import { InboxSidebar } from './components/InboxSidebar';
 import { ChatHeader } from './components/ChatHeader';
 import { NotesPanel } from './components/NotesPanel';
@@ -138,8 +138,7 @@ export default function Dashboard() {
   const [docPreview, setDocPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const [transcribing, setTranscribing] = useState<Record<string, boolean>>({});
   const [aiMode, setAiMode] = useState(false);
-  const [fichaInboxVisible, setFichaInboxVisible] = useState(false);
-  const [fichaFinalizada, setFichaFinalizada] = useState(false);
+
   const [uploadingFile, setUploadingFile] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<{ file: File; preview: string | null }[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -192,7 +191,7 @@ export default function Dashboard() {
   const [showNotifBanner, setShowNotifBanner] = useState(false);
   const [showDetailsPanel, setShowDetailsPanel] = useState(false);
   const [clientPanelLeadId, setClientPanelLeadId] = useState<string | null>(null);
-  const [showContratoModal, setShowContratoModal] = useState(false);
+
   // Modal de motivo de perda (PERDIDO) — exigido pelo backend
   const [lossModal, setLossModal] = useState<{ leadId: string; leadName: string } | null>(null);
   const [lossReason, setLossReason] = useState('');
@@ -960,16 +959,6 @@ export default function Dashboard() {
     }
   }, [selectedId]);
 
-  // Buscar status da ficha trabalhista ao selecionar conversa com área Trabalhista
-  useEffect(() => {
-    setFichaFinalizada(false);
-    const conv = conversations.find(c => c.id === selectedId);
-    if (!conv?.leadId || !conv?.legalArea?.toLowerCase().includes('trabalhist')) return;
-    api.get(`/ficha-trabalhista/${conv.leadId}`, { _silent401: true } as any)
-      .then(r => setFichaFinalizada(r.data?.finalizado === true))
-      .catch(() => {});
-  }, [selectedId, conversations]);
-
   // Polling de transferências pendentes: fallback quando o evento socket direto é perdido
   // silent=true: nunca causa logout — se o token expirar, só o load inicial ou ação do usuário redireciona
   useEffect(() => {
@@ -1306,7 +1295,7 @@ export default function Dashboard() {
       requestAnimationFrame(() => inputRef.current?.focus());
       return;
     }
-    if (cmdId === 'contrato_trabalhista') setShowContratoModal(true);
+
   };
   // ──────────────────────────────────────────────────────────────────────────
 
@@ -2272,7 +2261,7 @@ export default function Dashboard() {
               isClosed={!!isClosed}
               aiMode={aiMode}
               leadStage={leadStage}
-              fichaFinalizada={fichaFinalizada}
+
               allSpecialists={allSpecialists}
               currentUserId={currentUserId}
               showLegalAreaDropdown={showLegalAreaDropdown}
@@ -2295,7 +2284,7 @@ export default function Dashboard() {
               onToggleStage={() => setShowStageDropdown(v => !v)}
               onChangeStage={handleChangeLeadStage}
               onSendFormLink={handleSendFormLink}
-              onShowFicha={() => setFichaInboxVisible(true)}
+
               onShowDetails={() => setShowDetailsPanel(true)}
               onSetClientPanelLeadId={setClientPanelLeadId}
               onLightbox={setLightbox}
@@ -2575,17 +2564,6 @@ export default function Dashboard() {
                   </span>
                 </button>
 
-                {/* Ficha — só trabalhista */}
-                {selected.legalArea?.toLowerCase().includes('trabalhist') && (
-                  <button
-                    onClick={() => setFichaInboxVisible(true)}
-                    className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg active:bg-accent transition-colors min-w-[56px]"
-                  >
-                    <ClipboardList size={20} className="text-violet-400" />
-                    <span className="text-[10px] font-medium text-violet-400">Ficha</span>
-                  </button>
-                )}
-
                 {/* Aceitar — só WAITING */}
                 {selected.status === 'WAITING' && (
                   <button
@@ -2807,46 +2785,6 @@ export default function Dashboard() {
                       ))}
                     </div>
                   </section>
-
-                  {/* Ficha Trabalhista */}
-                  {selected?.legalArea?.toLowerCase().includes('trabalhist') && (
-                    <section>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
-                        Ficha Trabalhista
-                        {fichaFinalizada && (
-                          <span className="ml-2 px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[9px]">✅ Finalizada</span>
-                        )}
-                      </p>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setFichaInboxVisible(true)}
-                          className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 text-sm font-semibold active:bg-violet-500/20 transition-colors"
-                        >
-                          <Eye size={17} />
-                          Ver Ficha
-                        </button>
-                        {!isClosed && (
-                          <button
-                            onClick={handleSendFormLink}
-                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm font-semibold active:bg-amber-500/20 transition-colors"
-                          >
-                            <ClipboardList size={17} />
-                            Enviar Form.
-                          </button>
-                        )}
-                        {!isClosed && (
-                          <button
-                            onClick={() => setShowContratoModal(true)}
-                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm font-semibold active:bg-emerald-500/20 transition-colors"
-                            title="Gerar e enviar contrato trabalhista via WhatsApp (/contrato_trabalhista)"
-                          >
-                            <FileText size={17} />
-                            Contrato
-                          </button>
-                        )}
-                      </div>
-                    </section>
-                  )}
 
                   {/* Aceitar */}
                   {selected.status === 'WAITING' && isRealConvo && (
@@ -3389,13 +3327,6 @@ export default function Dashboard() {
         document.body
       )}
 
-      {/* Modal Contrato Trabalhista */}
-      <ContratoTrabalhistaModal
-        open={showContratoModal}
-        conversationId={selectedId}
-        onClose={() => setShowContratoModal(false)}
-      />
-
       {/* Modal Motivo de Perda — portal para garantir z-index acima de tudo */}
       {lossModal && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm dark">
@@ -3524,39 +3455,6 @@ export default function Dashboard() {
           </div>
         </div>,
         document.body
-      )}
-
-      {/* Ficha Trabalhista Slide-over */}
-      {fichaInboxVisible && selected?.leadId && (
-        <div className="fixed inset-0 z-[100] flex justify-end">
-          <div
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={() => setFichaInboxVisible(false)}
-          />
-          <div className="relative w-full max-w-2xl h-full bg-background border-l border-border flex flex-col shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0 bg-card/80 backdrop-blur-sm">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
-                  <ClipboardList size={16} className="text-amber-500" />
-                </div>
-                <div>
-                  <h2 className="font-bold text-foreground text-sm">Ficha Trabalhista</h2>
-                  <p className="text-[11px] text-muted-foreground">{selected?.contactName}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setFichaInboxVisible(false)}
-                className="p-2 rounded-lg hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
-                aria-label="Fechar ficha trabalhista"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4">
-              <FichaTrabalhista leadId={selected.leadId} embedded onFinalize={() => { setFichaFinalizada(true); setFichaInboxVisible(false); }} />
-            </div>
-          </div>
-        </div>
       )}
 
       {/* Modal de Encerramento de Conversa */}

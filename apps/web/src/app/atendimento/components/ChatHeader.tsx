@@ -36,7 +36,6 @@ export interface ChatHeaderProps {
   isClosed: boolean;
   aiMode: boolean;
   leadStage: string | null;
-  fichaFinalizada: boolean;
   allSpecialists: { id: string; name: string; specialties: string[] }[];
   currentUserId: string | null;
   // Dropdowns
@@ -62,7 +61,6 @@ export interface ChatHeaderProps {
   onToggleStage: () => void;
   onChangeStage: (stage: string) => void;
   onSendFormLink: () => void;
-  onShowFicha: () => void;
   onShowDetails: () => void;
   onSetClientPanelLeadId: (id: string | null) => void;
   onLightbox: (url: string) => void;
@@ -86,7 +84,6 @@ export function ChatHeader({
   isClosed,
   aiMode,
   leadStage,
-  fichaFinalizada,
   allSpecialists,
   currentUserId,
   showLegalAreaDropdown,
@@ -108,7 +105,6 @@ export function ChatHeader({
   onToggleStage,
   onChangeStage,
   onSendFormLink,
-  onShowFicha,
   onShowDetails,
   onSetClientPanelLeadId,
   onLightbox,
@@ -281,11 +277,6 @@ export function ChatHeader({
                 </div>
               )}
             </div>
-            {fichaFinalizada && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/20">
-                ✅ Ficha Finalizada
-              </span>
-            )}
             {selected.legalArea && (
               <div className="relative" ref={lawyerDropdownRef}>
                 <button
@@ -346,37 +337,10 @@ export function ChatHeader({
                 ⚖️ {selected.legalArea}
               </span>
             )}
-            {fichaFinalizada && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[9px] font-bold border border-emerald-500/20">
-                ✅
-              </span>
-            )}
           </div>
         )}
         {/* Linha de botões de ação — desktop only */}
         <div className="hidden md:flex gap-2 items-center flex-wrap justify-end">
-          {selected?.legalArea?.toLowerCase().includes('trabalhist') && (
-            <>
-              {!isClosed && (
-                <button
-                  onClick={onSendFormLink}
-                  title="Enviar link do formulário trabalhista ao lead"
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-bold border border-amber-500/20 hover:bg-amber-500/25 transition-colors"
-                >
-                  <ClipboardList size={10} />
-                  Enviar Formulário
-                </button>
-              )}
-              <button
-                onClick={onShowFicha}
-                title="Visualizar ficha trabalhista"
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-400 text-[10px] font-bold border border-violet-500/20 hover:bg-violet-500/25 transition-colors"
-              >
-                <Eye size={10} />
-                Visualizar Ficha
-              </button>
-            </>
-          )}
           {isRealConvo && (
             <button
               onClick={onToggleAiMode}

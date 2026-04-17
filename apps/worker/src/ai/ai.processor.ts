@@ -524,112 +524,6 @@ export class AiProcessor extends WorkerHost {
       });
     }
 
-    // f. form_data → Auto-preencher FichaTrabalhista (área Trabalhista)
-    if (updates.form_data && typeof updates.form_data === 'object') {
-      const formFields = updates.form_data;
-      // Filtrar campos null/undefined
-      const cleanFields: Record<string, any> = {};
-      for (const [key, value] of Object.entries(formFields)) {
-        if (value !== null && value !== undefined && value !== 'null') {
-          cleanFields[key] = value;
-        }
-      }
-      if (Object.keys(cleanFields).length > 0) {
-        try {
-          const ficha = await (this.prisma as any).fichaTrabalhista.upsert({
-            where: { lead_id: leadId },
-            update: {},
-            create: { lead_id: leadId, data: {} },
-          });
-          const oldData = (ficha.data as Record<string, any>) || {};
-          const merged = { ...oldData, ...cleanFields };
-          const totalFields = 72;
-          const filled = Object.values(merged).filter(
-            (v) => v !== null && v !== undefined && v !== '',
-          ).length;
-          const pct = Math.min(100, Math.round((filled / totalFields) * 100));
-
-          await (this.prisma as any).fichaTrabalhista.update({
-            where: { lead_id: leadId },
-            data: {
-              data: merged,
-              nome_completo: cleanFields.nome_completo ?? ficha.nome_completo,
-              nome_empregador: cleanFields.nome_empregador ?? ficha.nome_empregador,
-              completion_pct: pct,
-              filled_by: 'ai',
-            },
-          });
-          this.logger.log(
-            `[AI] Ficha trabalhista atualizada: ${Object.keys(cleanFields).length} campo(s), ${pct}%`,
-          );
-        } catch (e: any) {
-          this.logger.warn(`[AI] Falha ao atualizar ficha trabalhista: ${e.message}`);
-        }
-      }
-    }
-
-    // g. Se next_step = "formulario" e área = Trabalhista, preencher ficha com memória
-    if (updates.next_step === 'formulario') {
-      try {
-        const conv = await (this.prisma as any).conversation.findUnique({
-          where: { id: convoId },
-          select: { legal_area: true },
-        });
-        if (conv?.legal_area?.toLowerCase().includes('trabalhist')) {
-          const memory = await this.prisma.aiMemory.findUnique({
-            where: { lead_id: leadId },
-          });
-          if (memory?.facts_json) {
-            const facts = memory.facts_json as any;
-            const mappedData: Record<string, string> = {};
-            if (facts.lead?.full_name) mappedData.nome_completo = facts.lead.full_name;
-            if (facts.lead?.cpf) mappedData.cpf = facts.lead.cpf;
-            if (facts.lead?.city) mappedData.cidade = facts.lead.city;
-            if (facts.lead?.state) mappedData.estado_uf = facts.lead.state;
-            if (facts.lead?.phones?.[0]) mappedData.telefone = facts.lead.phones[0];
-            if (facts.lead?.emails?.[0]) mappedData.email = facts.lead.emails[0];
-            if (facts.lead?.mother_name) mappedData.nome_mae = facts.lead.mother_name;
-            if (facts.parties?.counterparty_name) mappedData.nome_empregador = facts.parties.counterparty_name;
-            if (facts.parties?.counterparty_id) mappedData.cnpjcpf_empregador = facts.parties.counterparty_id;
-            if (facts.facts?.current?.employment_status) mappedData.situacao_atual = facts.facts.current.employment_status;
-            if (facts.facts?.current?.main_issue) mappedData.motivos_reclamacao = facts.facts.current.main_issue;
-            const kv = facts.facts?.current?.key_values || {};
-            if (kv.salario) mappedData.salario = String(kv.salario);
-            const kd = facts.facts?.current?.key_dates || {};
-            if (kd.admissao) mappedData.data_admissao = kd.admissao;
-            if (kd.demissao || kd.saida) mappedData.data_saida = kd.demissao || kd.saida;
-
-            if (Object.keys(mappedData).length > 0) {
-              const ficha = await (this.prisma as any).fichaTrabalhista.upsert({
-                where: { lead_id: leadId },
-                update: {},
-                create: { lead_id: leadId, data: {} },
-              });
-              const merged = { ...(ficha.data as Record<string, any>), ...mappedData };
-              const totalFields = 72;
-              const filled = Object.values(merged).filter((v) => v != null && v !== '').length;
-              const pct = Math.min(100, Math.round((filled / totalFields) * 100));
-
-              await (this.prisma as any).fichaTrabalhista.update({
-                where: { lead_id: leadId },
-                data: {
-                  data: merged,
-                  nome_completo: mappedData.nome_completo ?? ficha.nome_completo,
-                  nome_empregador: mappedData.nome_empregador ?? ficha.nome_empregador,
-                  completion_pct: pct,
-                  filled_by: 'ai',
-                },
-              });
-              this.logger.log(
-                `[AI] Ficha trabalhista preenchida da memória: ${Object.keys(mappedData).length} campo(s)`,
-              );
-            }
-          }
-        }
-      } catch (e: any) {
-        this.logger.warn(`[AI] Falha ao preencher ficha da memória: ${e.message}`);
-      }
-    }
   }
 
   // ─── Cria CalendarEvent diretamente + enfileira lembretes ───
@@ -1163,34 +1057,6 @@ export class AiProcessor extends WorkerHost {
       let maxTokens: number;
       let temperature: number;
 
-      // 10b. Buscar status da ficha trabalhista (se área trabalhista)
-      let fichaStatus = '';
-      if (legalArea?.toLowerCase().includes('trabalhist')) {
-        try {
-          const ficha = await (this.prisma as any).fichaTrabalhista.findUnique({
-            where: { lead_id: convo.lead_id },
-          });
-          if (ficha?.data) {
-            const data = ficha.data as Record<string, any>;
-            const requiredFields = [
-              'nome_completo', 'cpf', 'data_nascimento', 'nome_mae', 'estado_civil', 'profissao', 'telefone', 'email',
-              'cidade', 'estado_uf',
-              'nome_empregador', 'funcao', 'data_admissao', 'situacao_atual', 'salario', 'ctps_assinada_corretamente', 'atividades_realizadas',
-              'horario_entrada', 'horario_saida', 'tempo_intervalo', 'dias_trabalhados', 'fazia_horas_extras',
-              'fgts_depositado', 'fgts_sacado', 'tem_ferias_pendentes', 'tem_decimo_terceiro_pendente',
-              'possui_testemunhas', 'possui_provas_documentais',
-            ];
-            const filled = requiredFields.filter(k => data[k] && data[k] !== '');
-            const missing = requiredFields.filter(k => !data[k] || data[k] === '');
-            fichaStatus = `CAMPOS JÁ PREENCHIDOS (${filled.length}/${requiredFields.length}): ${filled.join(', ')}\nCAMPOS FALTANDO (${missing.length}): ${missing.join(', ')}\nProgresso: ${ficha.completion_pct || 0}%`;
-          } else {
-            fichaStatus = 'FICHA AINDA NÃO INICIADA — nenhum campo preenchido. Comece coletando os dados.';
-          }
-        } catch {
-          fichaStatus = 'FICHA AINDA NÃO INICIADA — nenhum campo preenchido. Comece coletando os dados.';
-        }
-      }
-
       const siteUrl = process.env.APP_URL || 'https://andrelustosaadvogados.com.br';
 
       // 10c. Buscar horários disponíveis do advogado atribuído (para agendamento)
@@ -1261,13 +1127,11 @@ export class AiProcessor extends WorkerHost {
         history_summary: historyText.slice(0, 2000),
         // URL base do site — use no prompt: "{{site_url}}/geral/arapiraca"
         site_url: siteUrl,
-        form_url: `${siteUrl}/formulario/trabalhista/${convo.lead_id || convo.lead?.id || ''}`,
         data_hoje: new Date().toLocaleString('pt-BR', {
           timeZone: 'America/Maceio',
           day: '2-digit', month: '2-digit', year: 'numeric',
           hour: '2-digit', minute: '2-digit',
         }),
-        ficha_status: fichaStatus,
         available_slots: availableSlots,
         reminder_context: reminderContextBlock,
       };
