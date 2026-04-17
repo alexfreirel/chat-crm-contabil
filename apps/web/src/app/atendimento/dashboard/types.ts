@@ -177,10 +177,6 @@ export interface AdvogadoKPIs {
   deadlinesCompleted: number;
   deadlinesMissed: number;
   deadlineCompletionRate: number; // 0-100
-  petitionsDrafted: number;
-  petitionsApproved: number;
-  petitionsProtocoled: number;
-  petitionApprovalRate: number; // 0-100
   totalContracted: number;
   totalCollected: number;
   totalReceivable: number;
@@ -208,10 +204,6 @@ export interface EstagiarioKPIs {
   tasksOverdue: number;
   taskCompletionRate: number; // 0-100
   avgTaskCompletionDays: number;
-  petitionsDrafted: number;
-  petitionsInReview: number;
-  petitionsApproved: number;
-  petitionApprovalRate: number; // 0-100
   deadlinesManaged: number;
   deadlinesCompletedOnTime: number;
   documentsUploaded: number;

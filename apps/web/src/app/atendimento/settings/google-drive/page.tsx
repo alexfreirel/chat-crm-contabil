@@ -489,7 +489,7 @@ export default function GoogleDriveSettingsPage() {
             <div className="flex items-center gap-2 p-3 bg-amber-500/5 border border-amber-500/20 rounded-lg">
               <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
               <p className="text-xs text-amber-700 dark:text-amber-400">
-                Nenhum papel timbrado configurado. Petições são criadas em branco.
+                Nenhum papel timbrado configurado. Documentos são criados em branco.
               </p>
             </div>
           )}

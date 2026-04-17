@@ -341,7 +341,6 @@ O DJEN atualiza automaticamente o estágio quando detecta publicações relevant
         body: `Cada processo tem um workspace completo com abas:
 
 • Resumo — Dados do caso, partes, valores
-• Petições — Documentos gerados pela IA ou upload manual
 • Documentos — Arquivo de todos os documentos do caso
 • Prazos — Prazos processuais com alertas
 • Tarefas — Atividades pendentes do caso

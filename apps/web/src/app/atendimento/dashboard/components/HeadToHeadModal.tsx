@@ -90,7 +90,6 @@ export function HeadToHeadModal({ memberA, memberB, onClose }: Props) {
           <CompareRow label="Coletas" a={memberA.advogadoKPIs.totalCollected} b={memberB.advogadoKPIs.totalCollected} format="currency" />
           <CompareRow label="Tx Coleta" a={memberA.advogadoKPIs.collectionRate} b={memberB.advogadoKPIs.collectionRate} format="percent" />
           <CompareRow label="Prazos OK" a={memberA.advogadoKPIs.deadlineCompletionRate} b={memberB.advogadoKPIs.deadlineCompletionRate} format="percent" />
-          <CompareRow label="Peticoes" a={memberA.advogadoKPIs.petitionsProtocoled} b={memberB.advogadoKPIs.petitionsProtocoled} />
           <CompareRow label="Casos Ativos" a={memberA.advogadoKPIs.activeCases} b={memberB.advogadoKPIs.activeCases} />
         </>)}
 

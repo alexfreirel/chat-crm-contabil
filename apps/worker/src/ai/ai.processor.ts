@@ -1074,11 +1074,6 @@ export class AiProcessor extends WorkerHost {
           const entries = (factsJson.case_timeline as any[]).slice(-10);
           parts.push(`⚖️ Histórico do Processo:\n${entries.map((e: any) => `  - ${e.date}: ${e.from || 'início'} → ${e.to}${e.case_number ? ` (${e.case_number})` : ''}`).join('\n')}`);
         }
-        // Petições protocoladas/aprovadas
-        if (factsJson?.petitions?.length) {
-          const pItems = (factsJson.petitions as any[]).slice(-5);
-          parts.push(`📄 Petições: ${pItems.map((p: any) => `${p.type}(${p.status})${p.date ? ' em '+p.date : ''}`).join('; ')}`);
-        }
         // Publicações DJEN analisadas
         if (factsJson?.djen_publications?.length) {
           const dItems = (factsJson.djen_publications as any[]).slice(0, 5);
