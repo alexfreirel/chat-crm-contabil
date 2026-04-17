@@ -7,7 +7,7 @@ import { useTeamPerformance } from './hooks/useTeamPerformance';
 import { MotionWidget } from './components/MotionWidget';
 import {
   useRevenueTrend, useLeadFunnel, useTaskCompletion,
-  useCaseDuration, useFinancialAging, useAiUsage,
+  useFinancialAging, useAiUsage,
   useLeadSources, useResponseTime, useConversionVelocity,
 } from './hooks/useAnalyticsData';
 
@@ -17,11 +17,9 @@ import { StatsGrid } from './components/StatsGrid';
 import { InboxStats } from './components/InboxStats';
 import { FinancialStats } from './components/FinancialStats';
 import { LeadPipeline } from './components/LeadPipeline';
-import { LegalCasesPipeline } from './components/LegalCasesPipeline';
 import { TeamMetrics } from './components/TeamMetrics';
 import { TeamPerformanceBoard } from './components/TeamPerformanceBoard';
 import { UpcomingEvents } from './components/UpcomingEvents';
-import { DjenPublications } from './components/DjenPublications';
 import { QuickActions } from './components/QuickActions';
 import { TeamOnline } from './components/TeamOnline';
 import { OperatorPerformanceStrip } from './components/OperatorPerformanceStrip';
@@ -29,7 +27,6 @@ import { OperatorPerformanceStrip } from './components/OperatorPerformanceStrip'
 import { RevenueTrendChart } from './components/charts/RevenueTrendChart';
 import { LeadFunnelChart } from './components/charts/LeadFunnelChart';
 import { TaskCompletionChart } from './components/charts/TaskCompletionChart';
-import { CaseDurationChart } from './components/charts/CaseDurationChart';
 import { FinancialAgingChart } from './components/charts/FinancialAgingChart';
 import { AiUsageChart } from './components/charts/AiUsageChart';
 import { LeadSourcesChart } from './components/charts/LeadSourcesChart';
@@ -50,7 +47,6 @@ export default function DashboardPage() {
   const revenue = useRevenueTrend(12);
   const funnel = useLeadFunnel(period);
   const tasks = useTaskCompletion(period);
-  const caseDuration = useCaseDuration();
   const aging = useFinancialAging();
   const aiUsage = useAiUsage(6, isAdmin);
   const sources = useLeadSources(period);
@@ -68,8 +64,6 @@ export default function DashboardPage() {
   const showFunnel = isAdmin || isOperador;
   const showTasks = isAdmin || isAdvogado || isOperador || isEstagiario;
   const showPipeline = isAdmin || isOperador;
-  const showCases = isAdmin || isAdvogado || isEstagiario;
-  const showCaseDuration = isAdmin || isAdvogado;
   const showAging = isAdmin || isAdvogado || isFinanceiro;
   const showVelocity = isAdmin || isOperador;
   const showResponse = isAdmin || isOperador;
@@ -77,7 +71,6 @@ export default function DashboardPage() {
   const showAi = isAdmin;
   const showTeam = isAdmin;
   const showEvents = isAdmin || isAdvogado || isOperador || isEstagiario;
-  const showDjen = isAdmin || isAdvogado || isEstagiario;
 
   // Full-page loading
   if (loading && !data) {
@@ -201,20 +194,10 @@ export default function DashboardPage() {
           </MotionWidget>
         )}
 
-        {/* Row 10: Legal Cases Pipeline (2 columns) */}
-        {showCases && (
+        {/* Row 10: Financial Aging */}
+        {showAging && (
           <MotionWidget delay={0.3}>
-            <LegalCasesPipeline legalCases={data.legalCases} trackingCases={data.trackingCases} />
-          </MotionWidget>
-        )}
-
-        {/* Row 11: Case Duration + Financial Aging */}
-        {(showCaseDuration || showAging) && (
-          <MotionWidget delay={0.33}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {showCaseDuration && <CaseDurationChart data={caseDuration.data} loading={caseDuration.loading} />}
-              {showAging && <FinancialAgingChart data={aging.data} loading={aging.loading} />}
-            </div>
+            <FinancialAgingChart data={aging.data} loading={aging.loading} />
           </MotionWidget>
         )}
 
@@ -232,13 +215,12 @@ export default function DashboardPage() {
           </MotionWidget>
         )}
 
-        {/* Row 14: Events + DJEN (2 columns) */}
-        <MotionWidget delay={0.42}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {showEvents && <UpcomingEvents events={data.upcomingEvents} />}
-            {showDjen && <DjenPublications items={data.recentDjen} />}
-          </div>
-        </MotionWidget>
+        {/* Row 14: Events */}
+        {showEvents && (
+          <MotionWidget delay={0.42}>
+            <UpcomingEvents events={data.upcomingEvents} />
+          </MotionWidget>
+        )}
 
         {/* Row 15: Quick Actions */}
         <MotionWidget delay={0.45}>

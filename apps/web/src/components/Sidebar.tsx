@@ -5,10 +5,10 @@ import { createPortal } from 'react-dom';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   LogOut, Users, Briefcase, Settings, Palette, Check,
-  MessageSquare, BarChart2, Scale, BookOpen, Calendar,
-  LayoutDashboard, Gavel, Wallet, HelpCircle,
+  MessageSquare, BarChart2, Calendar,
+  LayoutDashboard, Wallet, HelpCircle,
   ChevronRight, Plus, UserPlus, CheckSquare,
-  CalendarPlus, FolderPlus, ClipboardList, Sparkles,
+  CalendarPlus, ClipboardList, Sparkles,
   FileSpreadsheet,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
@@ -266,20 +266,6 @@ export function Sidebar() {
       badge: internBadge,
       show: perms.isEstagiario,
     },
-    advogado: {
-      label: 'Triagem & Petições',
-      href: '/atendimento/advogado',
-      icon: <Scale size={20} strokeWidth={2} />,
-      match: (p) => p.startsWith('/atendimento/advogado'),
-      show: perms.canViewAdvogado,
-    },
-    processos: {
-      label: 'Processos',
-      href: '/atendimento/processos',
-      icon: <BookOpen size={20} strokeWidth={2} />,
-      match: (p) => p.startsWith('/atendimento/processos'),
-      show: perms.canViewLegalCases,
-    },
     djen: {
       label: 'DJEN — Publicações',
       href: '/atendimento/djen',
@@ -339,9 +325,9 @@ export function Sidebar() {
       items: [allItems.dashboard, allItems.inbox, allItems.crm, allItems.contacts, allItems.agenda, allItems.agenteFiscal].filter(i => i.show),
     },
     {
-      id: 'juridico',
-      label: 'Jurídico',
-      items: [allItems.estagiario, allItems.advogado].filter(i => i.show),
+      id: 'contabil',
+      label: 'Contábil',
+      items: [allItems.estagiario].filter(i => i.show),
     },
     {
       id: 'gestao',
@@ -361,7 +347,6 @@ export function Sidebar() {
     { label: 'Novo Contato', href: '/atendimento/contacts', icon: <UserPlus size={15} /> },
     { label: 'Nova Tarefa', href: '/atendimento/agenda', icon: <CheckSquare size={15} /> },
     { label: 'Novo Evento', href: '/atendimento/agenda', icon: <CalendarPlus size={15} /> },
-    ...(perms.canViewLegalCases ? [{ label: 'Novo Processo', href: '/atendimento/processos', icon: <FolderPlus size={15} /> }] : []),
   ];
 
   // ─── Tooltip helpers (somente quando recolhido) ───────────────────

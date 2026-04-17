@@ -34,26 +34,6 @@ export const LEAD_STAGE_LABELS: Record<LeadStage, string> = {
   PERDIDO: 'Perdido',
 };
 
-// ─── Legal Case Stage ───────────────────────────────────────────────────────
-export const LegalCaseStage = {
-  VIABILIDADE: 'VIABILIDADE',
-  DOCUMENTACAO: 'DOCUMENTACAO',
-  ELABORACAO: 'ELABORACAO',
-  REVISAO: 'REVISAO',
-  PROTOCOLADO: 'PROTOCOLADO',
-  ARQUIVADO: 'ARQUIVADO',
-} as const;
-export type LegalCaseStage = (typeof LegalCaseStage)[keyof typeof LegalCaseStage];
-
-export const LEGAL_CASE_STAGE_LABELS: Record<LegalCaseStage, string> = {
-  VIABILIDADE: 'Viabilidade',
-  DOCUMENTACAO: 'Documentação',
-  ELABORACAO: 'Elaboração',
-  REVISAO: 'Revisão',
-  PROTOCOLADO: 'Protocolado',
-  ARQUIVADO: 'Arquivado',
-};
-
 // ─── Task Status ────────────────────────────────────────────────────────────
 export const TaskStatus = {
   A_FAZER: 'A_FAZER',

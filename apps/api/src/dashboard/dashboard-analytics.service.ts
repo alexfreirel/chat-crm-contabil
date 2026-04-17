@@ -15,44 +15,36 @@ export class DashboardAnalyticsService {
   async revenueTrend(userId: string, roles: string | string[], tenantId?: string, months = 12) {
     const roleArr = Array.isArray(roles) ? roles : (roles ? [roles] : []);
     const isAdmin = roleArr.includes('ADMIN');
-    const tw = this.tenantWhere(tenantId);
     const since = new Date();
     since.setMonth(since.getMonth() - months);
 
-    const caseFilter = isAdmin
-      ? { legal_case: { ...tw } }
-      : { legal_case: { lawyer_id: userId, ...tw } };
-
-    // Contracted: group CaseHonorario by month of contract_date
-    const lawyerClause = isAdmin ? '' : `AND lc.lawyer_id = '${userId}'`;
+    // Contracted: HonorarioContabil agrupados por mês de criação
+    const accountantClause = isAdmin ? '' : `AND hc.accountant_id = '${userId}'`;
 
     const contracted = await this.prisma.$queryRawUnsafe<{ month: string; total: number }[]>(
-      `SELECT TO_CHAR(ch.contract_date, 'YYYY-MM') as month, SUM(ch.total_value)::float as total
-       FROM "CaseHonorario" ch
-       JOIN "LegalCase" lc ON lc.id = ch.legal_case_id
-       WHERE ch.contract_date >= $1 ${lawyerClause}
+      `SELECT TO_CHAR(hc.created_at, 'YYYY-MM') as month, SUM(hc.valor)::float as total
+       FROM "HonorarioContabil" hc
+       WHERE hc.created_at >= $1 AND hc.ativo = true ${accountantClause}
        GROUP BY month ORDER BY month`,
       since,
     ).catch(() => []);
 
-    // Collected: group HonorarioPayment (PAGO) by month of paid_at
+    // Collected: HonorarioParcela PAGO agrupadas por mês de paid_at
     const collected = await this.prisma.$queryRawUnsafe<{ month: string; total: number }[]>(
       `SELECT TO_CHAR(hp.paid_at, 'YYYY-MM') as month, SUM(hp.amount)::float as total
-       FROM "HonorarioPayment" hp
-       JOIN "CaseHonorario" ch ON ch.id = hp.honorario_id
-       JOIN "LegalCase" lc ON lc.id = ch.legal_case_id
-       WHERE hp.status = 'PAGO' AND hp.paid_at >= $1 ${lawyerClause}
+       FROM "HonorarioParcela" hp
+       JOIN "HonorarioContabil" hc ON hc.id = hp.honorario_id
+       WHERE hp.status = 'PAGO' AND hp.paid_at >= $1 ${accountantClause}
        GROUP BY month ORDER BY month`,
       since,
     ).catch(() => []);
 
-    // Receivable: group HonorarioPayment (PENDENTE) by month of due_date
+    // Receivable: HonorarioParcela PENDENTE agrupadas por mês de due_date
     const receivable = await this.prisma.$queryRawUnsafe<{ month: string; total: number }[]>(
       `SELECT TO_CHAR(hp.due_date, 'YYYY-MM') as month, SUM(hp.amount)::float as total
-       FROM "HonorarioPayment" hp
-       JOIN "CaseHonorario" ch ON ch.id = hp.honorario_id
-       JOIN "LegalCase" lc ON lc.id = ch.legal_case_id
-       WHERE hp.status = 'PENDENTE' AND hp.due_date >= $1 ${lawyerClause}
+       FROM "HonorarioParcela" hp
+       JOIN "HonorarioContabil" hc ON hc.id = hp.honorario_id
+       WHERE hp.status = 'PENDENTE' AND hp.due_date >= $1 ${accountantClause}
        GROUP BY month ORDER BY month`,
       since,
     ).catch(() => []);

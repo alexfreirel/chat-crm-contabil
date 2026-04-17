@@ -91,8 +91,7 @@ export function exportDashboardCSV(data: DashboardData, isAdmin: boolean) {
   rows.push(`Conversas Abertas,${data.conversations.open}`);
   rows.push(`Tarefas Pendentes,${data.tasks.pending + data.tasks.inProgress}`);
   rows.push(`Tarefas Atrasadas,${data.tasks.overdue}`);
-  rows.push(`Casos Ativos,${data.legalCases.total}`);
-  rows.push(`Processos,${data.trackingCases.total}`);
+  rows.push(`Clientes Contábeis Ativos,${data.clientesContabil.total}`);
   if (data.inboxStats) {
     rows.push(`Atendimentos Encerrados Hoje,${data.inboxStats.closedToday}`);
     rows.push(`Atendimentos Encerrados Esta Semana,${data.inboxStats.closedThisWeek}`);

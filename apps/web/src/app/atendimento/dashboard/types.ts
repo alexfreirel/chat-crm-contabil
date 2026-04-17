@@ -27,12 +27,21 @@ export interface TeamMember {
   totalReceivable: number;
 }
 
+export interface ObrigacaoFiscalItem {
+  id: string;
+  titulo: string;
+  tipo: string;
+  due_at: string;
+  lead_name: string | null;
+  cliente_contabil_id: string | null;
+}
+
 export interface DashboardData {
   user: { id: string; name: string; role: string };
   conversations: { open: number; pendingTransfers: number };
   leadPipeline: { stage: string; count: number }[];
-  legalCases: { total: number; byStage: { stage: string; count: number }[] };
-  trackingCases: { total: number; byStage: { stage: string; count: number }[] };
+  clientesContabil: { total: number; byStage: { stage: string; count: number }[] };
+  obrigacoesFiscais: ObrigacaoFiscalItem[];
   upcomingEvents: DashboardEvent[];
   tasks: { pending: number; inProgress: number; overdue: number };
   inboxStats?: { closedToday: number; closedThisWeek: number; closedThisMonth: number };
@@ -43,7 +52,6 @@ export interface DashboardData {
     totalOverdue: number;
     overdueCount: number;
   };
-  recentDjen: DjenItem[];
   teamMetrics: TeamMember[];
 }
 
@@ -56,16 +64,7 @@ export interface DashboardEvent {
   status: string;
   priority: string;
   lead_name: string | null;
-  legal_case_id: string | null;
-}
-
-export interface DjenItem {
-  id: string;
-  numero_processo: string;
-  tipo_comunicacao: string | null;
-  data_disponibilizacao: string;
-  lead_name: string | null;
-  legal_case_id: string | null;
+  cliente_contabil_id: string | null;
 }
 
 /* ─── Analytics endpoint types ─── */

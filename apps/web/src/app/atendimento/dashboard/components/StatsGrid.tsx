@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  MessageSquare, ListTodo, Scale, BookOpen, ArrowLeftRight,
+  MessageSquare, ListTodo, Building2, CalendarClock, ArrowLeftRight,
   Users, UserCheck, TrendingUp, Clock, Zap, AlertTriangle,
 } from 'lucide-react';
 import { Area, AreaChart, ResponsiveContainer } from 'recharts';
@@ -109,16 +109,16 @@ export function StatsGrid({ data, aggressive, funnel, responseTime, velocity }: 
           trendColor="#f59e0b"
         />
         <AggressiveCard
-          icon={Scale}
-          label="Casos Ativos"
-          value={data.legalCases.total}
+          icon={Building2}
+          label="Clientes Ativos"
+          value={data.clientesContabil.total}
           color="text-purple-500 bg-purple-500/10"
           trendColor="#8b5cf6"
         />
         <AggressiveCard
-          icon={BookOpen}
-          label="Processos"
-          value={data.trackingCases.total}
+          icon={CalendarClock}
+          label="Obrigações Pendentes"
+          value={data.obrigacoesFiscais.length}
           color="text-teal-500 bg-teal-500/10"
           trendColor="#14b8a6"
         />
