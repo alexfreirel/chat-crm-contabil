@@ -3,7 +3,7 @@ import { IsString, IsNotEmpty, IsIn } from 'class-validator';
 export class CreateChargeDto {
   @IsString()
   @IsNotEmpty()
-  honorarioPaymentId: string;
+  parcelaId: string;
 
   @IsString()
   @IsNotEmpty()

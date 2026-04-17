@@ -461,7 +461,7 @@ Para qual cliente contábil? (responda 1, 2, 3 ou "nenhum")`;
             type: 'object',
             properties: {
               lead_id: { type: 'string', description: 'ID do lead/cliente (buscar com search_leads primeiro)' },
-              honorario_payment_id: { type: 'string', description: 'ID da parcela do honorário (opcional — se não informado, cria cobrança avulsa)' },
+              parcela_id: { type: 'string', description: 'ID da parcela de honorário contábil (opcional — se não informado, cria cobrança avulsa)' },
               billing_type: { type: 'string', enum: ['PIX', 'BOLETO', 'CREDIT_CARD'], description: 'Tipo de cobrança' },
               amount: { type: 'number', description: 'Valor em reais (obrigatório se não vinculado a parcela)' },
               description: { type: 'string', description: 'Descrição da cobrança' },
@@ -678,10 +678,20 @@ Para qual cliente contábil? (responda 1, 2, 3 ou "nenhum")`;
 
         case 'list_overdue_payments': {
           const limit = Math.min(args.limit || 10, 20);
-          const overdue = await (this.prisma as any).honorarioPayment.findMany({
-            where: { status: { in: ['ATRASADO', 'PENDENTE'] }, due_date: { lt: new Date() } },
+          const overdue = await this.prisma.honorarioParcela.findMany({
+            where: {
+              status: { in: ['ATRASADO', 'PENDENTE'] },
+              due_date: { lt: new Date() },
+              ...(tenantId ? { honorario: { tenant_id: tenantId } } : {}),
+            },
             include: {
-              honorario: { include: { legal_case: { select: { case_number: true, lead: { select: { name: true, phone: true } } } } } },
+              honorario: {
+                include: {
+                  cliente: {
+                    select: { lead_id: true, lead: { select: { name: true, phone: true } } },
+                  },
+                },
+              },
             },
             orderBy: { due_date: 'asc' },
             take: limit,
@@ -690,9 +700,8 @@ Para qual cliente contábil? (responda 1, 2, 3 ou "nenhum")`;
             count: overdue.length,
             inadimplentes: overdue.map((p: any) => ({
               parcela_id: p.id,
-              cliente: (p as any).honorario?.legal_case?.lead?.name || 'Desconhecido',
-              telefone: (p as any).honorario?.legal_case?.lead?.phone || '',
-              processo: (p as any).honorario?.legal_case?.case_number || 'Sem número',
+              cliente: p.honorario?.cliente?.lead?.name || 'Desconhecido',
+              telefone: p.honorario?.cliente?.lead?.phone || '',
               valor: `R$ ${Number(p.amount).toFixed(2)}`,
               vencimento: p.due_date ? new Date(p.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'Sem vencimento',
               dias_atraso: p.due_date ? Math.ceil((Date.now() - new Date(p.due_date).getTime()) / 86400000) : 0,
@@ -701,8 +710,8 @@ Para qual cliente contábil? (responda 1, 2, 3 ou "nenhum")`;
         }
 
         case 'create_charge': {
-          if (args.honorario_payment_id) {
-            const charge = await this.paymentGatewayService.createCharge(args.honorario_payment_id, args.billing_type, tenantId || undefined);
+          if (args.parcela_id) {
+            const charge = await this.paymentGatewayService.createCharge(args.parcela_id, args.billing_type, tenantId || undefined);
             return {
               success: true,
               tipo: args.billing_type,
@@ -714,7 +723,7 @@ Para qual cliente contábil? (responda 1, 2, 3 ou "nenhum")`;
           }
           // Cobrança avulsa — ensure customer + create via Asaas
           await this.paymentGatewayService.ensureCustomer(args.lead_id, tenantId || undefined);
-          return { success: true, mensagem: 'Cliente sincronizado. Para gerar cobrança vinculada a parcela, use create_charge com honorario_payment_id.' };
+          return { success: true, mensagem: 'Cliente sincronizado. Para gerar cobrança vinculada a parcela, use create_charge com parcela_id.' };
         }
 
         case 'create_expense': {
@@ -764,32 +773,30 @@ Para qual cliente contábil? (responda 1, 2, 3 ou "nenhum")`;
           if (!leads.length) return { error: `Nenhum cliente encontrado com nome "${args.lead_name}"` };
 
           // Buscar parcelas pendentes do lead
-          const payments = await (this.prisma as any).honorarioPayment.findMany({
+          const parcelas = await this.prisma.honorarioParcela.findMany({
             where: {
               status: { in: ['PENDENTE', 'ATRASADO'] },
-              honorario: { legal_case: { lead_id: { in: leads.map(l => l.id) } } },
+              honorario: { cliente: { lead_id: { in: leads.map(l => l.id) } } },
               ...(args.amount ? { amount: args.amount } : {}),
             },
-            include: { honorario: { select: { legal_case: { select: { case_number: true } } } } },
             orderBy: { due_date: 'asc' },
             take: 1,
           });
-          if (!payments.length) return { error: `Nenhuma parcela pendente encontrada para "${args.lead_name}"${args.amount ? ` no valor de R$ ${args.amount}` : ''}` };
+          if (!parcelas.length) return { error: `Nenhuma parcela pendente encontrada para "${args.lead_name}"${args.amount ? ` no valor de R$ ${args.amount}` : ''}` };
 
-          const payment = payments[0];
-          await (this.prisma as any).honorarioPayment.update({
-            where: { id: payment.id },
+          const parcela = parcelas[0];
+          await this.prisma.honorarioParcela.update({
+            where: { id: parcela.id },
             data: { status: 'PAGO', paid_at: new Date(), payment_method: args.payment_method || null },
           });
           // Auto-criar transação financeira
-          try { await this.financeiroService.createFromHonorarioPayment(payment.id, tenantId || undefined); } catch {}
+          try { await this.financeiroService.createFromHonorarioParcela(parcela.id, tenantId || undefined); } catch {}
 
           return {
             success: true,
             pagamento: {
               cliente: leads[0].name,
-              valor: `R$ ${Number(payment.amount).toFixed(2)}`,
-              processo: (payment as any).honorario?.legal_case?.case_number || 'N/A',
+              valor: `R$ ${Number(parcela.amount).toFixed(2)}`,
               metodo: args.payment_method || 'Não informado',
             },
           };

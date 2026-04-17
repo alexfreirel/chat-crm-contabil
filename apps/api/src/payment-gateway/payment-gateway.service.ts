@@ -106,35 +106,31 @@ export class PaymentGatewayService {
   // ─── Charge creation ───────────────────────────────────
 
   async createCharge(
-    honorarioPaymentId: string,
+    parcelaId: string,
     billingType: 'PIX' | 'BOLETO' | 'CREDIT_CARD',
     tenantId?: string,
   ) {
-    // Verificar se ja existe cobranca para este pagamento
+    // Verificar se já existe cobrança para esta parcela (via idempotency_key)
     const existingCharge = await this.prisma.paymentGatewayCharge.findUnique({
-      where: { honorario_payment_id: honorarioPaymentId } as any,
+      where: { idempotency_key: `parcela_${parcelaId}` },
     });
     if (existingCharge) {
-      this.logger.warn(`[CHARGE] Ja existe cobranca para payment ${honorarioPaymentId}: ${existingCharge.external_id}`);
+      this.logger.warn(`[CHARGE] Já existe cobrança para parcela ${parcelaId}: ${existingCharge.external_id}`);
       return existingCharge;
     }
 
-    // Buscar pagamento com relacoes
-    const payment = await (this.prisma as any).honorarioPayment.findUnique({
-      where: { id: honorarioPaymentId },
+    // Buscar parcela com relações
+    const parcela = await this.prisma.honorarioParcela.findUnique({
+      where: { id: parcelaId },
       include: {
         honorario: {
           include: {
-            legal_case: {
+            cliente: {
               select: {
                 id: true,
-                case_number: true,
-                legal_area: true,
-                lead_id: true,
                 tenant_id: true,
-                lead: {
-                  select: { id: true, name: true, phone: true, email: true },
-                },
+                lead_id: true,
+                lead: { select: { id: true, name: true, phone: true, email: true } },
               },
             },
           },
@@ -142,37 +138,37 @@ export class PaymentGatewayService {
       },
     });
 
-    if (!payment) throw new NotFoundException('Pagamento de honorario nao encontrado');
+    if (!parcela) throw new NotFoundException('Parcela de honorário não encontrada');
 
-    const legalCase = (payment as any).honorario?.legal_case;
-    if (!legalCase?.lead_id) {
-      throw new BadRequestException('Caso juridico nao possui lead vinculado');
+    const cliente = parcela.honorario?.cliente;
+    if (!cliente?.lead_id) {
+      throw new BadRequestException('Cliente não possui lead vinculado');
     }
 
     // Garantir que o customer existe no Asaas
     const customer = await this.ensureCustomer(
-      legalCase.lead_id,
-      tenantId || legalCase.tenant_id,
+      cliente.lead_id,
+      tenantId || cliente.tenant_id || undefined,
     );
 
-    // Criar cobranca no Asaas
-    const dueDate = payment.due_date ? new Date(payment.due_date) : new Date();
-    const dueDateStr = dueDate.toISOString().slice(0, 10); // YYYY-MM-DD
+    // Criar cobrança no Asaas
+    const dueDate = parcela.due_date ? new Date(parcela.due_date) : new Date();
+    const dueDateStr = dueDate.toISOString().slice(0, 10);
 
     const asaasCharge = await this.asaas.createCharge({
       customer: customer.external_id,
       billingType,
-      value: Number(payment.amount),
+      value: Number(parcela.amount),
       dueDate: dueDateStr,
-      description: `Honorario - ${legalCase.case_number || 'Processo'} ${legalCase.legal_area ? `(${legalCase.legal_area})` : ''}`.trim(),
-      externalReference: honorarioPaymentId,
+      description: `Honorário - ${cliente.lead?.name || 'Cliente'}`.trim(),
+      externalReference: parcelaId,
     });
 
     this.logger.log(
-      `[CHARGE] Criada no Asaas: ${asaasCharge.id} | ${billingType} | R$ ${Number(payment.amount)} | Venc: ${dueDateStr}`,
+      `[CHARGE] Criada no Asaas: ${asaasCharge.id} | ${billingType} | R$ ${Number(parcela.amount)} | Venc: ${dueDateStr}`,
     );
 
-    // Buscar dados de PIX se aplicavel
+    // Buscar dados de PIX se aplicável
     let pixData: any = null;
     if (billingType === 'PIX' && asaasCharge.id) {
       try {
@@ -185,42 +181,29 @@ export class PaymentGatewayService {
     // Salvar localmente
     const charge = await this.prisma.paymentGatewayCharge.create({
       data: {
-        tenant_id: tenantId || legalCase.tenant_id,
-        honorario_payment_id: honorarioPaymentId,
+        tenant_id: tenantId || cliente.tenant_id,
+        idempotency_key: `parcela_${parcelaId}`,
         gateway: 'ASAAS',
         external_id: asaasCharge.id,
         customer_external_id: customer.external_id,
         billing_type: billingType,
-        amount: Number(payment.amount),
+        amount: Number(parcela.amount),
         due_date: dueDate,
         status: asaasCharge.status || 'PENDING',
         description: asaasCharge.description || null,
         pix_qr_code: pixData?.encodedImage || null,
         pix_copy_paste: pixData?.payload || null,
-        pix_expiration_date: pixData?.expirationDate
-          ? new Date(pixData.expirationDate)
-          : null,
+        pix_expiration_date: pixData?.expirationDate ? new Date(pixData.expirationDate) : null,
         boleto_url: asaasCharge.bankSlipUrl || null,
         boleto_barcode: asaasCharge.nossoNumero || null,
         invoice_url: asaasCharge.invoiceUrl || null,
-      } as any,
+      },
     });
 
     return {
       ...charge,
-      pix: pixData
-        ? {
-            qrCode: pixData.encodedImage,
-            copyPaste: pixData.payload,
-            expirationDate: pixData.expirationDate,
-          }
-        : null,
-      boleto: asaasCharge.bankSlipUrl
-        ? {
-            url: asaasCharge.bankSlipUrl,
-            barcode: asaasCharge.nossoNumero,
-          }
-        : null,
+      pix: pixData ? { qrCode: pixData.encodedImage, copyPaste: pixData.payload, expirationDate: pixData.expirationDate } : null,
+      boleto: asaasCharge.bankSlipUrl ? { url: asaasCharge.bankSlipUrl, barcode: asaasCharge.nossoNumero } : null,
     };
   }
 
@@ -231,11 +214,10 @@ export class PaymentGatewayService {
     billingType: string,
     tenantId?: string,
   ) {
-    const payments = await (this.prisma as any).honorarioPayment.findMany({
+    const payments = await this.prisma.honorarioParcela.findMany({
       where: {
         honorario_id: honorarioId,
         status: 'PENDENTE',
-        gateway_charge: null, // sem cobranca existente
       },
       orderBy: { due_date: 'asc' },
     });
@@ -272,9 +254,9 @@ export class PaymentGatewayService {
 
   // ─── Charge details ────────────────────────────────────
 
-  async getChargeDetails(honorarioPaymentId: string, tenantId?: string) {
+  async getChargeDetails(parcelaId: string, tenantId?: string) {
     const charge = await this.prisma.paymentGatewayCharge.findUnique({
-      where: { honorario_payment_id: honorarioPaymentId } as any,
+      where: { idempotency_key: `parcela_${parcelaId}` },
     });
 
     if (!charge) {
@@ -384,72 +366,27 @@ export class PaymentGatewayService {
       },
     });
 
-    const chargeAny = charge as any;
-    // Se pagamento RECEIVED ou CONFIRMED, marcar HonorarioPayment como PAGO
-    if (
-      (mappedStatus === 'RECEIVED' || mappedStatus === 'CONFIRMED') &&
-      chargeAny.honorario_payment_id
-    ) {
+    // Se pagamento RECEIVED ou CONFIRMED, marcar HonorarioParcela como PAGO (via idempotency_key)
+    if (mappedStatus === 'RECEIVED' || mappedStatus === 'CONFIRMED') {
       try {
-        // Atualizar parcela do honorario
-        await (this.prisma as any).honorarioPayment.update({
-          where: { id: chargeAny.honorario_payment_id },
-          data: {
-            status: 'PAGO',
-            paid_at: new Date(),
-            payment_method: charge.billing_type,
-          },
-        });
-
-        this.logger.log(
-          `[WEBHOOK] HonorarioPayment ${chargeAny.honorario_payment_id} marcado como PAGO`,
-        );
-
-        // Criar transacao financeira via FinanceiroService
-        try {
-          const transaction = await this.financeiroService.createFromHonorarioPayment(
-            chargeAny.honorario_payment_id,
-            charge.tenant_id || undefined,
-          );
-
-          // Vincular transacao a cobranca
-          if (transaction?.id) {
-            await this.prisma.paymentGatewayCharge.update({
-              where: { id: charge.id },
-              data: { transaction_id: transaction.id },
-            });
-          }
-
-          this.logger.log(
-            `[WEBHOOK] Transacao financeira criada: ${transaction?.id}`,
-          );
-        } catch (e: any) {
-          this.logger.warn(
-            `[WEBHOOK] Falha ao criar transacao financeira: ${e.message}`,
-          );
+        const ikey = charge.idempotency_key;
+        if (ikey?.startsWith('parcela_')) {
+          const parcelaId = ikey.replace('parcela_', '');
+          await this.prisma.honorarioParcela.update({
+            where: { id: parcelaId },
+            data: { status: 'PAGO', paid_at: new Date(), payment_method: charge.billing_type },
+          });
+          this.logger.log(`[WEBHOOK] HonorarioParcela ${parcelaId} marcada como PAGO`);
         }
-
-        // Emitir evento via WebSocket
-        this.emitFinancialUpdate(charge.tenant_id, {
-          type: 'payment_confirmed',
-          chargeId: charge.id,
-          honorarioPaymentId: chargeAny.honorario_payment_id,
-          status: mappedStatus,
-          amount: Number(charge.amount),
-        });
       } catch (e: any) {
-        this.logger.error(
-          `[WEBHOOK] Erro ao processar pagamento confirmado: ${e.message}`,
-        );
+        this.logger.warn(`[WEBHOOK] Falha ao marcar parcela como paga: ${e.message}`);
       }
     }
 
-    // Se pagamento RECEIVED/CONFIRMED e tem transaction_id mas NÃO tem honorario (receita avulsa),
-    // dar baixa direta na FinancialTransaction
+    // Se pagamento RECEIVED/CONFIRMED e tem transaction_id (receita avulsa), dar baixa na FinancialTransaction
     if (
       (mappedStatus === 'RECEIVED' || mappedStatus === 'CONFIRMED') &&
-      charge.transaction_id &&
-      !chargeAny.honorario_payment_id
+      charge.transaction_id
     ) {
       try {
         await this.prisma.financialTransaction.update({

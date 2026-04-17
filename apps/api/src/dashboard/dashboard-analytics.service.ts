@@ -225,11 +225,11 @@ export class DashboardAnalyticsService {
     const tw = this.tenantWhere(tenantId);
     const now = new Date();
 
-    const overdue = await (this.prisma as any).honorarioPayment.findMany({
+    const overdue = await this.prisma.honorarioParcela.findMany({
       where: {
-        status: 'PENDENTE',
+        status: { in: ['PENDENTE', 'ATRASADO'] },
         due_date: { lt: now },
-        honorario: { legal_case: isAdmin ? { ...tw } : { lawyer_id: userId, ...tw } },
+        ...(tenantId ? { honorario: { tenant_id: tenantId } } : {}),
       },
       select: { amount: true, due_date: true },
     });

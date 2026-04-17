@@ -146,27 +146,20 @@ export class CrmClient {
     return this.request('POST', '/legal-cases', data as Record<string, unknown>);
   }
 
-  // ─── Documentos (Case Documents) ─────────────────────────────
+  // ─── Documentos Contábeis ────────────────────────────────────
 
-  listarDocumentos(caseId: string) {
-    return this.request('GET', `/case-documents/${caseId}`);
+  listarDocumentosContabil(clienteId: string, folder?: string) {
+    const qs = folder ? `?folder=${folder}` : '';
+    return this.request('GET', `/documentos-contabil/cliente/${clienteId}${qs}`);
   }
 
-  atualizarDocumento(docId: string, data: Record<string, unknown>) {
-    return this.request('PATCH', `/case-documents/${docId}`, data);
+  // ─── Honorários Contábeis ────────────────────────────────────
+
+  getHonorariosContabil(clienteId: string) {
+    return this.request('GET', `/honorarios-contabil/cliente/${clienteId}`);
   }
 
-  // ─── Honorários ──────────────────────────────────────────────
-
-  getHonorarios(caseId: string) {
-    return this.request('GET', `/honorarios/case/${caseId}`);
-  }
-
-  marcarPagamentoPago(paymentId: string, paidAt?: string) {
-    return this.request('PATCH', `/honorarios/payments/${paymentId}/mark-paid`, paidAt ? { paid_at: paidAt } : {});
-  }
-
-  adicionarPagamento(honorarioId: string, data: Record<string, unknown>) {
-    return this.request('POST', `/honorarios/${honorarioId}/payments`, data);
+  marcarParcelaPaga(parcelaId: string) {
+    return this.request('PATCH', `/honorarios-contabil/parcelas/${parcelaId}/pagar`, {});
   }
 }

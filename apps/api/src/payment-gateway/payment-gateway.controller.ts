@@ -168,14 +168,14 @@ export class PaymentGatewayController {
     return this.asaasClient.deleteCharge(chargeId);
   }
 
-  /** Detalhes de uma cobrança por honorarioPaymentId */
-  @Get('charges/:honorarioPaymentId')
+  /** Detalhes de uma cobrança por parcelaId */
+  @Get('charges/:parcelaId')
   async getChargeDetails(
-    @Param('honorarioPaymentId') honorarioPaymentId: string,
+    @Param('parcelaId') parcelaId: string,
     @Req() req: any,
   ) {
     const tenantId = req.user?.tenantId;
-    return this.service.getChargeDetails(honorarioPaymentId, tenantId);
+    return this.service.getChargeDetails(parcelaId, tenantId);
   }
 
   // ─── POST ACTIONS ─────────────────────────────────────────
@@ -183,9 +183,9 @@ export class PaymentGatewayController {
   @Post('charges')
   async createCharge(@Body() dto: CreateChargeDto, @Req() req: any) {
     const tenantId = req.user?.tenantId;
-    this.logger.log(`[POST /charges] billingType=${dto.billingType} paymentId=${dto.honorarioPaymentId}`);
+    this.logger.log(`[POST /charges] billingType=${dto.billingType} parcelaId=${dto.parcelaId}`);
     return this.service.createCharge(
-      dto.honorarioPaymentId,
+      dto.parcelaId,
       dto.billingType as 'PIX' | 'BOLETO' | 'CREDIT_CARD',
       tenantId,
     );

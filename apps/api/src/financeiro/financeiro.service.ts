@@ -181,17 +181,8 @@ export class FinanceiroService {
           return { ...tx, interest_amount: 0, total_with_interest: Number(tx.amount) };
         }
 
-        // Buscar taxa de juros do honorário
-        let monthlyRate = 1.0; // padrão: 1% ao mês (juros legais art. 406 CC)
-        try {
-          const payment = await (this.prisma as any).honorarioPayment.findUnique({
-            where: { id: tx.honorario_payment_id },
-            select: { honorario: { select: { interest_rate: true } } },
-          });
-          if (payment?.honorario?.interest_rate) {
-            monthlyRate = Number(payment.honorario.interest_rate);
-          }
-        } catch {}
+        // Taxa de juros padrão: 1% ao mês (juros legais art. 406 CC)
+        const monthlyRate = 1.0;
 
         // Calcular meses de atraso
         const msPerMonth = 30.44 * 24 * 60 * 60 * 1000;
@@ -369,124 +360,66 @@ export class FinanceiroService {
     });
   }
 
-  // ─── Create from Honorario Payment ─────────────────────
+  // ─── Create from Honorario Parcela ─────────────────────
 
-  async createFromHonorarioPayment(paymentId: string, tenantId?: string) {
-    const payment = await (this.prisma as any).honorarioPayment.findUnique({
-      where: { id: paymentId },
+  async createFromHonorarioParcela(parcelaId: string, tenantId?: string) {
+    const parcela = await this.prisma.honorarioParcela.findUnique({
+      where: { id: parcelaId },
       include: {
         honorario: {
           include: {
-            legal_case: {
-              select: { id: true, case_number: true, legal_area: true, lead_id: true, tenant_id: true, lawyer_id: true },
+            cliente: {
+              select: { id: true, tenant_id: true, lead_id: true },
             },
           },
         },
       },
     });
 
-    if (!payment) throw new NotFoundException('Pagamento de honorario nao encontrado');
+    if (!parcela) throw new NotFoundException('Parcela de honorário não encontrada');
 
-    const honorario = (payment as any).honorario;
-    const legalCase = honorario?.legal_case;
-    const status = payment.status === 'PAGO' ? 'PAGO' : 'PENDENTE';
+    const honorario = parcela.honorario;
+    const cliente = (honorario as any)?.cliente;
+    const status = parcela.status === 'PAGO' ? 'PAGO' : 'PENDENTE';
 
-    // Label do tipo de honorário
-    const typeLabels: Record<string, string> = {
-      CONTRATUAL: 'Contratuais', SUCUMBENCIA: 'Sucumbência', ENTRADA: 'Entrada', ACORDO: 'Acordo',
-      FIXO: 'Fixo', EXITO: 'Êxito', MISTO: 'Misto',
+    // Label do tipo de honorário contábil
+    const tipoLabels: Record<string, string> = {
+      MENSALIDADE: 'Mensalidade', SERVICO_AVULSO: 'Serviço Avulso', IMPLANTACAO: 'Implantação',
     };
-    const typeLabel = typeLabels[honorario?.type] || honorario?.type || '';
+    const tipoLabel = tipoLabels[(honorario as any)?.tipo] || (honorario as any)?.tipo || '';
 
-    // Se já existe transação para este pagamento, atualizar status/valor
-    const existing = await this.prisma.financialTransaction.findUnique({
-      where: { honorario_payment_id: paymentId } as any,
+    // Se já existe transação para esta parcela (via reference_id), atualizar status/valor
+    const existing = await this.prisma.financialTransaction.findFirst({
+      where: { reference_id: parcelaId },
     });
     if (existing) {
       return this.prisma.financialTransaction.update({
         where: { id: existing.id },
         data: {
           status,
-          amount: payment.amount,
-          paid_at: payment.paid_at,
-          payment_method: payment.payment_method || existing.payment_method,
-          date: payment.paid_at || existing.date,
+          amount: parcela.amount,
+          paid_at: parcela.paid_at,
+          payment_method: parcela.payment_method || existing.payment_method,
+          date: parcela.paid_at || existing.date,
         },
       });
     }
 
     return this.prisma.financialTransaction.create({
       data: {
-        tenant_id: tenantId || legalCase?.tenant_id || null,
+        tenant_id: tenantId || cliente?.tenant_id || null,
         type: 'RECEITA',
         category: 'HONORARIO',
-        description: `Honorário ${typeLabel} - ${legalCase?.case_number || 'Processo'} ${legalCase?.legal_area ? `(${legalCase.legal_area})` : ''}`.trim(),
-        amount: payment.amount,
-        date: payment.paid_at || payment.due_date || new Date(),
-        paid_at: payment.paid_at,
-        due_date: payment.due_date,
-        payment_method: payment.payment_method,
+        description: `Honorário ${tipoLabel}`.trim(),
+        amount: parcela.amount,
+        date: parcela.paid_at || parcela.due_date || new Date(),
+        paid_at: parcela.paid_at,
+        due_date: parcela.due_date,
+        payment_method: parcela.payment_method,
         status,
-        lead_id: legalCase?.lead_id || null,
-        lawyer_id: legalCase?.lawyer_id || null,
-        notes: honorario?.notes || payment.notes || null,
-      } as any,
-    });
-  }
-
-  async createFromLeadHonorarioPayment(paymentId: string, tenantId?: string) {
-    const payment = await (this.prisma as any).leadHonorarioPayment.findUnique({
-      where: { id: paymentId },
-      include: {
-        lead_honorario: {
-          include: {
-            lead: { select: { id: true, name: true } },
-          },
-        },
-      },
-    });
-
-    if (!payment) throw new NotFoundException('Pagamento de honorário negociado não encontrado');
-
-    const honorario = (payment as any).lead_honorario;
-    const lead = honorario?.lead;
-    const status = payment.status === 'PAGO' ? 'PAGO' : 'PENDENTE';
-
-    const typeLabels: Record<string, string> = {
-      CONTRATUAL: 'Contratuais', ENTRADA: 'Entrada', ACORDO: 'Acordo',
-    };
-    const typeLabel = typeLabels[honorario?.type] || honorario?.type || '';
-
-    const existing = await this.prisma.financialTransaction.findUnique({
-      where: { lead_honorario_payment_id: paymentId } as any,
-    });
-    if (existing) {
-      return this.prisma.financialTransaction.update({
-        where: { id: existing.id },
-        data: {
-          status,
-          amount: payment.amount,
-          paid_at: payment.paid_at,
-          payment_method: payment.payment_method || existing.payment_method,
-          date: payment.paid_at || existing.date,
-        },
-      });
-    }
-
-    return this.prisma.financialTransaction.create({
-      data: {
-        tenant_id: tenantId || honorario?.tenant_id || null,
-        type: 'RECEITA',
-        category: 'HONORARIO',
-        description: `Honorário ${typeLabel} - Lead ${lead?.name || 'Sem nome'}`.trim(),
-        amount: payment.amount,
-        date: payment.paid_at || payment.due_date || new Date(),
-        paid_at: payment.paid_at,
-        due_date: payment.due_date,
-        payment_method: payment.payment_method,
-        status,
-        lead_id: lead?.id || null,
-        notes: honorario?.notes || payment.notes || null,
+        lead_id: cliente?.lead_id || null,
+        reference_id: parcelaId,
+        notes: (parcela as any).notas || (honorario as any)?.notas || null,
       } as any,
     });
   }
@@ -537,15 +470,12 @@ export class FinanceiroService {
       if (endDate) where.date.lte = new Date(endDate);
     }
 
-    // Filtro de honorários por advogado
+    // Filtro de parcelas de honorários contábeis
     const honorarioWhere: any = {
       status: { in: ['PENDENTE', 'ATRASADO'] },
     };
-    if (lawyerId) {
-      honorarioWhere.honorario = { legal_case: { lawyer_id: lawyerId } };
-    }
     if (tenantId) {
-      honorarioWhere.honorario = { ...honorarioWhere.honorario, tenant_id: tenantId };
+      honorarioWhere.honorario = { tenant_id: tenantId };
     }
 
     // Filtros específicos por tipo para advogado
@@ -570,13 +500,13 @@ export class FinanceiroService {
         where: { ...despesaWhere, type: 'DESPESA', status: 'PENDENTE' },
         _sum: { amount: true },
       }),
-      // A receber: parcelas de honorários pendentes (não transações)
-      (this.prisma as any).honorarioPayment.aggregate({
+      // A receber: parcelas de honorários contábeis pendentes
+      this.prisma.honorarioParcela.aggregate({
         where: { ...honorarioWhere, status: { in: ['PENDENTE', 'ATRASADO'] } },
         _sum: { amount: true },
       }),
-      // Atrasado: parcelas com due_date vencida
-      (this.prisma as any).honorarioPayment.aggregate({
+      // Atrasado: parcelas com status ATRASADO
+      this.prisma.honorarioParcela.aggregate({
         where: {
           ...honorarioWhere,
           status: 'ATRASADO',

@@ -230,18 +230,18 @@ server.tool(
   },
 );
 
-// ─── Contratos / Documentos ───────────────────────────────────────────────────
+// ─── Documentos Contábeis ─────────────────────────────────────────────────────
 
 server.tool(
   'listar_documentos_do_cliente',
-  'Lista todos os documentos anexados a um processo/caso. ' +
-    'Retorna metadados (nome, pasta, tamanho, URL de download).',
+  'Lista todos os documentos contábeis de um cliente (pastas: FISCAL, CONTABIL, PESSOAL, PAYROLL, CONTRATO, OUTROS).',
   {
-    case_id: z.string().describe('ID do processo/caso (UUID)'),
+    cliente_id: z.string().describe('ID do cliente contábil (UUID)'),
+    folder: z.string().optional().describe('Filtrar por pasta (ex: FISCAL, CONTABIL, PESSOAL)'),
   },
-  async ({ case_id }) => {
+  async ({ cliente_id, folder }) => {
     try {
-      const result = await crm.listarDocumentos(case_id);
+      const result = await crm.listarDocumentosContabil(cliente_id, folder);
       return ok(result);
     } catch (e) {
       return err(e);
@@ -249,71 +249,17 @@ server.tool(
   },
 );
 
-server.tool(
-  'buscar_documento',
-  'Retorna metadados de um documento específico pelo seu ID, incluindo URL de download.',
-  {
-    case_id: z.string().describe('ID do processo/caso ao qual o documento pertence'),
-    doc_id: z
-      .string()
-      .optional()
-      .describe(
-        'ID do documento (UUID). Se não informado, lista todos os documentos do caso.',
-      ),
-  },
-  async ({ case_id, doc_id }) => {
-    try {
-      // A API retorna todos os documentos do caso; filtramos pelo doc_id se fornecido
-      const docs = (await crm.listarDocumentos(case_id)) as Array<{ id: string }>;
-      if (doc_id) {
-        const doc = Array.isArray(docs)
-          ? docs.find((d) => d.id === doc_id)
-          : undefined;
-        if (!doc) return err(`Documento ${doc_id} não encontrado no caso ${case_id}.`);
-        return ok(doc);
-      }
-      return ok(docs);
-    } catch (e) {
-      return err(e);
-    }
-  },
-);
-
-server.tool(
-  'vincular_documento_ao_processo',
-  'Atualiza os metadados de um documento (nome, pasta, descrição) para vinculá-lo corretamente ao processo.',
-  {
-    doc_id: z.string().describe('ID do documento (UUID)'),
-    name: z.string().optional().describe('Novo nome do arquivo'),
-    folder: z
-      .string()
-      .optional()
-      .describe(
-        'Pasta de destino (ex: PETICOES, DOCUMENTOS, PROCURACAO, CONTRATOS, OUTROS)',
-      ),
-    description: z.string().optional().describe('Descrição ou observação sobre o documento'),
-  },
-  async ({ doc_id, ...rest }) => {
-    try {
-      const result = await crm.atualizarDocumento(doc_id, rest as Record<string, unknown>);
-      return ok(result);
-    } catch (e) {
-      return err(e);
-    }
-  },
-);
-
-// ─── Financeiro / Honorários ──────────────────────────────────────────────────
+// ─── Financeiro / Honorários Contábeis ────────────────────────────────────────
 
 server.tool(
   'consultar_honorarios_do_cliente',
-  'Consulta todos os arranjos de honorários e histórico de pagamentos de um processo/caso.',
+  'Consulta todos os honorários e parcelas de pagamento de um cliente contábil.',
   {
-    case_id: z.string().describe('ID do processo/caso (UUID)'),
+    cliente_id: z.string().describe('ID do cliente contábil (UUID)'),
   },
-  async ({ case_id }) => {
+  async ({ cliente_id }) => {
     try {
-      const result = await crm.getHonorarios(case_id);
+      const result = await crm.getHonorariosContabil(cliente_id);
       return ok(result);
     } catch (e) {
       return err(e);
@@ -323,18 +269,18 @@ server.tool(
 
 server.tool(
   'listar_pagamentos_pendentes',
-  'Lista todas as parcelas de honorários com status PENDENTE ou ATRASADO de um processo.',
+  'Lista todas as parcelas de honorários com status PENDENTE ou ATRASADO de um cliente.',
   {
-    case_id: z.string().describe('ID do processo/caso (UUID)'),
+    cliente_id: z.string().describe('ID do cliente contábil (UUID)'),
   },
-  async ({ case_id }) => {
+  async ({ cliente_id }) => {
     try {
-      const honorarios = (await crm.getHonorarios(case_id)) as Array<{
-        payments?: Array<{ status: string }>;
+      const honorarios = (await crm.getHonorariosContabil(cliente_id)) as Array<{
+        parcelas?: Array<{ status: string }>;
       }>;
       const pendentes = Array.isArray(honorarios)
         ? honorarios.flatMap((h) =>
-            (h.payments ?? []).filter(
+            (h.parcelas ?? []).filter(
               (p) => p.status === 'PENDENTE' || p.status === 'ATRASADO',
             ),
           )
@@ -350,15 +296,11 @@ server.tool(
   'registrar_pagamento',
   'Registra uma parcela de honorário como PAGO no sistema.',
   {
-    payment_id: z.string().describe('ID da parcela/pagamento (UUID)'),
-    paid_at: z
-      .string()
-      .optional()
-      .describe('Data do pagamento no formato ISO 8601 (padrão: data atual)'),
+    parcela_id: z.string().describe('ID da parcela (UUID)'),
   },
-  async ({ payment_id, paid_at }) => {
+  async ({ parcela_id }) => {
     try {
-      const result = await crm.marcarPagamentoPago(payment_id, paid_at);
+      const result = await crm.marcarParcelaPaga(parcela_id);
       return ok(result);
     } catch (e) {
       return err(e);
