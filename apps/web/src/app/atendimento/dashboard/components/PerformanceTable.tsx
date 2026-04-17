@@ -113,7 +113,6 @@ export function PerformanceTable({ members, averages, activeTab }: Props) {
         </>)}
         {activeTab === 'ESTAGIARIO' && (<>
           <SH field="taskCompletionRate" label="Tarefas" className="justify-center" />
-          <SH field="petitionApprovalRate" label="Peticoes" className="justify-center" />
           <SH field="deadlinesCompletedOnTime" label="Prazos" className="justify-center" />
           <SH field="documentsUploaded" label="Volume" className="justify-center" />
         </>)}
@@ -162,7 +161,6 @@ export function PerformanceTable({ members, averages, activeTab }: Props) {
                 </>)}
                 {activeTab === 'ESTAGIARIO' && m.estagiarioKPIs && (<>
                   <div className="text-center"><span className="text-xs font-bold">{m.estagiarioKPIs.taskCompletionRate}%</span><br /><VsAvgBadge value={m.estagiarioKPIs.taskCompletionRate} avg={averages.estagiario?.taskCompletionRate || 0} /></div>
-                  <div className="text-center text-xs font-bold">{m.estagiarioKPIs.petitionApprovalRate}%</div>
                   <div className="text-center text-xs font-bold">{m.estagiarioKPIs.deadlinesCompletedOnTime}</div>
                   <div className="text-center text-xs font-bold">{m.estagiarioKPIs.documentsUploaded}</div>
                 </>)}

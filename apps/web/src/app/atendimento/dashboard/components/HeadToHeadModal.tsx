@@ -107,7 +107,6 @@ export function HeadToHeadModal({ memberA, memberB, onClose }: Props) {
         {memberA.estagiarioKPIs && memberB.estagiarioKPIs && (<>
           <div className="mt-3 mb-1 text-[9px] text-muted-foreground font-bold uppercase">Estagiario</div>
           <CompareRow label="Tx Tarefas" a={memberA.estagiarioKPIs.taskCompletionRate} b={memberB.estagiarioKPIs.taskCompletionRate} format="percent" />
-          <CompareRow label="Tx Peticoes" a={memberA.estagiarioKPIs.petitionApprovalRate} b={memberB.estagiarioKPIs.petitionApprovalRate} format="percent" />
           <CompareRow label="Prazos OK" a={memberA.estagiarioKPIs.deadlinesCompletedOnTime} b={memberB.estagiarioKPIs.deadlinesCompletedOnTime} />
           <CompareRow label="Documentos" a={memberA.estagiarioKPIs.documentsUploaded} b={memberB.estagiarioKPIs.documentsUploaded} />
         </>)}
