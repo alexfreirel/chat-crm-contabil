@@ -4,13 +4,18 @@ services:
   # ------ Banco de Dados ------
   postgres:
     image: postgres:15-alpine
+    # Fix #6: auth md5 em vez de scram-sha-256 (compatível com Swarm VIP)
+    command: postgres -c password_encryption=md5
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-crm_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-crm_pass}
       POSTGRES_DB: ${POSTGRES_DB:-lexcon}
     networks:
-      - default
-      - OrionNet
+      default:
+      OrionNet:
+        # Fix #5: alias único para evitar conflito com postgres global na OrionNet
+        aliases:
+          - lexcon_postgres
     volumes:
       - pgdata_lexcon:/var/lib/postgresql/data
     ports:
@@ -65,6 +70,7 @@ services:
 
   # ------ NestJS Core API ------
   crm-api:
+    # Fix #2: imagem correta da API (não do worker)
     image: lexconassessoria/chat-crm-contabil-api:latest
     ports:
       - "${API_PORT:-44001}:3001"
@@ -72,10 +78,12 @@ services:
       - PORT=3001
       - TZ=America/Sao_Paulo
       - RUN_MIGRATIONS=true
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-crm_user}:${POSTGRES_PASSWORD:-crm_pass}@postgres:5432/${POSTGRES_DB:-lexcon}?schema=public
+      # Fix #5: hostname qualificado para evitar conflito DNS com postgres global
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-crm_user}:${POSTGRES_PASSWORD:-crm_pass}@lexcon_postgres:5432/${POSTGRES_DB:-lexcon}?schema=public
       - REDIS_HOST=lexcon-redis
       - REDIS_PORT=6379
-      - JWT_SECRET=lexcon-jwt-secret-2026-prod-k8s9x2m4
+      # Fix #3: JWT_SECRET e ALLOWED_ORIGINS com valores padrão seguros
+      - JWT_SECRET=${JWT_SECRET:-lexcon-jwt-secret-2026-prod-k8s9x2m4}
       - JWT_EXPIRES_IN=365d
       - EVOLUTION_API_URL=${EVOLUTION_API_URL}
       - EVOLUTION_GLOBAL_APIKEY=${EVOLUTION_GLOBAL_APIKEY}
@@ -96,7 +104,9 @@ services:
       restart_policy:
         condition: any
       labels:
+        # Fix #4: labels Traefik completas para crm-api
         - "traefik.enable=true"
+        - "traefik.docker.network=OrionNet"
         # --- API router ---
         - "traefik.http.routers.lexcon-api.rule=Host(`lexconassessoriacontabil.com.br`) && PathPrefix(`/api`)"
         - "traefik.http.routers.lexcon-api.service=lexcon-api"
@@ -113,27 +123,30 @@ services:
         - "traefik.http.services.lexcon-ws.loadbalancer.server.port=3001"
         - "traefik.http.routers.lexcon-ws.entrypoints=websecure"
         - "traefik.http.routers.lexcon-ws.tls.certresolver=letsencryptresolver"
-        - "traefik.docker.network=OrionNet"
 
   # ------ NestJS Worker ------
   crm-worker:
+    # Fix #2: imagem correta do WORKER (separada da api)
     image: lexconassessoria/chat-crm-contabil-worker:latest
     environment:
       - PORT=3002
       - TZ=America/Sao_Paulo
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-crm_user}:${POSTGRES_PASSWORD:-crm_pass}@postgres:5432/${POSTGRES_DB:-lexcon}?schema=public
+      # Fix #5: hostname qualificado para evitar conflito DNS com postgres global
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-crm_user}:${POSTGRES_PASSWORD:-crm_pass}@lexcon_postgres:5432/${POSTGRES_DB:-lexcon}?schema=public
       - REDIS_HOST=lexcon-redis
       - REDIS_PORT=6379
-      - JWT_SECRET=lexcon-jwt-secret-2026-prod-k8s9x2m4
+      # Fix #3: JWT_SECRET com valor padrão
+      - JWT_SECRET=${JWT_SECRET:-lexcon-jwt-secret-2026-prod-k8s9x2m4}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - EVOLUTION_API_URL=${EVOLUTION_API_URL}
       - EVOLUTION_GLOBAL_APIKEY=${EVOLUTION_GLOBAL_APIKEY}
       - EVOLUTION_INSTANCE_NAME=${EVOLUTION_INSTANCE_NAME}
-      - S3_ENDPOINT=http://minio:9000
-      - S3_REGION=us-east-1
+      - S3_ENDPOINT=${S3_ENDPOINT:-http://minio:9000}
+      - S3_REGION=${S3_REGION:-us-east-1}
       - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
       - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
       - S3_BUCKET=${S3_BUCKET:-chat-crm-media}
+      - NODE_ENV=production
     networks:
       - default
       - OrionNet
@@ -159,6 +172,7 @@ services:
         condition: any
       labels:
         - "traefik.enable=true"
+        - "traefik.docker.network=OrionNet"
         - "traefik.http.routers.lexcon-agente.rule=Host(`lexconassessoriacontabil.com.br`) && PathPrefix(`/agente-fiscal-api`)"
         - "traefik.http.routers.lexcon-agente.service=lexcon-agente"
         - "traefik.http.routers.lexcon-agente.priority=110"
@@ -167,7 +181,6 @@ services:
         - "traefik.http.services.lexcon-agente.loadbalancer.server.port=5000"
         - "traefik.http.routers.lexcon-agente.entrypoints=websecure"
         - "traefik.http.routers.lexcon-agente.tls.certresolver=letsencryptresolver"
-        - "traefik.docker.network=OrionNet"
 
   # ------ Next.js Frontend ------
   crm-web:
@@ -185,13 +198,14 @@ services:
       restart_policy:
         condition: any
       labels:
+        # Fix #4: labels Traefik completas para crm-web
         - "traefik.enable=true"
-        # --- Web (frontend) ---
+        - "traefik.docker.network=OrionNet"
         - "traefik.http.routers.lexcon-web.rule=Host(`lexconassessoriacontabil.com.br`)"
-        - "traefik.http.services.lexcon-web.loadbalancer.server.port=3000"
+        - "traefik.http.routers.lexcon-web.service=lexcon-web"
         - "traefik.http.routers.lexcon-web.entrypoints=websecure"
         - "traefik.http.routers.lexcon-web.tls.certresolver=letsencryptresolver"
-        - "traefik.docker.network=OrionNet"
+        - "traefik.http.services.lexcon-web.loadbalancer.server.port=3000"
 
 networks:
   OrionNet:
