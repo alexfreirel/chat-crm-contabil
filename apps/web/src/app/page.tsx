@@ -13,7 +13,7 @@ const staticContent = {
     subtitle:
       'Cuidamos de seus interesses, mostrando a qualidade e eficiência de trabalho.',
     ctaText: 'Fale com um Especialista',
-    ctaLink: 'https://wa.me/5582996390799',
+    ctaLink: 'https://wa.me/5582982344993',
   },
   steps: [
     {
@@ -46,8 +46,8 @@ const staticContent = {
   ],
   footer: {
     address: 'Atendimento Digital em Todo o Brasil | Sede Física: Arapiraca/AL',
-    phones: ['82 99639-0799'],
-    email: 'contato@andrelustosa.com.br',
+    phones: ['82 98234-4993'],
+    email: 'lustosa.lima@outlook.com',
     social: {
       instagram: 'https://www.instagram.com/andrelustosaadvogados/',
       facebook: 'https://www.facebook.com/andrelustosa',
@@ -108,7 +108,7 @@ export default function Home() {
     name: 'André Lustosa Advogados',
     image: `${baseUrl}/logo_andre_lustosa.png`,
     url,
-    telephone: '+5582996390799',
+    telephone: '+5582982344993',
     priceRange: '$$$',
     openingHoursSpecification: {
       '@type': 'OpeningHoursSpecification',
@@ -173,7 +173,7 @@ export default function Home() {
         name: 'Como funciona o primeiro atendimento no André Lustosa Advogados?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'O primeiro atendimento começa pelo WhatsApp (+55 82 99639-0799). A equipe faz uma análise preliminar do caso, os especialistas estudam a situação em profundidade e a atuação inicia com agilidade e transparência.',
+          text: 'O primeiro atendimento começa pelo WhatsApp (+55 82 98234-4993). A equipe faz uma análise preliminar do caso, os especialistas estudam a situação em profundidade e a atuação inicia com agilidade e transparência.',
         },
       },
       {
@@ -202,7 +202,7 @@ export default function Home() {
       <LPTracker />
       <HomeTemplate
         content={staticContent}
-        whatsappNumber="+5582996390799"
+        whatsappNumber="+5582982344993"
       />
     </div>
   );

@@ -1569,13 +1569,13 @@ export function HighConversionTemplate({
                 <div className="w-11 h-11 rounded-full border border-[#A89048] flex items-center justify-center text-[#A89048] group-hover:bg-[#A89048]/20 transition-all shadow-[0_0_15px_rgba(168,144,72,0.15)] shrink-0">
                   <Phone size={20} />
                 </div>
-                <span className="group-hover:text-white transition-colors">{footer?.phones?.[0] || "82 99639-0799"}</span>
+                <span className="group-hover:text-white transition-colors">{footer?.phones?.[0] || "82 98234-4993"}</span>
               </a>
-              <a href={`mailto:${footer?.email || "contato@andrelustosa.com.br"}`} className="flex items-center gap-5 group">
+              <a href={`mailto:${footer?.email || "lustosa.lima@outlook.com"}`} className="flex items-center gap-5 group">
                 <div className="w-11 h-11 rounded-full border border-[#A89048] flex items-center justify-center text-[#A89048] group-hover:bg-[#A89048]/20 transition-all shadow-[0_0_15px_rgba(168,144,72,0.15)] shrink-0">
                   <Mail size={20} />
                 </div>
-                <span className="group-hover:text-white transition-colors">{footer?.email || "contato@andrelustosa.com.br"}</span>
+                <span className="group-hover:text-white transition-colors">{footer?.email || "lustosa.lima@outlook.com"}</span>
               </a>
               <a href={footer?.social?.instagram || "https://www.instagram.com/andrelustosaadvogados/"} target="_blank" rel="noreferrer" className="flex items-center gap-5 group">
                 <div className="w-11 h-11 rounded-full border border-[#A89048] flex items-center justify-center text-[#A89048] group-hover:bg-[#A89048]/20 transition-all shadow-[0_0_15px_rgba(168,144,72,0.15)] shrink-0">

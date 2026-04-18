@@ -28,7 +28,7 @@ const DEFAULT_CONTENT: LPContent = {
     title: 'Advocacia Especializada em Direito Trabalhista',
     subtitle: 'Protegendo seus direitos com agilidade e transparência. Fale com um especialista hoje mesmo.',
     ctaText: 'Falar com Especialista',
-    ctaLink: 'https://wa.me/5582996390799',
+    ctaLink: 'https://wa.me/5582982344993',
     bgImage: '',
   },
   steps: [
@@ -40,8 +40,8 @@ const DEFAULT_CONTENT: LPContent = {
     { question: 'Como funciona a consulta?', answer: 'A consulta é 100% online via WhatsApp ou vídeo chamada.' },
   ],
   footer: {
-    phones: ['82 99639-0799'],
-    email: 'contato@andrelustosa.com.br',
+    phones: ['82 98234-4993'],
+    email: 'lustosa.lima@outlook.com',
     address: 'Atendimento Digital em Todo o Brasil',
     social: { instagram: 'https://instagram.com/andrelustosaadvogados', facebook: '', linkedin: '' },
   },
@@ -65,7 +65,7 @@ export default function LPEditor({ params }: PageProps) {
   const [title, setTitle] = useState('Nova Landing Page');
   const [slug, setSlug] = useState('');
   const [isPublished, setIsPublished] = useState(false);
-  const [whatsappNumber, setWhatsappNumber] = useState('+5582996390799');
+  const [whatsappNumber, setWhatsappNumber] = useState('+5582982344993');
   const [gtmId, setGtmId] = useState('');
   const [content, setContent] = useState<LPContent>(DEFAULT_CONTENT);
 
@@ -267,7 +267,7 @@ export default function LPEditor({ params }: PageProps) {
                 <input
                   value={content.hero.ctaLink || ''}
                   onChange={(e) => updateHero('ctaLink', e.target.value)}
-                  placeholder="https://wa.me/5582996390799"
+                  placeholder="https://wa.me/5582982344993"
                   className={inputClass}
                 />
               </div>
@@ -447,7 +447,7 @@ export default function LPEditor({ params }: PageProps) {
                 <input
                   value={whatsappNumber}
                   onChange={(e) => setWhatsappNumber(e.target.value)}
-                  placeholder="+5582996390799"
+                  placeholder="+5582982344993"
                   className={inputClass}
                 />
               </div>

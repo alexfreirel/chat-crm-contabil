@@ -14,7 +14,7 @@ const staticContent: LPTemplateContent = {
     subtitle: "Atendimento jurídico em Arapiraca e online para todo Brasil.\nAnalisamos seu caso e orientamos o melhor caminho para resolver seu problema.",
     mobileSubtitle: "Atendimento jurídico em Arapiraca e online para todo Brasil. Analisamos seu caso sem compromisso.",
     ctaText: "Falar com advogado",
-    ctaLink: "https://wa.me/5582996390799",
+    ctaLink: "https://wa.me/5582982344993",
   },
   steps: [
     {
@@ -33,15 +33,15 @@ const staticContent: LPTemplateContent = {
   faq: [
     {
       question: "Onde encontro um bom advogado em Arapiraca?",
-      answer: "O escritório André Lustosa Advogados está localizado na Rua Francisco Rodrigues Viana, 244, bairro Baixa Grande, Arapiraca-AL. Com +10 anos de atuação, atende presencialmente em Arapiraca e digitalmente em todo o Brasil pelo WhatsApp +55 82 99639-0799.",
+      answer: "O escritório André Lustosa Advogados está localizado na Rua Francisco Rodrigues Viana, 244, bairro Baixa Grande, Arapiraca-AL. Com +10 anos de atuação, atende presencialmente em Arapiraca e digitalmente em todo o Brasil pelo WhatsApp +55 82 98234-4993.",
     },
     {
       question: "Tem advogado trabalhista em Arapiraca que atende pelo WhatsApp?",
-      answer: "Sim. O André Lustosa Advogados em Arapiraca-AL tem especialistas em Direito Trabalhista e atende via WhatsApp +55 82 99639-0799. Casos de rescisão injusta, horas extras não pagas, assédio moral, FGTS e seguro-desemprego são analisados de forma gratuita no primeiro contato.",
+      answer: "Sim. O André Lustosa Advogados em Arapiraca-AL tem especialistas em Direito Trabalhista e atende via WhatsApp +55 82 98234-4993. Casos de rescisão injusta, horas extras não pagas, assédio moral, FGTS e seguro-desemprego são analisados de forma gratuita no primeiro contato.",
     },
     {
       question: "Advogado previdenciário em Arapiraca — como conseguir aposentadoria ou benefício do INSS?",
-      answer: "O escritório tem especialistas em Direito Previdenciário em Arapiraca-AL que atuam na obtenção de aposentadoria por tempo de contribuição, aposentadoria especial, BPC/LOAS, revisão de benefícios negados e pensão por morte. Entre em contato pelo WhatsApp +55 82 99639-0799.",
+      answer: "O escritório tem especialistas em Direito Previdenciário em Arapiraca-AL que atuam na obtenção de aposentadoria por tempo de contribuição, aposentadoria especial, BPC/LOAS, revisão de benefícios negados e pensão por morte. Entre em contato pelo WhatsApp +55 82 98234-4993.",
     },
     {
       question: "Quanto custa uma consulta com advogado em Arapiraca?",
@@ -61,15 +61,15 @@ const staticContent: LPTemplateContent = {
     },
     {
       question: "Como funciona a consulta jurídica online para quem mora em Arapiraca ou região?",
-      answer: "Basta enviar mensagem pelo WhatsApp +55 82 99639-0799. A equipe faz a triagem do caso, solicita os documentos necessários por foto ou PDF e agenda uma videoconferência com o especialista. Todo o processo é sigiloso e sem necessidade de ir ao escritório.",
+      answer: "Basta enviar mensagem pelo WhatsApp +55 82 98234-4993. A equipe faz a triagem do caso, solicita os documentos necessários por foto ou PDF e agenda uma videoconferência com o especialista. Todo o processo é sigiloso e sem necessidade de ir ao escritório.",
     },
     {
       question: "Advogado criminal em Arapiraca — o que fazer em caso de flagrante ou inquérito?",
-      answer: "Em caso de prisão em flagrante ou abertura de inquérito, contate imediatamente o escritório pelo WhatsApp +55 82 99639-0799. Os advogados criminalistas do André Lustosa Advogados em Arapiraca-AL atuam na defesa desde o inquérito até o julgamento em todas as instâncias.",
+      answer: "Em caso de prisão em flagrante ou abertura de inquérito, contate imediatamente o escritório pelo WhatsApp +55 82 98234-4993. Os advogados criminalistas do André Lustosa Advogados em Arapiraca-AL atuam na defesa desde o inquérito até o julgamento em todas as instâncias.",
     },
     {
       question: "É necessário agendar para ser atendido presencialmente em Arapiraca?",
-      answer: "Sim. Para garantir atendimento exclusivo e sigiloso, as visitas presenciais devem ser agendadas previamente pelo WhatsApp +55 82 99639-0799. O escritório funciona de segunda a sexta, das 8h às 18h, na Rua Francisco Rodrigues Viana, 244, Baixa Grande, Arapiraca-AL.",
+      answer: "Sim. Para garantir atendimento exclusivo e sigiloso, as visitas presenciais devem ser agendadas previamente pelo WhatsApp +55 82 98234-4993. O escritório funciona de segunda a sexta, das 8h às 18h, na Rua Francisco Rodrigues Viana, 244, Baixa Grande, Arapiraca-AL.",
     },
   ],
   sectionLabels: {
@@ -83,8 +83,8 @@ const staticContent: LPTemplateContent = {
   },
   footer: {
     address: "Rua Francisco Rodrigues Viana, 244, bairro Baixa Grande",
-    phones: ["82 99639-0799"],
-    email: "contato@andrelustosa.com.br",
+    phones: ["82 98234-4993"],
+    email: "lustosa.lima@outlook.com",
     social: {
       instagram: "https://www.instagram.com/andrelustosaadvogados/",
       facebook: "https://www.facebook.com/andrelustosa",
@@ -167,8 +167,8 @@ export default function LandingPageArapiraca() {
     "description": "Escritório de advocacia em Arapiraca-AL com +10 anos de experiência. Especialistas em Direito Trabalhista, Previdenciário, do Consumidor, Civil, de Família, Criminal e Imobiliário. Atendimento presencial em Arapiraca e digital em todo o Brasil.",
     "image": `${baseUrl}/landing/logo_andre_lustosa_transparente.png`,
     "url": `${baseUrl}/geral/arapiraca`,
-    "telephone": "+5582996390799",
-    "email": "contato@andrelustosa.com.br",
+    "telephone": "+5582982344993",
+    "email": "lustosa.lima@outlook.com",
     "address": {
       "@type": "PostalAddress",
       "streetAddress": "Rua Francisco Rodrigues Viana, 244",
@@ -266,7 +266,7 @@ export default function LandingPageArapiraca() {
         "name": "Onde encontro um bom advogado em Arapiraca?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "O escritório André Lustosa Advogados está localizado na Rua Francisco Rodrigues Viana, 244, bairro Baixa Grande, Arapiraca-AL. Com +10 anos de atuação, atende presencialmente em Arapiraca e digitalmente em todo o Brasil pelo WhatsApp +55 82 99639-0799.",
+          "text": "O escritório André Lustosa Advogados está localizado na Rua Francisco Rodrigues Viana, 244, bairro Baixa Grande, Arapiraca-AL. Com +10 anos de atuação, atende presencialmente em Arapiraca e digitalmente em todo o Brasil pelo WhatsApp +55 82 98234-4993.",
         },
       },
       {
@@ -274,7 +274,7 @@ export default function LandingPageArapiraca() {
         "name": "Tem advogado trabalhista em Arapiraca que atende pelo WhatsApp?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Sim. O André Lustosa Advogados em Arapiraca-AL tem especialistas em Direito Trabalhista e atende via WhatsApp +55 82 99639-0799. Casos de rescisão injusta, horas extras não pagas, assédio moral, FGTS e seguro-desemprego são analisados de forma gratuita no primeiro contato.",
+          "text": "Sim. O André Lustosa Advogados em Arapiraca-AL tem especialistas em Direito Trabalhista e atende via WhatsApp +55 82 98234-4993. Casos de rescisão injusta, horas extras não pagas, assédio moral, FGTS e seguro-desemprego são analisados de forma gratuita no primeiro contato.",
         },
       },
       {
@@ -282,7 +282,7 @@ export default function LandingPageArapiraca() {
         "name": "Advogado previdenciário em Arapiraca — como conseguir aposentadoria ou benefício do INSS?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "O escritório tem especialistas em Direito Previdenciário em Arapiraca-AL que atuam na obtenção de aposentadoria por tempo de contribuição, aposentadoria especial, BPC/LOAS, revisão de benefícios negados e pensão por morte. Entre em contato pelo WhatsApp +55 82 99639-0799.",
+          "text": "O escritório tem especialistas em Direito Previdenciário em Arapiraca-AL que atuam na obtenção de aposentadoria por tempo de contribuição, aposentadoria especial, BPC/LOAS, revisão de benefícios negados e pensão por morte. Entre em contato pelo WhatsApp +55 82 98234-4993.",
         },
       },
       {
@@ -322,7 +322,7 @@ export default function LandingPageArapiraca() {
         "name": "Como funciona a consulta jurídica online para quem mora em Arapiraca ou região?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Basta enviar mensagem pelo WhatsApp +55 82 99639-0799. A equipe faz a triagem do caso, solicita os documentos necessários por foto ou PDF e agenda uma videoconferência com o especialista. Todo o processo é sigiloso e sem necessidade de ir ao escritório.",
+          "text": "Basta enviar mensagem pelo WhatsApp +55 82 98234-4993. A equipe faz a triagem do caso, solicita os documentos necessários por foto ou PDF e agenda uma videoconferência com o especialista. Todo o processo é sigiloso e sem necessidade de ir ao escritório.",
         },
       },
       {
@@ -330,7 +330,7 @@ export default function LandingPageArapiraca() {
         "name": "Advogado criminal em Arapiraca — o que fazer em caso de flagrante ou inquérito?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Em caso de prisão em flagrante ou abertura de inquérito, contate imediatamente o escritório pelo WhatsApp +55 82 99639-0799. Os advogados criminalistas do André Lustosa Advogados em Arapiraca-AL atuam na defesa desde o inquérito até o julgamento em todas as instâncias.",
+          "text": "Em caso de prisão em flagrante ou abertura de inquérito, contate imediatamente o escritório pelo WhatsApp +55 82 98234-4993. Os advogados criminalistas do André Lustosa Advogados em Arapiraca-AL atuam na defesa desde o inquérito até o julgamento em todas as instâncias.",
         },
       },
       {
@@ -338,7 +338,7 @@ export default function LandingPageArapiraca() {
         "name": "É necessário agendar para ser atendido presencialmente em Arapiraca?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Sim. Para garantir atendimento exclusivo e sigiloso, as visitas presenciais devem ser agendadas previamente pelo WhatsApp +55 82 99639-0799. O escritório funciona de segunda a sexta, das 8h às 18h, na Rua Francisco Rodrigues Viana, 244, Baixa Grande, Arapiraca-AL.",
+          "text": "Sim. Para garantir atendimento exclusivo e sigiloso, as visitas presenciais devem ser agendadas previamente pelo WhatsApp +55 82 98234-4993. O escritório funciona de segunda a sexta, das 8h às 18h, na Rua Francisco Rodrigues Viana, 244, Baixa Grande, Arapiraca-AL.",
         },
       },
     ],
@@ -364,7 +364,7 @@ export default function LandingPageArapiraca() {
       <LPTracker />
       <HighConversionTemplate
         content={staticContent}
-        whatsappNumber="+5582996390799"
+        whatsappNumber="+5582982344993"
       />
     </div>
   );
