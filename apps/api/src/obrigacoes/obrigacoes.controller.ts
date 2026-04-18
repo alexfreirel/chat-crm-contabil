@@ -81,6 +81,27 @@ export class ObrigacoesController {
     );
   }
 
+  /** Sincronizar obrigações do mês como CalendarEvents */
+  @Post('sync-calendario')
+  syncCalendario(
+    @Request() req: any,
+    @Body() body: { ano?: number; mes?: number },
+  ) {
+    const now = new Date();
+    return this.service.syncToCalendar(
+      req.user?.tenant_id,
+      req.user?.id,
+      body.ano ?? now.getFullYear(),
+      body.mes ?? now.getMonth() + 1,
+    );
+  }
+
+  /** Enviar alerta WhatsApp para obrigações vencendo em X dias */
+  @Post('alerta-vencimento')
+  alertaVencimento(@Request() req: any, @Body() body: { dias?: number }) {
+    return this.service.sendAlertaVencimento(req.user?.tenant_id, body.dias ?? 3);
+  }
+
   /** Marcar como concluída */
   @Patch(':id/complete')
   complete(@Param('id') id: string, @Request() req: any) {

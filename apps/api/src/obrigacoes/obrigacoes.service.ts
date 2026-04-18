@@ -193,6 +193,83 @@ export class ObrigacoesService {
     return { criadas: created.length, obrigacoes: created };
   }
 
+  /**
+   * Sincroniza obrigações fiscais de um mês como CalendarEvents.
+   * Cria um CalendarEvent para cada ObrigacaoFiscal que ainda não tem calendar_event_id.
+   */
+  async syncToCalendar(tenantId: string, userId: string, ano: number, mes: number) {
+    const inicio = new Date(ano, mes - 1, 1);
+    const fim    = new Date(ano, mes, 0, 23, 59, 59);
+
+    const obrigacoes = await this.prisma.obrigacaoFiscal.findMany({
+      where: {
+        tenant_id: tenantId,
+        due_at: { gte: inicio, lte: fim },
+        calendar_event_id: null,
+      },
+      include: { cliente: { include: { lead: { select: { name: true } } } } },
+    });
+
+    let criados = 0;
+    for (const ob of obrigacoes) {
+      const event = await this.prisma.calendarEvent.create({
+        data: {
+          tenant_id: tenantId,
+          type: 'OBRIGACAO',
+          title: `${ob.titulo}${ob.cliente?.lead?.name ? ` — ${ob.cliente.lead.name}` : ''}`,
+          description: `Tipo: ${ob.tipo}`,
+          start_at: ob.due_at,
+          end_at: ob.due_at,
+          status: ob.completed ? 'CONCLUIDO' : 'AGENDADO',
+          priority: 'NORMAL',
+          cliente_contabil_id: ob.cliente_id,
+          created_by_id: userId,
+        },
+      });
+      await this.prisma.obrigacaoFiscal.update({
+        where: { id: ob.id },
+        data: { calendar_event_id: event.id },
+      });
+      criados++;
+    }
+
+    this.logger.log(`syncToCalendar: ${criados} CalendarEvents criados para ${ano}-${mes}`);
+    return { sincronizados: criados, total: obrigacoes.length };
+  }
+
+  /**
+   * Retorna obrigações vencendo nos próximos X dias para alerta (lista para WhatsApp manual).
+   */
+  async sendAlertaVencimento(tenantId: string, dias = 3) {
+    const limite = new Date();
+    limite.setDate(limite.getDate() + dias);
+    const vencendo = await this.prisma.obrigacaoFiscal.findMany({
+      where: {
+        tenant_id: tenantId,
+        completed: false,
+        due_at: { gte: new Date(), lte: limite },
+      },
+      orderBy: { due_at: 'asc' },
+      include: {
+        cliente: { include: { lead: { select: { name: true, phone: true } } } },
+        responsavel: { select: { id: true, name: true } },
+      },
+    });
+
+    const mensagens = vencendo.map(ob => ({
+      id: ob.id,
+      titulo: ob.titulo,
+      tipo: ob.tipo,
+      due_at: ob.due_at,
+      cliente_nome: ob.cliente?.lead?.name ?? 'Cliente',
+      cliente_phone: ob.cliente?.lead?.phone ?? null,
+      responsavel: ob.responsavel?.name ?? null,
+      mensagem: `⚠️ *Obrigação próxima do vencimento*\n\n📋 *${ob.titulo}*\n👤 Cliente: ${ob.cliente?.lead?.name ?? 'N/A'}\n📅 Vencimento: ${ob.due_at.toLocaleDateString('pt-BR')}\n\nFavor verificar e concluir no sistema.`,
+    }));
+
+    return { total: mensagens.length, alertas: mensagens };
+  }
+
   async complete(id: string, tenantId?: string) {
     return this.prisma.obrigacaoFiscal.update({
       where: { id },

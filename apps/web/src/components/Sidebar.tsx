@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Wallet, HelpCircle,
   ChevronRight, Plus, UserPlus, CheckSquare,
   CalendarPlus, ClipboardList, Sparkles,
-  FileSpreadsheet, Building2, FileText,
+  FileSpreadsheet, Building2, FileText, CalendarDays,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { API_BASE_URL } from '@/lib/api';
@@ -292,6 +292,13 @@ export function Sidebar() {
       match: (p) => p.startsWith('/atendimento/agente-fiscal'),
       show: true,
     },
+    calendarioFiscal: {
+      label: 'Calendário Fiscal',
+      href: '/atendimento/calendario-fiscal',
+      icon: <CalendarDays size={20} strokeWidth={2} />,
+      match: (p) => p.startsWith('/atendimento/calendario-fiscal'),
+      show: true,
+    },
     settings: {
       label: 'Configurações',
       href: '/atendimento/settings',
@@ -310,7 +317,7 @@ export function Sidebar() {
     {
       id: 'contabil',
       label: 'Contábil',
-      items: [allItems.clientes, allItems.assistente].filter(i => i.show),
+      items: [allItems.clientes, allItems.calendarioFiscal, allItems.assistente].filter(i => i.show),
     },
     {
       id: 'gestao',

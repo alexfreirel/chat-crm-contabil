@@ -40,6 +40,7 @@ import { ObrigacoesModule } from './obrigacoes/obrigacoes.module';
 import { DocumentosContabilModule } from './documentos-contabil/documentos-contabil.module';
 import { HonorariosContabilModule } from './honorarios-contabil/honorarios-contabil.module';
 import { TemplatesContabilModule } from './templates-contabil/templates-contabil.module';
+import { PortalClienteModule } from './portal-cliente/portal-cliente.module';
 
 import { HealthController } from './common/controllers/health.controller';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
@@ -101,6 +102,7 @@ import { RolesGuard } from './auth/guards/roles.guard';
     DocumentosContabilModule,
     HonorariosContabilModule,
     TemplatesContabilModule,
+    PortalClienteModule,
   ],
   controllers: [AppController, HealthController],
   providers: [

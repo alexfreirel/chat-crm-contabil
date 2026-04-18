@@ -206,6 +206,107 @@ def stream_tarefa(task_id):
     )
 
 
+# ── API: Certidões ────────────────────────────────────────────────────────────
+
+@app.route("/api/certidoes", methods=["POST"])
+def baixar_certidoes():
+    """
+    Baixa certidões CND para um CNPJ (sessão e-CAC já autenticada via cookies salvos).
+    Body: { cnpj, tipos?, destino? }
+    """
+    d = request.json or {}
+    cnpj   = d.get("cnpj", "").strip().replace(".", "").replace("/", "").replace("-", "")
+    tipos  = d.get("tipos", None)  # None = todos
+    destino = d.get("destino", "").strip()
+
+    if not cnpj or len(cnpj) != 14:
+        return jsonify({"error": "CNPJ inválido"}), 400
+
+    empresas = carregar()
+    empresa  = next((e for e in empresas if e["cnpj"].replace(".", "").replace("/", "").replace("-", "") == cnpj), None)
+
+    # Pasta de destino
+    mes_str = __import__("datetime").date.today().strftime("%Y-%m")
+    pasta   = Path(destino) if destino else (BASE_DIR / "downloads" / mes_str / (empresa["nome"] if empresa else cnpj))
+
+    # Consulta pública — sem precisar de sessão e-CAC para dados básicos
+    sys.path.insert(0, str(BASE_DIR))
+    try:
+        from certidoes_agent import consultar_cnpj_receita, consultar_simples_nacional
+        cnpj_info   = consultar_cnpj_receita(cnpj)
+        simples_info = consultar_simples_nacional(cnpj)
+        return jsonify({
+            "ok": True,
+            "cnpj": cnpj,
+            "dados_receita": cnpj_info,
+            "simples_nacional": simples_info,
+            "nota": "Para download das CNDs completas, autentique-se via e-CAC no menu principal.",
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/certidoes/task", methods=["POST"])
+def baixar_certidoes_task():
+    """
+    Inicia tarefa de download de certidões via sessão e-CAC autenticada.
+    Body: { cnpj, tipos? }
+    """
+    d      = request.json or {}
+    cnpj   = d.get("cnpj", "").strip()
+    tipos  = d.get("tipos", ["CND_FEDERAL"])
+
+    if not cnpj:
+        return jsonify({"error": "CNPJ é obrigatório"}), 400
+
+    cmd = [sys.executable, str(BASE_DIR / "certidoes_agent.py"), "--cnpj", cnpj]
+    return jsonify({"task_id": _iniciar_tarefa(cmd)})
+
+
+@app.route("/api/das", methods=["POST"])
+def baixar_das():
+    """
+    Baixa guia DAS para o CNPJ / competência.
+    Body: { cnpj, regime?, competencia?, destino? }
+    """
+    d          = request.json or {}
+    cnpj       = d.get("cnpj", "").strip()
+    regime     = d.get("regime", "SIMPLES_NACIONAL").upper()
+    competencia = d.get("competencia", "").strip()  # AAAA-MM
+    destino    = d.get("destino", "").strip()
+
+    if not cnpj:
+        return jsonify({"error": "CNPJ é obrigatório"}), 400
+
+    cmd = [sys.executable, str(BASE_DIR / "das_agent.py"),
+           "--cnpj", cnpj, "--regime", regime]
+    if competencia:
+        cmd += ["--comp", competencia]
+    if destino:
+        cmd += ["--destino", destino]
+
+    return jsonify({"task_id": _iniciar_tarefa(cmd)})
+
+
+@app.route("/api/consultar-cnpj", methods=["POST"])
+def consultar_cnpj():
+    """Consulta dados públicos de um CNPJ. Body: { cnpj }"""
+    d    = request.json or {}
+    cnpj = d.get("cnpj", "").strip().replace(".", "").replace("/", "").replace("-", "")
+    if not cnpj or len(cnpj) != 14:
+        return jsonify({"error": "CNPJ inválido"}), 400
+
+    sys.path.insert(0, str(BASE_DIR))
+    try:
+        from certidoes_agent import consultar_cnpj_receita, consultar_simples_nacional
+        return jsonify({
+            "receita": consultar_cnpj_receita(cnpj),
+            "simples": consultar_simples_nacional(cnpj),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ── API: Ações ─────────────────────────────────────────────────────────────────
 
 @app.route("/api/selecionar-pasta", methods=["POST"])
