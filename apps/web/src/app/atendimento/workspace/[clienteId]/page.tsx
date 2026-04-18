@@ -44,15 +44,15 @@ export default function WorkspacePage() {
 
   useEffect(() => { if (clienteId) fetchData(); }, [clienteId]);
 
-  async function fetchData() {
-    setLoading(true);
+  async function fetchData(silent = false) {
+    if (!silent) setLoading(true);
     try {
       const res = await fetch(`${API}/clientes-contabil/${clienteId}/workspace`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
       });
       setData(await res.json());
     } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+    finally { if (!silent) setLoading(false); }
   }
 
   async function handleStageChange(stage: string) {
@@ -150,10 +150,10 @@ export default function WorkspacePage() {
 
       {/* Conteúdo da aba */}
       <div className="flex-1 overflow-y-auto">
-        {activeTab === 'ficha' && <TabFichaContabil cliente={data} onRefresh={fetchData} />}
-        {activeTab === 'obrigacoes' && <TabObrigacoes clienteId={clienteId} cliente={data} onRefresh={fetchData} />}
+        {activeTab === 'ficha' && <TabFichaContabil cliente={data} onRefresh={() => fetchData(true)} />}
+        {activeTab === 'obrigacoes' && <TabObrigacoes clienteId={clienteId} cliente={data} onRefresh={() => fetchData(true)} />}
         {activeTab === 'documentos' && <TabDocumentos clienteId={clienteId} />}
-        {activeTab === 'honorarios' && <TabHonorarios clienteId={clienteId} onRefresh={fetchData} />}
+        {activeTab === 'honorarios' && <TabHonorarios clienteId={clienteId} onRefresh={() => fetchData(true)} />}
         {activeTab === 'timeline' && <TabTimeline clienteId={clienteId} cliente={data} />}
         {activeTab === 'comunicacoes' && <TabComunicacoes conversationId={data.conversation_id} />}
       </div>
