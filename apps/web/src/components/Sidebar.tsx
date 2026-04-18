@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Wallet, HelpCircle,
   ChevronRight, Plus, UserPlus, CheckSquare,
   CalendarPlus, ClipboardList, Sparkles,
-  FileSpreadsheet, Building2, FileText, CalendarDays,
+  FileSpreadsheet, Building2, FileText, CalendarDays, Link2,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { API_BASE_URL } from '@/lib/api';
@@ -299,6 +299,20 @@ export function Sidebar() {
       match: (p) => p.startsWith('/atendimento/calendario-fiscal'),
       show: true,
     },
+    relatorios: {
+      label: 'Relatórios',
+      href: '/atendimento/relatorios',
+      icon: <BarChart2 size={20} strokeWidth={2} />,
+      match: (p) => p.startsWith('/atendimento/relatorios'),
+      show: perms.canViewAnalytics || perms.isAdmin,
+    },
+    integracoes: {
+      label: 'Integrações',
+      href: '/atendimento/integracoes',
+      icon: <Link2 size={20} strokeWidth={2} />,
+      match: (p) => p.startsWith('/atendimento/integracoes'),
+      show: perms.canManageSettings,
+    },
     settings: {
       label: 'Configurações',
       href: '/atendimento/settings',
@@ -322,12 +336,12 @@ export function Sidebar() {
     {
       id: 'gestao',
       label: 'Gestão',
-      items: [allItems.followup, allItems.financeiro, allItems.analytics].filter(i => i.show),
+      items: [allItems.followup, allItems.financeiro, allItems.analytics, allItems.relatorios].filter(i => i.show),
     },
     {
       id: 'sistema',
       label: 'Sistema',
-      items: [allItems.manual, allItems.templates, allItems.settings].filter(i => i.show),
+      items: [allItems.manual, allItems.templates, allItems.integracoes, allItems.settings].filter(i => i.show),
     },
   ].filter(g => g.items.length > 0);
 
