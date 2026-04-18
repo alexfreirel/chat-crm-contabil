@@ -2,17 +2,17 @@
 
 import { useMemo } from 'react';
 
-export type AppRole = 'ADMIN' | 'ADVOGADO' | 'OPERADOR' | 'COMERCIAL' | 'ESTAGIARIO' | 'FINANCEIRO';
+export type AppRole = 'ADMIN' | 'CONTADOR' | 'OPERADOR' | 'COMERCIAL' | 'ASSISTENTE' | 'FINANCEIRO';
 
 export interface RoleInfo {
   role: AppRole | null;       // Primeiro role (backward compat)
   roles: AppRole[];           // Todos os roles do usuário
   userId: string | null;
   isAdmin: boolean;
-  isAdvogado: boolean;
+  isContador: boolean;
   isOperador: boolean;
   isComercial: boolean;
-  isEstagiario: boolean;
+  isAssistente: boolean;
   isFinanceiro: boolean;
   canManageSettings: boolean;    // configurações do sistema
   canViewDashboard: boolean;     // dashboard
@@ -57,14 +57,14 @@ function buildInfo(roles: AppRole[], userId: string | null): RoleInfo {
     roles,
     userId,
     isAdmin: roles.includes('ADMIN'),
-    isAdvogado: roles.includes('ADVOGADO'),
+    isContador: roles.includes('CONTADOR'),
     isOperador: roles.includes('OPERADOR') || roles.includes('COMERCIAL'),
     isComercial: roles.includes('COMERCIAL'),
-    isEstagiario: roles.includes('ESTAGIARIO'),
+    isAssistente: roles.includes('ASSISTENTE'),
     isFinanceiro: roles.includes('FINANCEIRO'),
     canManageSettings: roles.includes('ADMIN'),
-    canViewDashboard: has(['ADMIN', 'ADVOGADO', 'OPERADOR', 'COMERCIAL']),
+    canViewDashboard: has(['ADMIN', 'CONTADOR', 'OPERADOR', 'COMERCIAL']),
     canViewAnalytics: has(['ADMIN']),
-    canViewFinanceiro: has(['ADMIN', 'FINANCEIRO', 'ADVOGADO']),
+    canViewFinanceiro: has(['ADMIN', 'FINANCEIRO', 'CONTADOR']),
   };
 }

@@ -580,11 +580,11 @@ export default function AgendaPage() {
         }
       }
     } catch {}
-    // Buscar apenas advogados e admins para o filtro de usuários
+    // Buscar apenas contadores e admins para o filtro de usuários
     api.get('/users?limit=100').then(r => {
       const data: any[] = r.data?.data || r.data?.users || r.data || [];
       const lawyers = data.filter((u: any) =>
-        u.roles?.includes('ADVOGADO') || u.roles?.includes('ADMIN') || u.role === 'ADVOGADO' || u.role === 'ADMIN'
+        u.roles?.includes('CONTADOR') || u.roles?.includes('ADMIN') || u.role === 'CONTADOR' || u.role === 'ADMIN'
       );
       setUsers(lawyers.map((u: any) => ({ id: u.id, name: u.name })));
     }).catch(() => {});

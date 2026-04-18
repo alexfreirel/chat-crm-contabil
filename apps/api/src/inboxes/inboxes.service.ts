@@ -22,10 +22,10 @@ export class InboxesService {
         include: { users: { select: { id: true, name: true } } },
         orderBy: { name: 'asc' },
       }),
-      // Inclui TODOS os usuários que têm role de OPERADOR ou ADVOGADO (multi-role)
+      // Inclui TODOS os usuários que têm role de OPERADOR ou CONTADOR (multi-role)
       // Mesmo que não estejam vinculados a um inbox específico
       (this.prisma as any).user.findMany({
-        where: { roles: { hasSome: ['OPERADOR', 'ADVOGADO', 'ADMIN'] } },
+        where: { roles: { hasSome: ['OPERADOR', 'CONTADOR', 'ADMIN'] } },
         select: { id: true, name: true },
         orderBy: { name: 'asc' },
       }),

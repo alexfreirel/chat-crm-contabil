@@ -100,10 +100,10 @@ export default function OfficeSettingsPage() {
     try {
       const res = await api.get('/users?limit=100');
       const data = (res.data?.data || res.data?.users || res.data || []) as UserOption[];
-      // Mostrar apenas advogados e admins (não atendentes comerciais)
+      // Mostrar apenas contadores e admins (não atendentes comerciais)
       const lawyers = data
         .map((u: any) => ({ id: u.id, name: u.name, role: u.role, roles: u.roles }))
-        .filter((u: any) => u.roles?.includes('ADVOGADO') || u.roles?.includes('ADMIN') || u.role === 'ADVOGADO' || u.role === 'ADMIN');
+        .filter((u: any) => u.roles?.includes('CONTADOR') || u.roles?.includes('ADMIN') || u.role === 'CONTADOR' || u.role === 'ADMIN');
       setUsers(lawyers);
     } catch {}
   };

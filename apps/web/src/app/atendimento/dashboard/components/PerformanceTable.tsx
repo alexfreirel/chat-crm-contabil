@@ -6,7 +6,7 @@ import { Area, AreaChart, ResponsiveContainer } from 'recharts';
 import { fmtBRL } from '../utils';
 import type { TeamPerformanceEntry, TeamAverages, Quartile } from '../types';
 
-type RoleTab = 'TODOS' | 'ADVOGADO' | 'OPERADOR' | 'ESTAGIARIO';
+type RoleTab = 'TODOS' | 'CONTADOR' | 'OPERADOR' | 'ASSISTENTE';
 
 interface Props {
   members: TeamPerformanceEntry[];
@@ -71,8 +71,8 @@ export function PerformanceTable({ members, averages, activeTab }: Props) {
     else if (sortField === 'scoreDelta') { va = a.scoreDelta; vb = b.scoreDelta; }
     else {
       // Dig into role-specific KPIs
-      const aKPI = a.advogadoKPIs || a.operadorKPIs || a.estagiarioKPIs || {} as any;
-      const bKPI = b.advogadoKPIs || b.operadorKPIs || b.estagiarioKPIs || {} as any;
+      const aKPI = a.contadorKPIs || a.operadorKPIs || a.assistenteKPIs || {} as any;
+      const bKPI = b.contadorKPIs || b.operadorKPIs || b.assistenteKPIs || {} as any;
       va = aKPI[sortField] ?? a.sharedTasks?.[sortField as keyof typeof a.sharedTasks] ?? 0;
       vb = bKPI[sortField] ?? b.sharedTasks?.[sortField as keyof typeof b.sharedTasks] ?? 0;
     }
@@ -99,7 +99,7 @@ export function PerformanceTable({ members, averages, activeTab }: Props) {
         <SH field="name" label="Membro" />
         <SH field="compositeScore" label="Score" className="justify-center" />
         <SH field="scoreDelta" label="Delta" className="justify-center" />
-        {activeTab === 'ADVOGADO' && (<>
+        {activeTab === 'CONTADOR' && (<>
           <SH field="caseWinRate" label="Win Rate" className="justify-center" />
           <SH field="totalCollected" label="Coletas" className="justify-end" />
           <SH field="collectionRate" label="Tx Coleta" className="justify-center" />
@@ -111,7 +111,7 @@ export function PerformanceTable({ members, averages, activeTab }: Props) {
           <SH field="stagesAdvanced" label="Pipeline" className="justify-center" />
           <SH field="leadsLost" label="Perdas" className="justify-center" />
         </>)}
-        {activeTab === 'ESTAGIARIO' && (<>
+        {activeTab === 'ASSISTENTE' && (<>
           <SH field="taskCompletionRate" label="Tarefas" className="justify-center" />
           <SH field="deadlinesCompletedOnTime" label="Prazos" className="justify-center" />
           <SH field="documentsUploaded" label="Volume" className="justify-center" />
@@ -128,7 +128,7 @@ export function PerformanceTable({ members, averages, activeTab }: Props) {
       {/* Rows */}
       <div className="space-y-1">
         {sorted.map((m) => {
-          const kpis = m.advogadoKPIs || m.operadorKPIs || m.estagiarioKPIs;
+          const kpis = m.contadorKPIs || m.operadorKPIs || m.assistenteKPIs;
 
           return (
             <div key={m.userId} className={`rounded-lg p-2 ${QUARTILE_STYLES[m.quartile]}`}>
@@ -147,11 +147,11 @@ export function PerformanceTable({ members, averages, activeTab }: Props) {
                 <div className="flex justify-center"><ScoreBadge score={m.compositeScore} /></div>
                 <div className="flex justify-center"><DeltaBadge delta={m.scoreDelta} /></div>
 
-                {activeTab === 'ADVOGADO' && m.advogadoKPIs && (<>
-                  <div className="text-center"><span className="text-xs font-bold">{m.advogadoKPIs.caseWinRate}%</span><br /><VsAvgBadge value={m.advogadoKPIs.caseWinRate} avg={averages.advogado?.caseWinRate || 0} /></div>
-                  <div className="text-right text-xs font-semibold text-emerald-500">{fmtBRL(m.advogadoKPIs.totalCollected)}</div>
-                  <div className="text-center"><span className="text-xs font-bold">{m.advogadoKPIs.collectionRate}%</span><br /><VsAvgBadge value={m.advogadoKPIs.collectionRate} avg={averages.advogado?.collectionRate || 0} /></div>
-                  <div className="text-center"><span className="text-xs font-bold">{m.advogadoKPIs.deadlineCompletionRate}%</span></div>
+                {activeTab === 'CONTADOR' && m.contadorKPIs && (<>
+                  <div className="text-center"><span className="text-xs font-bold">{m.contadorKPIs.caseWinRate}%</span><br /><VsAvgBadge value={m.contadorKPIs.caseWinRate} avg={averages.contador?.caseWinRate || 0} /></div>
+                  <div className="text-right text-xs font-semibold text-emerald-500">{fmtBRL(m.contadorKPIs.totalCollected)}</div>
+                  <div className="text-center"><span className="text-xs font-bold">{m.contadorKPIs.collectionRate}%</span><br /><VsAvgBadge value={m.contadorKPIs.collectionRate} avg={averages.contador?.collectionRate || 0} /></div>
+                  <div className="text-center"><span className="text-xs font-bold">{m.contadorKPIs.deadlineCompletionRate}%</span></div>
                 </>)}
                 {activeTab === 'OPERADOR' && m.operadorKPIs && (<>
                   <div className="text-center"><span className="text-xs font-bold">{m.operadorKPIs.conversionRate}%</span><br /><VsAvgBadge value={m.operadorKPIs.conversionRate} avg={averages.operador?.conversionRate || 0} /></div>
@@ -159,16 +159,16 @@ export function PerformanceTable({ members, averages, activeTab }: Props) {
                   <div className="text-center text-xs font-bold">{m.operadorKPIs.stagesAdvanced}</div>
                   <div className="text-center"><span className={`text-xs font-bold ${m.operadorKPIs.leadsLost > 0 ? 'text-red-500' : ''}`}>{m.operadorKPIs.leadsLost}</span></div>
                 </>)}
-                {activeTab === 'ESTAGIARIO' && m.estagiarioKPIs && (<>
-                  <div className="text-center"><span className="text-xs font-bold">{m.estagiarioKPIs.taskCompletionRate}%</span><br /><VsAvgBadge value={m.estagiarioKPIs.taskCompletionRate} avg={averages.estagiario?.taskCompletionRate || 0} /></div>
-                  <div className="text-center text-xs font-bold">{m.estagiarioKPIs.deadlinesCompletedOnTime}</div>
-                  <div className="text-center text-xs font-bold">{m.estagiarioKPIs.documentsUploaded}</div>
+                {activeTab === 'ASSISTENTE' && m.assistenteKPIs && (<>
+                  <div className="text-center"><span className="text-xs font-bold">{m.assistenteKPIs.taskCompletionRate}%</span><br /><VsAvgBadge value={m.assistenteKPIs.taskCompletionRate} avg={averages.assistente?.taskCompletionRate || 0} /></div>
+                  <div className="text-center text-xs font-bold">{m.assistenteKPIs.deadlinesCompletedOnTime}</div>
+                  <div className="text-center text-xs font-bold">{m.assistenteKPIs.documentsUploaded}</div>
                 </>)}
                 {activeTab === 'TODOS' && (<>
                   <div className="text-center text-xs font-bold">{m.sharedTasks.tasksCompleted}</div>
                   <div className="text-center"><span className={`text-xs font-bold ${m.sharedTasks.tasksOverdue > 0 ? 'text-red-500' : ''}`}>{m.sharedTasks.tasksOverdue}</span></div>
                   <div className="text-center text-[9px] font-semibold text-muted-foreground">
-                    {m.advogadoKPIs ? `${m.advogadoKPIs.caseWinRate}% win` : m.operadorKPIs ? `${m.operadorKPIs.conversionRate}% conv` : `${m.sharedTasks.taskCompletionRate}% ok`}
+                    {m.contadorKPIs ? `${m.contadorKPIs.caseWinRate}% win` : m.operadorKPIs ? `${m.operadorKPIs.conversionRate}% conv` : `${m.sharedTasks.taskCompletionRate}% ok`}
                   </div>
                   <div className="text-center"><DeltaBadge delta={m.scoreDelta} /></div>
                 </>)}

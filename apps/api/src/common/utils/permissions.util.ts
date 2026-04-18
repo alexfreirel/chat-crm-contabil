@@ -8,9 +8,9 @@
 
 export const ROLES = {
   ADMIN: 'ADMIN',
-  ADVOGADO: 'ADVOGADO',
+  CONTADOR: 'CONTADOR',
   OPERADOR: 'OPERADOR',
-  ESTAGIARIO: 'ESTAGIARIO',
+  ASSISTENTE: 'ASSISTENTE',
   FINANCEIRO: 'FINANCEIRO',
 } as const;
 
@@ -28,28 +28,28 @@ export function isAdmin(roles: string | string[]): boolean {
   return normalizeRoles(roles).includes(ROLES.ADMIN);
 }
 
-/** Verifica se pode gerenciar processos (criar, editar, arquivar) */
-export function canManageLegalCases(roles: string | string[]): boolean {
+/** Verifica se pode gerenciar clientes (criar, editar, arquivar) */
+export function canManageClientes(roles: string | string[]): boolean {
   const r = normalizeRoles(roles);
-  return r.some(role => ['ADMIN', 'ADVOGADO'].includes(role));
+  return r.some(role => ['ADMIN', 'CONTADOR'].includes(role));
 }
 
-/** Verifica se pode visualizar processos */
-export function canViewLegalCases(roles: string | string[]): boolean {
+/** Verifica se pode visualizar clientes */
+export function canViewClientes(roles: string | string[]): boolean {
   const r = normalizeRoles(roles);
-  return r.some(role => ['ADMIN', 'ADVOGADO', 'ESTAGIARIO'].includes(role));
+  return r.some(role => ['ADMIN', 'CONTADOR', 'ASSISTENTE'].includes(role));
 }
 
 /** Verifica se pode gerenciar leads/clientes */
 export function canManageLeads(roles: string | string[]): boolean {
   const r = normalizeRoles(roles);
-  return r.some(role => ['ADMIN', 'ADVOGADO', 'OPERADOR'].includes(role));
+  return r.some(role => ['ADMIN', 'CONTADOR', 'OPERADOR'].includes(role));
 }
 
 /** Verifica se tem acesso ao modo cliente no chat */
 export function canViewClients(roles: string | string[]): boolean {
   const r = normalizeRoles(roles);
-  return r.some(role => ['ADMIN', 'ADVOGADO', 'OPERADOR'].includes(role));
+  return r.some(role => ['ADMIN', 'CONTADOR', 'OPERADOR'].includes(role));
 }
 
 /** Verifica se pode gerenciar configurações do sistema */
@@ -70,10 +70,10 @@ export function canViewFinanceiro(roles: string | string[]): boolean {
 
 /**
  * Retorna o role de maior privilégio para decisões de visibilidade.
- * Ordem: ADMIN > ADVOGADO > OPERADOR > ESTAGIARIO > FINANCEIRO
+ * Ordem: ADMIN > CONTADOR > OPERADOR > ASSISTENTE > FINANCEIRO
  */
 export function effectiveRole(roles: string | string[]): string {
   const r = normalizeRoles(roles);
-  const priority = [ROLES.ADMIN, ROLES.ADVOGADO, ROLES.OPERADOR, ROLES.ESTAGIARIO, ROLES.FINANCEIRO];
+  const priority = [ROLES.ADMIN, ROLES.CONTADOR, ROLES.OPERADOR, ROLES.ASSISTENTE, ROLES.FINANCEIRO];
   return priority.find(p => r.includes(p)) || r[0] || 'OPERADOR';
 }

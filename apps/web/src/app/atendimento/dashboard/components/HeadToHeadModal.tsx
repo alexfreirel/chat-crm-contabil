@@ -83,14 +83,14 @@ export function HeadToHeadModal({ memberA, memberB, onClose }: Props) {
         <CompareRow label="Atrasadas" a={memberA.sharedTasks.tasksOverdue} b={memberB.sharedTasks.tasksOverdue} higherIsBetter={false} />
         <CompareRow label="Taxa Tarefas" a={memberA.sharedTasks.taskCompletionRate} b={memberB.sharedTasks.taskCompletionRate} format="percent" />
 
-        {/* Advogado-specific */}
-        {memberA.advogadoKPIs && memberB.advogadoKPIs && (<>
-          <div className="mt-3 mb-1 text-[9px] text-muted-foreground font-bold uppercase">Advogado</div>
-          <CompareRow label="Win Rate" a={memberA.advogadoKPIs.caseWinRate} b={memberB.advogadoKPIs.caseWinRate} format="percent" />
-          <CompareRow label="Coletas" a={memberA.advogadoKPIs.totalCollected} b={memberB.advogadoKPIs.totalCollected} format="currency" />
-          <CompareRow label="Tx Coleta" a={memberA.advogadoKPIs.collectionRate} b={memberB.advogadoKPIs.collectionRate} format="percent" />
-          <CompareRow label="Prazos OK" a={memberA.advogadoKPIs.deadlineCompletionRate} b={memberB.advogadoKPIs.deadlineCompletionRate} format="percent" />
-          <CompareRow label="Casos Ativos" a={memberA.advogadoKPIs.activeCases} b={memberB.advogadoKPIs.activeCases} />
+        {/* Contador-specific */}
+        {memberA.contadorKPIs && memberB.contadorKPIs && (<>
+          <div className="mt-3 mb-1 text-[9px] text-muted-foreground font-bold uppercase">Contador</div>
+          <CompareRow label="Win Rate" a={memberA.contadorKPIs.caseWinRate} b={memberB.contadorKPIs.caseWinRate} format="percent" />
+          <CompareRow label="Coletas" a={memberA.contadorKPIs.totalCollected} b={memberB.contadorKPIs.totalCollected} format="currency" />
+          <CompareRow label="Tx Coleta" a={memberA.contadorKPIs.collectionRate} b={memberB.contadorKPIs.collectionRate} format="percent" />
+          <CompareRow label="Prazos OK" a={memberA.contadorKPIs.deadlineCompletionRate} b={memberB.contadorKPIs.deadlineCompletionRate} format="percent" />
+          <CompareRow label="Clientes Ativos" a={memberA.contadorKPIs.activeCases} b={memberB.contadorKPIs.activeCases} />
         </>)}
 
         {/* Operador-specific */}
@@ -103,12 +103,12 @@ export function HeadToHeadModal({ memberA, memberB, onClose }: Props) {
           <CompareRow label="Perdas" a={memberA.operadorKPIs.leadsLost} b={memberB.operadorKPIs.leadsLost} higherIsBetter={false} />
         </>)}
 
-        {/* Estagiario-specific */}
-        {memberA.estagiarioKPIs && memberB.estagiarioKPIs && (<>
-          <div className="mt-3 mb-1 text-[9px] text-muted-foreground font-bold uppercase">Estagiario</div>
-          <CompareRow label="Tx Tarefas" a={memberA.estagiarioKPIs.taskCompletionRate} b={memberB.estagiarioKPIs.taskCompletionRate} format="percent" />
-          <CompareRow label="Prazos OK" a={memberA.estagiarioKPIs.deadlinesCompletedOnTime} b={memberB.estagiarioKPIs.deadlinesCompletedOnTime} />
-          <CompareRow label="Documentos" a={memberA.estagiarioKPIs.documentsUploaded} b={memberB.estagiarioKPIs.documentsUploaded} />
+        {/* Assistente-specific */}
+        {memberA.assistenteKPIs && memberB.assistenteKPIs && (<>
+          <div className="mt-3 mb-1 text-[9px] text-muted-foreground font-bold uppercase">Assistente</div>
+          <CompareRow label="Tx Tarefas" a={memberA.assistenteKPIs.taskCompletionRate} b={memberB.assistenteKPIs.taskCompletionRate} format="percent" />
+          <CompareRow label="Prazos OK" a={memberA.assistenteKPIs.deadlinesCompletedOnTime} b={memberB.assistenteKPIs.deadlinesCompletedOnTime} />
+          <CompareRow label="Documentos" a={memberA.assistenteKPIs.documentsUploaded} b={memberB.assistenteKPIs.documentsUploaded} />
         </>)}
       </div>
     </div>

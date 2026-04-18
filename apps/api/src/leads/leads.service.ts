@@ -80,21 +80,21 @@ export class LeadsService {
 
       const userRoles = normalizeRoles(user?.role as any);
       const isAdminUser = userRoles.includes('ADMIN');
-      const isAdvogadoUser = userRoles.includes('ADVOGADO') || userRoles.includes('ESPECIALISTA');
+      const isContadorUser = userRoles.includes('CONTADOR') || userRoles.includes('ESPECIALISTA');
       const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL');
       const userInboxIds = (user?.inboxes ?? []).map((i: any) => i.id);
 
       if (!isAdminUser) {
-        // CRM Pipeline: operador/advogado vê apenas leads explicitamente atribuídos.
+        // CRM Pipeline: operador/contador vê apenas leads explicitamente atribuídos.
         // Diferente do chat inbox (que mostra fila da inbox), aqui só mostra leads
-        // onde o usuário é assigned_user, assigned_lawyer, cs_user ou lawyer do caso.
+        // onde o usuário é assigned_user, assigned_accountant, cs_user ou accountant do caso.
         const orConditions: any[] = [];
 
-        if (isAdvogadoUser) {
+        if (isContadorUser) {
           orConditions.push({ conversations: { some: { assigned_accountant_id: userId } } });
         }
 
-        if (isOperadorUser || isAdvogadoUser) {
+        if (isOperadorUser || isContadorUser) {
           orConditions.push({ conversations: { some: { assigned_user_id: userId } } });
           orConditions.push({ cs_user_id: userId });
         }

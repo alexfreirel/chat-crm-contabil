@@ -180,7 +180,7 @@ export function Sidebar() {
   // Badge para petições devolvidas (estagiário)
   const [internBadge, setInternBadge] = useState(0);
   useEffect(() => {
-    if (!perms.isEstagiario) return;
+    if (!perms.isAssistente) return;
     const fetchBadge = async () => {
       try {
         const res = await fetch('/api/intern/badge-count', {
@@ -194,7 +194,7 @@ export function Sidebar() {
     fetchBadge();
     const interval = setInterval(fetchBadge, 2 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [perms.isEstagiario]);
+  }, [perms.isAssistente]);
 
   // ─── Itens por grupo ──────────────────────────────────────────────
   const allItems: Record<string, NavItem> = {
@@ -235,13 +235,13 @@ export function Sidebar() {
       badge: overdueCount,
       show: true,
     },
-    estagiario: {
+    assistente: {
       label: 'Meu Painel',
-      href: '/atendimento/estagiario',
+      href: '/atendimento/assistente',
       icon: <ClipboardList size={20} strokeWidth={2} />,
-      match: (p) => p.startsWith('/atendimento/estagiario'),
+      match: (p) => p.startsWith('/atendimento/assistente'),
       badge: internBadge,
-      show: perms.isEstagiario,
+      show: perms.isAssistente,
     },
     followup: {
       label: 'Follow-up IA',
@@ -296,7 +296,7 @@ export function Sidebar() {
     {
       id: 'contabil',
       label: 'Contábil',
-      items: [allItems.estagiario].filter(i => i.show),
+      items: [allItems.assistente].filter(i => i.show),
     },
     {
       id: 'gestao',

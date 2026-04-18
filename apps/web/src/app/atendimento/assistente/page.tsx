@@ -414,9 +414,9 @@ function InternDashboard() {
   );
 }
 
-export default function EstagiarioPage() {
+export default function AssistentePage() {
   return (
-    <RouteGuard allowedRoles={['ADMIN', 'ESTAGIARIO']}>
+    <RouteGuard allowedRoles={['ADMIN', 'ASSISTENTE']}>
       <InternDashboard />
     </RouteGuard>
   );

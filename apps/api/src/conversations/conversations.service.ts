@@ -60,7 +60,7 @@ export class ConversationsService {
     // ─── Controle de acesso por role (multi-role aware) ────────────────
     const userRoles: string[] = Array.isArray((user as any)?.roles) ? (user as any).roles : [userRole];
     const isAdminUser = userRoles.includes('ADMIN');
-    const isAdvogadoUser = userRoles.includes('ADVOGADO') || userRoles.includes('ESPECIALISTA');
+    const isContadorUser = userRoles.includes('CONTADOR') || userRoles.includes('ESPECIALISTA');
     const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL');
 
     if (isAdminUser) {
@@ -69,7 +69,7 @@ export class ConversationsService {
 
     } else {
       // Multi-role: combina visibilidade de todos os papéis do usuário
-      // ADVOGADO vê: assigned_lawyer_id + legal_cases.lawyer_id
+      // CONTADOR vê: assigned_lawyer_id + clientes_contabil.accountant_id
       // OPERADOR vê: assigned_user_id + cs_user_id (clientes)
       // Ambos: combina tudo via OR
       if (inboxId) {
@@ -82,9 +82,9 @@ export class ConversationsService {
       } else {
         const orConditions: any[] = [];
 
-        // Visibilidade de ADVOGADO: apenas CLIENTES atribuídos como advogada + processos
-        // Na aba Leads: advogado NÃO vê leads de outros operadores via assigned_lawyer_id
-        if (isAdvogadoUser && clientMode === true) {
+        // Visibilidade de CONTADOR: apenas CLIENTES atribuídos como contador + processos
+        // Na aba Leads: contador NÃO vê leads de outros operadores via assigned_lawyer_id
+        if (isContadorUser && clientMode === true) {
           orConditions.push({ assigned_accountant_id: userId, lead: { is_client: true } });
         }
 
@@ -674,9 +674,9 @@ export class ConversationsService {
    *
    * Regra de negócio (notificações — mais restritiva que visibilidade):
    *  - ADMIN: badges apenas das conversas atribuídas a ele (assigned_user_id)
-   *  - ADVOGADO: badges apenas de clientes atribuídos a ele (assigned_lawyer_id)
+   *  - CONTADOR: badges apenas de clientes atribuídos a ele (assigned_lawyer_id)
    *  - OPERADOR: badges apenas de leads/clientes atribuídos a ele (assigned_user_id)
-   *  - ADVOGADO+OPERADOR: combina ambos (clientes como advogado + leads como operador)
+   *  - CONTADOR+OPERADOR: combina ambos (clientes como contador + leads como operador)
    *  - Exclui leads PERDIDO/FINALIZADO
    *
    * Nota: findAll() controla VISIBILIDADE (o que aparece na lista).
@@ -695,7 +695,7 @@ export class ConversationsService {
       const userRoles: string[] = Array.isArray((user as any)?.roles)
         ? (user as any).roles
         : [effectiveRole((user as any)?.roles ?? user?.role ?? 'OPERADOR')];
-      const isAdvogadoUser = userRoles.includes('ADVOGADO');
+      const isContadorUser2 = userRoles.includes('CONTADOR');
       const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL');
       const isAdminUser = userRoles.includes('ADMIN');
 
@@ -710,13 +710,13 @@ export class ConversationsService {
       // ADMIN: badge apenas das conversas atribuídas diretamente a ele
       if (isAdminUser) {
         orConditions.push({ assigned_user_id: userId });
-        // Admin que também é advogado: clientes atribuídos como advogado
-        if (isAdvogadoUser) {
+        // Admin que também é contador: clientes atribuídos como contador
+        if (isContadorUser2) {
           orConditions.push({ assigned_lawyer_id: userId, lead: { is_client: true } });
         }
       } else {
-        // ADVOGADO: badge apenas de CLIENTES onde é advogado responsável
-        if (isAdvogadoUser) {
+        // CONTADOR: badge apenas de CLIENTES onde é contador responsável
+        if (isContadorUser2) {
           orConditions.push({ assigned_lawyer_id: userId, lead: { is_client: true } });
         }
 

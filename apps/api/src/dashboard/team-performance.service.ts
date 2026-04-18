@@ -37,9 +37,9 @@ export class TeamPerformanceService {
     // Normalize: treat role as array for compatibility
     const usersNorm = users.map(u => ({ ...u, roles: u.role ? [u.role] : [] }));
 
-    const especialistas = usersNorm.filter(u => u.roles?.includes('ESPECIALISTA') || u.roles?.includes('ADVOGADO'));
+    const especialistas = usersNorm.filter(u => u.roles?.includes('ESPECIALISTA') || u.roles?.includes('CONTADOR'));
     const operadores = usersNorm.filter(u => u.roles?.includes('OPERADOR'));
-    const assistentes = usersNorm.filter(u => u.roles?.includes('ASSISTENTE') || u.roles?.includes('ESTAGIARIO'));
+    const assistentes = usersNorm.filter(u => u.roles?.includes('ASSISTENTE'));
     const allIds = usersNorm.map(u => u.id);
     const espIds = especialistas.map(u => u.id);
     const opIds = operadores.map(u => u.id);
@@ -172,7 +172,7 @@ export class TeamPerformanceService {
       let score = 0;
       let prevScore = 0;
 
-      if (user.roles?.some((r: string) => ['ESPECIALISTA', 'ADVOGADO', 'ADMIN'].includes(r))) {
+      if (user.roles?.some((r: string) => ['ESPECIALISTA', 'CONTADOR', 'ADMIN'].includes(r))) {
         const active = gc(activeCases, 'accountant_id', user.id);
         const filed = gc(casesFiledCurrent, 'accountant_id', user.id);
 
@@ -228,7 +228,7 @@ export class TeamPerformanceService {
         prevScore = (convRate / 100) * 30 + 25 + Math.min(15, prevClosed / 5 * 1.5) + (taskRate / 100) * 15 + Math.min(10, prevStages / 10 * 2);
       }
 
-      if (user.roles?.includes('ASSISTENTE') || user.roles?.includes('ESTAGIARIO')) {
+      if (user.roles?.includes('ASSISTENTE')) {
         estKPIs = {
           tasksCompleted: completed, tasksPending: pending, tasksOverdue: overdue,
           taskCompletionRate: taskRate, avgTaskCompletionDays: 0,
@@ -250,7 +250,7 @@ export class TeamPerformanceService {
         userId: user.id, name: user.name, role: user.role ?? 'OPERADOR', roles: user.roles,
         compositeScore: score, previousScore: prevScore, scoreDelta: score - prevScore,
         rank: 0, quartile: 'MID' as Quartile,
-        advogadoKPIs: advKPIs, operadorKPIs: opKPIs, estagiarioKPIs: estKPIs,
+        contadorKPIs: advKPIs, operadorKPIs: opKPIs, assistenteKPIs: estKPIs,
         sharedTasks,
         dailyActivity: [],
       });
@@ -279,22 +279,22 @@ export class TeamPerformanceService {
     };
 
     rankGroup('ESPECIALISTA');
-    rankGroup('ADVOGADO');
+    rankGroup('CONTADOR');
     rankGroup('OPERADOR');
     rankGroup('ASSISTENTE');
     rankGroup('ADMIN');
 
     // ─── 6. Team averages ──
     const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : 0;
-    const advMembers = members.filter(m => m.advogadoKPIs);
+    const advMembers = members.filter(m => m.contadorKPIs);
     const opMembers = members.filter(m => m.operadorKPIs);
-    const estMembers = members.filter(m => m.estagiarioKPIs);
+    const estMembers = members.filter(m => m.assistenteKPIs);
 
     const teamAverages = {
       especialista: {
-        activeCases: Math.round(avg(advMembers.map(m => m.advogadoKPIs.activeCases))),
-        collectionRate: Math.round(avg(advMembers.map(m => m.advogadoKPIs.collectionRate))),
-        totalCollected: Math.round(avg(advMembers.map(m => m.advogadoKPIs.totalCollected))),
+        activeCases: Math.round(avg(advMembers.map(m => m.contadorKPIs.activeCases))),
+        collectionRate: Math.round(avg(advMembers.map(m => m.contadorKPIs.collectionRate))),
+        totalCollected: Math.round(avg(advMembers.map(m => m.contadorKPIs.totalCollected))),
       },
       operador: {
         conversionRate: Math.round(avg(opMembers.map(m => m.operadorKPIs.conversionRate))),
@@ -303,7 +303,7 @@ export class TeamPerformanceService {
         taskCompletionRate: Math.round(avg(opMembers.map(m => m.operadorKPIs.taskCompletionRate))),
       },
       assistente: {
-        taskCompletionRate: Math.round(avg(estMembers.map(m => m.estagiarioKPIs.taskCompletionRate))),
+        taskCompletionRate: Math.round(avg(estMembers.map(m => m.assistenteKPIs.taskCompletionRate))),
       },
       tasks: {
         taskCompletionRate: Math.round(avg(members.map(m => m.sharedTasks.taskCompletionRate))),

@@ -176,7 +176,7 @@ export class UsersService {
         AND: [
           {
             OR: [
-              { role: { in: ['ESPECIALISTA', 'ADVOGADO', 'ADMIN'] } },
+              { role: { in: ['ESPECIALISTA', 'CONTADOR', 'ADMIN'] } },
             ],
           },
           // Isolamento multi-tenant combinado via AND para não sobrescrever o OR acima
@@ -197,7 +197,7 @@ export class UsersService {
     });
   }
 
-  /** Define os supervisores (advogados) de um estagiário */
+  /** Define os supervisores (contadores) de um assistente */
   async linkSupervisors(internId: string, lawyerIds: string[]) {
     return this.prisma.user.update({
       where: { id: internId },

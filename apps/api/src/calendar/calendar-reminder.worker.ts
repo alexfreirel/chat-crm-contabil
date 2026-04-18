@@ -113,9 +113,9 @@ function buildContext(event: any, memory: any, legalCase: any, ficha: any): stri
     lines.push(`Nome: ${event.lead.name || 'Não informado'}`);
   }
 
-  // Advogado
+  // Contador
   if (event.assigned_user) {
-    lines.push(`\n## ADVOGADO RESPONSÁVEL`);
+    lines.push(`\n## CONTADOR RESPONSÁVEL`);
     lines.push(`Nome: ${event.assigned_user.name}`);
   }
 
@@ -294,13 +294,13 @@ export class CalendarReminderWorker extends WorkerHost {
     // ── 1. Mensagem para o Advogado (sempre) ─────────────────────────
     if (event.assigned_user?.phone) {
       const advPhone = event.assigned_user.phone.replace(/\D/g, '');
-      // Advogado recebe template rico — sem precisar de IA (já conhece o caso)
+      // Contador recebe template rico — sem precisar de IA (já conhece o cliente)
       const advMsg = templateAdvogado(event, minutesBefore);
       try {
         await this.whatsapp.sendText(advPhone, advMsg);
-        this.logger.log(`[REMINDER] WhatsApp enviado para advogado ${advPhone}`);
+        this.logger.log(`[REMINDER] WhatsApp enviado para contador ${advPhone}`);
       } catch (e: any) {
-        this.logger.warn(`[REMINDER] Erro ao enviar para advogado ${advPhone}: ${e.message}`);
+        this.logger.warn(`[REMINDER] Erro ao enviar para contador ${advPhone}: ${e.message}`);
       }
     }
 

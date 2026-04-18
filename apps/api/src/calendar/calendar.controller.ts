@@ -32,10 +32,10 @@ export class CalendarController {
     @Request() req: any,
   ) {
     // Default: mostra apenas eventos do usuario logado
-    // showAll=true: ADMIN vê tudo, ADVOGADO vê eventos dos seus casos
+    // showAll=true: ADMIN vê tudo, CONTADOR vê eventos dos seus clientes
     const isAdmin = req.user?.roles?.includes('ADMIN');
-    const isAdvogado = req.user?.roles?.includes('ADVOGADO');
-    const canViewAll = isAdmin || (showAll === 'true' && isAdvogado);
+    const isContador = req.user?.roles?.includes('CONTADOR');
+    const canViewAll = isAdmin || (showAll === 'true' && isContador);
     const effectiveUserId = canViewAll ? undefined : (userId || req.user.id);
     return this.calendarService.findAll({
       start,
