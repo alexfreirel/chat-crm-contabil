@@ -5,11 +5,18 @@ import OpenAI from 'openai';
 @Injectable()
 export class FollowupService {
   private readonly logger = new Logger(FollowupService.name);
-  private openai: OpenAI;
+  private _openai: OpenAI | null = null;
 
-  constructor(private prisma: PrismaService) {
-    this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  private get openai(): OpenAI {
+    if (!this._openai) {
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) throw new Error('OPENAI_API_KEY não configurada');
+      this._openai = new OpenAI({ apiKey });
+    }
+    return this._openai;
   }
+
+  constructor(private prisma: PrismaService) {}
 
   async buildDossie(enrollment: any, step: any, lead: any): Promise<any> {
     // Conversa ativa
