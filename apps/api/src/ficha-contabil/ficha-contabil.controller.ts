@@ -1,6 +1,7 @@
 import { Controller, Get, Patch, Post, Body, Param, Request, UseGuards } from '@nestjs/common';
 import { FichaContabilService } from './ficha-contabil.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Public } from '../auth/decorators/public.decorator';
 
 @UseGuards(JwtAuthGuard)
 @Controller('ficha-contabil')
@@ -25,5 +26,22 @@ export class FichaContabilController {
   @Post(':leadId/finalizar')
   markFinalizado(@Param('leadId') leadId: string) {
     return this.service.markFinalizado(leadId);
+  }
+
+  // ── Endpoints públicos (formulário do cliente via WhatsApp) ─────────────────
+
+  @Public()
+  @Get('publico/:leadId')
+  publicGet(@Param('leadId') leadId: string) {
+    return this.service.findByLeadId(leadId);
+  }
+
+  @Public()
+  @Post('publico/:leadId')
+  publicSubmit(
+    @Param('leadId') leadId: string,
+    @Body() body: Record<string, any>,
+  ) {
+    return this.service.upsert(leadId, body, 'cliente');
   }
 }

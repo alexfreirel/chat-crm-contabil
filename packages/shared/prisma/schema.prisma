@@ -582,8 +582,20 @@ model FichaContabil {
   qtd_funcionarios       Int?
   tem_pro_labore         Boolean   @default(false)
   regime_contratacao     String?   // CLT | PJ | AUTONOMO | MISTO
-  // Sócios (JSON: [{nome, cpf, percentual}])
+  // Sócios (JSON: [{nome, cpf, percentual, pro_labore}])
   socios                 Json?
+  // Faturamento estimado
+  faturamento_mensal     Decimal?  @db.Decimal(15, 2)
+  faturamento_anual      Decimal?  @db.Decimal(15, 2)
+  // Sistemas utilizados
+  sistema_erp            String?
+  sistema_nf             String?   // Software de emissão de NF
+  sistema_folha          String?   // Software de folha de pagamento
+  // Contabilidade anterior
+  escritorio_anterior    String?
+  data_transicao         DateTime? // Data prevista de início/transição
+  // Observações
+  observacoes            String?
   // Serviços contratados
   servicos               String[]  @default([])
   // BPO_FISCAL | BPO_CONTABIL | DP | ABERTURA | IR_PF | IR_PJ | CONSULTORIA | OUTRO
