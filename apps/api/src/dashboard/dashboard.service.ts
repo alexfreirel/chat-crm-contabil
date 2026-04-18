@@ -380,7 +380,7 @@ export class DashboardService {
         where: {
           status: 'PENDENTE',
           due_date: { lt: now },
-          honorario: { ...tw },
+          ...(tenantId ? { honorario: { tenant_id: tenantId } } : {}),
         },
         select: {
           amount: true,
