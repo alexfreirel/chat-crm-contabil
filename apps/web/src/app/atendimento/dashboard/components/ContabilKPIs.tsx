@@ -1,5 +1,6 @@
 'use client';
 
+import { ReactNode } from 'react';
 import { Users, AlertTriangle, Clock, UserPlus } from 'lucide-react';
 
 interface ContabilKPIsProps {
@@ -13,7 +14,7 @@ function KpiCard({
   label,
   color,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   value: number | string;
   label: string;
   color: string;

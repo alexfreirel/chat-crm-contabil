@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, FormEvent } from 'react';
 import { Plus, Edit2, Trash2, FileText, X, ChevronDown } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -100,7 +100,7 @@ function TemplateModal({ template, onClose, onSave }: ModalProps) {
     }, 0);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
     setSaving(true);
