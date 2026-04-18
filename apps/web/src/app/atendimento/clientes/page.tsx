@@ -1,5 +1,6 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:44001/api';
 
@@ -12,10 +13,16 @@ const STAGES = [
 ];
 
 const STAGE_COLORS: Record<string, string> = {
-  ONBOARDING: 'bg-blue-100 text-blue-800',
-  ATIVO: 'bg-green-100 text-green-800',
-  SUSPENSO: 'bg-yellow-100 text-yellow-800',
-  ENCERRADO: 'bg-gray-100 text-gray-600',
+  ONBOARDING: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+  ATIVO: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+  SUSPENSO: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
+  ENCERRADO: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+};
+
+const PRIORITY_COLORS: Record<string, string> = {
+  URGENTE: 'text-red-500',
+  NORMAL: 'text-muted-foreground',
+  BAIXA: 'text-muted-foreground/50',
 };
 
 const SERVICE_LABELS: Record<string, string> = {
@@ -29,11 +36,179 @@ const SERVICE_ICONS: Record<string, string> = {
   ENCERRAMENTO: '🔒', IR_PF: '📋', IR_PJ: '📋', CONSULTORIA: '💡', OUTRO: '📁',
 };
 
+const SERVICE_TYPES = [
+  'BPO_FISCAL', 'BPO_CONTABIL', 'DP', 'ABERTURA',
+  'ENCERRAMENTO', 'IR_PF', 'IR_PJ', 'CONSULTORIA', 'OUTRO',
+];
+
+const REGIMES = [
+  { value: '', label: 'Sem regime' },
+  { value: 'SIMPLES_NACIONAL', label: 'Simples Nacional' },
+  { value: 'LUCRO_PRESUMIDO', label: 'Lucro Presumido' },
+  { value: 'LUCRO_REAL', label: 'Lucro Real' },
+  { value: 'MEI', label: 'MEI' },
+  { value: 'ISENTO', label: 'Isento' },
+];
+
+function authHeaders() {
+  return { Authorization: `Bearer ${localStorage.getItem('token')}` };
+}
+
+/* ─── Modal criar cliente ─── */
+function CreateClienteModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [step, setStep] = useState<'lead' | 'form'>('lead');
+  const [leadSearch, setLeadSearch] = useState('');
+  const [leads, setLeads] = useState<any[]>([]);
+  const [selectedLead, setSelectedLead] = useState<any>(null);
+  const [serviceType, setServiceType] = useState('BPO_FISCAL');
+  const [regime, setRegime] = useState('');
+  const [saving, setSaving] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    if (leadSearch.length < 2) { setLeads([]); return; }
+    debounceRef.current = setTimeout(async () => {
+      const res = await fetch(`${API}/leads?search=${encodeURIComponent(leadSearch)}&limit=10`, {
+        headers: authHeaders(),
+      });
+      const d = await res.json();
+      setLeads(Array.isArray(d) ? d : (d.data || []));
+    }, 300);
+  }, [leadSearch]);
+
+  async function handleCreate() {
+    if (!selectedLead) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${API}/clientes-contabil/from-lead/${selectedLead.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ service_type: serviceType, regime_tributario: regime || undefined }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.message || 'Erro ao criar cliente');
+        return;
+      }
+      onCreated();
+      onClose();
+    } catch (e) {
+      alert('Erro de comunicação com o servidor');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h2 className="font-bold text-foreground">Novo cliente contábil</h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors text-xl leading-none">×</button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Busca de lead */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">
+              Lead / Contato <span className="text-red-500">*</span>
+            </label>
+            {selectedLead ? (
+              <div className="flex items-center gap-2 p-2.5 bg-primary/10 border border-primary/30 rounded-lg">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{selectedLead.name || selectedLead.phone}</p>
+                  <p className="text-xs text-muted-foreground">{selectedLead.phone}</p>
+                </div>
+                <button onClick={() => setSelectedLead(null)} className="text-xs text-muted-foreground hover:text-red-500 shrink-0">
+                  trocar
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Buscar por nome ou telefone..."
+                  value={leadSearch}
+                  onChange={e => setLeadSearch(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  autoFocus
+                />
+                {leads.length > 0 && (
+                  <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {leads.map(l => (
+                      <button
+                        key={l.id}
+                        onClick={() => { setSelectedLead(l); setLeads([]); setLeadSearch(''); }}
+                        className="w-full text-left px-3 py-2 hover:bg-muted/50 transition-colors border-b border-border/50 last:border-0"
+                      >
+                        <p className="text-sm font-medium text-foreground">{l.name || '(sem nome)'}</p>
+                        <p className="text-xs text-muted-foreground">{l.phone}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {leadSearch.length >= 2 && leads.length === 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">Nenhum lead encontrado para "{leadSearch}"</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Tipo de serviço */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">
+              Tipo de serviço <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={serviceType}
+              onChange={e => setServiceType(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+            >
+              {SERVICE_TYPES.map(s => (
+                <option key={s} value={s}>{SERVICE_ICONS[s]} {SERVICE_LABELS[s]}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Regime tributário */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Regime tributário</label>
+            <select
+              value={regime}
+              onChange={e => setRegime(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+            >
+              {REGIMES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex gap-2 px-5 py-4 border-t border-border bg-muted/20">
+          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm text-foreground bg-background border border-border rounded-lg hover:bg-muted/50 transition-colors">
+            Cancelar
+          </button>
+          <button
+            onClick={handleCreate}
+            disabled={!selectedLead || saving}
+            className="flex-1 px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {saving ? 'Criando...' : 'Criar cliente'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Página principal ─── */
 export default function ClientesPage() {
+  const router = useRouter();
   const [clientes, setClientes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [stage, setStage] = useState('');
   const [search, setSearch] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => { fetchClientes(); }, [stage]);
 
@@ -43,7 +218,7 @@ export default function ClientesPage() {
       const params = new URLSearchParams();
       if (stage) params.set('stage', stage);
       const res = await fetch(`${API}/clientes-contabil?${params}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        headers: authHeaders(),
       });
       const data = await res.json();
       setClientes(Array.isArray(data) ? data : (data.data || []));
@@ -54,7 +229,12 @@ export default function ClientesPage() {
   const filtered = clientes.filter(c => {
     if (!search) return true;
     const s = search.toLowerCase();
-    return c.lead?.name?.toLowerCase().includes(s) || c.lead?.phone?.includes(s);
+    return (
+      c.lead?.name?.toLowerCase().includes(s) ||
+      c.lead?.phone?.includes(s) ||
+      c.lead?.cpf_cnpj?.includes(s) ||
+      c.cpf_cnpj?.includes(s)
+    );
   });
 
   const counts: Record<string, number> = {
@@ -65,76 +245,147 @@ export default function ClientesPage() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-base-100">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-base-300">
+    <div className="flex flex-col h-full bg-background">
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border">
         <div>
-          <h1 className="text-xl font-bold">Clientes Contábeis</h1>
-          <p className="text-sm text-base-content/60">{filtered.length} cliente(s)</p>
+          <h1 className="text-xl font-bold text-foreground">Clientes Contábeis</h1>
+          <p className="text-sm text-muted-foreground">
+            {loading ? '...' : `${filtered.length} cliente${filtered.length !== 1 ? 's' : ''}`}
+          </p>
         </div>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors shadow-sm"
+        >
+          <span className="text-base leading-none">+</span>
+          Novo cliente
+        </button>
       </div>
 
+      {/* Stage counters */}
       {!loading && (
-        <div className="grid grid-cols-4 border-b border-base-300">
+        <div className="grid grid-cols-4 border-b border-border">
           {Object.entries(counts).map(([s, n]) => (
-            <button key={s} onClick={() => setStage(stage === s ? '' : s)}
-              className={`flex flex-col items-center py-3 border-r border-base-300 last:border-r-0 transition-colors ${stage === s ? 'bg-primary/10' : 'hover:bg-base-200'}`}>
-              <span className="text-xl font-bold">{n}</span>
-              <span className="text-xs text-base-content/60">{STAGES.find(x => x.value === s)?.label}</span>
+            <button
+              key={s}
+              onClick={() => setStage(stage === s ? '' : s)}
+              className={`flex flex-col items-center py-3 border-r border-border last:border-r-0 transition-colors ${
+                stage === s ? 'bg-primary/10' : 'hover:bg-muted/50'
+              }`}
+            >
+              <span className="text-xl font-bold text-foreground">{n}</span>
+              <span className="text-xs text-muted-foreground">{STAGES.find(x => x.value === s)?.label}</span>
             </button>
           ))}
         </div>
       )}
 
-      <div className="flex gap-3 px-6 py-3 border-b border-base-300 bg-base-200/40">
-        <input type="text" placeholder="Buscar por nome ou telefone..."
-          value={search} onChange={e => setSearch(e.target.value)}
-          className="input input-bordered input-sm flex-1" />
-        <select value={stage} onChange={e => setStage(e.target.value)} className="select select-bordered select-sm">
+      {/* Filtros */}
+      <div className="flex gap-3 px-6 py-3 border-b border-border bg-muted/20">
+        <input
+          type="text"
+          placeholder="Buscar por nome, telefone ou CPF/CNPJ..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="flex-1 px-3 py-1.5 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+        />
+        <select
+          value={stage}
+          onChange={e => setStage(e.target.value)}
+          className="px-3 py-1.5 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+        >
           {STAGES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
       </div>
 
+      {/* Lista */}
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
-          <div className="flex justify-center py-20"><span className="loading loading-spinner loading-lg" /></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="bg-card border border-border rounded-xl p-4 animate-pulse h-32" />
+            ))}
+          </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-20 text-base-content/40">
-            <p className="text-5xl mb-4">🏢</p>
-            <p className="font-semibold text-lg">Nenhum cliente encontrado</p>
-            <p className="text-sm mt-2">Clientes aparecem aqui após conversão de leads</p>
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <span className="text-6xl mb-4">🏢</span>
+            <p className="font-semibold text-lg text-foreground">Nenhum cliente encontrado</p>
+            <p className="text-sm text-muted-foreground mt-1 mb-6">
+              {search ? `Sem resultados para "${search}"` : 'Clientes aparecem aqui após conversão de leads'}
+            </p>
+            {!search && (
+              <button
+                onClick={() => setShowCreate(true)}
+                className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                + Criar primeiro cliente
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map(c => (
-              <a key={c.id} href={`/atendimento/workspace/${c.id}`}
-                className="card bg-base-200 border border-base-300 hover:border-primary hover:shadow-md transition-all">
-                <div className="card-body p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <span className="text-2xl">{SERVICE_ICONS[c.service_type] || '📁'}</span>
-                      <div className="min-w-0">
-                        <p className="font-semibold truncate">{c.lead?.name || 'Sem nome'}</p>
-                        <p className="text-xs text-base-content/60">{c.lead?.phone}</p>
-                      </div>
+              <div
+                key={c.id}
+                onClick={() => router.push(`/atendimento/workspace/${c.id}`)}
+                className="bg-card border border-border rounded-xl p-4 hover:border-primary/60 hover:shadow-md cursor-pointer transition-all group"
+              >
+                {/* Topo: ícone + nome + badge stage */}
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                    <span className="text-2xl shrink-0">{SERVICE_ICONS[c.service_type] || '📁'}</span>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-foreground truncate group-hover:text-primary transition-colors">
+                        {c.lead?.name || 'Sem nome'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{c.lead?.phone}</p>
                     </div>
-                    <span className={`badge badge-sm shrink-0 ${STAGE_COLORS[c.stage] || 'badge-ghost'}`}>{c.stage}</span>
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    <span className="badge badge-primary badge-outline badge-sm">{SERVICE_LABELS[c.service_type] || c.service_type}</span>
-                    {c.regime_tributario && (
-                      <span className="badge badge-ghost badge-sm text-xs">{c.regime_tributario.replace(/_/g, ' ')}</span>
-                    )}
-                  </div>
-                  <div className="flex justify-between mt-3 text-xs text-base-content/50">
-                    <span>👤 {c.accountant?.name || 'Sem especialista'}</span>
-                    <span>📋 {c._count?.obrigacoes ?? 0} · 📄 {c._count?.documentos ?? 0}</span>
-                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${STAGE_COLORS[c.stage] || 'bg-muted text-muted-foreground'}`}>
+                    {c.stage}
+                  </span>
                 </div>
-              </a>
+
+                {/* Badges de serviço + regime */}
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                    {SERVICE_LABELS[c.service_type] || c.service_type}
+                  </span>
+                  {c.regime_tributario && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                      {c.regime_tributario.replace(/_/g, ' ')}
+                    </span>
+                  )}
+                  {(c.cpf_cnpj || c.lead?.cpf_cnpj) && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-mono">
+                      {c.cpf_cnpj || c.lead?.cpf_cnpj}
+                    </span>
+                  )}
+                </div>
+
+                {/* Rodapé: contador + contagens */}
+                <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border/60">
+                  <span className="truncate">👤 {c.accountant?.name || 'Sem contador'}</span>
+                  <span className="shrink-0 ml-2">
+                    📅 {c._count?.obrigacoes ?? 0}
+                    {' · '}📄 {c._count?.documentos ?? 0}
+                    {c._count?.tasks > 0 && ` · ✅ ${c._count.tasks}`}
+                  </span>
+                </div>
+              </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Modal criar */}
+      {showCreate && (
+        <CreateClienteModal
+          onClose={() => setShowCreate(false)}
+          onCreated={fetchClientes}
+        />
+      )}
     </div>
   );
 }

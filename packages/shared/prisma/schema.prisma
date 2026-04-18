@@ -476,16 +476,30 @@ model ClienteContabil {
   lead_id           String
   conversation_id   String?
   accountant_id     String?
+  // Identificação fiscal
+  cpf_cnpj          String?
+  tipo_pessoa       String?   // PF | PJ
   // Serviço contábil
   service_type      String    // BPO_FISCAL | BPO_CONTABIL | DP | ABERTURA | ENCERRAMENTO | IR_PF | IR_PJ | CONSULTORIA | OUTRO
   regime_tributario String?   // SIMPLES_NACIONAL | LUCRO_PRESUMIDO | LUCRO_REAL | MEI | ISENTO
   competencia_inicio DateTime?
+  data_encerramento  DateTime?
   stage             String    @default("ONBOARDING") // ONBOARDING | ATIVO | SUSPENSO | ENCERRADO
   priority          String    @default("NORMAL")     // URGENTE | NORMAL | BAIXA
   notes             String?
   archived          Boolean   @default(false)
   archive_reason    String?
   stage_changed_at  DateTime  @default(now())
+  // Endereço
+  cep               String?
+  logradouro        String?
+  numero            String?
+  complemento       String?
+  bairro            String?
+  cidade            String?
+  estado            String?
+  // Integração
+  google_drive_folder_id String?
   created_at        DateTime  @default(now())
   updated_at        DateTime  @updatedAt
 

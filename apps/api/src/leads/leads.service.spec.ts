@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { LeadsService } from './leads.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { LegalCasesService } from '../legal-cases/legal-cases.service';
+import { ClientesContabilService } from '../clientes-contabil/clientes-contabil.service';
 import { ChatGateway } from '../gateway/chat.gateway';
 
 
@@ -25,8 +25,8 @@ describe('LeadsService', () => {
     }),
   };
 
-  const mockLegalCasesService = {
-    findByLeadId: jest.fn(),
+  const mockClientesContabilService = {
+    findAll: jest.fn(),
   };
 
   const mockChatGateway = {
@@ -38,7 +38,7 @@ describe('LeadsService', () => {
       providers: [
         LeadsService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: LegalCasesService, useValue: mockLegalCasesService },
+        { provide: ClientesContabilService, useValue: mockClientesContabilService },
         { provide: ChatGateway, useValue: mockChatGateway },
       ],
     }).compile();

@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -13,15 +13,31 @@ export class ClientesContabilService {
     accountant_id?: string;
     service_type: string;
     regime_tributario?: string;
+    cpf_cnpj?: string;
+    tipo_pessoa?: string;
+    notes?: string;
+    priority?: string;
     tenant_id?: string;
   }) {
-    return this.prisma.clienteContabil.create({
+    // Prevent duplicate for same lead + service_type
+    const existing = await this.prisma.clienteContabil.findFirst({
+      where: { lead_id: data.lead_id, service_type: data.service_type, archived: false },
+    });
+    if (existing) {
+      throw new BadRequestException('Já existe um cliente contábil ativo para este lead e tipo de serviço');
+    }
+
+    const cliente = await this.prisma.clienteContabil.create({
       data: {
         lead_id: data.lead_id,
         conversation_id: data.conversation_id,
         accountant_id: data.accountant_id,
         service_type: data.service_type,
         regime_tributario: data.regime_tributario,
+        cpf_cnpj: data.cpf_cnpj,
+        tipo_pessoa: data.tipo_pessoa,
+        notes: data.notes,
+        priority: data.priority ?? 'NORMAL',
         tenant_id: data.tenant_id,
         stage: 'ONBOARDING',
       },
@@ -29,6 +45,49 @@ export class ClientesContabilService {
         lead: { select: { id: true, name: true, phone: true } },
         accountant: { select: { id: true, name: true } },
       },
+    });
+
+    // Mark lead as client
+    await this.prisma.lead.update({
+      where: { id: data.lead_id },
+      data: { is_client: true, became_client_at: new Date() },
+    });
+
+    // Register creation event
+    await this.prisma.clienteEvento.create({
+      data: {
+        cliente_id: cliente.id,
+        type: 'INICIO_SERVICO',
+        title: `Início de serviço: ${this.getServiceLabel(data.service_type)}`,
+        description: data.regime_tributario ? `Regime: ${data.regime_tributario.replace(/_/g, ' ')}` : undefined,
+        event_date: new Date(),
+      },
+    });
+
+    return cliente;
+  }
+
+  async createFromLead(leadId: string, data: {
+    service_type: string;
+    conversation_id?: string;
+    regime_tributario?: string;
+    accountant_id?: string;
+    tenant_id?: string;
+  }) {
+    const lead = await this.prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { id: true, name: true, phone: true, tenant_id: true, cpf_cnpj: true },
+    });
+    if (!lead) throw new NotFoundException('Lead não encontrado');
+
+    return this.create({
+      lead_id: leadId,
+      conversation_id: data.conversation_id,
+      accountant_id: data.accountant_id,
+      service_type: data.service_type,
+      regime_tributario: data.regime_tributario,
+      cpf_cnpj: lead.cpf_cnpj ?? undefined,
+      tenant_id: data.tenant_id ?? lead.tenant_id ?? undefined,
     });
   }
 
@@ -38,6 +97,7 @@ export class ClientesContabilService {
     archived?: boolean;
     accountantId?: string;
     leadId?: string;
+    search?: string;
     page?: number;
     limit?: number;
   }) {
@@ -49,10 +109,20 @@ export class ClientesContabilService {
     if (options.accountantId) where.accountant_id = options.accountantId;
     if (options.leadId) where.lead_id = options.leadId;
 
+    if (options.search) {
+      where.lead = {
+        OR: [
+          { name: { contains: options.search, mode: 'insensitive' } },
+          { phone: { contains: options.search } },
+          { email: { contains: options.search, mode: 'insensitive' } },
+        ],
+      };
+    }
+
     const include = {
-      lead: { select: { id: true, name: true, phone: true, email: true, tags: true } },
+      lead: { select: { id: true, name: true, phone: true, email: true, tags: true, cpf_cnpj: true } },
       accountant: { select: { id: true, name: true } },
-      _count: { select: { obrigacoes: true, documentos: true } },
+      _count: { select: { obrigacoes: true, documentos: true, tasks: true } },
     };
 
     if (options.page && options.limit) {
@@ -77,12 +147,12 @@ export class ClientesContabilService {
     const cliente = await this.prisma.clienteContabil.findUnique({
       where: { id },
       include: {
-        lead: { select: { id: true, name: true, phone: true, email: true, tags: true } },
+        lead: { select: { id: true, name: true, phone: true, email: true, tags: true, cpf_cnpj: true } },
         accountant: { select: { id: true, name: true } },
         obrigacoes: { where: { completed: false }, orderBy: { due_at: 'asc' }, take: 10 },
         honorarios: { where: { ativo: true }, include: { parcelas: { orderBy: { due_date: 'asc' }, take: 3 } } },
         eventos: { orderBy: { created_at: 'desc' }, take: 20 },
-        _count: { select: { documentos: true, obrigacoes: true } },
+        _count: { select: { documentos: true, obrigacoes: true, tasks: true } },
       },
     });
     if (!cliente) throw new NotFoundException('Cliente contábil não encontrado');
@@ -124,19 +194,42 @@ export class ClientesContabilService {
 
   async updateStage(id: string, stage: string, tenantId?: string) {
     await this.verifyAccess(id, tenantId);
-    return this.prisma.clienteContabil.update({
+
+    const cliente = await this.prisma.clienteContabil.update({
       where: { id },
       data: { stage, stage_changed_at: new Date() },
     });
+
+    await this.prisma.clienteEvento.create({
+      data: {
+        cliente_id: id,
+        type: 'MUDANCA_REGIME',
+        title: `Stage alterado para ${stage}`,
+        event_date: new Date(),
+      },
+    });
+
+    return cliente;
   }
 
   async updateDetails(id: string, data: {
     service_type?: string;
     regime_tributario?: string;
     competencia_inicio?: string;
+    data_encerramento?: string;
     notes?: string;
     priority?: string;
     accountant_id?: string;
+    cpf_cnpj?: string;
+    tipo_pessoa?: string;
+    cep?: string;
+    logradouro?: string;
+    numero?: string;
+    complemento?: string;
+    bairro?: string;
+    cidade?: string;
+    estado?: string;
+    google_drive_folder_id?: string;
   }, tenantId?: string) {
     await this.verifyAccess(id, tenantId);
     return this.prisma.clienteContabil.update({
@@ -144,16 +237,31 @@ export class ClientesContabilService {
       data: {
         ...data,
         competencia_inicio: data.competencia_inicio ? new Date(data.competencia_inicio) : undefined,
+        data_encerramento: data.data_encerramento ? new Date(data.data_encerramento) : undefined,
+      },
+      include: {
+        lead: { select: { id: true, name: true, phone: true } },
+        accountant: { select: { id: true, name: true } },
       },
     });
   }
 
   async archive(id: string, reason: string, tenantId?: string) {
     await this.verifyAccess(id, tenantId);
-    return this.prisma.clienteContabil.update({
+    const cliente = await this.prisma.clienteContabil.update({
       where: { id },
-      data: { archived: true, archive_reason: reason, stage: 'ENCERRADO' },
+      data: { archived: true, archive_reason: reason, stage: 'ENCERRADO', data_encerramento: new Date() },
     });
+    await this.prisma.clienteEvento.create({
+      data: {
+        cliente_id: id,
+        type: 'OUTRO',
+        title: `Cliente encerrado`,
+        description: reason,
+        event_date: new Date(),
+      },
+    });
+    return cliente;
   }
 
   async unarchive(id: string, tenantId?: string) {
@@ -162,6 +270,11 @@ export class ClientesContabilService {
       where: { id },
       data: { archived: false, archive_reason: null, stage: 'ATIVO' },
     });
+  }
+
+  async remove(id: string, tenantId?: string) {
+    await this.verifyAccess(id, tenantId);
+    return this.prisma.clienteContabil.delete({ where: { id } });
   }
 
   async addEvent(clienteId: string, data: { type: string; title: string; description?: string; event_date?: string }, tenantId?: string) {
@@ -206,6 +319,15 @@ export class ClientesContabilService {
       { value: 'CONSULTORIA', label: 'Consultoria Tributária' },
       { value: 'OUTRO', label: 'Outro' },
     ];
+  }
+
+  private getServiceLabel(serviceType: string): string {
+    const map: Record<string, string> = {
+      BPO_FISCAL: 'BPO Fiscal', BPO_CONTABIL: 'BPO Contábil', DP: 'Dep. Pessoal',
+      ABERTURA: 'Abertura de Empresa', ENCERRAMENTO: 'Encerramento',
+      IR_PF: 'IRPF', IR_PJ: 'IRPJ', CONSULTORIA: 'Consultoria', OUTRO: 'Outro',
+    };
+    return map[serviceType] || serviceType;
   }
 
   private async verifyAccess(id: string, tenantId?: string) {

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, Request, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Request, UseGuards } from '@nestjs/common';
 import { ClientesContabilService } from './clientes-contabil.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -21,6 +21,7 @@ export class ClientesContabilController {
     @Query('archived') archived?: string,
     @Query('accountantId') accountantId?: string,
     @Query('leadId') leadId?: string,
+    @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -30,6 +31,7 @@ export class ClientesContabilController {
       archived: archived === 'true' ? true : archived === 'false' ? false : undefined,
       accountantId,
       leadId,
+      search,
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
     });
@@ -51,14 +53,37 @@ export class ClientesContabilController {
   }
 
   @Post()
-  @Roles('ADMIN', 'ESPECIALISTA')
+  @Roles('ADMIN', 'CONTADOR')
   create(
-    @Body() body: { lead_id: string; conversation_id?: string; service_type: string; regime_tributario?: string },
+    @Body() body: {
+      lead_id: string;
+      conversation_id?: string;
+      service_type: string;
+      regime_tributario?: string;
+      cpf_cnpj?: string;
+      tipo_pessoa?: string;
+      notes?: string;
+      priority?: string;
+    },
     @Request() req: any,
   ) {
     return this.service.create({
       ...body,
-      accountant_id: req.user?.role === 'ESPECIALISTA' ? req.user?.id : undefined,
+      accountant_id: req.user?.role === 'CONTADOR' ? req.user?.id : undefined,
+      tenant_id: req.user?.tenant_id,
+    });
+  }
+
+  @Post('from-lead/:leadId')
+  @Roles('ADMIN', 'CONTADOR', 'OPERADOR')
+  createFromLead(
+    @Param('leadId') leadId: string,
+    @Body() body: { service_type: string; conversation_id?: string; regime_tributario?: string },
+    @Request() req: any,
+  ) {
+    return this.service.createFromLead(leadId, {
+      ...body,
+      accountant_id: req.user?.role === 'CONTADOR' ? req.user?.id : undefined,
       tenant_id: req.user?.tenant_id,
     });
   }
@@ -80,21 +105,45 @@ export class ClientesContabilController {
   @Patch(':id/details')
   updateDetails(
     @Param('id') id: string,
-    @Body() body: { service_type?: string; regime_tributario?: string; competencia_inicio?: string; notes?: string; priority?: string; accountant_id?: string },
+    @Body() body: {
+      service_type?: string;
+      regime_tributario?: string;
+      competencia_inicio?: string;
+      data_encerramento?: string;
+      notes?: string;
+      priority?: string;
+      accountant_id?: string;
+      cpf_cnpj?: string;
+      tipo_pessoa?: string;
+      cep?: string;
+      logradouro?: string;
+      numero?: string;
+      complemento?: string;
+      bairro?: string;
+      cidade?: string;
+      estado?: string;
+      google_drive_folder_id?: string;
+    },
     @Request() req: any,
   ) {
     return this.service.updateDetails(id, body, req.user?.tenant_id);
   }
 
   @Patch(':id/archive')
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'CONTADOR')
   archive(@Param('id') id: string, @Body('reason') reason: string, @Request() req: any) {
     return this.service.archive(id, reason, req.user?.tenant_id);
   }
 
   @Patch(':id/unarchive')
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'CONTADOR')
   unarchive(@Param('id') id: string, @Request() req: any) {
     return this.service.unarchive(id, req.user?.tenant_id);
+  }
+
+  @Delete(':id')
+  @Roles('ADMIN')
+  remove(@Param('id') id: string, @Request() req: any) {
+    return this.service.remove(id, req.user?.tenant_id);
   }
 }
