@@ -144,8 +144,8 @@ function getScoreFactors(lead: CrmLead): string[] {
   const factors: string[] = [];
   const base = STAGE_BASE_SCORES[normalized] ?? 20;
   factors.push(`+${base} etapa atual`);
-  if (conv?.legal_area) factors.push('+8 área jurídica definida');
-  if (conv?.assigned_lawyer_id) factors.push('+5 advogado atribuído');
+  if (conv?.legal_area) factors.push('+8 área contábil definida');
+  if (conv?.assigned_lawyer_id) factors.push('+5 responsável atribuído');
   if (conv?.next_step && conv.next_step !== 'duvidas') factors.push('+5 próximo passo definido');
   if (days > 3) factors.push(`-${Math.min(25, (days - 3) * 3)} estagnado há ${days}d`);
   return factors;
@@ -154,11 +154,11 @@ function getScoreFactors(lead: CrmLead): string[] {
 function validateStageTransition(lead: CrmLead, newStage: string): string | null {
   const conv = lead.conversations?.[0];
   if (newStage === 'REUNIAO_AGENDADA' && !conv?.legal_area) {
-    return 'Defina a área jurídica antes de agendar reunião.';
+    return 'Defina a área contábil antes de agendar reunião.';
   }
   if (newStage === 'FINALIZADO') {
-    if (!conv?.legal_area) return 'Defina a área jurídica antes de finalizar.';
-    if (!conv?.assigned_lawyer_id) return 'Atribua um advogado antes de finalizar.';
+    if (!conv?.legal_area) return 'Defina a área contábil antes de finalizar.';
+    if (!conv?.assigned_lawyer_id) return 'Atribua um responsável antes de finalizar.';
   }
   return null;
 }
@@ -835,7 +835,7 @@ function LeadListView({
             <th className="pb-2 pr-4">Score</th>
             <th className="pb-2 pr-4">Tempo</th>
             <th className="pb-2 pr-4">Área</th>
-            <th className="pb-2 pr-4">Advogado</th>
+            <th className="pb-2 pr-4">Responsável</th>
             <th className="pb-2 pr-4">Última msg</th>
             <th className="pb-2" />
           </tr>
@@ -1423,7 +1423,7 @@ export default function CrmPage() {
       });
       showSuccess(`Caso criado para ${lead.name || 'o lead'}! Redirecionando...`);
       setDetailLead(null);
-      setTimeout(() => router.push('/atendimento/advogado'), 1200);
+      setTimeout(() => router.push('/atendimento/clientes'), 1200);
     } catch {
       showError('Erro ao criar caso. Tente novamente.');
     } finally {
@@ -1537,7 +1537,7 @@ export default function CrmPage() {
               </div>
             )}
 
-            {/* Filtro por advogado */}
+            {/* Filtro por responsável */}
             {allLawyers.length > 0 && (
               <div className="relative">
                 <select
@@ -1545,7 +1545,7 @@ export default function CrmPage() {
                   onChange={e => setLawyerFilter(e.target.value)}
                   className="appearance-none pl-3 pr-7 py-1.5 text-[12px] bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40 cursor-pointer"
                 >
-                  <option value="">Todos os advogados</option>
+                  <option value="">Todos os responsáveis</option>
                   {allLawyers.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                 </select>
                 <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />

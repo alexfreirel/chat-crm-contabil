@@ -4,9 +4,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { RouteGuard } from '@/components/RouteGuard';
 import {
   BookOpen, Search, ChevronDown, ChevronRight, Users, MessageSquare,
-  BarChart3, Calendar, Gavel, FileText, DollarSign, Settings, Bot,
-  ArrowRight, CheckCircle2, XCircle, Clock, UserCheck, Zap,
-  Bell, Send, Filter, Sparkles, Scale, Briefcase,
+  BarChart3, Calendar, FileText, DollarSign, Settings, Bot,
+  ArrowRight, CheckCircle2, Send, Filter, Sparkles, Building2, Briefcase,
 } from 'lucide-react';
 
 // ─── Dados do Manual ─────────────────────────────────────────────────────────
@@ -33,26 +32,25 @@ const MANUAL_SECTIONS: Section[] = [
       {
         id: 'o-que-e',
         title: 'O que é o sistema',
-        body: `O sistema é um CRM jurídico completo com atendimento automatizado por IA via WhatsApp. A Sophia (assistente virtual) faz o primeiro contato, qualifica leads, coleta informações do caso e agenda reuniões — tudo de forma natural, como se fosse uma pessoa real.
+        body: `O sistema é um CRM contábil completo com atendimento automatizado por IA via WhatsApp. A Sophia (assistente virtual) faz o primeiro contato, qualifica leads, coleta informações e agenda reuniões — tudo de forma natural, como se fosse uma pessoa real.
 
 Módulos principais:
 • Atendimento — Chat ao vivo com leads e clientes (IA ou humano)
 • CRM — Pipeline visual de leads do primeiro contato até a contratação
-• Agenda — Reuniões, audiências, prazos e tarefas com lembretes automáticos
-• Processos — Acompanhamento completo do caso jurídico (kanban)
-• DJEN — Monitoramento automático de publicações do Diário de Justiça
+• Clientes Contábeis — Workspace completo de cada cliente do escritório
+• Agenda — Reuniões, prazos e tarefas com lembretes automáticos
+• Obrigações Fiscais — Controle de vencimentos e obrigações acessórias
 • Financeiro — Honorários, parcelas e notas fiscais
 • Follow-up — Sequências automáticas de mensagens para leads inativos`,
       },
       {
         id: 'papeis',
         title: 'Papéis de usuário',
-        body: `O sistema possui 5 papéis com permissões diferentes:
+        body: `O sistema possui 4 papéis com permissões diferentes:
 
-• Admin — Acesso total. Configura IA, gerencia equipe, vê todas as conversas e métricas.
-• Advogado — Vê processos atribuídos, workspace do caso, agenda, documentos e financeiro.
-• Operador — Atende leads na aba de chat. Vê apenas conversas atribuídas a ele.
-• Estagiário — Acesso limitado a tarefas, agenda e processos (sem financeiro).
+• Contador — Controle total do sistema. Configura IA, gerencia equipe, vê todas as conversas, métricas e clientes.
+• Operador — Atende leads na aba de chat. Vê conversas atribuídas a ele e pode acessar o CRM.
+• Assistente — Acesso a tarefas, agenda e clientes contábeis (sem financeiro).
 • Financeiro — Acesso ao módulo financeiro, honorários e notas fiscais.`,
       },
     ],
@@ -65,14 +63,14 @@ Módulos principais:
       {
         id: 'fluxo-completo',
         title: 'Fluxo completo do lead',
-        body: `O lead passa por 9 estágios desde o primeiro contato até virar cliente:
+        body: `O lead passa por estágios desde o primeiro contato até virar cliente:
 
 NOVO → INICIAL → QUALIFICANDO → REUNIÃO_AGENDADA → AGUARDANDO_DOCS → AGUARDANDO_PROC → FINALIZADO
 
-Ao finalizar, o lead vira CLIENTE:
+Ao finalizar, o lead vira CLIENTE CONTÁBIL:
 • Sai da aba "Leads" no atendimento
 • Aparece na aba "Clientes"
-• Um LegalCase (processo) é criado automaticamente
+• Um registro de Cliente Contábil é criado automaticamente
 • A IA é desligada (atendimento passa a ser humano)
 
 Leads que não avançam vão para PERDIDO (com motivo obrigatório).`,
@@ -86,45 +84,45 @@ Leads que não avançam vão para PERDIDO (com motivo obrigatório).`,
 
 2. Manual — O operador pode cadastrar um lead manualmente pelo menu Contatos, informando nome e telefone.
 
-3. DJEN — Ao criar um processo a partir de uma publicação do Diário de Justiça, o sistema pode criar ou vincular um lead existente.`,
+3. CRM — O contador pode converter um lead em cliente diretamente pelo pipeline, criando o registro de Cliente Contábil.`,
       },
       {
         id: 'sdr',
         title: '2.2 SDR Sophia — Primeiro contato',
         body: `A Sophia SDR é o primeiro agente que atende. Ela:
 • Pede o nome do lead
-• Entende qual é a necessidade (de forma geral)
-• Identifica a área contábil (Fiscal, Contábil, Departamento Pessoal, etc.)
+• Entende qual é a necessidade contábil
+• Identifica a área (BPO Fiscal, Contabilidade, Departamento Pessoal, IRPF, etc.)
 • Gera um resumo da demanda
 
-Ela NÃO dá orientação contábil/fiscal, NÃO analisa viabilidade e NÃO agenda reuniões.
+Ela NÃO dá orientação tributária, NÃO analisa viabilidade fiscal e NÃO agenda reuniões.
 
-Quando identifica nome + área, o lead avança para QUALIFICANDO e a conversa é transferida silenciosamente para o Especialista daquela área (o lead não percebe a troca).`,
+Quando identifica nome + área, o lead avança para QUALIFICANDO e a conversa é transferida silenciosamente para o Especialista daquela área.`,
       },
       {
         id: 'especialista',
         title: '2.3 Especialista — Triagem e qualificação',
-        body: `O Especialista (Trabalhista, Consumidor, Penal, etc.) assume a conversa e:
+        body: `O Especialista (Fiscal, Contábil, Depto Pessoal, etc.) assume a conversa e:
 
 1. PRIMEIRO responde as dúvidas do lead — não começa coletando dados
-2. Avalia viabilidade — prescrição, provas mínimas, valor da causa
-3. Investiga fatos do caso — usando roteiro específico da área (até 12 matérias por área)
-4. Coleta dados pessoais — RG/CNH, comprovante de residência
+2. Avalia o perfil fiscal — porte da empresa, regime tributário, número de funcionários
+3. Investiga necessidades específicas — faturamento, obrigações acessórias, situação atual
+4. Coleta dados da empresa — CNPJ, razão social, contato do responsável
 
-Cada especialista tem 3 documentos de referência:
+Cada especialista tem documentos de referência:
 • Persona e Regras — Como se comunicar
 • Funil e Fases — Quando avançar cada etapa
-• Investigação por Matéria — Perguntas específicas para cada tipo de caso`,
+• Investigação por Área — Perguntas específicas por tipo de serviço`,
       },
       {
         id: 'agendamento',
         title: '2.4 Agendamento de reunião',
         body: `Quando o lead quer prosseguir, o Especialista agenda uma reunião:
 
-Etapa 1: Pergunta o dia ("Quer vir amanhã ou prefere outro dia?")
+Etapa 1: Pergunta o dia ("Quer conversar amanhã ou prefere outro dia?")
 Etapa 2: Mostra horários disponíveis via lista clicável do WhatsApp
 
-Os horários vêm da agenda do advogado (configurada no sistema). A IA nunca inventa horários.
+Os horários vêm da agenda do contador (configurada no sistema). A IA nunca inventa horários.
 
 Ao confirmar, o lead vai para REUNIÃO_AGENDADA e um evento é criado na agenda com lembrete automático por WhatsApp.`,
       },
@@ -132,23 +130,24 @@ Ao confirmar, o lead vai para REUNIÃO_AGENDADA e um evento é criado na agenda 
         id: 'documentos',
         title: '2.5 Coleta de documentos',
         body: `Após a reunião, o Especialista solicita documentos:
-• Pessoais: RG/CNH + comprovante de residência
-• Probatórios: específicos da área (CTPS, contratos, fotos, laudos, etc.)
+• Empresariais: Contrato Social, cartão CNPJ, última declaração
+• Pessoais (quando aplicável): RG/CNH do responsável
+• Fiscais: Extratos, guias pagas, certidões
 
-Os documentos são solicitados um por vez (não em lista). O lead envia pelo WhatsApp e ficam armazenados no sistema.
+Os documentos são solicitados um por vez. O lead envia pelo WhatsApp e ficam armazenados no sistema.
 
 O lead vai para AGUARDANDO_DOCS enquanto os documentos são coletados.`,
       },
       {
         id: 'honorarios',
-        title: '2.6 Honorários e contrato',
-        body: `Modelos de cobrança por área:
+        title: '2.6 Proposta e contrato',
+        body: `Modelos de cobrança por serviço:
 
-• Êxito (30%) — Trabalhista, Consumidor, Civil, Previdenciário. O lead não paga nada agora, só se ganhar.
-• Fixo — Penal, Empresarial. O advogado define o valor diretamente.
-• Misto — Imobiliário, Família. Depende do caso (êxito se tem proveito econômico, fixo se não).
+• Mensalidade fixa — BPO Fiscal, BPO Contábil, Depto Pessoal. Valor mensal recorrente.
+• Avulso — IRPF, abertura de empresa, regularizações. Valor único por serviço.
+• Misto — Mensalidade + serviços avulsos sob demanda.
 
-Após definir honorários, o contrato é enviado via ClickSign para assinatura digital. O lead vai para AGUARDANDO_PROC.`,
+Após definir a proposta, o contrato de prestação de serviços é enviado para assinatura. O lead vai para AGUARDANDO_PROC.`,
       },
       {
         id: 'conversao',
@@ -160,19 +159,19 @@ O que acontece automaticamente:
 • lead.stage = FINALIZADO
 • Sai da aba "Leads" no atendimento
 • Aparece na aba "Clientes"
-• Um LegalCase é criado com stage=VIABILIDADE
+• Um registro de Cliente Contábil é criado
 • A IA é desligada na conversa
-• O advogado mais disponível na área é atribuído
+• O contador responsável é atribuído
 
-O lead continua podendo mandar mensagem pelo WhatsApp — agora aparece na aba Clientes.`,
+O cliente continua podendo mandar mensagem pelo WhatsApp — agora aparece na aba Clientes.`,
       },
       {
         id: 'perdido',
         title: '2.8 Leads perdidos',
         body: `Um lead vai para PERDIDO quando:
-• Prescreveu (prazo legal expirado)
-• Caso inviável (sem provas, valor irrisório)
-• Desistiu por conta própria
+• Preço acima do esperado
+• Já tem contador e não quer trocar
+• Empresa em encerramento/inativa
 • Não respondeu após follow-ups
 • Escolheu outro escritório
 
@@ -192,7 +191,7 @@ O lead continua podendo mandar mensagem pelo WhatsApp — agora aparece na aba C
 
 Leads — Contatos em prospecção (ainda não contrataram). Mostra leads com stage diferente de FINALIZADO e PERDIDO. É onde o operador trabalha no dia a dia.
 
-Clientes — Contatos que já contrataram (is_client=true). Mostra todos os clientes, mesmo com conversa encerrada. Útil para acompanhamento pós-venda.
+Clientes — Contatos que já contrataram (is_client=true). Mostra todos os clientes, mesmo com conversa encerrada. Útil para acompanhamento e relacionamento.
 
 Para aparecer na aba Leads: is_client=false e stage NOT IN (PERDIDO, FINALIZADO)
 Para aparecer na aba Clientes: is_client=true`,
@@ -216,7 +215,7 @@ O operador pode religar a IA a qualquer momento pelo toggle no chat.`,
       {
         id: 'transferencia',
         title: 'Como transferir conversa',
-        body: `Para transferir uma conversa para outro operador ou advogado:
+        body: `Para transferir uma conversa para outro operador ou contador:
 
 1. Abrir a conversa
 2. Clicar no botão de transferência (no header do chat)
@@ -231,7 +230,7 @@ A transferência fica PENDENTE até o destinatário aceitar. Enquanto isso, a co
         title: 'Perguntas em aberto',
         body: `No topo do chat aparece um banner com "Perguntas em aberto" — são questões que a IA identificou que ainda precisam ser respondidas.
 
-Exemplos: "Qual o horário de trabalho?", "Tem carteira assinada?", "Desde quando?"
+Exemplos: "Qual o regime tributário atual?", "Quantos funcionários tem?", "Tem contador atualmente?"
 
 Essas perguntas são atualizadas a cada mensagem e ajudam o operador a saber o que ainda falta coletar do lead.`,
       },
@@ -248,11 +247,11 @@ Essas perguntas são atualizadas a cada mensagem e ajudam o operador a saber o q
         body: `O CRM mostra todos os leads em formato de pipeline (kanban):
 
 INICIAL — Primeiro contato, ainda sendo identificado
-QUALIFICANDO — IA ou operador investigando o caso
+QUALIFICANDO — IA ou operador investigando a necessidade
 AGUARDANDO_FORM — Esperando formulário de intake
-REUNIÃO_AGENDADA — Reunião marcada com o advogado
-AGUARDANDO_DOCS — Esperando documentos do lead
-AGUARDANDO_PROC — Esperando contrato/procuração assinados
+REUNIÃO_AGENDADA — Reunião marcada com o contador
+AGUARDANDO_DOCS — Esperando documentos da empresa
+AGUARDANDO_PROC — Esperando contrato assinado
 FINALIZADO — Convertido em cliente (sai do CRM, vai para Clientes)
 PERDIDO — Não avançou (com motivo)
 
@@ -264,7 +263,7 @@ Os leads podem ser arrastados entre estágios manualmente.`,
         body: `Cada lead tem um score de 0 a 100 que indica a probabilidade de conversão:
 
 Base por estágio: INICIAL=10, QUALIFICANDO=25, REUNIÃO_AGENDADA=50, etc.
-Bônus: +8 se área jurídica definida, +5 se advogado atribuído, +5 se próximo passo definido
+Bônus: +8 se área contábil definida, +5 se responsável atribuído, +5 se próximo passo definido
 Penalidade: -3 por dia parado no mesmo estágio (máx -25)
 
 Cores: Verde (70+), Amarelo (45-69), Laranja (20-44), Vermelho (<20)`,
@@ -272,8 +271,66 @@ Cores: Verde (70+), Amarelo (45-69), Laranja (20-44), Vermelho (<20)`,
     ],
   },
   {
+    id: 'clientes-contabeis',
+    title: '5. Clientes Contábeis',
+    icon: Building2,
+    content: [
+      {
+        id: 'workspace-cliente',
+        title: 'Workspace do cliente',
+        body: `Cada cliente contábil tem um workspace completo com:
+
+• Dados cadastrais — CNPJ/CPF, regime tributário, endereço, contato
+• Obrigações Fiscais — Calendário de vencimentos e status de entrega
+• Documentos — Arquivo de documentos enviados e gerados
+• Honorários — Mensalidade, parcelas e histórico de pagamentos
+• Tarefas — Atividades pendentes vinculadas ao cliente
+• Timeline — Histórico de interações e alterações`,
+      },
+      {
+        id: 'tipos-cliente',
+        title: 'Tipos de cliente',
+        body: `O sistema suporta dois tipos de pessoa:
+
+Pessoa Jurídica (PJ):
+• CNPJ, Razão Social, Nome Fantasia
+• Regime: Simples Nacional, Lucro Presumido, Lucro Real, MEI
+• Responsável legal + contato financeiro
+
+Pessoa Física (PF):
+• CPF, nome completo
+• Serviços: IRPF, carnê-leão, ganho de capital
+
+Cada tipo tem seus campos e obrigações específicas configuráveis.`,
+      },
+      {
+        id: 'servicos',
+        title: 'Tipos de serviço',
+        body: `Os serviços contábeis são categorizados por área:
+
+• BPO Fiscal — Escrituração fiscal, apuração de impostos, obrigações acessórias (SPED, DCTF, EFD)
+• BPO Contábil — Escrituração contábil, balanços, DRE, SPED Contábil
+• Departamento Pessoal — Folha de pagamento, eSocial, FGTS, admissões/demissões
+• IRPF — Declaração anual do Imposto de Renda Pessoa Física
+• Abertura de Empresa — Registro na Junta, CNPJ, Alvará, enquadramento tributário
+• Regularização — MEI para ME, troca de regime, CNPJ inapto`,
+      },
+      {
+        id: 'google-drive',
+        title: 'Integração com Google Drive',
+        body: `Cada cliente pode ter uma pasta vinculada no Google Drive:
+
+• O ID da pasta é configurado no cadastro do cliente
+• Documentos podem ser acessados diretamente pelo workspace
+• Útil para manter todos os arquivos do cliente organizados e acessíveis pela equipe
+
+Para configurar: no cadastro do cliente, cole o ID da pasta do Google Drive (o código longo na URL da pasta).`,
+      },
+    ],
+  },
+  {
     id: 'agenda',
-    title: '5. Agenda e Tarefas',
+    title: '6. Agenda e Tarefas',
     icon: Calendar,
     content: [
       {
@@ -282,139 +339,33 @@ Cores: Verde (70+), Amarelo (45-69), Laranja (20-44), Vermelho (<20)`,
         body: `A agenda suporta 6 tipos de evento:
 
 • CONSULTA — Reunião com lead/cliente (presencial, vídeo ou telefone)
-• AUDIÊNCIA — Audiência judicial (criada automaticamente pelo DJEN)
-• PERÍCIA — Exame pericial agendado
-• PRAZO — Prazo processual (contestação, recurso, manifestação)
-• TAREFA — Atividade interna (preparar petição, revisar documento)
+• PRAZO — Prazo fiscal ou contábil (DCTF, SPED, DASN, PGDAS, etc.)
+• REUNIÃO — Reunião interna da equipe
+• TAREFA — Atividade interna (preparar declaração, revisar balancete)
+• VISITA — Visita ao cliente
 • OUTRO — Qualquer outro compromisso
 
-Cada evento pode ter lembretes automáticos por WhatsApp (ex: 1 dia antes, 1 hora antes).`,
+Cada evento pode ter lembretes automáticos por WhatsApp (ex: 1 dia antes, 2 horas antes).`,
       },
       {
         id: 'lembretes',
         title: 'Lembretes automáticos',
         body: `O sistema envia lembretes por WhatsApp automaticamente:
 
-• Para o cliente: lembrete da reunião/audiência com data, hora e local
-• Para o advogado: lembrete com detalhes do caso e número do processo
+• Para o cliente: lembrete da reunião com data, hora e local
+• Para o responsável interno: lembrete com detalhes do compromisso
 
 Os lembretes são configuráveis por evento:
 - minutes_before: 1440 (1 dia), 60 (1 hora), 120 (2 horas)
 - channel: WHATSAPP
 
-Audiências criadas pelo DJEN já vêm com lembretes pré-configurados.`,
-      },
-    ],
-  },
-  {
-    id: 'processos',
-    title: '6. Processos',
-    icon: Scale,
-    content: [
-      {
-        id: 'preparacao',
-        title: 'Preparação do caso (Menu Advogado)',
-        body: `Quando o lead vira cliente, um LegalCase é criado com stage=VIABILIDADE. O advogado trabalha nas seguintes etapas:
-
-VIABILIDADE — Análise inicial: o caso tem mérito? Vale ajuizar?
-DOCUMENTAÇÃO — Reunir todos os documentos necessários
-PETIÇÃO — Redigir a petição inicial
-REVISÃO — Revisar antes de protocolar
-PROTOCOLO — Pronto para protocolar no tribunal
-
-Cada etapa tem seu card no menu "Advogado". Ao protocolar, o caso vai para o menu "Processos".`,
-      },
-      {
-        id: 'acompanhamento',
-        title: 'Acompanhamento (Menu Processos)',
-        body: `Após protocolar, o caso entra no kanban de acompanhamento com 13 estágios:
-
-DISTRIBUÍDO → CITAÇÃO → CONTESTAÇÃO → RÉPLICA → PERÍCIA_AGENDADA → INSTRUÇÃO → ALEGAÇÕES_FINAIS → AGUARDANDO_SENTENÇA → JULGAMENTO → RECURSO → TRANSITADO → EXECUÇÃO → ENCERRADO
-
-Os cards podem ser arrastados entre colunas. Cada mudança de estágio é registrada no histórico.
-
-O DJEN atualiza automaticamente o estágio quando detecta publicações relevantes (ex: sentença → JULGAMENTO).`,
-      },
-      {
-        id: 'workspace',
-        title: 'Workspace do processo',
-        body: `Cada processo tem um workspace completo com abas:
-
-• Resumo — Dados do caso, partes, valores
-• Documentos — Arquivo de todos os documentos do caso
-• Prazos — Prazos processuais com alertas
-• Tarefas — Atividades pendentes do caso
-• Honorários — Valores, parcelas, pagamentos
-• Comunicações — Publicações do DJEN vinculadas
-• Timeline — Histórico completo do caso`,
-      },
-    ],
-  },
-  {
-    id: 'djen',
-    title: '7. DJEN (Diário de Justiça)',
-    icon: FileText,
-    content: [
-      {
-        id: 'o-que-e-djen',
-        title: 'O que é o DJEN',
-        body: `O DJEN (Diário da Justiça Eletrônico Nacional) é o sistema que publica movimentações de processos judiciais. O sistema sincroniza automaticamente todas as publicações que mencionam o advogado cadastrado.
-
-O sync roda diariamente às 8h e busca publicações do dia anterior e do dia atual. Também pode ser acionado manualmente pelo botão "Sincronizar".`,
-      },
-      {
-        id: 'analise-ia',
-        title: 'Análise por IA',
-        body: `Cada publicação pode ser analisada pela IA, que extrai:
-
-• Resumo — O que aconteceu em 3 frases
-• Urgência — URGENTE, NORMAL ou BAIXA
-• Tipo de ação — O que o advogado precisa fazer
-• Prazo — Dias úteis para cumprir
-• Estágio sugerido — Para onde mover o processo
-• Partes — Parte autora e parte ré
-• Juízo — Vara e comarca
-• Área jurídica — Trabalhista, Cível, etc.
-• Data de audiência — Se houver audiência mencionada
-
-A análise também cria tarefas e eventos de agenda automaticamente.`,
-      },
-      {
-        id: 'criar-processo-djen',
-        title: 'Criar processo a partir de publicação',
-        body: `Para publicações não vinculadas a nenhum processo, você pode criar um novo:
-
-1. Clicar em "Criar Processo" na publicação
-2. O sistema sugere automaticamente leads que correspondem às partes da publicação
-3. Selecionar lead existente ou cadastrar novo cliente
-4. Escolher estágio do kanban e área jurídica (IA sugere)
-5. Confirmar
-
-O que acontece:
-• LegalCase criado e vinculado à publicação
-• Lead vira cliente (is_client=true, stage=FINALIZADO)
-• Lead sai da aba Leads e vai para Clientes
-• IA desligada na conversa
-• Todas as publicações com mesmo número de processo são vinculadas automaticamente
-• Memória da IA atualizada com dados do processo`,
-      },
-      {
-        id: 'notificacao-djen',
-        title: 'Notificação automática ao cliente',
-        body: `Quando uma nova publicação é vinculada a um processo existente, o cliente recebe uma notificação por WhatsApp automaticamente:
-
-"Olá [nome]! Houve uma nova movimentação no seu processo nº [número]. Nosso advogado já foi notificado e vai analisar."
-
-Controles:
-• Só envia 1x por publicação (não repete)
-• Só em horário comercial (8h-20h, seg-sex)
-• Pode ser desabilitado na configuração (DJEN_NOTIFY_CLIENT)`,
+Prazos fiscais podem ser configurados com lembretes múltiplos (7 dias antes, 1 dia antes).`,
       },
     ],
   },
   {
     id: 'followup',
-    title: '8. Follow-up Automático',
+    title: '7. Follow-up Automático',
     icon: Send,
     content: [
       {
@@ -440,40 +391,53 @@ Cada sequência tem:
 5. Se auto_send=true, envia direto. Se false, vai para fila de aprovação
 6. Se o lead responder, a sequência para automaticamente
 
-As mensagens são geradas pela IA com contexto do lead (nome, histórico, caso).`,
+As mensagens são geradas pela IA com contexto do lead (nome, empresa, necessidade).`,
       },
     ],
   },
   {
     id: 'financeiro',
-    title: '9. Financeiro',
+    title: '8. Financeiro',
     icon: DollarSign,
     content: [
       {
         id: 'honorarios',
-        title: 'Honorários',
-        body: `Cada processo tem seus honorários configurados:
+        title: 'Honorários e mensalidades',
+        body: `Cada cliente tem seus honorários configurados:
 
-• Tipo: Êxito (%), Fixo (R$) ou Misto
-• Valor: percentual ou valor absoluto
-• Parcelas: divisão em pagamentos mensais
-• Status: Pendente, Pago, Atrasado
+• Tipo: Mensalidade (recorrente) ou Avulso (único)
+• Valor: fixo mensal ou por serviço prestado
+• Parcelas: divisão em pagamentos mensais (para serviços avulsos)
+• Status: Pendente, Pago, Atrasado, Cancelado
 
-O sistema rastreia parcelas, pagamentos recebidos e gera relatórios financeiros.`,
+O sistema rastreia parcelas, pagamentos recebidos e gera relatórios financeiros por cliente e por período.`,
       },
       {
         id: 'notas-fiscais',
         title: 'Notas fiscais',
         body: `O módulo de notas fiscais permite:
-• Emissão de NF-e vinculada ao processo
+• Emissão de NFS-e (Nota de Serviço Eletrônica) vinculada ao cliente
 • Controle de notas emitidas vs pendentes
-• Integração com gateway de pagamento (Stripe)`,
+• Histórico de faturamento por cliente e por período
+• Integração com gateway de pagamento para cobranças automáticas`,
+      },
+      {
+        id: 'relatorios',
+        title: 'Relatórios financeiros',
+        body: `Em Financeiro > Relatórios você encontra:
+
+• Receita por período — Honorários recebidos vs a receber
+• Inadimplência — Clientes com parcelas em atraso
+• Crescimento — Novos clientes e cancelamentos por mês
+• Faturamento por serviço — Quais serviços geram mais receita
+
+Os relatórios podem ser exportados em CSV ou PDF.`,
       },
     ],
   },
   {
     id: 'configuracoes',
-    title: '10. Configurações (Admin)',
+    title: '9. Configurações (Contador)',
     icon: Settings,
     content: [
       {
@@ -506,21 +470,21 @@ Em Configurações > Inboxes: criar/editar inboxes, atribuir operadores`,
         title: 'Equipe e permissões',
         body: `Em Configurações > Usuários:
 • Criar/editar usuários
-• Atribuir papel (Admin, Advogado, Operador, Estagiário, Financeiro)
-• Definir áreas de especialidade (para auto-atribuição)
+• Atribuir papel (Contador, Operador, Assistente, Financeiro)
+• Definir áreas de especialidade (para auto-atribuição de leads)
 • Vincular a inboxes
 
 Em Configurações > Permissões:
 • Controle granular por papel
-• Quem pode ver/editar cada módulo`,
+• Quem pode ver/editar cada módulo do sistema`,
       },
       {
         id: 'config-automacoes',
         title: 'Automações',
         body: `Em Configurações > Automações:
 • Regras que disparam ações automáticas
-• Exemplos: "Quando lead ficar 3 dias parado → enviar follow-up", "Quando lead for FINALIZADO → criar tarefa para advogado"
-• Configuração de sequências de follow-up por estágio`,
+• Exemplos: "Quando lead ficar 3 dias parado → enviar follow-up", "Quando lead for FINALIZADO → criar tarefa para contador"
+• Configuração de sequências de follow-up por estágio do funil`,
       },
     ],
   },
@@ -632,7 +596,7 @@ function ManualContent() {
               Manual do Sistema
             </h1>
             <p className="text-sm text-muted-foreground">
-              Guia completo de uso — do primeiro contato do lead até o encerramento do processo.
+              Guia completo de uso — do primeiro contato do lead até a gestão completa do cliente contábil.
             </p>
           </div>
 
@@ -702,7 +666,7 @@ function highlightSearch(text: string, query: string): React.ReactElement {
 
 export default function ManualPage() {
   return (
-    <RouteGuard allowedRoles={['ADMIN', 'CONTADOR', 'OPERADOR', 'ASSISTENTE', 'FINANCEIRO', 'COMERCIAL']}>
+    <RouteGuard allowedRoles={['ADMIN', 'CONTADOR', 'OPERADOR', 'ASSISTENTE', 'FINANCEIRO']}>
       <ManualContent />
     </RouteGuard>
   );

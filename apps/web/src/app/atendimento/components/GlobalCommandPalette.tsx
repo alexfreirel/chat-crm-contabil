@@ -4,8 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Search, MessageSquare, Briefcase, Users, Calendar, BookOpen,
-  Settings, LayoutDashboard, Bot, FileEdit, Megaphone,
-  CheckSquare, ExternalLink, Loader2, User,
+  Settings, LayoutDashboard, Bot, Megaphone,
+  CheckSquare, ExternalLink, Loader2, User, Building2,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
@@ -34,8 +34,8 @@ const NAV_ITEMS = [
   { id: 'nav-tasks',      label: 'Tarefas',                 sublabel: 'Pendências e prazos',           href: '/atendimento/tasks',               icon: <CheckSquare size={14} className="text-amber-400" /> },
   { id: 'nav-agenda',     label: 'Agenda',                  sublabel: 'Compromissos e audiências',     href: '/atendimento/agenda',              icon: <Calendar size={14} className="text-sky-400" /> },
   { id: 'nav-followup',   label: 'Follow-up IA',            sublabel: 'Sequências automáticas',        href: '/atendimento/followup',            icon: <Bot size={14} className="text-pink-400" /> },
-  { id: 'nav-advogado',   label: 'Triagem e Peticionamento',sublabel: 'Gerador de petições com IA',    href: '/atendimento/advogado',            icon: <FileEdit size={14} className="text-orange-400" /> },
-  { id: 'nav-processos',  label: 'Processos',               sublabel: 'Casos judiciais e prazos',      href: '/atendimento/processos',           icon: <BookOpen size={14} className="text-teal-400" /> },
+  { id: 'nav-clientes',   label: 'Clientes Contábeis',       sublabel: 'Workspace de clientes do escritório', href: '/atendimento/clientes',       icon: <Building2 size={14} className="text-teal-400" /> },
+  { id: 'nav-obrigacoes', label: 'Obrigações Fiscais',       sublabel: 'Vencimentos e obrigações acessórias', href: '/atendimento/obrigacoes',     icon: <BookOpen size={14} className="text-orange-400" /> },
   { id: 'nav-analytics',  label: 'Analytics',               sublabel: 'Métricas e campanhas',          href: '/atendimento/marketing/analytics', icon: <Megaphone size={14} className="text-rose-400" /> },
   { id: 'nav-settings',   label: 'Configurações',           sublabel: 'WhatsApp, IA, usuários...',     href: '/atendimento/settings',            icon: <Settings size={14} className="text-muted-foreground" /> },
 ];
