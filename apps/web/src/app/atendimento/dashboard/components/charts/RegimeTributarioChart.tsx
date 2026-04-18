@@ -65,7 +65,8 @@ export function RegimeTributarioChart({ data, loading }: RegimeTributarioChartPr
               ))}
             </Pie>
             <Tooltip
-              formatter={(value: number, name: string) => [value, LABELS[name] || name]}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              formatter={(value: any, name: any) => [value, LABELS[String(name)] || name]}
               contentStyle={{
                 background: 'hsl(var(--card))',
                 border: '1px solid hsl(var(--border))',
@@ -74,7 +75,8 @@ export function RegimeTributarioChart({ data, loading }: RegimeTributarioChartPr
               }}
             />
             <Legend
-              formatter={(value: string) => LABELS[value] || value}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              formatter={(value: any) => LABELS[String(value)] || value}
               wrapperStyle={{ fontSize: '11px' }}
             />
           </PieChart>
