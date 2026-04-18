@@ -94,64 +94,70 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
     onRefresh();
   }
 
-  const [form, setForm] = useState({
-    // Dados da empresa
-    razao_social:       ficha.razao_social || '',
-    nome_fantasia:      ficha.nome_fantasia || '',
-    cnpj:               ficha.cnpj || '',
-    cpf:                ficha.cpf || '',
-    data_abertura:      ficha.data_abertura ? ficha.data_abertura.slice(0, 10) : '',
-    regime_tributario:  ficha.regime_tributario || '',
-    porte:              ficha.porte || '',
-    natureza_juridica:  ficha.natureza_juridica || '',
-    cnae_principal:     ficha.cnae_principal || '',
-    cnae_secundarios:   (ficha.cnae_secundarios || []).join(', '),
-    inscricao_estadual: ficha.inscricao_estadual || '',
-    inscricao_municipal:ficha.inscricao_municipal || '',
-    // Faturamento
-    faturamento_mensal: formatCurrency(ficha.faturamento_mensal),
-    faturamento_anual:  formatCurrency(ficha.faturamento_anual),
-    // Endereço
-    cep:        ficha.cep || '',
-    logradouro: ficha.logradouro || '',
-    numero:     ficha.numero || '',
-    complemento:ficha.complemento || '',
-    bairro:     ficha.bairro || '',
-    cidade:     ficha.cidade || '',
-    estado:     ficha.estado || '',
-    // Contatos & Acessos
-    email_contabil:    ficha.email_contabil || '',
-    email_fiscal:      ficha.email_fiscal || '',
-    telefone_empresa:  ficha.telefone_empresa || '',
-    banco:             ficha.banco || '',
-    agencia:           ficha.agencia || '',
-    conta:             ficha.conta || '',
-    acesso_receita:    ficha.acesso_receita || '',
-    acesso_sefaz:      ficha.acesso_sefaz || '',
-    acesso_prefeitura: ficha.acesso_prefeitura || '',
-    // Departamento pessoal
-    tem_funcionarios:     ficha.tem_funcionarios || false,
-    qtd_funcionarios:     ficha.qtd_funcionarios || '',
-    tem_pro_labore:       ficha.tem_pro_labore || false,
-    regime_contratacao:   ficha.regime_contratacao || '',
-    // Sistemas
-    sistema_erp:   ficha.sistema_erp || '',
-    sistema_nf:    ficha.sistema_nf || '',
-    sistema_folha: ficha.sistema_folha || '',
-    // Contabilidade anterior
-    escritorio_anterior: ficha.escritorio_anterior || '',
-    data_transicao:      ficha.data_transicao ? ficha.data_transicao.slice(0, 10) : '',
-    // Serviços contratados
-    servicos: ficha.servicos || [],
-    // Observações
-    observacoes: ficha.observacoes || '',
-  });
+  function buildForm(f: any) {
+    return {
+      razao_social:        f.razao_social || '',
+      nome_fantasia:       f.nome_fantasia || '',
+      cnpj:                f.cnpj || '',
+      cpf:                 f.cpf || '',
+      data_abertura:       f.data_abertura ? f.data_abertura.slice(0, 10) : '',
+      regime_tributario:   f.regime_tributario || '',
+      porte:               f.porte || '',
+      natureza_juridica:   f.natureza_juridica || '',
+      cnae_principal:      f.cnae_principal || '',
+      cnae_secundarios:    (f.cnae_secundarios || []).join(', '),
+      inscricao_estadual:  f.inscricao_estadual || '',
+      inscricao_municipal: f.inscricao_municipal || '',
+      faturamento_mensal:  formatCurrency(f.faturamento_mensal),
+      faturamento_anual:   formatCurrency(f.faturamento_anual),
+      cep:                 f.cep || '',
+      logradouro:          f.logradouro || '',
+      numero:              f.numero || '',
+      complemento:         f.complemento || '',
+      bairro:              f.bairro || '',
+      cidade:              f.cidade || '',
+      estado:              f.estado || '',
+      email_contabil:      f.email_contabil || '',
+      email_fiscal:        f.email_fiscal || '',
+      telefone_empresa:    f.telefone_empresa || '',
+      banco:               f.banco || '',
+      agencia:             f.agencia || '',
+      conta:               f.conta || '',
+      acesso_receita:      f.acesso_receita || '',
+      acesso_sefaz:        f.acesso_sefaz || '',
+      acesso_prefeitura:   f.acesso_prefeitura || '',
+      tem_funcionarios:    f.tem_funcionarios || false,
+      qtd_funcionarios:    f.qtd_funcionarios || '',
+      tem_pro_labore:      f.tem_pro_labore || false,
+      regime_contratacao:  f.regime_contratacao || '',
+      sistema_erp:         f.sistema_erp || '',
+      sistema_nf:          f.sistema_nf || '',
+      sistema_folha:       f.sistema_folha || '',
+      escritorio_anterior: f.escritorio_anterior || '',
+      data_transicao:      f.data_transicao ? f.data_transicao.slice(0, 10) : '',
+      servicos:            f.servicos || [],
+      observacoes:         f.observacoes || '',
+    };
+  }
+
+  const [form, setForm] = useState(() => buildForm(ficha));
 
   const [socios, setSocios] = useState<Socio[]>(
     Array.isArray(ficha.socios) && ficha.socios.length > 0
       ? ficha.socios
       : [emptySocio()],
   );
+
+  // Sincroniza form e sócios quando os dados do cliente mudam (após save/refresh)
+  useEffect(() => {
+    const f = cliente?.lead?.ficha_contabil || {};
+    setForm(buildForm(f));
+    setSocios(
+      Array.isArray(f.socios) && f.socios.length > 0 ? f.socios : [emptySocio()],
+    );
+    setLeadPhone(cliente?.lead?.phone || '');
+    setLeadName(cliente?.lead?.name || '');
+  }, [cliente]);
 
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
 
