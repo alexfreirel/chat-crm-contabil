@@ -18,7 +18,7 @@ const STAGE_COLORS: Record<string, string> = {
 
 const SERVICE_LABELS: Record<string, string> = {
   BPO_FISCAL: 'BPO Fiscal', BPO_CONTABIL: 'BPO Contábil', DP: 'Dep. Pessoal',
-  ABERTURA: 'Abertura de Empresa', ENCERRAMENTO: 'Encerramento',
+  ABERTURA: 'Abertura/Alteração', ENCERRAMENTO: 'Encerramento',
   IR_PF: 'IRPF', IR_PJ: 'IRPJ', CONSULTORIA: 'Consultoria', OUTRO: 'Outro',
 };
 

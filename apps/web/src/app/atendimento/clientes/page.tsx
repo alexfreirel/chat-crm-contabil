@@ -28,7 +28,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 const SERVICE_LABELS: Record<string, string> = {
   CLIENTE_EFETIVO: 'Cliente Efetivo',
   BPO_FISCAL: 'BPO Fiscal', BPO_CONTABIL: 'BPO Contábil', DP: 'Dep. Pessoal',
-  ABERTURA: 'Abertura', ENCERRAMENTO: 'Encerramento',
+  ABERTURA: 'Abertura/Alteração', ENCERRAMENTO: 'Encerramento',
   IR_PF: 'IRPF', IR_PJ: 'IRPJ', CONSULTORIA: 'Consultoria', OUTRO: 'Outro',
 };
 

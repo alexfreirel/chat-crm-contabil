@@ -12,7 +12,7 @@ const SERVICOS = [
   { value: 'BPO_FISCAL',      label: 'BPO Fiscal' },
   { value: 'BPO_CONTABIL',    label: 'BPO Contábil' },
   { value: 'DP',              label: 'Departamento Pessoal' },
-  { value: 'ABERTURA',        label: 'Abertura de Empresa' },
+  { value: 'ABERTURA',        label: 'Abertura/Alteração' },
   { value: 'ENCERRAMENTO',    label: 'Encerramento' },
   { value: 'IR_PF',           label: 'IRPF' },
   { value: 'IR_PJ',           label: 'IRPJ' },
