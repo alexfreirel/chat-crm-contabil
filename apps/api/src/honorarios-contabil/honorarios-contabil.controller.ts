@@ -7,6 +7,16 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 export class HonorariosContabilController {
   constructor(private readonly service: HonorariosContabilService) {}
 
+  /** Lista de tipos de honorário */
+  @Get('tipos')
+  getTipos() { return this.service.getTipos(); }
+
+  /** Relatório de inadimplência — todas as parcelas atrasadas do tenant */
+  @Get('inadimplencia')
+  getInadimplencia(@Request() req: any) {
+    return this.service.getInadimplencia(req.user?.tenant_id);
+  }
+
   @Get('cliente/:clienteId')
   findByCliente(@Param('clienteId') clienteId: string, @Request() req: any) {
     return this.service.findByCliente(clienteId, req.user?.tenant_id);
@@ -22,7 +32,10 @@ export class HonorariosContabilController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() body: { valor?: number; dia_vencimento?: number; notas?: string; ativo?: boolean }) {
+  update(
+    @Param('id') id: string,
+    @Body() body: { valor?: number; dia_vencimento?: number; notas?: string; ativo?: boolean },
+  ) {
     return this.service.update(id, body);
   }
 
@@ -31,16 +44,43 @@ export class HonorariosContabilController {
     return this.service.remove(id);
   }
 
+  /** Gerar parcelas mensais automaticamente */
+  @Post(':id/gerar-parcelas')
+  generateParcelas(
+    @Param('id') id: string,
+    @Body() body: { meses: number; competencia_inicio: string },
+  ) {
+    return this.service.generateParcelas(id, body.meses, body.competencia_inicio);
+  }
+
+  /** Aplicar reajuste percentual (INPC / IPCA / negociado) */
+  @Patch(':id/reajuste')
+  applyReajuste(
+    @Param('id') id: string,
+    @Body() body: { percentual: number; motivo?: string },
+  ) {
+    return this.service.applyReajuste(id, body.percentual, body.motivo);
+  }
+
   @Post(':id/parcelas')
   addParcela(
     @Param('id') id: string,
-    @Body() body: { competencia?: string; amount: number; due_date: string; payment_method?: string; notas?: string },
+    @Body() body: {
+      competencia?: string;
+      amount: number;
+      due_date: string;
+      payment_method?: string;
+      notas?: string;
+    },
   ) {
     return this.service.addParcela(id, body);
   }
 
   @Patch('parcelas/:parcelaId/pagar')
-  markPaid(@Param('parcelaId') parcelaId: string, @Body('payment_method') pm?: string) {
+  markPaid(
+    @Param('parcelaId') parcelaId: string,
+    @Body('payment_method') pm?: string,
+  ) {
     return this.service.markPaid(parcelaId, pm);
   }
 

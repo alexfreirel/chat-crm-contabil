@@ -661,13 +661,14 @@ model DocumentoContabil {
   uploaded_by_id String?
   // Pastas contábeis
   folder         String    @default("OUTROS")
-  // CONTRATO | PROCURACAO | CERTIDAO | NOTA_FISCAL | SPED | FOLHA | IR | CNPJ | SOCIOS | OUTROS
+  // FISCAL | CONTABIL | PESSOAL | PAYROLL | SOCIETARIO | OUTROS
   name           String
   original_name  String
   s3_key         String
   mime_type      String?
   size           Int?
   description    String?
+  competencia    DateTime? // Mês de referência do documento (ex: 2025-03-01)
   created_at     DateTime  @default(now())
 
   cliente     ClienteContabil @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
@@ -687,7 +688,7 @@ model HonorarioContabil {
   id             String    @id @default(uuid())
   tenant_id      String?
   cliente_id     String
-  tipo           String    // MENSALIDADE | SERVICO_AVULSO | IMPLANTACAO
+  tipo           String    // CONTABILIDADE_MENSAL | ABERTURA_EMPRESA | ENCERRAMENTO_EMPRESA | IRPF | CONSULTORIA | PARCELAMENTO | FOLHA_PAGAMENTO | PLANEJAMENTO_TRIBUTARIO | RECUPERACAO_CREDITO | OUTROS
   valor          Decimal   @db.Decimal(10, 2)
   dia_vencimento Int?      // 1-31 (dia do mês para mensalidade)
   ativo          Boolean   @default(true)
