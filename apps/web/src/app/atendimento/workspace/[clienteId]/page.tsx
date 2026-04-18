@@ -152,7 +152,7 @@ export default function WorkspacePage() {
       <div className="flex-1 overflow-y-auto">
         {activeTab === 'ficha' && <TabFichaContabil cliente={data} onRefresh={fetchData} />}
         {activeTab === 'obrigacoes' && <TabObrigacoes clienteId={clienteId} cliente={data} onRefresh={fetchData} />}
-        {activeTab === 'documentos' && <TabDocumentos clienteId={clienteId} tenantId={data.tenant_id} />}
+        {activeTab === 'documentos' && <TabDocumentos clienteId={clienteId} />}
         {activeTab === 'honorarios' && <TabHonorarios clienteId={clienteId} onRefresh={fetchData} />}
         {activeTab === 'timeline' && <TabTimeline clienteId={clienteId} cliente={data} />}
         {activeTab === 'comunicacoes' && <TabComunicacoes conversationId={data.conversation_id} />}
