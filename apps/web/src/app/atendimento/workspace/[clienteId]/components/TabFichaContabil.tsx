@@ -41,7 +41,9 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
   const clienteId = cliente?.id;
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<string>('contato');
+  const skipNextSync = useState({ current: false })[0]; // ref via useState para estabilidade
 
   // ── Contato / Lead ──
   const [leadPhone, setLeadPhone]         = useState(cliente?.lead?.phone || '');
@@ -150,6 +152,8 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
 
   // Sincroniza form e sócios quando os dados do cliente mudam (após save/refresh)
   useEffect(() => {
+    // Pula o sync logo após um save bem-sucedido (evita reset do form)
+    if (skipNextSync.current) { skipNextSync.current = false; return; }
     const f = cliente?.lead?.ficha_contabil || {};
     setForm(buildForm(f));
     setSocios(
@@ -179,8 +183,13 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
   }
 
   async function handleSave() {
+    if (!leadId) {
+      setSaveError('❌ Nenhum lead vinculado. Vá até a aba "Contato" e vincule um lead antes de salvar.');
+      return;
+    }
     setSaving(true);
     setSaved(false);
+    setSaveError(null);
     try {
       const payload = {
         ...form,
@@ -192,7 +201,7 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
           : [],
         socios: socios.filter(s => s.nome.trim()),
       };
-      await fetch(`${API}/ficha-contabil/${leadId}`, {
+      const res = await fetch(`${API}/ficha-contabil/${leadId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -200,9 +209,17 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
         },
         body: JSON.stringify(payload),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setSaveError(`❌ Erro ao salvar: ${err.message || res.status}`);
+        return;
+      }
       setSaved(true);
+      skipNextSync.current = true; // não resetar o form no próximo useEffect
       onRefresh();
       setTimeout(() => setSaved(false), 3000);
+    } catch (e: any) {
+      setSaveError(`❌ Erro de comunicação: ${e.message}`);
     } finally {
       setSaving(false);
     }
@@ -708,15 +725,28 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
       )}
 
       {/* Salvar */}
-      <div className="flex items-center gap-3 sticky bottom-0 bg-base-100 border-t border-base-200 -mx-6 px-6 py-3">
-        <button onClick={handleSave} disabled={saving} className="btn btn-primary btn-sm flex-1 max-w-xs">
-          {saving
-            ? <><span className="loading loading-spinner loading-xs" /> Salvando...</>
-            : saved
-            ? '✅ Salvo!'
-            : '💾 Salvar ficha'}
-        </button>
-        {saved && <span className="text-xs text-success">Ficha atualizada com sucesso</span>}
+      <div className="sticky bottom-0 bg-base-100 border-t border-base-200 -mx-6 px-6 py-3 space-y-2">
+        {saveError && (
+          <div className="alert alert-error py-2 text-sm">
+            {saveError}
+            <button className="ml-auto btn btn-ghost btn-xs" onClick={() => setSaveError(null)}>✕</button>
+          </div>
+        )}
+        {!leadId && !saveError && (
+          <div className="alert alert-warning py-2 text-sm">
+            ⚠️ Sem lead vinculado — vá em <strong>📞 Contato</strong> e vincule um lead para habilitar o salvamento.
+          </div>
+        )}
+        <div className="flex items-center gap-3">
+          <button onClick={handleSave} disabled={saving || !leadId} className="btn btn-primary btn-sm flex-1 max-w-xs">
+            {saving
+              ? <><span className="loading loading-spinner loading-xs" /> Salvando...</>
+              : saved
+              ? '✅ Salvo!'
+              : '💾 Salvar ficha'}
+          </button>
+          {saved && <span className="text-xs text-success">Ficha atualizada com sucesso!</span>}
+        </div>
       </div>
     </div>
   );
