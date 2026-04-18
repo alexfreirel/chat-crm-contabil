@@ -1046,7 +1046,7 @@ export function HomeTemplate({
                   <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-[#A89048]/10 border border-[#A89048]/20 mb-6 backdrop-blur-md">
                     <Clock size={14} className="text-[#A89048]" />
                     <span className="text-[#A89048] text-[10px] font-black uppercase tracking-widest">
-                      A Jornada do Cliente • André Lustosa Advogados
+                      A Jornada do Cliente • Lexcon Assessoria Contábil
                     </span>
                   </div>
                   <h2 className="text-[clamp(1.75rem,3.5vw,3rem)] font-black text-[#FAFAFA] mb-6 leading-tight uppercase">
