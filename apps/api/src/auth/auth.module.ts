@@ -36,7 +36,7 @@ function getJwtSecret(): string {
     PassportModule,
     JwtModule.registerAsync({
       useFactory: () => {
-        const expiresIn = process.env.JWT_EXPIRES_IN || '30d';
+        const expiresIn = process.env.JWT_EXPIRES_IN || '365d';
         jwtLogger.log(`JWT_EXPIRES_IN = ${expiresIn}`);
         return {
           secret: getJwtSecret(),

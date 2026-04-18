@@ -12,25 +12,25 @@ const SPECIALTY_SUGGESTIONS = [
   'Consultoria Tributária', 'Planejamento Tributário', 'SPED', 'DIRF', 'FGTS Digital',
 ];
 
-// ─── Departamentos / roles ────────────────────────────────────────────────────
+// ─── Perfis de acesso ────────────────────────────────────────────────────────
+// ADMIN removido da UI — CONTADOR assume controle total do sistema
 const ROLE_OPTIONS = [
-  { value: 'ADMIN',      label: '🛡️ Administrador',        desc: 'Acesso total ao sistema' },
-  { value: 'CONTADOR',   label: '📊 Contador',              desc: 'Responsável por clientes contábeis' },
-  { value: 'OPERADOR',   label: '💼 Atendente Comercial',   desc: 'Atendimento e conversões de leads' },
-  { value: 'ASSISTENTE', label: '🎓 Assistente',            desc: 'Suporte administrativo e tarefas' },
-  { value: 'FINANCEIRO', label: '💰 Financeiro',            desc: 'Gestão financeira e cobranças' },
+  { value: 'CONTADOR',   label: '📊 Contador',            desc: 'Controle total do sistema e dos clientes contábeis' },
+  { value: 'OPERADOR',   label: '💼 Atendente Comercial', desc: 'Atendimento, leads e conversões' },
+  { value: 'ASSISTENTE', label: '🎓 Assistente',          desc: 'Suporte administrativo e tarefas' },
+  { value: 'FINANCEIRO', label: '💰 Financeiro',          desc: 'Gestão financeira e cobranças' },
 ];
 
 function roleBadge(role: string) {
   const map: Record<string, string> = {
-    ADMIN:      'bg-red-900/30 text-red-300 border-red-800/30',
-    CONTADOR:   'bg-blue-900/30 text-blue-300 border-blue-800/30',
-    OPERADOR:   'bg-purple-900/30 text-purple-300 border-purple-800/30',
+    ADMIN:      'bg-violet-900/30 text-violet-300 border-violet-800/30', // backward-compat
+    CONTADOR:   'bg-violet-900/30 text-violet-300 border-violet-800/30', // superadmin
+    OPERADOR:   'bg-blue-900/30 text-blue-300 border-blue-800/30',
     ASSISTENTE: 'bg-amber-900/30 text-amber-300 border-amber-800/30',
     FINANCEIRO: 'bg-emerald-900/30 text-emerald-300 border-emerald-800/30',
   };
   const label: Record<string, string> = {
-    ADMIN: 'Administrador', CONTADOR: 'Contador', OPERADOR: 'Atendente',
+    ADMIN: 'Contador', CONTADOR: 'Contador', OPERADOR: 'Atendente',
     ASSISTENTE: 'Assistente', FINANCEIRO: 'Financeiro',
   };
   const cls = map[role] || 'bg-muted/20 text-muted-foreground border-border';
