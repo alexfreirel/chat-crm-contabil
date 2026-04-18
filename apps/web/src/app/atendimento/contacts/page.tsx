@@ -43,26 +43,30 @@ const CHAT_STATUS_BADGE: Record<NonNullable<ChatStatus>, { label: string; classe
   WAITING: { label: 'Aguardando',     classes: 'bg-blue-500/10   text-blue-600   border-blue-500/20',   dot: 'bg-blue-500' },
 };
 
-function getIsAdminFromToken(): boolean {
+function getTokenPayload(): any {
   try {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    if (!token) return false;
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    return payload?.role === 'ADMIN';
+    if (!token) return null;
+    return JSON.parse(atob(token.split('.')[1]));
   } catch {
-    return false;
+    return null;
   }
 }
 
+function getIsAdminFromToken(): boolean {
+  const p = getTokenPayload();
+  if (!p) return false;
+  // suporta role (string) e roles (array)
+  return p.role === 'ADMIN' || (Array.isArray(p.roles) && p.roles.includes('ADMIN'));
+}
+
 function getIsContadorFromToken(): boolean {
-  try {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    if (!token) return false;
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    return payload?.role === 'CONTADOR' || payload?.role === 'ADMIN';
-  } catch {
-    return false;
-  }
+  const p = getTokenPayload();
+  if (!p) return false;
+  return (
+    p.role === 'CONTADOR' || p.role === 'ADMIN' ||
+    (Array.isArray(p.roles) && (p.roles.includes('CONTADOR') || p.roles.includes('ADMIN')))
+  );
 }
 
 export default function ContactsPage() {
