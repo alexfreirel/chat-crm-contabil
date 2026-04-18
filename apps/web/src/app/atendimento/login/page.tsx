@@ -104,7 +104,7 @@ export default function LoginPage() {
             <div className="hidden flex-col justify-center lg:flex">
               <div className="mb-12">
                 <Image
-                  src="/landing/lexcon-logo-v2.png"
+                  src="/landing/lexcon-logo-v3.jpg"
                   alt="Lexcon Assessoria Contábil"
                   width={320}
                   height={100}
@@ -149,7 +149,7 @@ export default function LoginPage() {
                   {/* Mobile logo */}
                   <div className="mb-10 flex flex-col items-center justify-center lg:hidden">
                     <Image
-                      src="/landing/lexcon-logo-v2.png"
+                      src="/landing/lexcon-logo-v3.jpg"
                       alt="Lexcon Assessoria Contábil"
                       width={200}
                       height={60}

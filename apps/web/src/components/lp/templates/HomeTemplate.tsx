@@ -178,7 +178,7 @@ export function HomeTemplate({
               aria-label="Voltar para o topo"
             >
               <Image
-                src="/landing/lexcon-logo-v2.png"
+                src="/landing/lexcon-logo-v3.jpg"
                 alt="Lexcon Assessoria Contábil"
                 width={220}
                 height={60}
@@ -520,7 +520,7 @@ export function HomeTemplate({
                 className="flex items-center gap-3 mx-6 shrink-0"
               >
                 <Image
-                  src="/landing/lexcon-logo-v2.png"
+                  src="/landing/lexcon-logo-v3.jpg"
                   alt="Lexcon"
                   width={120}
                   height={28}
@@ -1277,7 +1277,7 @@ export function HomeTemplate({
           {/* BRAND & INFO (5 cols) */}
           <div className="md:col-span-5 flex flex-col items-center md:items-start text-center md:text-left">
             <Image
-              src="/landing/lexcon-logo-v2.png"
+              src="/landing/lexcon-logo-v3.jpg"
               alt="Lexcon Assessoria Contábil"
               width={240}
               height={65}
