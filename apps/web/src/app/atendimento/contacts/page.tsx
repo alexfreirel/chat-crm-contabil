@@ -54,6 +54,17 @@ function getIsAdminFromToken(): boolean {
   }
 }
 
+function getIsContadorFromToken(): boolean {
+  try {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) return false;
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload?.role === 'CONTADOR' || payload?.role === 'ADMIN';
+  } catch {
+    return false;
+  }
+}
+
 export default function ContactsPage() {
   const router = useRouter();
   const [search, setSearch] = useState('');
@@ -66,7 +77,13 @@ export default function ContactsPage() {
   const [archivedLeads, setArchivedLeads] = useState<Contact[]>([]);
   const [loadingArchived, setLoadingArchived] = useState(false);
   const [showNewContact, setShowNewContact] = useState(false);
-  const [isAdmin] = useState<boolean>(getIsAdminFromToken);
+  const [isAdmin]    = useState<boolean>(getIsAdminFromToken);
+  const [isContador] = useState<boolean>(getIsContadorFromToken);
+
+  // Excluir em massa
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [deletingAllConfirm, setDeletingAllConfirm] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   // Paginação
   const [page, setPage] = useState(1);
@@ -308,6 +325,58 @@ export default function ContactsPage() {
   const someSelected = selectedIds.size > 0;
   const indeterminate = someSelected && !allCurrentSelected;
 
+  // ─── Excluir contato individual ───────────────────────────
+  const handleDeleteContact = async (id: string, name: string) => {
+    if (!confirm(`Excluir permanentemente "${name}"?\n\nTodos os dados, conversas e histórico serão removidos. Esta ação não pode ser desfeita.`)) return;
+    try {
+      await api.delete(`/leads/${id}`);
+      handleContactDeleted(id);
+      showSuccess('Contato excluído.');
+    } catch {
+      showError('Erro ao excluir contato.');
+    }
+  };
+
+  // ─── Excluir selecionados ──────────────────────────────────
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Excluir permanentemente ${selectedIds.size} contato(s)?\n\nTodos os dados serão removidos. Esta ação não pode ser desfeita.`)) return;
+    setBulkDeleting(true);
+    const ids = Array.from(selectedIds);
+    try {
+      const results = await Promise.allSettled(ids.map(id => api.delete(`/leads/${id}`)));
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.filter(r => r.status === 'rejected').length;
+      setContacts(prev => prev.filter(c => !selectedIds.has(c.id)));
+      setSelectedIds(new Set());
+      setTotalContacts(t => Math.max(0, t - succeeded));
+      if (failed === 0) showSuccess(`${succeeded} contato(s) excluído(s).`);
+      else showError(`${succeeded} excluídos, ${failed} falharam.`);
+    } catch {
+      showError('Erro ao excluir contatos.');
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  // ─── Excluir TODOS os contatos ─────────────────────────────
+  const handleDeleteAll = async () => {
+    setDeletingAll(true);
+    const allIds = contacts.map(c => c.id);
+    try {
+      await Promise.allSettled(allIds.map(id => api.delete(`/leads/${id}`)));
+      setContacts([]);
+      setTotalContacts(0);
+      setSelectedIds(new Set());
+      setDeletingAllConfirm(false);
+      showSuccess('Todos os contatos desta página foram excluídos.');
+    } catch {
+      showError('Erro ao excluir todos.');
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
   // Barra de ação em massa
   const BulkActionBar = () => {
     if (selectedIds.size === 0) return null;
@@ -325,12 +394,9 @@ export default function ContactsPage() {
             <button
               onClick={handleBulkArchive}
               disabled={bulkArchiving}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-semibold bg-amber-500 text-white hover:bg-amber-600 transition-colors disabled:opacity-50"
             >
-              {bulkArchiving
-                ? <Loader2 size={14} className="animate-spin" />
-                : <Archive size={14} />
-              }
+              {bulkArchiving ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />}
               {bulkArchiving ? 'Arquivando...' : 'Arquivar selecionados'}
             </button>
           ) : (
@@ -339,13 +405,23 @@ export default function ContactsPage() {
               disabled={bulkUnarchiving}
               className="flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-semibold bg-primary text-primary-foreground hover:opacity-90 transition-colors disabled:opacity-50"
             >
-              {bulkUnarchiving
-                ? <Loader2 size={14} className="animate-spin" />
-                : <RotateCcw size={14} />
-              }
+              {bulkUnarchiving ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
               {bulkUnarchiving ? 'Desarquivando...' : 'Desarquivar selecionados'}
             </button>
           )}
+
+          {/* Excluir selecionados — somente CONTADOR */}
+          {isContador && (
+            <button
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+            >
+              {bulkDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              {bulkDeleting ? 'Excluindo...' : 'Excluir selecionados'}
+            </button>
+          )}
+
           <button
             onClick={() => setSelectedIds(new Set())}
             className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
@@ -576,6 +652,18 @@ export default function ContactsPage() {
               )}
             </button>
 
+            {/* Excluir todos — somente CONTADOR */}
+            {isContador && contacts.length > 0 && (
+              <button
+                onClick={() => setDeletingAllConfirm(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold border border-red-500/30 bg-red-500/5 hover:bg-red-500/15 transition-all text-red-500"
+                title="Excluir todos os contatos desta página"
+              >
+                <Trash2 size={15} />
+                Excluir todos
+              </button>
+            )}
+
             <div className="relative w-80 group">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
               <input
@@ -714,20 +802,31 @@ export default function ContactsPage() {
                           </div>
                         </td>
                         <td className="px-6 py-5">
-                          <button
-                            onClick={() => {
-                              if (contact.conversationId) {
-                                sessionStorage.setItem('crm_open_conv', contact.conversationId);
-                              } else {
-                                sessionStorage.setItem('crm_open_lead', contact.id);
-                              }
-                              router.push('/atendimento');
-                            }}
-                            title="Abrir no chat"
-                            className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
-                          >
-                            <MessageSquare size={15} />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => {
+                                if (contact.conversationId) {
+                                  sessionStorage.setItem('crm_open_conv', contact.conversationId);
+                                } else {
+                                  sessionStorage.setItem('crm_open_lead', contact.id);
+                                }
+                                router.push('/atendimento');
+                              }}
+                              title="Abrir no chat"
+                              className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
+                            >
+                              <MessageSquare size={15} />
+                            </button>
+                            {isContador && (
+                              <button
+                                onClick={() => handleDeleteContact(contact.id, contact.name)}
+                                title="Excluir contato permanentemente"
+                                className="p-2 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -806,6 +905,42 @@ export default function ContactsPage() {
             className="max-w-[80vw] max-h-[80vh] rounded-2xl shadow-2xl object-contain"
             onClick={e => e.stopPropagation()}
           />
+        </div>
+      )}
+
+      {/* Modal: Confirmar excluir todos */}
+      {deletingAllConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center shrink-0">
+                <Trash2 size={20} className="text-red-500" />
+              </div>
+              <div>
+                <h2 className="font-bold text-foreground">Excluir todos os contatos?</h2>
+                <p className="text-[13px] text-muted-foreground">Esta página contém <strong>{contacts.length}</strong> contatos.</p>
+              </div>
+            </div>
+            <div className="p-3 rounded-xl bg-red-500/5 border border-red-500/20 text-[13px] text-red-600">
+              ⚠️ Todos os dados, conversas e histórico serão <strong>excluídos permanentemente</strong>. Esta ação <strong>não pode ser desfeita</strong>.
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeletingAllConfirm(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl text-[13px] font-semibold border border-border bg-card hover:bg-accent transition-colors"
+                disabled={deletingAll}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDeleteAll}
+                disabled={deletingAll}
+                className="flex-1 px-4 py-2.5 rounded-xl text-[13px] font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {deletingAll ? <><Loader2 size={14} className="animate-spin" /> Excluindo...</> : <><Trash2 size={14} /> Excluir todos</>}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
