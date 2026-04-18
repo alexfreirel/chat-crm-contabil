@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 // Campos ponderados para cálculo do completion_pct
@@ -33,53 +33,71 @@ export class FichaContabilService {
   }
 
   async upsert(leadId: string, fields: Record<string, any>, filledBy = 'manual') {
-    // Sanitizar campos numéricos
-    const sanitized = { ...fields };
-    if (sanitized.faturamento_mensal !== undefined) {
-      sanitized.faturamento_mensal = sanitized.faturamento_mensal
-        ? parseFloat(String(sanitized.faturamento_mensal).replace(/[^\d.,]/g, '').replace(',', '.'))
-        : null;
-    }
-    if (sanitized.faturamento_anual !== undefined) {
-      sanitized.faturamento_anual = sanitized.faturamento_anual
-        ? parseFloat(String(sanitized.faturamento_anual).replace(/[^\d.,]/g, '').replace(',', '.'))
-        : null;
-    }
-    if (sanitized.qtd_funcionarios !== undefined) {
-      sanitized.qtd_funcionarios = sanitized.qtd_funcionarios
-        ? parseInt(String(sanitized.qtd_funcionarios), 10)
-        : null;
-    }
-    if (sanitized.data_abertura !== undefined && sanitized.data_abertura) {
-      sanitized.data_abertura = new Date(sanitized.data_abertura);
-    }
-    if (sanitized.data_transicao !== undefined && sanitized.data_transicao) {
-      sanitized.data_transicao = new Date(sanitized.data_transicao);
-    }
-    if (sanitized.vencimento_certificado !== undefined && sanitized.vencimento_certificado) {
-      sanitized.vencimento_certificado = new Date(sanitized.vencimento_certificado);
-    }
+    try {
+      // Verificar se o lead existe
+      const lead = await this.prisma.lead.findUnique({ where: { id: leadId } });
+      if (!lead) {
+        throw new NotFoundException(`Lead ${leadId} não encontrado`);
+      }
 
-    const existing = await this.prisma.fichaContabil.findUnique({ where: { lead_id: leadId } });
-    const merged = existing ? { ...(existing as any), ...sanitized } : sanitized;
-    const completion_pct = calcCompletion(merged);
+      // Sanitizar campos numéricos
+      const sanitized = { ...fields };
 
-    if (existing) {
-      return this.prisma.fichaContabil.update({
-        where: { lead_id: leadId },
-        data: { ...sanitized, completion_pct, filled_by: filledBy },
+      if (sanitized.faturamento_mensal !== undefined) {
+        const val = parseFloat(String(sanitized.faturamento_mensal).replace(/[^\d.,]/g, '').replace(',', '.'));
+        sanitized.faturamento_mensal = isNaN(val) ? null : val;
+      }
+      if (sanitized.faturamento_anual !== undefined) {
+        const val = parseFloat(String(sanitized.faturamento_anual).replace(/[^\d.,]/g, '').replace(',', '.'));
+        sanitized.faturamento_anual = isNaN(val) ? null : val;
+      }
+      if (sanitized.qtd_funcionarios !== undefined) {
+        const val = parseInt(String(sanitized.qtd_funcionarios), 10);
+        sanitized.qtd_funcionarios = isNaN(val) ? null : val;
+      }
+
+      // Sanitizar datas — aceita formato ISO e dd/mm/aaaa
+      const parseDate = (raw: string): Date | null => {
+        if (!raw) return null;
+        // converte dd/mm/aaaa → aaaa-mm-dd
+        const brFormat = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        const iso = brFormat ? `${brFormat[3]}-${brFormat[2]}-${brFormat[1]}` : raw;
+        const d = new Date(iso);
+        return isNaN(d.getTime()) ? null : d;
+      };
+
+      if (sanitized.data_abertura !== undefined)
+        sanitized.data_abertura = parseDate(sanitized.data_abertura);
+      if (sanitized.data_transicao !== undefined)
+        sanitized.data_transicao = parseDate(sanitized.data_transicao);
+      if (sanitized.vencimento_certificado !== undefined)
+        sanitized.vencimento_certificado = parseDate(sanitized.vencimento_certificado);
+
+      const existing = await this.prisma.fichaContabil.findUnique({ where: { lead_id: leadId } });
+      const merged = existing ? { ...(existing as any), ...sanitized } : sanitized;
+      const completion_pct = calcCompletion(merged);
+
+      if (existing) {
+        return this.prisma.fichaContabil.update({
+          where: { lead_id: leadId },
+          data: { ...sanitized, completion_pct, filled_by: filledBy },
+        });
+      }
+
+      return this.prisma.fichaContabil.create({
+        data: {
+          lead_id: leadId,
+          ...sanitized,
+          completion_pct,
+          filled_by: filledBy,
+          status: 'em_andamento',
+        },
       });
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      this.logger.error(`Erro ao salvar FichaContabil para lead ${leadId}:`, error);
+      throw new BadRequestException(error?.message ?? 'Erro ao salvar ficha contábil');
     }
-
-    return this.prisma.fichaContabil.create({
-      data: {
-        lead_id: leadId,
-        ...sanitized,
-        completion_pct,
-        filled_by: filledBy,
-        status: 'em_andamento',
-      },
-    });
   }
 
   async markFinalizado(leadId: string) {
