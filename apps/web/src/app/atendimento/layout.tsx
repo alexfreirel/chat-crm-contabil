@@ -9,7 +9,7 @@ import { TaskAlertPopup } from './components/TaskAlertPopup';
 import {
   MessageSquare, Briefcase, Users, Check, FileEdit, BookOpen,
   Megaphone, Settings, Palette, LogOut, MoreHorizontal, X, Calendar,
-  LayoutDashboard, FileText, Gavel, FileSpreadsheet,
+  LayoutDashboard, FileText, Gavel, FileSpreadsheet, Building2,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useRole } from '@/lib/useRole';
@@ -280,6 +280,7 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
   const allMoreItems = [
     { label: 'Dashboard', href: '/atendimento/dashboard', icon: LayoutDashboard, match: (p: string) => p.startsWith('/atendimento/dashboard'), show: perms.canViewDashboard },
     { label: 'Agenda & Tarefas', href: '/atendimento/agenda', icon: Calendar, match: (p: string) => p.startsWith('/atendimento/agenda') || p.startsWith('/atendimento/tasks'), badge: overdueCount, show: true },
+    { label: 'Clientes Contábeis', href: '/atendimento/clientes', icon: Building2, match: (p: string) => p.startsWith('/atendimento/clientes') || p.startsWith('/atendimento/workspace'), show: true },
     { label: 'Agente Fiscal', href: '/atendimento/agente-fiscal', icon: FileSpreadsheet, match: (p: string) => p.startsWith('/atendimento/agente-fiscal'), show: true },
     { label: 'Marketing', href: '/atendimento/marketing/analytics', icon: Megaphone, match: (p: string) => p.startsWith('/atendimento/marketing'), show: perms.canViewAnalytics },
     { label: 'Ajustes', href: '/atendimento/settings', icon: Settings, match: (p: string) => p.startsWith('/atendimento/settings'), show: perms.canManageSettings },
