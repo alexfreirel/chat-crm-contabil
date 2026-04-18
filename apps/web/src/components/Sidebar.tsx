@@ -450,7 +450,7 @@ export function Sidebar() {
       </div>
 
       {/* ─── Navigation Groups ─────────────────────────────────────── */}
-      <nav className="flex-1 flex flex-col gap-0 w-full px-3 overflow-y-auto no-scrollbar">
+      <nav className="flex-1 flex flex-col gap-0 w-full px-3 overflow-y-auto sidebar-scroll">
         {groups.map((group, gi) => (
           <div key={group.id} className={gi > 0 ? 'mt-3' : ''}>
             {/* Label de grupo (expandido) ou separador (recolhido) */}
