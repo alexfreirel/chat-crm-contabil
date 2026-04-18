@@ -168,9 +168,11 @@ function CreateClienteModal({ onClose, onCreated }: { onClose: () => void; onCre
               onChange={e => setServiceType(e.target.value)}
               className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
             >
-              <option value="CLIENTE_EFETIVO">⭐ Cliente Efetivo — BPO Fiscal + Contábil + DP + IRPF</option>
+              <optgroup label="Pacote completo">
+                <option value="CLIENTE_EFETIVO">⭐ Cliente Efetivo — BPO Fiscal + Contábil + DP + IRPF</option>
+              </optgroup>
               <optgroup label="Serviços individuais">
-                {SERVICE_TYPES.filter(s => s !== 'CLIENTE_EFETIVO').map(s => (
+                {SERVICE_TYPES.filter(s => !['CLIENTE_EFETIVO','BPO_FISCAL','BPO_CONTABIL','DP','IR_PF'].includes(s)).map(s => (
                   <option key={s} value={s}>{SERVICE_ICONS[s]} {SERVICE_LABELS[s]}</option>
                 ))}
               </optgroup>
