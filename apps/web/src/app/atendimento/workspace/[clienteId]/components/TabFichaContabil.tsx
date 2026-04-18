@@ -8,7 +8,7 @@ const PORTES = ['MEI', 'ME', 'EPP', 'MEDIO', 'GRANDE'];
 const NATUREZAS = ['EMPRESÁRIO INDIVIDUAL', 'MEI', 'EIRELI', 'LTDA', 'SA', 'SLU', 'ASSOCIAÇÃO', 'COOPERATIVA'];
 const REGIMES_CONTRATACAO = ['CLT', 'PJ', 'AUTONOMO', 'MISTO'];
 const SERVICOS = [
-  { value: 'CLIENTE_EFETIVO', label: '⭐ Cliente Efetivo (BPO Fiscal + Contábil + DP + IRPF)' },
+  { value: 'CLIENTE_EFETIVO', label: '⭐ Cliente Efetivo (BPO Fiscal + Contábil + DP + IRPJ)' },
   { value: 'BPO_FISCAL',      label: 'BPO Fiscal' },
   { value: 'BPO_CONTABIL',    label: 'BPO Contábil' },
   { value: 'DP',              label: 'Departamento Pessoal' },

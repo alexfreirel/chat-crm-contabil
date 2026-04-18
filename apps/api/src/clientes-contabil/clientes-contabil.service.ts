@@ -309,7 +309,7 @@ export class ClientesContabilService {
 
   getServiceTypes() {
     return [
-      { value: 'CLIENTE_EFETIVO', label: 'Cliente Efetivo (BPO Fiscal + Contábil + DP + IRPF)', pacote: true },
+      { value: 'CLIENTE_EFETIVO', label: 'Cliente Efetivo (BPO Fiscal + Contábil + DP + IRPJ)', pacote: true },
       { value: 'BPO_FISCAL',      label: 'BPO Fiscal' },
       { value: 'BPO_CONTABIL',    label: 'BPO Contábil' },
       { value: 'DP',              label: 'Departamento Pessoal' },

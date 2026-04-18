@@ -15,7 +15,7 @@ export const FOLDERS = [
 ];
 
 // Checklist base: documentos esperados por tipo de serviço
-// CLIENTE_EFETIVO absorve: BPO_FISCAL + BPO_CONTABIL + DP + IR_PF
+// CLIENTE_EFETIVO absorve: BPO_FISCAL + BPO_CONTABIL + DP + IR_PJ
 const CHECKLIST_BASE = [
   { folder: 'SOCIETARIO', nome: 'Contrato Social',            obrigatorio: true,  servicos: ['CLIENTE_EFETIVO','BPO_FISCAL','BPO_CONTABIL','DP','ABERTURA','ENCERRAMENTO'] },
   { folder: 'SOCIETARIO', nome: 'Cartão CNPJ',                obrigatorio: true,  servicos: ['CLIENTE_EFETIVO','BPO_FISCAL','BPO_CONTABIL','DP'] },
@@ -23,8 +23,8 @@ const CHECKLIST_BASE = [
   { folder: 'FISCAL',     nome: 'Última DCTF',                obrigatorio: false, servicos: ['CLIENTE_EFETIVO','BPO_FISCAL'] },
   { folder: 'FISCAL',     nome: 'PGDAS-D atual',              obrigatorio: false, servicos: ['CLIENTE_EFETIVO','BPO_FISCAL'] },
   { folder: 'FISCAL',     nome: 'Último DAS',                 obrigatorio: false, servicos: ['CLIENTE_EFETIVO','BPO_FISCAL'] },
-  { folder: 'IR',         nome: 'Última declaração IRPF',     obrigatorio: false, servicos: ['CLIENTE_EFETIVO','IR_PF'] },
-  { folder: 'IR',         nome: 'Comprovante de rendimentos', obrigatorio: false, servicos: ['CLIENTE_EFETIVO','IR_PF'] },
+  { folder: 'IR',         nome: 'Última declaração IRPF',     obrigatorio: false, servicos: ['IR_PF'] },
+  { folder: 'IR',         nome: 'Comprovante de rendimentos', obrigatorio: false, servicos: ['IR_PF'] },
   { folder: 'CERTIDOES',  nome: 'CND Federal (SRF)',          obrigatorio: true,  servicos: ['CLIENTE_EFETIVO','BPO_FISCAL','BPO_CONTABIL'] },
   { folder: 'CERTIDOES',  nome: 'CND Municipal',              obrigatorio: false, servicos: ['CLIENTE_EFETIVO','BPO_FISCAL','BPO_CONTABIL'] },
   { folder: 'PESSOAL',    nome: 'Último RAIS',                obrigatorio: false, servicos: ['CLIENTE_EFETIVO','DP'] },
