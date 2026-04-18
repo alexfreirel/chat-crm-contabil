@@ -326,12 +326,12 @@ export function Sidebar() {
     {
       id: 'principal',
       label: 'Principal',
-      items: [allItems.dashboard, allItems.inbox, allItems.crm, allItems.contacts, allItems.agenda, allItems.agenteFiscal].filter(i => i.show),
+      items: [allItems.dashboard, allItems.inbox, allItems.crm, allItems.contacts].filter(i => i.show),
     },
     {
       id: 'contabil',
       label: 'Contábil',
-      items: [allItems.clientes, allItems.calendarioFiscal, allItems.assistente].filter(i => i.show),
+      items: [allItems.clientes, allItems.calendarioFiscal, allItems.agenda, allItems.agenteFiscal, allItems.assistente].filter(i => i.show),
     },
     {
       id: 'gestao',
