@@ -26,17 +26,20 @@ const PRIORITY_COLORS: Record<string, string> = {
 };
 
 const SERVICE_LABELS: Record<string, string> = {
+  CLIENTE_EFETIVO: 'Cliente Efetivo',
   BPO_FISCAL: 'BPO Fiscal', BPO_CONTABIL: 'BPO Contábil', DP: 'Dep. Pessoal',
   ABERTURA: 'Abertura', ENCERRAMENTO: 'Encerramento',
   IR_PF: 'IRPF', IR_PJ: 'IRPJ', CONSULTORIA: 'Consultoria', OUTRO: 'Outro',
 };
 
 const SERVICE_ICONS: Record<string, string> = {
+  CLIENTE_EFETIVO: '⭐',
   BPO_FISCAL: '🧾', BPO_CONTABIL: '📊', DP: '👥', ABERTURA: '🏢',
   ENCERRAMENTO: '🔒', IR_PF: '📋', IR_PJ: '📋', CONSULTORIA: '💡', OUTRO: '📁',
 };
 
 const SERVICE_TYPES = [
+  'CLIENTE_EFETIVO',
   'BPO_FISCAL', 'BPO_CONTABIL', 'DP', 'ABERTURA',
   'ENCERRAMENTO', 'IR_PF', 'IR_PJ', 'CONSULTORIA', 'OUTRO',
 ];
@@ -165,10 +168,18 @@ function CreateClienteModal({ onClose, onCreated }: { onClose: () => void; onCre
               onChange={e => setServiceType(e.target.value)}
               className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
             >
-              {SERVICE_TYPES.map(s => (
-                <option key={s} value={s}>{SERVICE_ICONS[s]} {SERVICE_LABELS[s]}</option>
-              ))}
+              <option value="CLIENTE_EFETIVO">⭐ Cliente Efetivo — BPO Fiscal + Contábil + DP + IRPF</option>
+              <optgroup label="Serviços individuais">
+                {SERVICE_TYPES.filter(s => s !== 'CLIENTE_EFETIVO').map(s => (
+                  <option key={s} value={s}>{SERVICE_ICONS[s]} {SERVICE_LABELS[s]}</option>
+                ))}
+              </optgroup>
             </select>
+            {serviceType === 'CLIENTE_EFETIVO' && (
+              <p className="text-xs text-primary mt-1">
+                ✅ Inclui: BPO Fiscal · BPO Contábil · Departamento Pessoal · IRPF
+              </p>
+            )}
           </div>
 
           {/* Regime tributário */}

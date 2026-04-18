@@ -15,20 +15,21 @@ export const FOLDERS = [
 ];
 
 // Checklist base: documentos esperados por tipo de serviço
+// CLIENTE_EFETIVO absorve: BPO_FISCAL + BPO_CONTABIL + DP + IR_PF
 const CHECKLIST_BASE = [
-  { folder: 'SOCIETARIO', nome: 'Contrato Social',           obrigatorio: true,  servicos: ['BPO_FISCAL','BPO_CONTABIL','DP','ABERTURA','ENCERRAMENTO'] },
-  { folder: 'SOCIETARIO', nome: 'Cartão CNPJ',               obrigatorio: true,  servicos: ['BPO_FISCAL','BPO_CONTABIL','DP'] },
-  { folder: 'SOCIETARIO', nome: 'Procuração',                obrigatorio: false, servicos: ['BPO_FISCAL','BPO_CONTABIL'] },
-  { folder: 'FISCAL',     nome: 'Última DCTF',               obrigatorio: false, servicos: ['BPO_FISCAL'] },
-  { folder: 'FISCAL',     nome: 'PGDAS-D atual',             obrigatorio: false, servicos: ['BPO_FISCAL'] },
-  { folder: 'FISCAL',     nome: 'Último DAS',                obrigatorio: false, servicos: ['BPO_FISCAL'] },
-  { folder: 'IR',         nome: 'Última declaração IRPF',    obrigatorio: false, servicos: ['IR_PF'] },
-  { folder: 'IR',         nome: 'Comprovante de rendimentos', obrigatorio: false, servicos: ['IR_PF'] },
-  { folder: 'CERTIDOES',  nome: 'CND Federal (SRF)',         obrigatorio: true,  servicos: ['BPO_FISCAL','BPO_CONTABIL'] },
-  { folder: 'CERTIDOES',  nome: 'CND Municipal',             obrigatorio: false, servicos: ['BPO_FISCAL','BPO_CONTABIL'] },
-  { folder: 'PESSOAL',    nome: 'Último RAIS',               obrigatorio: false, servicos: ['DP'] },
-  { folder: 'PAYROLL',    nome: 'Última folha de pagamento', obrigatorio: false, servicos: ['DP'] },
-  { folder: 'PAYROLL',    nome: 'Última GFIP/eSocial',       obrigatorio: false, servicos: ['DP'] },
+  { folder: 'SOCIETARIO', nome: 'Contrato Social',            obrigatorio: true,  servicos: ['CLIENTE_EFETIVO','BPO_FISCAL','BPO_CONTABIL','DP','ABERTURA','ENCERRAMENTO'] },
+  { folder: 'SOCIETARIO', nome: 'Cartão CNPJ',                obrigatorio: true,  servicos: ['CLIENTE_EFETIVO','BPO_FISCAL','BPO_CONTABIL','DP'] },
+  { folder: 'SOCIETARIO', nome: 'Procuração',                 obrigatorio: false, servicos: ['CLIENTE_EFETIVO','BPO_FISCAL','BPO_CONTABIL'] },
+  { folder: 'FISCAL',     nome: 'Última DCTF',                obrigatorio: false, servicos: ['CLIENTE_EFETIVO','BPO_FISCAL'] },
+  { folder: 'FISCAL',     nome: 'PGDAS-D atual',              obrigatorio: false, servicos: ['CLIENTE_EFETIVO','BPO_FISCAL'] },
+  { folder: 'FISCAL',     nome: 'Último DAS',                 obrigatorio: false, servicos: ['CLIENTE_EFETIVO','BPO_FISCAL'] },
+  { folder: 'IR',         nome: 'Última declaração IRPF',     obrigatorio: false, servicos: ['CLIENTE_EFETIVO','IR_PF'] },
+  { folder: 'IR',         nome: 'Comprovante de rendimentos', obrigatorio: false, servicos: ['CLIENTE_EFETIVO','IR_PF'] },
+  { folder: 'CERTIDOES',  nome: 'CND Federal (SRF)',          obrigatorio: true,  servicos: ['CLIENTE_EFETIVO','BPO_FISCAL','BPO_CONTABIL'] },
+  { folder: 'CERTIDOES',  nome: 'CND Municipal',              obrigatorio: false, servicos: ['CLIENTE_EFETIVO','BPO_FISCAL','BPO_CONTABIL'] },
+  { folder: 'PESSOAL',    nome: 'Último RAIS',                obrigatorio: false, servicos: ['CLIENTE_EFETIVO','DP'] },
+  { folder: 'PAYROLL',    nome: 'Última folha de pagamento',  obrigatorio: false, servicos: ['CLIENTE_EFETIVO','DP'] },
+  { folder: 'PAYROLL',    nome: 'Última GFIP/eSocial',        obrigatorio: false, servicos: ['CLIENTE_EFETIVO','DP'] },
 ];
 
 @Injectable()

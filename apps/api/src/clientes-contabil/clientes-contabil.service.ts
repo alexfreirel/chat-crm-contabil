@@ -309,20 +309,22 @@ export class ClientesContabilService {
 
   getServiceTypes() {
     return [
-      { value: 'BPO_FISCAL', label: 'BPO Fiscal' },
-      { value: 'BPO_CONTABIL', label: 'BPO Contábil' },
-      { value: 'DP', label: 'Departamento Pessoal' },
-      { value: 'ABERTURA', label: 'Abertura de Empresa' },
-      { value: 'ENCERRAMENTO', label: 'Encerramento de Empresa' },
-      { value: 'IR_PF', label: 'IRPF - Imposto de Renda PF' },
-      { value: 'IR_PJ', label: 'IRPJ - Imposto de Renda PJ' },
-      { value: 'CONSULTORIA', label: 'Consultoria Tributária' },
-      { value: 'OUTRO', label: 'Outro' },
+      { value: 'CLIENTE_EFETIVO', label: 'Cliente Efetivo (BPO Fiscal + Contábil + DP + IRPF)', pacote: true },
+      { value: 'BPO_FISCAL',      label: 'BPO Fiscal' },
+      { value: 'BPO_CONTABIL',    label: 'BPO Contábil' },
+      { value: 'DP',              label: 'Departamento Pessoal' },
+      { value: 'ABERTURA',        label: 'Abertura de Empresa' },
+      { value: 'ENCERRAMENTO',    label: 'Encerramento de Empresa' },
+      { value: 'IR_PF',           label: 'IRPF - Imposto de Renda PF' },
+      { value: 'IR_PJ',           label: 'IRPJ - Imposto de Renda PJ' },
+      { value: 'CONSULTORIA',     label: 'Consultoria Tributária' },
+      { value: 'OUTRO',           label: 'Outro' },
     ];
   }
 
   private getServiceLabel(serviceType: string): string {
     const map: Record<string, string> = {
+      CLIENTE_EFETIVO: 'Cliente Efetivo',
       BPO_FISCAL: 'BPO Fiscal', BPO_CONTABIL: 'BPO Contábil', DP: 'Dep. Pessoal',
       ABERTURA: 'Abertura de Empresa', ENCERRAMENTO: 'Encerramento',
       IR_PF: 'IRPF', IR_PJ: 'IRPJ', CONSULTORIA: 'Consultoria', OUTRO: 'Outro',

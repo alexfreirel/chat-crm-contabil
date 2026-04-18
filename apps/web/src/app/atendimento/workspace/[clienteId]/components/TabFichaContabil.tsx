@@ -8,15 +8,16 @@ const PORTES = ['MEI', 'ME', 'EPP', 'MEDIO', 'GRANDE'];
 const NATUREZAS = ['EMPRESÁRIO INDIVIDUAL', 'MEI', 'EIRELI', 'LTDA', 'SA', 'SLU', 'ASSOCIAÇÃO', 'COOPERATIVA'];
 const REGIMES_CONTRATACAO = ['CLT', 'PJ', 'AUTONOMO', 'MISTO'];
 const SERVICOS = [
-  { value: 'BPO_FISCAL',    label: 'BPO Fiscal' },
-  { value: 'BPO_CONTABIL',  label: 'BPO Contábil' },
-  { value: 'DP',            label: 'Departamento Pessoal' },
-  { value: 'ABERTURA',      label: 'Abertura de Empresa' },
-  { value: 'ENCERRAMENTO',  label: 'Encerramento' },
-  { value: 'IR_PF',         label: 'IRPF' },
-  { value: 'IR_PJ',         label: 'IRPJ' },
-  { value: 'CONSULTORIA',   label: 'Consultoria Tributária' },
-  { value: 'OUTRO',         label: 'Outro' },
+  { value: 'CLIENTE_EFETIVO', label: '⭐ Cliente Efetivo (BPO Fiscal + Contábil + DP + IRPF)' },
+  { value: 'BPO_FISCAL',      label: 'BPO Fiscal' },
+  { value: 'BPO_CONTABIL',    label: 'BPO Contábil' },
+  { value: 'DP',              label: 'Departamento Pessoal' },
+  { value: 'ABERTURA',        label: 'Abertura de Empresa' },
+  { value: 'ENCERRAMENTO',    label: 'Encerramento' },
+  { value: 'IR_PF',           label: 'IRPF' },
+  { value: 'IR_PJ',           label: 'IRPJ' },
+  { value: 'CONSULTORIA',     label: 'Consultoria Tributária' },
+  { value: 'OUTRO',           label: 'Outro' },
 ];
 
 type Socio = { nome: string; cpf: string; percentual: string; pro_labore: string };
