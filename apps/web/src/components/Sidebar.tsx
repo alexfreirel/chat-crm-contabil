@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Wallet, HelpCircle,
   ChevronRight, Plus, UserPlus, CheckSquare,
   CalendarPlus, ClipboardList, Sparkles,
-  FileSpreadsheet,
+  FileSpreadsheet, Building2,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { API_BASE_URL } from '@/lib/api';
@@ -235,6 +235,13 @@ export function Sidebar() {
       badge: overdueCount,
       show: true,
     },
+    clientes: {
+      label: 'Clientes Contábeis',
+      href: '/atendimento/clientes',
+      icon: <Building2 size={20} strokeWidth={2} />,
+      match: (p) => p.startsWith('/atendimento/clientes') || p.startsWith('/atendimento/workspace'),
+      show: true,
+    },
     assistente: {
       label: 'Meu Painel',
       href: '/atendimento/assistente',
@@ -296,7 +303,7 @@ export function Sidebar() {
     {
       id: 'contabil',
       label: 'Contábil',
-      items: [allItems.assistente].filter(i => i.show),
+      items: [allItems.clientes, allItems.assistente].filter(i => i.show),
     },
     {
       id: 'gestao',
@@ -312,6 +319,7 @@ export function Sidebar() {
 
   // ─── Quick Create items ───────────────────────────────────────────
   const quickCreateItems = [
+    { label: 'Novo Cliente Contábil', href: '/atendimento/clientes', icon: <Building2 size={15} /> },
     { label: 'Novo Lead', href: '/atendimento/crm', icon: <Briefcase size={15} /> },
     { label: 'Novo Contato', href: '/atendimento/contacts', icon: <UserPlus size={15} /> },
     { label: 'Nova Tarefa', href: '/atendimento/agenda', icon: <CheckSquare size={15} /> },
