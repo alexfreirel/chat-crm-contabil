@@ -10,6 +10,7 @@ import {
   useFinancialAging, useAiUsage,
   useLeadSources, useResponseTime, useConversionVelocity,
 } from './hooks/useAnalyticsData';
+import { useContabilDashboard } from './hooks/useContabilDashboard';
 
 import { DashboardHeader } from './components/DashboardHeader';
 import { PeriodSelector } from './components/PeriodSelector';
@@ -32,6 +33,10 @@ import { AiUsageChart } from './components/charts/AiUsageChart';
 import { LeadSourcesChart } from './components/charts/LeadSourcesChart';
 import { ConversionVelocityWidget } from './components/charts/ConversionVelocityWidget';
 import { ResponseTimeWidget } from './components/charts/ResponseTimeWidget';
+import { RegimeTributarioChart } from './components/charts/RegimeTributarioChart';
+import { ContabilKPIs } from './components/ContabilKPIs';
+import { ProdutividadeWidget } from './components/ProdutividadeWidget';
+import { InadimplenciaWidget } from './components/InadimplenciaWidget';
 
 /* ═══════════════════════════════════════════════════════════════
    Dashboard — Composicao principal
@@ -53,6 +58,7 @@ export default function DashboardPage() {
   const responseTime = useResponseTime(period);
   const velocity = useConversionVelocity(period);
   const teamPerf = useTeamPerformance(period, isAdmin);
+  const contabil = useContabilDashboard(period.key);
 
   // Dashboard agressivo para ADMIN e OPERADOR
   const aggressive = isAdmin || isOperador;
@@ -198,6 +204,30 @@ export default function DashboardPage() {
         {showAging && (
           <MotionWidget delay={0.3}>
             <FinancialAgingChart data={aging.data} loading={aging.loading} />
+          </MotionWidget>
+        )}
+
+        {/* Row 11: Contábil KPIs */}
+        {(isAdmin || isContador) && (
+          <MotionWidget delay={0.33}>
+            <ContabilKPIs data={contabil.data} loading={contabil.loading} />
+          </MotionWidget>
+        )}
+
+        {/* Row 11b: Regime Chart + Produtividade */}
+        {(isAdmin || isContador) && (
+          <MotionWidget delay={0.35}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <RegimeTributarioChart data={contabil.data?.clientesPorRegime} loading={contabil.loading} />
+              <ProdutividadeWidget data={contabil.data?.produtividade} loading={contabil.loading} />
+            </div>
+          </MotionWidget>
+        )}
+
+        {/* Row 11c: Inadimplência */}
+        {(isAdmin || isContador || isFinanceiro) && (
+          <MotionWidget delay={0.37}>
+            <InadimplenciaWidget data={contabil.data?.inadimplenciaPorCliente} loading={contabil.loading} />
           </MotionWidget>
         )}
 

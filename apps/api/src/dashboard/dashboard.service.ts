@@ -314,4 +314,135 @@ export class DashboardService {
       },
     };
   }
+
+  async aggregateContabil(tenantId: string | undefined, period: string) {
+    const tw = this.tenantWhere(tenantId);
+    const now = new Date();
+
+    // Parse period to get startDate
+    const periodDays = period === '7d' ? 7 : period === '90d' ? 90 : 30;
+    const startDate = new Date(now.getTime() - periodDays * 24 * 60 * 60 * 1000);
+
+    // End of current month
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    // Start of current month
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    // 7 days from now
+    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    const [
+      clientesPorRegimeRaw,
+      clientesAtivos,
+      novosClientesPeriodo,
+      obrigacoesAtrasadas,
+      obrigacoesEssaSemana,
+      obrigacoesEsseMes,
+      produtividadeConcluidas,
+      produtividadeTotal,
+      inadimplenciaRaw,
+    ] = await Promise.all([
+      // 1. Clientes por regime tributário
+      this.prisma.clienteContabil.groupBy({
+        by: ['regime_tributario'],
+        _count: true,
+        where: { ...tw, stage: 'ATIVO', archived: false },
+      }),
+      // 2. Clientes ativos
+      this.prisma.clienteContabil.count({
+        where: { ...tw, stage: 'ATIVO', archived: false },
+      }),
+      // 3. Novos clientes no período
+      this.prisma.clienteContabil.count({
+        where: { ...tw, created_at: { gte: startDate } },
+      }),
+      // 4. Obrigações atrasadas
+      this.prisma.obrigacaoFiscal.count({
+        where: { ...tw, completed: false, due_at: { lt: now } },
+      }),
+      // 5. Obrigações essa semana
+      this.prisma.obrigacaoFiscal.count({
+        where: { ...tw, completed: false, due_at: { gte: now, lte: sevenDaysFromNow } },
+      }),
+      // 6. Obrigações esse mês
+      this.prisma.obrigacaoFiscal.count({
+        where: { ...tw, completed: false, due_at: { gte: now, lte: endOfMonth } },
+      }),
+      // 7. Obrigações concluídas este mês
+      this.prisma.obrigacaoFiscal.count({
+        where: { ...tw, completed: true, due_at: { gte: startOfMonth, lte: endOfMonth } },
+      }),
+      // 8. Total de obrigações este mês
+      this.prisma.obrigacaoFiscal.count({
+        where: { ...tw, due_at: { gte: startOfMonth, lte: endOfMonth } },
+      }),
+      // 9. Inadimplência por cliente (parcelas PENDENTE vencidas)
+      this.prisma.honorarioParcela.findMany({
+        where: {
+          status: 'PENDENTE',
+          due_date: { lt: now },
+          honorario: { ...tw },
+        },
+        select: {
+          amount: true,
+          honorario: {
+            select: {
+              cliente: {
+                select: {
+                  id: true,
+                  lead: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    // Build inadimplência ranking grouped by cliente
+    const inadimplenciaMap = new Map<string, { clienteId: string; nome: string; totalAtrasado: number; parcelas: number }>();
+    for (const parcela of inadimplenciaRaw as any[]) {
+      const cliente = parcela.honorario?.cliente;
+      if (!cliente) continue;
+      const clienteId = cliente.id;
+      const nome = cliente.lead?.name || 'Cliente sem nome';
+      const existing = inadimplenciaMap.get(clienteId);
+      if (existing) {
+        existing.totalAtrasado += Number(parcela.amount || 0);
+        existing.parcelas += 1;
+      } else {
+        inadimplenciaMap.set(clienteId, {
+          clienteId,
+          nome,
+          totalAtrasado: Number(parcela.amount || 0),
+          parcelas: 1,
+        });
+      }
+    }
+
+    const inadimplenciaPorCliente = Array.from(inadimplenciaMap.values())
+      .sort((a, b) => b.totalAtrasado - a.totalAtrasado)
+      .slice(0, 5);
+
+    const produtividadePendentes = produtividadeTotal - produtividadeConcluidas;
+    const pct = produtividadeTotal > 0 ? Math.round((produtividadeConcluidas / produtividadeTotal) * 100) : 0;
+
+    return {
+      clientesPorRegime: (clientesPorRegimeRaw as any[]).map((g: any) => ({
+        regime: g.regime_tributario || 'OUTRO',
+        count: g._count,
+      })),
+      clientesAtivos,
+      novosClientesPeriodo,
+      obrigacoesAtrasadas,
+      obrigacoesEssaSemana,
+      obrigacoesEsseMes,
+      produtividade: {
+        concluidas: produtividadeConcluidas,
+        pendentes: produtividadePendentes,
+        total: produtividadeTotal,
+        pct,
+      },
+      inadimplenciaPorCliente,
+    };
+  }
 }

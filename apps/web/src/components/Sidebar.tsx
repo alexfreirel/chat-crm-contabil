@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Wallet, HelpCircle,
   ChevronRight, Plus, UserPlus, CheckSquare,
   CalendarPlus, ClipboardList, Sparkles,
-  FileSpreadsheet, Building2,
+  FileSpreadsheet, Building2, FileText,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { API_BASE_URL } from '@/lib/api';
@@ -278,6 +278,13 @@ export function Sidebar() {
       match: (p) => p.startsWith('/atendimento/manual'),
       show: true,
     },
+    templates: {
+      label: 'Templates',
+      href: '/atendimento/templates',
+      icon: <FileText size={20} strokeWidth={2} />,
+      match: (p) => p.startsWith('/atendimento/templates'),
+      show: true,
+    },
     agenteFiscal: {
       label: 'Agente Fiscal SEFAZ',
       href: '/atendimento/agente-fiscal',
@@ -313,7 +320,7 @@ export function Sidebar() {
     {
       id: 'sistema',
       label: 'Sistema',
-      items: [allItems.manual, allItems.settings].filter(i => i.show),
+      items: [allItems.manual, allItems.templates, allItems.settings].filter(i => i.show),
     },
   ].filter(g => g.items.length > 0);
 

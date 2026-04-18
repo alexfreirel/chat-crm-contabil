@@ -130,4 +130,15 @@ export class DashboardController {
       startDate, endDate,
     );
   }
+
+  @Get('contabil')
+  getContabilDashboard(
+    @Request() req: any,
+    @Query('period') period?: string,
+  ) {
+    return this.service.aggregateContabil(
+      req.user.tenant_id,
+      period || '30d',
+    );
+  }
 }

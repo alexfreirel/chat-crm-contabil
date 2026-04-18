@@ -1,29 +1,24 @@
 # ============================================================
-# deploy.ps1 — Build e push das imagens para o Docker Hub
+# deploy.ps1 - Build e push das imagens para o Docker Hub
 # Executar na raiz do projeto: .\deploy.ps1
 # ============================================================
 
 $ErrorActionPreference = "Stop"
 
-$DOCKERHUB_USER  = "lexconassessoria"
-$API_URL         = "https://lexcon.com.br/api"
-$WS_URL          = "wss://lexcon.com.br"
-$PORTAINER_HOOK  = ""   # cole aqui o webhook do Portainer se quiser redeploy automático
+$DOCKERHUB_USER = "lexconassessoria"
+$API_URL        = "https://lexconassessoriacontabil.com.br/api"
+$WS_URL         = "wss://lexconassessoriacontabil.com.br"
+$PORTAINER_HOOK = ""   # cole aqui o webhook do Portainer se quiser redeploy automatico
 
 Write-Host ""
 Write-Host "======================================" -ForegroundColor Cyan
-Write-Host "  LexCon — Deploy para Docker Hub" -ForegroundColor Cyan
+Write-Host "  LexCon - Deploy para Docker Hub" -ForegroundColor Cyan
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host ""
-
-# Login no Docker Hub
-Write-Host "[1/4] Login no Docker Hub..." -ForegroundColor Yellow
-docker login -u $DOCKERHUB_USER
-if ($LASTEXITCODE -ne 0) { Write-Host "Falha no login." -ForegroundColor Red; exit 1 }
 
 # Build + push API
 Write-Host ""
-Write-Host "[2/4] Buildando API..." -ForegroundColor Yellow
+Write-Host "[1/4] Buildando API..." -ForegroundColor Yellow
 docker build --build-arg APP=api `
   -t "$DOCKERHUB_USER/chat-crm-contabil-api:latest" `
   -f infra/Dockerfile.backend .
@@ -32,7 +27,7 @@ docker push "$DOCKERHUB_USER/chat-crm-contabil-api:latest"
 
 # Build + push Worker
 Write-Host ""
-Write-Host "[3/4] Buildando Worker..." -ForegroundColor Yellow
+Write-Host "[2/4] Buildando Worker..." -ForegroundColor Yellow
 docker build --build-arg APP=worker `
   -t "$DOCKERHUB_USER/chat-crm-contabil-worker:latest" `
   -f infra/Dockerfile.backend .
@@ -41,7 +36,7 @@ docker push "$DOCKERHUB_USER/chat-crm-contabil-worker:latest"
 
 # Build + push Web
 Write-Host ""
-Write-Host "[4/4] Buildando Web..." -ForegroundColor Yellow
+Write-Host "[3/4] Buildando Web..." -ForegroundColor Yellow
 docker build `
   --build-arg NEXT_PUBLIC_API_URL=$API_URL `
   --build-arg NEXT_PUBLIC_WS_URL=$WS_URL `
