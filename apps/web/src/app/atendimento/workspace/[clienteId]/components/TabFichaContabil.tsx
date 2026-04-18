@@ -38,9 +38,61 @@ function parseCurrency(str: string): number | '' {
 export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any; onRefresh: () => void }) {
   const ficha = cliente?.lead?.ficha_contabil || {};
   const leadId = cliente?.lead?.id;
+  const clienteId = cliente?.id;
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [activeSection, setActiveSection] = useState<string>('empresa');
+  const [activeSection, setActiveSection] = useState<string>('contato');
+
+  // ── Contato / Lead ──
+  const [leadPhone, setLeadPhone]         = useState(cliente?.lead?.phone || '');
+  const [leadName, setLeadName]           = useState(cliente?.lead?.name || '');
+  const [savingLead, setSavingLead]       = useState(false);
+  const [leadSaved, setLeadSaved]         = useState(false);
+  const [leadSearch, setLeadSearch]       = useState('');
+  const [leadResults, setLeadResults]     = useState<any[]>([]);
+  const [showLinkLead, setShowLinkLead]   = useState(false);
+  const debounceRef = useState<any>(null);
+
+  useEffect(() => {
+    if (leadSearch.length < 2) { setLeadResults([]); return; }
+    const t = setTimeout(async () => {
+      const res = await fetch(`${API}/leads?search=${encodeURIComponent(leadSearch)}&limit=10`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      const d = await res.json();
+      setLeadResults(Array.isArray(d) ? d : (d.data || []));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [leadSearch]);
+
+  async function saveLeadContact() {
+    if (!leadId) return;
+    setSavingLead(true);
+    try {
+      await fetch(`${API}/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+        body: JSON.stringify({ name: leadName, phone: leadPhone }),
+      });
+      setLeadSaved(true);
+      onRefresh();
+      setTimeout(() => setLeadSaved(false), 3000);
+    } finally {
+      setSavingLead(false);
+    }
+  }
+
+  async function linkLead(lead: any) {
+    await fetch(`${API}/clientes-contabil/${clienteId}/details`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+      body: JSON.stringify({ lead_id: lead.id }),
+    });
+    setShowLinkLead(false);
+    setLeadSearch('');
+    setLeadResults([]);
+    onRefresh();
+  }
 
   const [form, setForm] = useState({
     // Dados da empresa
@@ -162,10 +214,11 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
   const pct = ficha.completion_pct || 0;
 
   const sections = [
+    { id: 'contato',    label: '📞 Contato',              fields: [] },
     { id: 'empresa',    label: '🏢 Empresa',             fields: ['razao_social', 'cnpj', 'regime_tributario', 'porte'] },
     { id: 'socios',     label: '👥 Sócios',               fields: [] },
     { id: 'endereco',   label: '📍 Endereço',             fields: ['cep', 'cidade'] },
-    { id: 'contatos',   label: '🔐 Contatos & Acessos',   fields: ['email_contabil', 'banco'] },
+    { id: 'contatos',   label: '🔐 Acessos',              fields: ['email_contabil', 'banco'] },
     { id: 'dp',         label: '👷 Dep. Pessoal',          fields: [] },
     { id: 'sistemas',   label: '💻 Sistemas',             fields: [] },
     { id: 'anterior',   label: '🔄 Contab. Anterior',     fields: [] },
@@ -218,6 +271,85 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
       <div className="flex gap-2 flex-wrap">
         {sections.map(s => <SectionBtn key={s.id} id={s.id} label={s.label} />)}
       </div>
+
+      {/* ── Seção: Contato ── */}
+      {activeSection === 'contato' && (
+        <div className="card bg-base-200 border border-base-300">
+          <div className="card-body p-4 space-y-4">
+            <h3 className="font-bold text-sm">📞 Contato / Lead Vinculado</h3>
+
+            {leadId ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="form-control">
+                    <label className="label py-0"><span className="label-text text-xs">Nome</span></label>
+                    <input className="input input-bordered input-sm" value={leadName}
+                      onChange={e => setLeadName(e.target.value)} placeholder="Nome completo" />
+                  </div>
+                  <div className="form-control">
+                    <label className="label py-0"><span className="label-text text-xs">Telefone / WhatsApp</span></label>
+                    <input className="input input-bordered input-sm" type="tel" value={leadPhone}
+                      onChange={e => setLeadPhone(e.target.value)} placeholder="(00) 00000-0000" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button onClick={saveLeadContact} disabled={savingLead}
+                    className="btn btn-primary btn-sm">
+                    {savingLead ? 'Salvando...' : 'Salvar contato'}
+                  </button>
+                  {leadSaved && <span className="text-xs text-success">✅ Salvo!</span>}
+                  <button onClick={() => setShowLinkLead(v => !v)}
+                    className="btn btn-ghost btn-sm ml-auto">
+                    🔗 Trocar lead vinculado
+                  </button>
+                </div>
+
+                {showLinkLead && (
+                  <div className="border-t border-base-300 pt-3 space-y-2">
+                    <p className="text-xs font-semibold text-base-content/60">Buscar outro lead para vincular</p>
+                    <input className="input input-bordered input-sm w-full" placeholder="Nome ou telefone..."
+                      value={leadSearch} onChange={e => setLeadSearch(e.target.value)} autoFocus />
+                    {leadResults.length > 0 && (
+                      <div className="bg-base-100 border border-base-300 rounded-lg max-h-48 overflow-y-auto">
+                        {leadResults.map((l: any) => (
+                          <button key={l.id} onClick={() => linkLead(l)}
+                            className="w-full text-left px-3 py-2 hover:bg-base-200 border-b border-base-300/50 last:border-0">
+                            <p className="text-sm font-medium">{l.name || '(sem nome)'}</p>
+                            <p className="text-xs text-base-content/50">{l.phone}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {leadSearch.length >= 2 && leadResults.length === 0 && (
+                      <p className="text-xs text-base-content/50">Nenhum lead encontrado</p>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="space-y-3">
+                <div className="alert alert-warning py-2 text-sm">
+                  ⚠️ Nenhum lead vinculado a este cliente
+                </div>
+                <p className="text-xs text-base-content/60">Vincule um lead existente para habilitar o WhatsApp e o histórico de conversas.</p>
+                <input className="input input-bordered input-sm w-full" placeholder="Buscar lead por nome ou telefone..."
+                  value={leadSearch} onChange={e => setLeadSearch(e.target.value)} />
+                {leadResults.length > 0 && (
+                  <div className="bg-base-100 border border-base-300 rounded-lg max-h-48 overflow-y-auto">
+                    {leadResults.map((l: any) => (
+                      <button key={l.id} onClick={() => linkLead(l)}
+                        className="w-full text-left px-3 py-2 hover:bg-base-200 border-b border-base-300/50 last:border-0">
+                        <p className="text-sm font-medium">{l.name || '(sem nome)'}</p>
+                        <p className="text-xs text-base-content/50">{l.phone}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Seção: Empresa ── */}
       {activeSection === 'empresa' && (

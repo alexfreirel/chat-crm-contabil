@@ -213,6 +213,7 @@ export class ClientesContabilService {
   }
 
   async updateDetails(id: string, data: {
+    lead_id?: string;
     service_type?: string;
     regime_tributario?: string;
     competencia_inicio?: string;

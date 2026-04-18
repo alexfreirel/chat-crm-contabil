@@ -59,17 +59,24 @@ function authHeaders() {
 
 /* ─── Modal criar cliente ─── */
 function CreateClienteModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [step, setStep] = useState<'lead' | 'form'>('lead');
   const [leadSearch, setLeadSearch] = useState('');
   const [leads, setLeads] = useState<any[]>([]);
   const [selectedLead, setSelectedLead] = useState<any>(null);
-  const [serviceType, setServiceType] = useState('BPO_FISCAL');
+  const [serviceType, setServiceType] = useState('CLIENTE_EFETIVO');
   const [regime, setRegime] = useState('');
   const [saving, setSaving] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
+  // Novo contato inline
+  const [showNewContact, setShowNewContact] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+
+  const noResults = leadSearch.length >= 2 && leads.length === 0 && !selectedLead;
+
   useEffect(() => {
     clearTimeout(debounceRef.current);
+    setShowNewContact(false);
     if (leadSearch.length < 2) { setLeads([]); return; }
     debounceRef.current = setTimeout(async () => {
       const res = await fetch(`${API}/leads?search=${encodeURIComponent(leadSearch)}&limit=10`, {
@@ -81,10 +88,25 @@ function CreateClienteModal({ onClose, onCreated }: { onClose: () => void; onCre
   }, [leadSearch]);
 
   async function handleCreate() {
-    if (!selectedLead) return;
+    if (!selectedLead && !showNewContact) return;
     setSaving(true);
     try {
-      const res = await fetch(`${API}/clientes-contabil/from-lead/${selectedLead.id}`, {
+      let leadId = selectedLead?.id;
+
+      // Criar novo lead se não existe
+      if (!leadId) {
+        if (!newPhone) { alert('Informe o telefone do contato'); setSaving(false); return; }
+        const r = await fetch(`${API}/leads`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ name: newName || leadSearch, phone: newPhone }),
+        });
+        if (!r.ok) { alert('Erro ao criar contato'); setSaving(false); return; }
+        const newLead = await r.json();
+        leadId = newLead.id;
+      }
+
+      const res = await fetch(`${API}/clientes-contabil/from-lead/${leadId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ service_type: serviceType, regime_tributario: regime || undefined }),
@@ -151,12 +173,54 @@ function CreateClienteModal({ onClose, onCreated }: { onClose: () => void; onCre
                     ))}
                   </div>
                 )}
-                {leadSearch.length >= 2 && leads.length === 0 && (
-                  <p className="text-xs text-muted-foreground mt-1">Nenhum lead encontrado para "{leadSearch}"</p>
+                {noResults && !showNewContact && (
+                  <div className="mt-2 p-3 rounded-lg border border-dashed border-border bg-muted/30">
+                    <p className="text-xs text-muted-foreground mb-2">Nenhum contato encontrado para "{leadSearch}"</p>
+                    <button
+                      onClick={() => { setShowNewContact(true); setNewName(leadSearch); }}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      + Criar novo contato com este nome
+                    </button>
+                  </div>
                 )}
               </div>
             )}
           </div>
+
+          {/* Formulário inline: novo contato */}
+          {showNewContact && (
+            <div className="p-3 rounded-lg border border-primary/30 bg-primary/5 space-y-3">
+              <p className="text-xs font-semibold text-primary">Novo contato</p>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Nome</label>
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  placeholder="Nome completo"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Telefone / WhatsApp <span className="text-red-500">*</span></label>
+                <input
+                  type="tel"
+                  value={newPhone}
+                  onChange={e => setNewPhone(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  placeholder="(00) 00000-0000"
+                  autoFocus
+                />
+              </div>
+              <button
+                onClick={() => { setShowNewContact(false); setNewName(''); setNewPhone(''); }}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                ← Buscar lead existente
+              </button>
+            </div>
+          )}
 
           {/* Tipo de serviço */}
           <div>
@@ -203,10 +267,10 @@ function CreateClienteModal({ onClose, onCreated }: { onClose: () => void; onCre
           </button>
           <button
             onClick={handleCreate}
-            disabled={!selectedLead || saving}
+            disabled={(!selectedLead && !showNewContact) || (showNewContact && !newPhone) || saving}
             className="flex-1 px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {saving ? 'Criando...' : 'Criar cliente'}
+            {saving ? 'Criando...' : showNewContact ? 'Criar contato e cliente' : 'Criar cliente'}
           </button>
         </div>
       </div>
