@@ -106,6 +106,7 @@ export class ClientesContabilController {
   updateDetails(
     @Param('id') id: string,
     @Body() body: {
+      lead_id?: string;
       service_type?: string;
       regime_tributario?: string;
       competencia_inicio?: string;

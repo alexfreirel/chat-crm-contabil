@@ -27,41 +27,45 @@ export class ClientesContabilService {
       throw new BadRequestException('Já existe um cliente contábil ativo para este lead e tipo de serviço');
     }
 
-    const cliente = await this.prisma.clienteContabil.create({
-      data: {
-        lead_id: data.lead_id,
-        conversation_id: data.conversation_id,
-        accountant_id: data.accountant_id,
-        service_type: data.service_type,
-        regime_tributario: data.regime_tributario,
-        cpf_cnpj: data.cpf_cnpj,
-        tipo_pessoa: data.tipo_pessoa,
-        notes: data.notes,
-        priority: data.priority ?? 'NORMAL',
-        tenant_id: data.tenant_id,
-        stage: 'ONBOARDING',
-      },
-      include: {
-        lead: { select: { id: true, name: true, phone: true } },
-        accountant: { select: { id: true, name: true } },
-      },
-    });
+    const [cliente] = await this.prisma.$transaction(async (tx) => {
+      const c = await tx.clienteContabil.create({
+        data: {
+          lead_id: data.lead_id,
+          conversation_id: data.conversation_id,
+          accountant_id: data.accountant_id,
+          service_type: data.service_type,
+          regime_tributario: data.regime_tributario,
+          cpf_cnpj: data.cpf_cnpj,
+          tipo_pessoa: data.tipo_pessoa,
+          notes: data.notes,
+          priority: data.priority ?? 'NORMAL',
+          tenant_id: data.tenant_id,
+          stage: 'ONBOARDING',
+        },
+        include: {
+          lead: { select: { id: true, name: true, phone: true } },
+          accountant: { select: { id: true, name: true } },
+        },
+      });
 
-    // Mark lead as client
-    await this.prisma.lead.update({
-      where: { id: data.lead_id },
-      data: { is_client: true, became_client_at: new Date() },
-    });
+      // Mark lead as client
+      await tx.lead.update({
+        where: { id: data.lead_id },
+        data: { is_client: true, became_client_at: new Date() },
+      });
 
-    // Register creation event
-    await this.prisma.clienteEvento.create({
-      data: {
-        cliente_id: cliente.id,
-        type: 'INICIO_SERVICO',
-        title: `Início de serviço: ${this.getServiceLabel(data.service_type)}`,
-        description: data.regime_tributario ? `Regime: ${data.regime_tributario.replace(/_/g, ' ')}` : undefined,
-        event_date: new Date(),
-      },
+      // Register creation event
+      await tx.clienteEvento.create({
+        data: {
+          cliente_id: c.id,
+          type: 'INICIO_SERVICO',
+          title: `Início de serviço: ${this.getServiceLabel(data.service_type)}`,
+          description: data.regime_tributario ? `Regime: ${data.regime_tributario.replace(/_/g, ' ')}` : undefined,
+          event_date: new Date(),
+        },
+      });
+
+      return [c];
     });
 
     return cliente;
@@ -102,7 +106,10 @@ export class ClientesContabilService {
     limit?: number;
   }) {
     const where: any = {};
-    if (options.tenantId) where.tenant_id = options.tenantId;
+    // Same pattern as leads.findAll: include records with null tenant_id when filtering by tenant
+    if (options.tenantId) {
+      where.OR = [{ tenant_id: options.tenantId }, { tenant_id: null }];
+    }
     if (options.stage) where.stage = options.stage;
     if (options.archived !== undefined) where.archived = options.archived;
     else where.archived = false;

@@ -65,6 +65,7 @@ function CreateClienteModal({ onClose, onCreated }: { onClose: () => void; onCre
   const [serviceType, setServiceType] = useState('CLIENTE_EFETIVO');
   const [regime, setRegime] = useState('');
   const [saving, setSaving] = useState(false);
+  const [createError, setCreateError] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Novo contato inline
@@ -90,20 +91,36 @@ function CreateClienteModal({ onClose, onCreated }: { onClose: () => void; onCre
   async function handleCreate() {
     if (!selectedLead && !showNewContact) return;
     setSaving(true);
+    setCreateError('');
     try {
       let leadId = selectedLead?.id;
 
       // Criar novo lead se não existe
       if (!leadId) {
-        if (!newPhone) { alert('Informe o telefone do contato'); setSaving(false); return; }
+        if (!newPhone) { setCreateError('Informe o telefone do contato'); setSaving(false); return; }
         const r = await fetch(`${API}/leads`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...authHeaders() },
-          body: JSON.stringify({ name: newName || leadSearch, phone: newPhone }),
+          body: JSON.stringify({ name: newName || leadSearch || 'Sem nome', phone: newPhone }),
         });
-        if (!r.ok) { alert('Erro ao criar contato'); setSaving(false); return; }
-        const newLead = await r.json();
-        leadId = newLead.id;
+        if (!r.ok) {
+          const errData = await r.json().catch(() => ({}));
+          // Telefone já existe → buscar o lead e usar ele
+          if (r.status === 409 || (errData?.message && String(errData.message).toLowerCase().includes('unique'))) {
+            const searchRes = await fetch(`${API}/leads?search=${encodeURIComponent(newPhone)}&limit=1`, { headers: authHeaders() });
+            const searchData = await searchRes.json();
+            const found = Array.isArray(searchData) ? searchData[0] : searchData?.data?.[0];
+            if (found?.id) { leadId = found.id; }
+            else { setCreateError('Contato com este telefone já existe. Busque-o pelo nome ou telefone.'); setSaving(false); return; }
+          } else {
+            setCreateError(errData?.message || 'Erro ao criar contato');
+            setSaving(false);
+            return;
+          }
+        } else {
+          const newLead = await r.json();
+          leadId = newLead.id;
+        }
       }
 
       const res = await fetch(`${API}/clientes-contabil/from-lead/${leadId}`, {
@@ -112,14 +129,15 @@ function CreateClienteModal({ onClose, onCreated }: { onClose: () => void; onCre
         body: JSON.stringify({ service_type: serviceType, regime_tributario: regime || undefined }),
       });
       if (!res.ok) {
-        const err = await res.json();
-        alert(err.message || 'Erro ao criar cliente');
+        const err = await res.json().catch(() => ({}));
+        const msg = Array.isArray(err?.message) ? err.message.join(', ') : (err?.message || 'Erro ao criar cliente');
+        setCreateError(msg);
         return;
       }
       onCreated();
       onClose();
     } catch (e) {
-      alert('Erro de comunicação com o servidor');
+      setCreateError('Erro de comunicação com o servidor');
     } finally {
       setSaving(false);
     }
@@ -261,6 +279,11 @@ function CreateClienteModal({ onClose, onCreated }: { onClose: () => void; onCre
           </div>
         </div>
 
+        {createError && (
+          <div className="mx-5 mb-0 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400">
+            ⚠️ {createError}
+          </div>
+        )}
         <div className="flex gap-2 px-5 py-4 border-t border-border bg-muted/20">
           <button onClick={onClose} className="flex-1 px-4 py-2 text-sm text-foreground bg-background border border-border rounded-lg hover:bg-muted/50 transition-colors">
             Cancelar
