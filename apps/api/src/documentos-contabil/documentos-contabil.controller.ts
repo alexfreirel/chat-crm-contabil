@@ -3,7 +3,7 @@ import {
   Request, UseGuards, UseInterceptors, UploadedFile, Res,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Response } from 'express';
+import type { Response } from 'express';
 import { memoryStorage } from 'multer';
 import { DocumentosContabilService } from './documentos-contabil.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
