@@ -84,8 +84,8 @@ function formatDue(due: string | null) {
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export function TasksPanel() {
-  const { role, isAdmin, isAdvogado } = useRole();
-  const canViewAll = isAdmin || isAdvogado;
+  const { role, isAdmin, isContador } = useRole();
+  const canViewAll = isAdmin || isContador;
 
   // ── Dados
   const [tasks, setTasks] = useState<Task[]>([]);

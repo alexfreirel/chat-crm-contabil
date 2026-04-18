@@ -17,9 +17,9 @@ const MEDAL_COLORS = [
 const MEDAL_LABELS = ['1o', '2o', '3o'];
 
 function getMainKPI(m: TeamPerformanceEntry): { label: string; value: string } {
-  if (m.advogadoKPIs) return { label: 'Win Rate', value: `${m.advogadoKPIs.caseWinRate}%` };
+  if (m.contadorKPIs) return { label: 'Win Rate', value: `${m.contadorKPIs.caseWinRate}%` };
   if (m.operadorKPIs) return { label: 'Conversao', value: `${m.operadorKPIs.conversionRate}%` };
-  if (m.estagiarioKPIs) return { label: 'Tarefas OK', value: `${m.estagiarioKPIs.taskCompletionRate}%` };
+  if (m.assistenteKPIs) return { label: 'Tarefas OK', value: `${m.assistenteKPIs.taskCompletionRate}%` };
   return { label: 'Score', value: String(m.compositeScore) };
 }
 

@@ -38,7 +38,7 @@ import { ResponseTimeWidget } from './components/charts/ResponseTimeWidget';
    ═══════════════════════════════════════════════════════════════ */
 export default function DashboardPage() {
   const roleInfo = useRole();
-  const { isAdmin, isAdvogado, isOperador, isEstagiario, isFinanceiro } = roleInfo;
+  const { isAdmin, isContador, isOperador, isAssistente, isFinanceiro } = roleInfo;
 
   const { period, setPeriod, setCustomRange } = usePeriodFilter('30d');
   const { data, loading } = useDashboardData(period);
@@ -59,18 +59,18 @@ export default function DashboardPage() {
 
   // Visibility per role
   const showInbox = isAdmin || isOperador;
-  const showFinancials = isAdmin || isAdvogado || isFinanceiro;
-  const showRevenue = isAdmin || isAdvogado || isFinanceiro;
+  const showFinancials = isAdmin || isContador || isFinanceiro;
+  const showRevenue = isAdmin || isContador || isFinanceiro;
   const showFunnel = isAdmin || isOperador;
-  const showTasks = isAdmin || isAdvogado || isOperador || isEstagiario;
+  const showTasks = isAdmin || isContador || isOperador || isAssistente;
   const showPipeline = isAdmin || isOperador;
-  const showAging = isAdmin || isAdvogado || isFinanceiro;
+  const showAging = isAdmin || isContador || isFinanceiro;
   const showVelocity = isAdmin || isOperador;
   const showResponse = isAdmin || isOperador;
   const showSources = isAdmin || isOperador;
   const showAi = isAdmin;
   const showTeam = isAdmin;
-  const showEvents = isAdmin || isAdvogado || isOperador || isEstagiario;
+  const showEvents = isAdmin || isContador || isOperador || isAssistente;
 
   // Full-page loading
   if (loading && !data) {

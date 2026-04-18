@@ -166,7 +166,7 @@ export interface ConversionVelocityData {
 
 export type Quartile = 'TOP' | 'MID' | 'LOW';
 
-export interface AdvogadoKPIs {
+export interface ContadorKPIs {
   activeCases: number;
   casesFiledThisPeriod: number;
   avgDaysToFile: number;
@@ -198,7 +198,7 @@ export interface OperadorKPIs {
   taskCompletionRate: number; // 0-100
 }
 
-export interface EstagiarioKPIs {
+export interface AssistenteKPIs {
   tasksCompleted: number;
   tasksPending: number;
   tasksOverdue: number;
@@ -225,17 +225,17 @@ export interface TeamPerformanceEntry {
   scoreDelta: number; // current - previous
   rank: number; // 1-based within role
   quartile: Quartile;
-  advogadoKPIs?: AdvogadoKPIs;
+  contadorKPIs?: ContadorKPIs;
   operadorKPIs?: OperadorKPIs;
-  estagiarioKPIs?: EstagiarioKPIs;
+  assistenteKPIs?: AssistenteKPIs;
   sharedTasks: SharedTaskKPIs;
   dailyActivity: { date: string; value: number }[]; // 7 points for sparkline
 }
 
 export interface TeamAverages {
-  advogado: Partial<AdvogadoKPIs>;
+  contador: Partial<ContadorKPIs>;
   operador: Partial<OperadorKPIs>;
-  estagiario: Partial<EstagiarioKPIs>;
+  assistente: Partial<AssistenteKPIs>;
   tasks: Partial<SharedTaskKPIs>;
 }
 
