@@ -417,7 +417,7 @@ export function Sidebar() {
           onMouseLeave={hideTooltip}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/landing/lexcon-logo-v3.jpg" alt="Logo" className="w-full h-full object-contain p-1" draggable={false} />
+          <img src="/landing/logo.png" alt="Logo" className="w-full h-full object-contain p-1" draggable={false} />
         </div>
         <button
           onClick={toggleExpanded}

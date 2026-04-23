@@ -225,7 +225,7 @@ export default function PortalClientePage() {
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/landing/lexcon-logo-v3.jpg" alt="Lexcon" className="h-7 w-auto" />
+            <img src="/landing/logo.png" alt="Lexcon" className="h-7 w-auto" />
             <span className="text-xs font-bold text-emerald-700 border border-emerald-200 bg-emerald-50 px-2 py-0.5 rounded-full">
               Portal do Cliente
             </span>

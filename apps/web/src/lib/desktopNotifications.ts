@@ -58,7 +58,7 @@ export function showDesktopNotification(options: {
 
   const notif = new Notification(options.title, {
     body: options.body,
-    icon: options.icon || '/landing/lexcon-logo-v3.jpg',
+    icon: options.icon || '/landing/logo.png',
     tag: options.tag, // prevents duplicate notifications for same conversation
     silent: true,     // sound is handled by playNotificationSound
   });

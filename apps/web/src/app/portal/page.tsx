@@ -39,7 +39,7 @@ export default function PortalPage() {
           <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/landing/lexcon-logo-v3.jpg"
+              src="/landing/logo.png"
               alt="Lexcon Assessoria Contábil"
               className="h-8 w-auto"
             />
