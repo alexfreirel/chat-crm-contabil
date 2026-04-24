@@ -534,6 +534,15 @@ export default function AgenteFiscalPage() {
                     <div key={p.mes} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/30 border border-border/50">
                       <span className="text-xs font-medium text-foreground">{p.mes}</span>
                       <span className="text-[10px] text-muted-foreground">{p.arquivos} arq &middot; {p.tamanho_mb}MB</span>
+                      <a
+                        href={`${AGENT_API}/api/arquivos/${p.mes}/zip`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={`Baixar pasta ${p.mes}`}
+                        className="p-0.5 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary"
+                      >
+                        <Download size={12} />
+                      </a>
                       <button onClick={() => deletePeriodo(p.mes, p.arquivos)} className="p-0.5 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-400">
                         <Trash2 size={12} />
                       </button>
@@ -708,6 +717,15 @@ export default function AgenteFiscalPage() {
                     <div key={p.mes} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/30 border border-border/50">
                       <span className="text-xs font-medium text-foreground">{p.mes}</span>
                       <span className="text-[10px] text-muted-foreground">{p.arquivos} arq &middot; {p.tamanho_mb}MB</span>
+                      <a
+                        href={`${AGENT_API}/api/arquivos/${p.mes}/zip`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={`Baixar pasta ${p.mes}`}
+                        className="p-0.5 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary"
+                      >
+                        <Download size={12} />
+                      </a>
                       <button onClick={() => deletePeriodo(p.mes, p.arquivos)} className="p-0.5 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-400">
                         <Trash2 size={12} />
                       </button>
