@@ -101,11 +101,11 @@ export class UsersService {
     const updateData: Prisma.UserUpdateInput = {};
     if (data.name) updateData.name = data.name;
     if (data.email) updateData.email = data.email;
-    // Multi-role: aceita roles[] (array) OU role (string legado)
+    // Atualiza role (campo singular no schema)
     if (data.roles && data.roles.length > 0) {
-      (updateData as any).roles = { set: data.roles };
+      updateData.role = data.roles[0];
     } else if (data.role) {
-      (updateData as any).roles = { set: [data.role] };
+      updateData.role = data.role;
     }
     if (data.phone !== undefined) updateData.phone = data.phone || null;
     if (data.password) updateData.password_hash = await argon2.hash(data.password);
