@@ -556,6 +556,37 @@ def baixar_zip(mes):
     )
 
 
+@app.route("/api/arquivos/<mes>/zip/impostos")
+def baixar_zip_impostos(mes):
+    """Baixa apenas os DARs (dar-*.pdf) do mês como ZIP, organizados por empresa."""
+    import zipfile
+    import tempfile
+    from flask import send_file
+
+    download_dir = BASE_DIR / "downloads" / mes
+    if not download_dir.exists():
+        return jsonify({"error": "Nenhum arquivo encontrado"}), 404
+
+    # Filtra apenas arquivos que começam com "dar-"
+    dars = [p for p in download_dir.rglob("*.pdf") if p.name.startswith("dar-")]
+    if not dars:
+        return jsonify({"error": "Nenhum DAR encontrado para este mês"}), 404
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+    with zipfile.ZipFile(tmp.name, "w", zipfile.ZIP_DEFLATED) as zf:
+        for pdf in dars:
+            arcname = str(pdf.relative_to(download_dir))
+            zf.write(pdf, arcname)
+    tmp.close()
+
+    return send_file(
+        tmp.name,
+        as_attachment=True,
+        download_name=f"impostos-sefaz-{mes}.zip",
+        mimetype="application/zip",
+    )
+
+
 @app.route("/api/arquivos/<mes>/arquivo", methods=["DELETE"])
 def deletar_arquivo(mes):
     """Exclui um arquivo individual. Query param: path=empresa/relatorio/file.pdf"""

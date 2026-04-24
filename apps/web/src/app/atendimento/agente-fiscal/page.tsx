@@ -776,7 +776,7 @@ export default function AgenteFiscalPage() {
                       <Trash2 size={14} /> Excluir Todos
                     </button>
                     <a
-                      href={`${AGENT_API}/api/arquivos/${selectedMes}/zip`}
+                      href={`${AGENT_API}/api/arquivos/${selectedMes}/zip/impostos`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90"
