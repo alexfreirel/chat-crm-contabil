@@ -103,33 +103,6 @@ export default function AgenteFiscalPage() {
     if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight;
   }, [termLines]);
 
-  // ── Baixar arquivos via browser → pasta Downloads ────────────────────
-  const browserDownload = async (filesList: typeof arquivos) => {
-    try {
-      for (let i = 0; i < filesList.length; i++) {
-        const f = filesList[i];
-        const res = await fetch(`${AGENT_API}/api/arquivos/${selectedMes}/download?path=${encodeURIComponent(f.caminho)}`);
-        if (!res.ok) continue;
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        // Prefixar com nome da empresa para organização na pasta Downloads
-        const empresaPrefix = f.empresa
-          ? `${f.empresa.replace(/[\\/:*?"<>|]/g, ' ').trim()} - `
-          : '';
-        a.download = `${empresaPrefix}${f.nome}`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        await new Promise(r => setTimeout(r, 400)); // pequeno delay entre downloads
-      }
-      toast(`${filesList.length} arquivo(s) enviados para a pasta Downloads`, 'ok');
-    } catch (e: any) {
-      toast(`Erro ao baixar: ${e?.message || e}`, 'err');
-    }
-  };
 
   const deleteArquivo = async (caminho: string) => {
     if (!confirm(`Excluir o arquivo "${caminho.split('/').pop()}"?`)) return;
@@ -195,18 +168,13 @@ export default function AgenteFiscalPage() {
       es.close();
       setRunning(false);
       if (autoLoadFiles) {
-        // Carrega lista de arquivos
+        // Apenas carrega a lista de arquivos — download fica a cargo do usuário (Baixar ZIP ou botão Baixar)
         const m = selectedMes;
         try {
           const res = await fetch(`${AGENT_API}/api/arquivos/${m}`);
           if (res.ok) {
             const data = await res.json();
-            const files = data.files || [];
-            setArquivos(files);
-            // Auto-save → Downloads do browser
-            if (files.length > 0) {
-              await browserDownload(files);
-            }
+            setArquivos(data.files || []);
           }
         } catch { /* silent */ }
       }
