@@ -575,7 +575,8 @@ model FichaContabil {
   conta                  String?
   vencimento_certificado DateTime?
   acesso_prefeitura      String?
-  acesso_sefaz           String?
+  acesso_sefaz           String?   // Usuário do Portal do Contribuinte SEFAZ
+  senha_sefaz            String?   // Senha do Portal do Contribuinte SEFAZ
   acesso_receita         String?
   // Departamento Pessoal
   tem_funcionarios       Boolean   @default(false)

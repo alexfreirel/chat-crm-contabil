@@ -35,6 +35,43 @@ function parseCurrency(str: string): number | '' {
   return isNaN(n) ? '' : n;
 }
 
+const AGENT_API = typeof window !== 'undefined'
+  ? (process.env.NEXT_PUBLIC_AGENT_FISCAL_URL ||
+      (!window.location.hostname.includes('localhost')
+        ? `${window.location.origin}/agente-fiscal-api`
+        : 'http://localhost:5000'))
+  : 'http://localhost:5000';
+
+async function syncEmpresaAgenteFiscal(nome: string, cnpj: string, usuario: string, senha: string) {
+  const cnpjClean = cnpj.replace(/\D/g, '');
+  if (cnpjClean.length !== 14 || !usuario || !senha) return;
+
+  const listRes = await fetch(`${AGENT_API}/api/empresas`);
+  if (!listRes.ok) throw new Error('Agente Fiscal indisponível');
+  const empresas: any[] = await listRes.json();
+
+  const idx = empresas.findIndex((e: any) => e.cnpj === cnpjClean);
+  if (idx >= 0) {
+    // Atualiza empresa existente
+    await fetch(`${AGENT_API}/api/empresas/${idx}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome: nome || empresas[idx].nome, usuario, senha }),
+    });
+  } else {
+    // Cadastra nova empresa
+    const res = await fetch(`${AGENT_API}/api/empresas`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome, cnpj: cnpjClean, usuario, senha }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Erro ao cadastrar empresa');
+    }
+  }
+}
+
 export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any; onRefresh: () => void }) {
   const ficha = cliente?.lead?.ficha_contabil || {};
   const leadId = cliente?.lead?.id;
@@ -42,6 +79,7 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [sefazSync, setSefazSync] = useState<'idle' | 'syncing' | 'ok' | 'error'>('idle');
   const [activeSection, setActiveSection] = useState<string>('contato');
   const skipNextSync = useState({ current: false })[0]; // ref via useState para estabilidade
 
@@ -135,6 +173,7 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
       conta:               f.conta || '',
       acesso_receita:      f.acesso_receita || '',
       acesso_sefaz:        f.acesso_sefaz || '',
+      senha_sefaz:         f.senha_sefaz || '',
       acesso_prefeitura:   f.acesso_prefeitura || '',
       tem_funcionarios:    f.tem_funcionarios || false,
       qtd_funcionarios:    f.qtd_funcionarios || '',
@@ -226,6 +265,20 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
       skipNextSync.current = true; // não resetar o form no próximo useEffect
       onRefresh();
       setTimeout(() => setSaved(false), 3000);
+
+      // Sincronizar credenciais com o Agente Fiscal SEFAZ automaticamente
+      if (form.cnpj && form.acesso_sefaz && form.senha_sefaz) {
+        setSefazSync('syncing');
+        try {
+          const nome = form.razao_social || leadName || '';
+          await syncEmpresaAgenteFiscal(nome, form.cnpj, form.acesso_sefaz, form.senha_sefaz);
+          setSefazSync('ok');
+          setTimeout(() => setSefazSync('idle'), 4000);
+        } catch (e: any) {
+          setSefazSync('error');
+          setTimeout(() => setSefazSync('idle'), 6000);
+        }
+      }
     } catch (e: any) {
       setSaveError(`❌ Erro de comunicação: ${e.message}`);
     } finally {
@@ -591,13 +644,54 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
                 <input className="input input-bordered input-sm" value={form.acesso_receita} onChange={e => set('acesso_receita', e.target.value)} placeholder="Código de acesso / Gov.br" />
               </div>
               <div className="form-control">
-                <label className="label py-0"><span className="label-text text-xs">Acesso SEFAZ</span></label>
-                <input className="input input-bordered input-sm" value={form.acesso_sefaz} onChange={e => set('acesso_sefaz', e.target.value)} />
-              </div>
-              <div className="form-control">
                 <label className="label py-0"><span className="label-text text-xs">Acesso Prefeitura</span></label>
                 <input className="input input-bordered input-sm" value={form.acesso_prefeitura} onChange={e => set('acesso_prefeitura', e.target.value)} />
               </div>
+            </div>
+
+            {/* Portal do Contribuinte — SEFAZ */}
+            <div className="divider my-1 text-xs font-bold text-base-content/50">PORTAL DO CONTRIBUINTE — SEFAZ</div>
+            <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-blue-400 font-semibold">🔐 Credenciais sincronizadas automaticamente com o Agente Fiscal</p>
+                {sefazSync === 'syncing' && (
+                  <span className="text-xs text-blue-400 flex items-center gap-1">
+                    <span className="loading loading-spinner loading-xs" /> Sincronizando...
+                  </span>
+                )}
+                {sefazSync === 'ok' && (
+                  <span className="text-xs text-success font-semibold">✅ Sincronizado com Agente Fiscal</span>
+                )}
+                {sefazSync === 'error' && (
+                  <span className="text-xs text-warning font-semibold">⚠️ Salvo na ficha, mas Agente Fiscal indisponível</span>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="form-control">
+                  <label className="label py-0"><span className="label-text text-xs">Usuário (login SEFAZ)</span></label>
+                  <input
+                    className="input input-bordered input-sm"
+                    value={form.acesso_sefaz}
+                    onChange={e => set('acesso_sefaz', e.target.value)}
+                    placeholder="CPF ou código de acesso"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="form-control">
+                  <label className="label py-0"><span className="label-text text-xs">Senha SEFAZ</span></label>
+                  <input
+                    className="input input-bordered input-sm"
+                    type="password"
+                    value={form.senha_sefaz}
+                    onChange={e => set('senha_sefaz', e.target.value)}
+                    placeholder="••••••••"
+                    autoComplete="new-password"
+                  />
+                </div>
+              </div>
+              <p className="text-[10px] text-base-content/40">
+                Ao salvar a ficha com usuário e senha preenchidos, a empresa será cadastrada/atualizada automaticamente na aba <strong>Empresas</strong> do Agente Fiscal SEFAZ.
+              </p>
             </div>
           </div>
         </div>
