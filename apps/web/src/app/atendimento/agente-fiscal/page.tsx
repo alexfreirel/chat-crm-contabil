@@ -108,10 +108,10 @@ export default function AgenteFiscalPage() {
   }, [termLines]);
 
   // ── Listar arquivos ──────────────────────────────────────────────────
-  // ── Escolher pasta local ─────────────────────────────────────────────
+  // ── Escolher pasta local (abre em Downloads por padrão) ──────────────
   const chooseSaveFolder = async () => {
     try {
-      const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+      const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite', startIn: 'downloads' });
       dirHandleRef.current = handle;
       setSelectedFolder(handle.name);
       toast(`Pasta selecionada: ${handle.name}`, 'ok');
@@ -120,12 +120,43 @@ export default function AgenteFiscalPage() {
     }
   };
 
-  // ── Salvar arquivos na pasta escolhida ──────────────────────────────
+  // ── Baixar via browser (fallback para pasta Downloads do sistema) ─────
+  const browserDownload = async (filesList: typeof arquivos) => {
+    setSavingFiles(true);
+    setSavedCount(0);
+    try {
+      for (let i = 0; i < filesList.length; i++) {
+        const f = filesList[i];
+        const res = await fetch(`${AGENT_API}/api/arquivos/${selectedMes}/download?path=${encodeURIComponent(f.caminho)}`);
+        if (!res.ok) continue;
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = f.nome;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setSavedCount(i + 1);
+        await new Promise(r => setTimeout(r, 400)); // pequeno delay entre downloads
+      }
+      toast(`${filesList.length} arquivo(s) enviados para a pasta Downloads`, 'ok');
+    } catch (e: any) {
+      toast(`Erro ao baixar: ${e?.message || e}`, 'err');
+    } finally {
+      setSavingFiles(false);
+    }
+  };
+
+  // ── Salvar arquivos na pasta escolhida (ou Downloads por padrão) ─────
   const saveFilesToFolder = async (filesList?: typeof arquivos) => {
     const files = filesList || arquivos;
+    if (files.length === 0) return;
     const dir = dirHandleRef.current;
-    if (!dir || files.length === 0) {
-      toast('Selecione uma pasta primeiro', 'err');
+    // Sem pasta escolhida → usa download nativo do browser (→ pasta Downloads)
+    if (!dir) {
+      await browserDownload(files);
       return;
     }
     setSavingFiles(true);
@@ -232,30 +263,36 @@ export default function AgenteFiscalPage() {
             const data = await res.json();
             const files = data.files || [];
             setArquivos(files);
-            // Auto-save se pasta selecionada
-            if (dirHandleRef.current && files.length > 0) {
-              setSavingFiles(true);
-              setSavedCount(0);
-              for (let i = 0; i < files.length; i++) {
-                try {
-                  const fr = await fetch(`${AGENT_API}/api/arquivos/${m}/download?path=${encodeURIComponent(files[i].caminho)}`);
-                  if (!fr.ok) continue;
-                  const blob = await fr.blob();
-                  let targetDir = dirHandleRef.current;
-                  if (files[i].empresa) {
-                    for (const part of files[i].empresa.split('/').filter(Boolean)) {
-                      targetDir = await targetDir.getDirectoryHandle(part, { create: true });
+            // Auto-save: pasta escolhida → File System API; sem pasta → Downloads do browser
+            if (files.length > 0) {
+              if (dirHandleRef.current) {
+                // Salvar na pasta escolhida via File System API
+                setSavingFiles(true);
+                setSavedCount(0);
+                for (let i = 0; i < files.length; i++) {
+                  try {
+                    const fr = await fetch(`${AGENT_API}/api/arquivos/${m}/download?path=${encodeURIComponent(files[i].caminho)}`);
+                    if (!fr.ok) continue;
+                    const blob = await fr.blob();
+                    let targetDir = dirHandleRef.current;
+                    if (files[i].empresa) {
+                      for (const part of files[i].empresa.split('/').filter(Boolean)) {
+                        targetDir = await targetDir.getDirectoryHandle(part, { create: true });
+                      }
                     }
-                  }
-                  const fh = await targetDir.getFileHandle(files[i].nome, { create: true });
-                  const w = await fh.createWritable();
-                  await w.write(blob);
-                  await w.close();
-                  setSavedCount(i + 1);
-                } catch { /* skip file */ }
+                    const fh = await targetDir.getFileHandle(files[i].nome, { create: true });
+                    const w = await fh.createWritable();
+                    await w.write(blob);
+                    await w.close();
+                    setSavedCount(i + 1);
+                  } catch { /* skip file */ }
+                }
+                setSavingFiles(false);
+                toast(`${files.length} arquivo(s) salvos em "${dirHandleRef.current.name}"`, 'ok');
+              } else {
+                // Sem pasta escolhida → Downloads nativo do browser
+                await browserDownload(files);
               }
-              setSavingFiles(false);
-              toast(`${files.length} arquivo(s) salvos em "${dirHandleRef.current.name}"`, 'ok');
             }
           }
         } catch { /* silent */ }
@@ -698,11 +735,16 @@ export default function AgenteFiscalPage() {
                 <div>
                   <label className="text-xs font-medium text-muted-foreground block mb-1.5">Salvar em</label>
                   <button onClick={chooseSaveFolder} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-border bg-card text-sm hover:bg-muted/50 transition-colors">
-                    <FolderOpen size={16} className={selectedFolder ? 'text-emerald-400' : 'text-muted-foreground'} />
-                    <span className={selectedFolder ? 'text-emerald-400 font-medium' : 'text-muted-foreground'}>
-                      {selectedFolder || 'Escolher pasta no computador...'}
+                    <FolderOpen size={16} className={selectedFolder ? 'text-emerald-400' : 'text-primary'} />
+                    <span className={selectedFolder ? 'text-emerald-400 font-medium' : 'text-primary font-medium'}>
+                      {selectedFolder || '📥 Downloads (padrão)'}
                     </span>
                   </button>
+                  {!selectedFolder && (
+                    <p className="text-[10px] text-muted-foreground mt-1 text-center">
+                      Arquivos irão para Downloads. Clique para escolher outra pasta.
+                    </p>
+                  )}
                 </div>
                 <button onClick={runBaixarSefaz} disabled={running} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50">
                   {running ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} Iniciar Download
@@ -851,11 +893,16 @@ export default function AgenteFiscalPage() {
                 <div>
                   <label className="text-xs font-medium text-muted-foreground block mb-1.5">Salvar em</label>
                   <button onClick={chooseSaveFolder} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-border bg-card text-sm hover:bg-muted/50 transition-colors">
-                    <FolderOpen size={16} className={selectedFolder ? 'text-emerald-400' : 'text-muted-foreground'} />
-                    <span className={selectedFolder ? 'text-emerald-400 font-medium' : 'text-muted-foreground'}>
-                      {selectedFolder || 'Escolher pasta no computador...'}
+                    <FolderOpen size={16} className={selectedFolder ? 'text-emerald-400' : 'text-primary'} />
+                    <span className={selectedFolder ? 'text-emerald-400 font-medium' : 'text-primary font-medium'}>
+                      {selectedFolder || '📥 Downloads (padrão)'}
                     </span>
                   </button>
+                  {!selectedFolder && (
+                    <p className="text-[10px] text-muted-foreground mt-1 text-center">
+                      Arquivos irão para Downloads. Clique para escolher outra pasta.
+                    </p>
+                  )}
                 </div>
                 <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 text-xs text-muted-foreground space-y-0.5">
                   <div className="flex items-center gap-1.5 font-medium text-primary"><Info size={13} /> Filtros automaticos:</div>
