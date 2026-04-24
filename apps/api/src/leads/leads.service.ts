@@ -81,13 +81,10 @@ export class LeadsService {
       const userRoles = normalizeRoles(user?.role as any);
       const isAdminUser = userRoles.includes('ADMIN');
       const isContadorUser = userRoles.includes('CONTADOR') || userRoles.includes('ESPECIALISTA');
-      const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL');
+      const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL') || userRoles.includes('ASSISTENTE');
       const userInboxIds = (user?.inboxes ?? []).map((i: any) => i.id);
 
       if (!isAdminUser) {
-        // CRM Pipeline: operador/contador vê apenas leads explicitamente atribuídos.
-        // Diferente do chat inbox (que mostra fila da inbox), aqui só mostra leads
-        // onde o usuário é assigned_user, assigned_accountant, cs_user ou accountant do caso.
         const orConditions: any[] = [];
 
         if (isContadorUser) {
@@ -99,7 +96,6 @@ export class LeadsService {
           orConditions.push({ cs_user_id: userId });
         }
 
-        // Fallback: se nenhuma condição (ex: assistente), ver só os atribuídos
         if (orConditions.length === 0) {
           orConditions.push({ conversations: { some: { assigned_user_id: userId } } });
         }

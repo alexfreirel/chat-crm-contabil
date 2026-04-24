@@ -61,7 +61,7 @@ export class ConversationsService {
     const userRoles: string[] = Array.isArray((user as any)?.roles) ? (user as any).roles : [userRole];
     const isAdminUser = userRoles.includes('ADMIN');
     const isContadorUser = userRoles.includes('CONTADOR') || userRoles.includes('ESPECIALISTA');
-    const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL');
+    const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL') || userRoles.includes('ASSISTENTE');
 
     if (isAdminUser) {
       // Admin vê tudo — apenas filtra por inboxId se explicitamente pedido
@@ -696,7 +696,7 @@ export class ConversationsService {
         ? (user as any).roles
         : [effectiveRole((user as any)?.roles ?? user?.role ?? 'OPERADOR')];
       const isContadorUser2 = userRoles.includes('CONTADOR');
-      const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL');
+      const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL') || userRoles.includes('ASSISTENTE');
       const isAdminUser = userRoles.includes('ADMIN');
 
       // Filtro base: tenant + exclui leads PERDIDO/FINALIZADO

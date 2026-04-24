@@ -43,13 +43,13 @@ export function canViewClientes(roles: string | string[]): boolean {
 /** Verifica se pode gerenciar leads/clientes */
 export function canManageLeads(roles: string | string[]): boolean {
   const r = normalizeRoles(roles);
-  return r.some(role => ['ADMIN', 'CONTADOR', 'OPERADOR'].includes(role));
+  return r.some(role => ['ADMIN', 'CONTADOR', 'OPERADOR', 'ASSISTENTE'].includes(role));
 }
 
 /** Verifica se tem acesso ao modo cliente no chat */
 export function canViewClients(roles: string | string[]): boolean {
   const r = normalizeRoles(roles);
-  return r.some(role => ['ADMIN', 'CONTADOR', 'OPERADOR'].includes(role));
+  return r.some(role => ['ADMIN', 'CONTADOR', 'OPERADOR', 'ASSISTENTE'].includes(role));
 }
 
 /** Verifica se pode gerenciar configurações do sistema */

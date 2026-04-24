@@ -15,7 +15,7 @@ async function main() {
     },
   });
 
-  const passwordHash = await argon2.hash('Lustosa080686');
+  const passwordHash = await argon2.hash('AdminLexcon080686');
 
   const admin = await prisma.user.upsert({
     where: { email: 'lustosa.lima@outlook.com' },
@@ -30,7 +30,7 @@ async function main() {
   });
 
   console.log('Seed completo ✅');
-  console.log('Usuário: lustosa.lima@outlook.com | Senha: Lustosa080686');
+  console.log('Usuário: lustosa.lima@outlook.com | Senha: AdminLexcon080686');
 }
 
 main()

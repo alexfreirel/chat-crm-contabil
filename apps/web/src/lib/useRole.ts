@@ -63,7 +63,7 @@ function buildInfo(roles: AppRole[], userId: string | null): RoleInfo {
     isAssistente: roles.includes('ASSISTENTE'),
     isFinanceiro: roles.includes('FINANCEIRO'),
     canManageSettings: roles.includes('ADMIN'),
-    canViewDashboard: has(['ADMIN', 'CONTADOR', 'OPERADOR', 'COMERCIAL']),
+    canViewDashboard: has(['ADMIN', 'CONTADOR', 'OPERADOR', 'COMERCIAL', 'ASSISTENTE']),
     canViewAnalytics: has(['ADMIN']),
     canViewFinanceiro: has(['ADMIN', 'FINANCEIRO', 'CONTADOR']),
   };

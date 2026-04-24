@@ -59,22 +59,22 @@ const MATRIX_SECTIONS: MatrixSection[] = [
       {
         label: 'Inbox — WhatsApp',
         description: 'Conversas com leads e clientes via WhatsApp',
-        permissions: { CONTADOR: 'full', OPERADOR: 'full', ASSISTENTE: 'partial', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', OPERADOR: 'full', ASSISTENTE: 'full', FINANCEIRO: 'none' },
       },
       {
         label: 'Leads & CRM',
         description: 'Funil comercial e gestão de leads',
-        permissions: { CONTADOR: 'full', OPERADOR: 'full', ASSISTENTE: 'partial', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', OPERADOR: 'full', ASSISTENTE: 'full', FINANCEIRO: 'none' },
       },
       {
         label: 'Contatos',
         description: 'Lista completa de contatos e clientes',
-        permissions: { CONTADOR: 'full', OPERADOR: 'full', ASSISTENTE: 'partial', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', OPERADOR: 'full', ASSISTENTE: 'full', FINANCEIRO: 'none' },
       },
       {
         label: 'Follow-up IA',
         description: 'Sequências automáticas de mensagens e nutrição',
-        permissions: { CONTADOR: 'full', OPERADOR: 'full', ASSISTENTE: 'none', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', OPERADOR: 'full', ASSISTENTE: 'full', FINANCEIRO: 'none' },
       },
     ],
   },
@@ -89,17 +89,17 @@ const MATRIX_SECTIONS: MatrixSection[] = [
       {
         label: 'Obrigações Fiscais',
         description: 'Vencimentos, SPED, DIRF, PGDAS e obrigações acessórias',
-        permissions: { CONTADOR: 'full', OPERADOR: 'none', ASSISTENTE: 'full', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', OPERADOR: 'none', ASSISTENTE: 'none', FINANCEIRO: 'none' },
       },
       {
         label: 'Documentos Contábeis',
         description: 'Upload e gestão de documentos dos clientes',
-        permissions: { CONTADOR: 'full', OPERADOR: 'none', ASSISTENTE: 'full', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', OPERADOR: 'none', ASSISTENTE: 'none', FINANCEIRO: 'none' },
       },
       {
         label: 'Agente Fiscal SEFAZ',
         description: 'Consultas automáticas na SEFAZ e alertas fiscais',
-        permissions: { CONTADOR: 'full', OPERADOR: 'none', ASSISTENTE: 'partial', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', OPERADOR: 'none', ASSISTENTE: 'none', FINANCEIRO: 'none' },
       },
     ],
   },
@@ -129,12 +129,12 @@ const MATRIX_SECTIONS: MatrixSection[] = [
       {
         label: 'Agenda & Tarefas',
         description: 'Calendário, reuniões e tarefas da equipe',
-        permissions: { CONTADOR: 'full', OPERADOR: 'partial', ASSISTENTE: 'full', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', OPERADOR: 'partial', ASSISTENTE: 'partial', FINANCEIRO: 'none' },
       },
       {
         label: 'Contatos — editar',
         description: 'Criar e editar dados de contatos',
-        permissions: { CONTADOR: 'full', OPERADOR: 'full', ASSISTENTE: 'none', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', OPERADOR: 'full', ASSISTENTE: 'full', FINANCEIRO: 'none' },
       },
     ],
   },
