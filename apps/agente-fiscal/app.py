@@ -567,19 +567,22 @@ def baixar_zip_impostos(mes):
     if not download_dir.exists():
         return jsonify({"error": "Nenhum arquivo encontrado"}), 404
 
-    # Filtra DARs e relatório de cobranças PDF
-    dars = [
-        p for p in download_dir.rglob("*.pdf")
-        if p.name.startswith("dar-") or p.name.startswith("relatorio-cobrancas-")
+    # Inclui: DARs (.pdf), relatórios txt de cobranças e relatório PDF completo
+    arquivos = [
+        p for p in download_dir.rglob("*")
+        if p.is_file() and (
+            (p.name.startswith("dar-") and p.suffix in (".pdf", ".txt"))
+            or (p.name.startswith("relatorio-cobrancas-") and p.suffix == ".pdf")
+        )
     ]
-    if not dars:
-        return jsonify({"error": "Nenhum DAR encontrado para este mês"}), 404
+    if not arquivos:
+        return jsonify({"error": "Nenhum arquivo de impostos encontrado para este mês"}), 404
 
     tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
     with zipfile.ZipFile(tmp.name, "w", zipfile.ZIP_DEFLATED) as zf:
-        for pdf in dars:
-            arcname = str(pdf.relative_to(download_dir))
-            zf.write(pdf, arcname)
+        for p in arquivos:
+            arcname = str(p.relative_to(download_dir))
+            zf.write(p, arcname)
     tmp.close()
 
     return send_file(
