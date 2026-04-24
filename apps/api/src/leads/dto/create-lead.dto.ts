@@ -40,6 +40,10 @@ export class UpdateLeadDto {
   name?: string;
 
   @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
   @IsEmail({}, { message: 'Email invalido' })
   email?: string;
 

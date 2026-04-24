@@ -70,15 +70,23 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
   async function saveLeadContact() {
     if (!leadId) return;
     setSavingLead(true);
+    setSaveError(null);
     try {
-      await fetch(`${API}/leads/${leadId}`, {
+      const res = await fetch(`${API}/leads/${leadId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
         body: JSON.stringify({ name: leadName, phone: leadPhone }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setSaveError(`❌ Erro ao salvar contato: ${err.message || res.status}`);
+        return;
+      }
       setLeadSaved(true);
       onRefresh();
       setTimeout(() => setLeadSaved(false), 3000);
+    } catch (e: any) {
+      setSaveError(`❌ Erro de comunicação: ${e.message}`);
     } finally {
       setSavingLead(false);
     }
