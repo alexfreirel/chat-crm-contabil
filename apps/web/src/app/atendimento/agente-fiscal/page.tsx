@@ -133,7 +133,11 @@ export default function AgenteFiscalPage() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = f.nome;
+        // Prefixar com nome da empresa para organização na pasta Downloads
+        const empresaPrefix = f.empresa
+          ? `${f.empresa.replace(/[\\/:*?"<>|]/g, ' ').trim()} - `
+          : '';
+        a.download = `${empresaPrefix}${f.nome}`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
