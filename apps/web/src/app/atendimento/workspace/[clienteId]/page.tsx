@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
+import { ArrowLeft } from 'lucide-react';
 import TabFichaContabil from './components/TabFichaContabil';
 import TabObrigacoes from './components/TabObrigacoes';
 import TabDocumentos from './components/TabDocumentos';
@@ -35,6 +36,7 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 
 export default function WorkspacePage() {
   const params = useParams();
+  const router = useRouter();
   const clienteId = params?.clienteId as string;
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -97,6 +99,16 @@ export default function WorkspacePage() {
     <div className="flex flex-col h-full bg-base-100">
       {/* Header */}
       <div className="flex items-start gap-4 px-6 py-4 border-b border-base-300 bg-base-200/30">
+        {/* Botão voltar */}
+        <button
+          onClick={() => router.push('/atendimento/clientes')}
+          className="shrink-0 flex items-center gap-1.5 mt-0.5 px-3 py-1.5 rounded-lg text-sm font-medium text-base-content/60 hover:text-base-content hover:bg-base-300 transition-all"
+          title="Voltar para Clientes Contábeis"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span className="hidden sm:inline">Clientes</span>
+        </button>
+
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-lg font-bold truncate">{lead?.name || 'Sem nome'}</h1>
