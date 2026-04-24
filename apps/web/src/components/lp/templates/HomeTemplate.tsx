@@ -1284,11 +1284,11 @@ export function HomeTemplate({
               className="h-20 lg:h-24 w-auto object-contain mb-6 drop-shadow-[0_2px_10px_rgba(255,255,255,0.1)]"
             />
             <h4 className="text-[#FAFAFA] font-bold text-sm md:text-base mb-6 tracking-wide drop-shadow-sm">
-              Escritório de Advocacia de Alta Performance
+              Escritório de Contabilidade de Alta Performance
             </h4>
             <p className="text-slate-300 text-sm md:text-[0.95rem] leading-relaxed max-w-sm md:max-w-md font-medium">
               Atuamos com excelência técnica, visão estratégica e sensibilidade no atendimento.<br/>
-              Com atendimento digital avançado em todo o Brasil e suporte presencial em nossa estrutura física, oferecemos soluções jurídicas personalizadas para você e sua empresa.
+              Com atendimento digital avançado em todo o Brasil e suporte presencial em nossa estrutura física, oferecemos soluções contábeis personalizadas para você e sua empresa.
             </p>
           </div>
 
