@@ -838,122 +838,65 @@ def _gerar_relatorio_cobrancas(cobrancas: list[dict], label: str, empresa_nome: 
 def _baixar_relatorio_cobrancas_pdf(
     sess: requests.Session,
     empresa: Empresa,
-    comp_ini: str,
-    comp_fim: str,
+    comp_mmyyyy: str,
+    receitas: list,
+    label: str,
 ) -> "bytes | None":
     """
-    Baixa o PDF do Relatório de Cobranças de Documentos Fiscais Eletrônicos,
-    equivalente ao botão 'Imprimir relatório completo' do portal Cobrança DF-e.
+    Baixa o PDF do Relatório de Cobranças de Documentos Fiscais Eletrônicos
+    para um grupo de receitas — idêntico ao botão 'Imprimir relatório completo'
+    do portal Cobrança DF-e.
 
-    Endpoint identificado via DevTools: gerar-relatorio-cobrancas
-    Tenta variações do body em ordem até receber PDF válido; cacheia o que funcionar.
+    Body exato capturado via DevTools:
+      { numeroDocumento, competencia, competenciaInicial, competenciaFinal,
+        receitas, situacao }
     """
-    cache = _carregar_cache()
-    cached = cache.get(_CACHE_KEY_REL_PDF)  # {"url": ..., "body_idx": ...}
+    # Body exato que o portal envia (capturado via DevTools)
+    body = {
+        "numeroDocumento": empresa.cnpj,
+        "competencia": "",
+        "competenciaInicial": comp_mmyyyy,
+        "competenciaFinal": comp_mmyyyy,
+        "receitas": receitas,
+        "situacao": "Em Aberto",
+    }
 
-    # Todas as receitas de todos os grupos
-    todas_receitas = []
-    for g in GRUPOS_IMPOSTOS:
-        todas_receitas.extend(g["receitas"])
-
-    # Variações do body em ordem de probabilidade (mais simples primeiro = mais próximo do portal)
-    body_variantes = [
-        # 1. Body mínimo — igual ao que o portal envia ao clicar Imprimir
-        {
-            "numeroDocumento": empresa.cnpj,
-            "competenciaInicial": comp_ini,
-            "competenciaFinal": comp_fim,
-            "situacao": "Em Aberto",
-        },
-        # 2. Com receitas vazias
-        {
-            "numeroDocumento": empresa.cnpj,
-            "competenciaInicial": comp_ini,
-            "competenciaFinal": comp_fim,
-            "situacao": "Em Aberto",
-            "receitas": [],
-        },
-        # 3. Com todas as receitas e campo competencia vazio
-        {
-            "numeroDocumento": empresa.cnpj,
-            "competencia": "",
-            "competenciaInicial": comp_ini,
-            "competenciaFinal": comp_fim,
-            "receitas": todas_receitas,
-            "situacao": "Em Aberto",
-        },
-        # 4. Com paginação (mesmo formato do cobranca-paginada)
-        {
-            "numeroDocumento": empresa.cnpj,
-            "competencia": "",
-            "competenciaInicial": comp_ini,
-            "competenciaFinal": comp_fim,
-            "receitas": todas_receitas,
-            "situacao": "Em Aberto",
-            "parametrosPaginacaoConsultaObrigacosDTO": {"pagina": 0, "tamanho": 999},
-        },
-    ]
+    url = API_COBRANCA_RELATORIO_CANDIDATOS[0]  # gerar-relatorio-cobrancas
 
     accept_orig = sess.headers.get("Accept", "application/json, text/plain, */*")
     sess.headers["Accept"] = "application/pdf, application/octet-stream, */*"
 
-    urls = API_COBRANCA_RELATORIO_CANDIDATOS
-    start_body = 0
-
-    # Se já tem cache, vai direto para o que funcionou antes
-    if cached:
-        urls = [cached["url"]]
-        start_body = cached.get("body_idx", 0)
-
     try:
-        for url in urls:
-            for i, body in enumerate(body_variantes[start_body:], start=start_body):
-                try:
-                    r = sess.post(url, json=body, timeout=(15, 120))
-                    ct = r.headers.get("Content-Type", "")
-                    log.info(
-                        f"  [RelPDF] POST body#{i} {url} → "
-                        f"HTTP {r.status_code} CT={ct} {len(r.content)}b"
-                    )
-                    if r.status_code == 200 and (
-                        "pdf" in ct.lower() or r.content[:4] == b"%PDF"
-                    ):
-                        if not cached:
-                            cache[_CACHE_KEY_REL_PDF] = {"url": url, "body_idx": i}
-                            _salvar_cache(cache)
-                            log.info(f"  [RelPDF] Cacheado: url={url} body#{i}")
-                        return r.content
-                    if r.status_code == 200:
-                        # Retornou 200 mas não é PDF — loga primeiros bytes para diagnóstico
-                        log.info(f"  [RelPDF] 200 mas não é PDF: {r.content[:80]}")
-                except Exception as e:
-                    log.warning(f"  [RelPDF] Erro POST body#{i} {url}: {e}")
-
-            # Fallback GET para este URL
+        for tentativa in range(1, 4):
             try:
-                params = {
-                    "numeroCnpj": empresa.cnpj,
-                    "competenciaInicial": comp_ini,
-                    "competenciaFinal": comp_fim,
-                    "situacao": "Em Aberto",
-                }
-                rg = sess.get(url, params=params, timeout=(15, 120))
-                ct2 = rg.headers.get("Content-Type", "")
-                log.info(f"  [RelPDF] GET {url} → HTTP {rg.status_code} CT={ct2} {len(rg.content)}b")
-                if rg.status_code == 200 and (
-                    "pdf" in ct2.lower() or rg.content[:4] == b"%PDF"
+                r = sess.post(url, json=body, timeout=(15, 120))
+                ct = r.headers.get("Content-Type", "")
+                log.info(
+                    f"  [RelPDF-{label}] tentativa {tentativa} → "
+                    f"HTTP {r.status_code} CT={ct} {len(r.content)}b"
+                )
+                if r.status_code == 200 and (
+                    "pdf" in ct.lower() or r.content[:4] == b"%PDF"
                 ):
-                    if not cached:
-                        cache[_CACHE_KEY_REL_PDF] = {"url": url + "?_GET", "body_idx": 0}
-                        _salvar_cache(cache)
-                    return rg.content
+                    return r.content
+                if r.status_code == 200:
+                    log.info(f"  [RelPDF-{label}] 200 mas não PDF: {r.content[:120]}")
+                    return None
+                if r.status_code in (401, 403):
+                    log.warning(f"  [RelPDF-{label}] Sem permissão ({r.status_code})")
+                    return None
+                time.sleep(3)
+            except requests.exceptions.Timeout:
+                log.warning(f"  [RelPDF-{label}] Timeout (tentativa {tentativa}/3)")
+                if tentativa < 3:
+                    time.sleep(5)
             except Exception as e:
-                log.warning(f"  [RelPDF] Erro GET {url}: {e}")
-
+                log.warning(f"  [RelPDF-{label}] Erro: {e}")
+                return None
     finally:
         sess.headers["Accept"] = accept_orig
 
-    log.warning("  [RelPDF] Nenhuma variação retornou PDF — relatório completo não baixado")
+    log.warning(f"  [RelPDF-{label}] Não foi possível baixar o relatório PDF")
     return None
 
 
@@ -1103,6 +1046,7 @@ def _baixar_impostos_empresa(empresa: Empresa) -> dict:
 
         # Passo 4: Emitir UM ÚNICO DAR com todas as consolidações juntas
         log.info(f"  Emitindo DAR com {len(ids_consolidacao)} consolidação(ões)")
+        dar_ok = False
         try:
             r2 = sess.post(API_EMITIR_DAR, json=ids_consolidacao, timeout=(15, 120))
             ct = r2.headers.get("Content-Type", "")
@@ -1110,6 +1054,7 @@ def _baixar_impostos_empresa(empresa: Empresa) -> dict:
                 destino.write_bytes(r2.content)
                 log.info(f"  Salvo: {nome_arquivo} ({len(r2.content):,} bytes)")
                 resultado["ok"].append(f"{label}")
+                dar_ok = True
             else:
                 log.warning(f"  Emitir DAR: HTTP {r2.status_code} — {r2.text[:200]}")
                 resultado["falha"].append(f"{label}")
@@ -1117,20 +1062,22 @@ def _baixar_impostos_empresa(empresa: Empresa) -> dict:
             log.error(f"  Erro emitir DAR: {e}")
             resultado["falha"].append(f"{label}")
 
-    # ── Relatório PDF completo (equivalente a "Imprimir relatório completo") ──
-    nome_rel_pdf = f"relatorio-cobrancas-{mes_str}.pdf"
-    destino_rel_pdf = pasta / nome_rel_pdf
-    if destino_rel_pdf.exists():
-        log.info(f"[{empresa.nome}] Relatório PDF já existe: {nome_rel_pdf}")
-    else:
-        log.info(f"[{empresa.nome}] Baixando relatório PDF de cobranças...")
-        pdf_bytes = _baixar_relatorio_cobrancas_pdf(sess, empresa, comp_ini, comp_fim)
-        if pdf_bytes:
-            destino_rel_pdf.write_bytes(pdf_bytes)
-            log.info(f"  Relatório PDF salvo: {nome_rel_pdf} ({len(pdf_bytes):,} bytes)")
-            resultado["ok"].append("Relatório de Cobranças PDF")
+        # Passo 5: Relatório PDF do grupo (idêntico ao "Imprimir relatório completo")
+        nome_rel_pdf = nome_arquivo.replace("dar-", "relatorio-")
+        destino_rel_pdf = pasta / nome_rel_pdf
+        if destino_rel_pdf.exists():
+            log.info(f"  Relatório PDF já existe: {nome_rel_pdf}")
         else:
-            log.warning(f"  Relatório PDF indisponível (endpoint não encontrado)")
+            log.info(f"  Baixando relatório PDF: {nome_rel_pdf}...")
+            pdf_bytes = _baixar_relatorio_cobrancas_pdf(
+                sess, empresa, comp_ini, receitas, label
+            )
+            if pdf_bytes:
+                destino_rel_pdf.write_bytes(pdf_bytes)
+                log.info(f"  Relatório PDF salvo: {nome_rel_pdf} ({len(pdf_bytes):,} bytes)")
+                resultado["ok"].append(f"Relatório {label}")
+            else:
+                log.warning(f"  Relatório PDF não disponível para {label}")
 
     return resultado
 
