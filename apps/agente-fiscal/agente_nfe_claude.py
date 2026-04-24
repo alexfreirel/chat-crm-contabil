@@ -53,6 +53,17 @@ GRUPOS_IMPOSTOS = [
     {"label": "ST Emitente",              "receitas": [1769, 1760, 2058],             "arquivo": "dar-st-emitente-{mes}.pdf"},
 ]
 
+# ── Candidatos para relatório PDF de cobranças ────────────────────────────────
+# Endpoint do botão "Imprimir relatório completo" do portal Cobrança DF-e.
+# Tentados em ordem até retornar PDF válido; o que funcionar é cacheado.
+_CACHE_KEY_REL_PDF = "relatorio-cobrancas-pdf-endpoint"
+API_COBRANCA_RELATORIO_CANDIDATOS = [
+    f"{BASE_COBRANCA_DFE}/sfz-cobranca-dfe-api/api/cobranca-nfe/relatorio",
+    f"{BASE_COBRANCA_DFE}/sfz-cobranca-dfe-api/api/cobranca-nfe/imprimir",
+    f"{BASE_COBRANCA_DFE}/sfz-cobranca-dfe-api/api/relatorio/cobranca-nfe",
+    f"{BASE_COBRANCA_DFE}/cobranca-dfe-obrigacao-api/api/relatorio/cobrancas",
+]
+
 # ── Cache de endpoints descobertos ────────────────────────────────────────────
 # Salvo localmente para não precisar redescobrir a cada execução
 _CACHE_FILE = Path(__file__).parent / ".endpoints_cache.json"
@@ -823,6 +834,88 @@ def _gerar_relatorio_cobrancas(cobrancas: list[dict], label: str, empresa_nome: 
     return "\n".join(linhas)
 
 
+def _baixar_relatorio_cobrancas_pdf(
+    sess: requests.Session,
+    empresa: Empresa,
+    comp_ini: str,
+    comp_fim: str,
+) -> "bytes | None":
+    """
+    Baixa o PDF do Relatório de Cobranças de Documentos Fiscais Eletrônicos,
+    equivalente ao botão 'Imprimir relatório completo' do portal Cobrança DF-e.
+
+    Descobre o endpoint correto tentando candidatos em ordem e cacheia o resultado.
+    Tenta POST com o mesmo body da listagem (retorno PDF); se der 404/405 tenta GET.
+    """
+    cache = _carregar_cache()
+    cached_url = cache.get(_CACHE_KEY_REL_PDF)
+    candidatos = [cached_url] if cached_url else API_COBRANCA_RELATORIO_CANDIDATOS
+
+    # Todas as receitas de todos os grupos → relatório completo do período
+    todas_receitas = []
+    for g in GRUPOS_IMPOSTOS:
+        todas_receitas.extend(g["receitas"])
+
+    body = {
+        "numeroDocumento": empresa.cnpj,
+        "competencia": "",
+        "competenciaInicial": comp_ini,
+        "competenciaFinal": comp_fim,
+        "receitas": todas_receitas,
+        "situacao": "Em Aberto",
+        "parametrosPaginacaoConsultaObrigacosDTO": {"pagina": 0, "tamanho": 999},
+    }
+
+    accept_orig = sess.headers.get("Accept", "application/json, text/plain, */*")
+    sess.headers["Accept"] = "application/pdf, application/octet-stream, */*"
+
+    try:
+        for url in candidatos:
+            if not url:
+                continue
+            # Tenta POST primeiro
+            try:
+                r = sess.post(url, json=body, timeout=(15, 120))
+                ct = r.headers.get("Content-Type", "")
+                log.info(f"  [RelPDF] POST {url} → HTTP {r.status_code} CT={ct} {len(r.content)}b")
+                if r.status_code == 200 and ("pdf" in ct.lower() or r.content[:4] == b"%PDF"):
+                    if not cached_url:
+                        cache[_CACHE_KEY_REL_PDF] = url
+                        _salvar_cache(cache)
+                        log.info(f"  [RelPDF] Endpoint cacheado (POST): {url}")
+                    return r.content
+            except Exception as e:
+                log.warning(f"  [RelPDF] Erro POST {url}: {e}")
+
+            # Fallback GET com query params
+            try:
+                params = {
+                    "numeroCnpj": empresa.cnpj,
+                    "competenciaInicial": comp_ini,
+                    "competenciaFinal": comp_fim,
+                    "situacao": "Em Aberto",
+                    "tipo": "pdf",
+                }
+                rg = sess.get(url, params=params, timeout=(15, 120))
+                ct2 = rg.headers.get("Content-Type", "")
+                log.info(f"  [RelPDF] GET  {url} → HTTP {rg.status_code} CT={ct2} {len(rg.content)}b")
+                if rg.status_code == 200 and ("pdf" in ct2.lower() or rg.content[:4] == b"%PDF"):
+                    get_key = url + "?_method=GET"
+                    if not cached_url:
+                        cache[_CACHE_KEY_REL_PDF] = get_key
+                        _salvar_cache(cache)
+                        log.info(f"  [RelPDF] Endpoint cacheado (GET): {url}")
+                    return rg.content
+            except Exception as e:
+                log.warning(f"  [RelPDF] Erro GET {url}: {e}")
+
+    finally:
+        sess.headers["Accept"] = accept_orig
+
+    log.warning("  [RelPDF] Nenhum endpoint retornou PDF — relatório completo não baixado")
+    return None
+
+
 def _baixar_impostos_empresa(empresa: Empresa) -> dict:
     """
     Baixa DARs de impostos (DIFAL, ANTECIPADO, ST, ST EMITENTE)
@@ -982,6 +1075,21 @@ def _baixar_impostos_empresa(empresa: Empresa) -> dict:
         except Exception as e:
             log.error(f"  Erro emitir DAR: {e}")
             resultado["falha"].append(f"{label}")
+
+    # ── Relatório PDF completo (equivalente a "Imprimir relatório completo") ──
+    nome_rel_pdf = f"relatorio-cobrancas-{mes_str}.pdf"
+    destino_rel_pdf = pasta / nome_rel_pdf
+    if destino_rel_pdf.exists():
+        log.info(f"[{empresa.nome}] Relatório PDF já existe: {nome_rel_pdf}")
+    else:
+        log.info(f"[{empresa.nome}] Baixando relatório PDF de cobranças...")
+        pdf_bytes = _baixar_relatorio_cobrancas_pdf(sess, empresa, comp_ini, comp_fim)
+        if pdf_bytes:
+            destino_rel_pdf.write_bytes(pdf_bytes)
+            log.info(f"  Relatório PDF salvo: {nome_rel_pdf} ({len(pdf_bytes):,} bytes)")
+            resultado["ok"].append("Relatório de Cobranças PDF")
+        else:
+            log.warning(f"  Relatório PDF indisponível (endpoint não encontrado)")
 
     return resultado
 

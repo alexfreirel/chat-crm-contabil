@@ -567,8 +567,11 @@ def baixar_zip_impostos(mes):
     if not download_dir.exists():
         return jsonify({"error": "Nenhum arquivo encontrado"}), 404
 
-    # Filtra apenas arquivos que começam com "dar-"
-    dars = [p for p in download_dir.rglob("*.pdf") if p.name.startswith("dar-")]
+    # Filtra DARs e relatório de cobranças PDF
+    dars = [
+        p for p in download_dir.rglob("*.pdf")
+        if p.name.startswith("dar-") or p.name.startswith("relatorio-cobrancas-")
+    ]
     if not dars:
         return jsonify({"error": "Nenhum DAR encontrado para este mês"}), 404
 
