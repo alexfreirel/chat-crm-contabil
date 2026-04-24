@@ -6,7 +6,7 @@ import {
   Building2, Download, BarChart3, Receipt, DollarSign, Plus,
   Play, Printer, Trash2, Pencil, X, ChevronDown, Loader2,
   Search, FileText, AlertCircle, CheckCircle2, Info,
-  Sparkles, Terminal, FolderOpen, Save, HardDrive,
+  Sparkles, Terminal, HardDrive,
 } from 'lucide-react';
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -48,10 +48,6 @@ export default function AgenteFiscalPage() {
   // ── Arquivos baixados ────────────────────────────────────────────────
   const [arquivos, setArquivos] = useState<{ nome: string; caminho: string; empresa: string; tamanho: number }[]>([]);
   const [loadingArquivos, setLoadingArquivos] = useState(false);
-  const [savingFiles, setSavingFiles] = useState(false);
-  const [savedCount, setSavedCount] = useState(0);
-  const dirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
-  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
 
   // ── Períodos armazenados ────────────────────────────────────────────
   const [periodos, setPeriodos] = useState<{ mes: string; arquivos: number; empresas: number; tamanho_mb: number }[]>([]);
@@ -107,23 +103,8 @@ export default function AgenteFiscalPage() {
     if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight;
   }, [termLines]);
 
-  // ── Listar arquivos ──────────────────────────────────────────────────
-  // ── Escolher pasta local (abre em Downloads por padrão) ──────────────
-  const chooseSaveFolder = async () => {
-    try {
-      const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite', startIn: 'downloads' });
-      dirHandleRef.current = handle;
-      setSelectedFolder(handle.name);
-      toast(`Pasta selecionada: ${handle.name}`, 'ok');
-    } catch (e: any) {
-      if (e?.name !== 'AbortError') toast('Navegador nao suporta selecao de pasta. Use Chrome ou Edge.', 'err');
-    }
-  };
-
-  // ── Baixar via browser (fallback para pasta Downloads do sistema) ─────
+  // ── Baixar arquivos via browser → pasta Downloads ────────────────────
   const browserDownload = async (filesList: typeof arquivos) => {
-    setSavingFiles(true);
-    setSavedCount(0);
     try {
       for (let i = 0; i < filesList.length; i++) {
         const f = filesList[i];
@@ -142,56 +123,11 @@ export default function AgenteFiscalPage() {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        setSavedCount(i + 1);
         await new Promise(r => setTimeout(r, 400)); // pequeno delay entre downloads
       }
       toast(`${filesList.length} arquivo(s) enviados para a pasta Downloads`, 'ok');
     } catch (e: any) {
       toast(`Erro ao baixar: ${e?.message || e}`, 'err');
-    } finally {
-      setSavingFiles(false);
-    }
-  };
-
-  // ── Salvar arquivos na pasta escolhida (ou Downloads por padrão) ─────
-  const saveFilesToFolder = async (filesList?: typeof arquivos) => {
-    const files = filesList || arquivos;
-    if (files.length === 0) return;
-    const dir = dirHandleRef.current;
-    // Sem pasta escolhida → usa download nativo do browser (→ pasta Downloads)
-    if (!dir) {
-      await browserDownload(files);
-      return;
-    }
-    setSavingFiles(true);
-    setSavedCount(0);
-    try {
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i];
-        const res = await fetch(`${AGENT_API}/api/arquivos/${selectedMes}/download?path=${encodeURIComponent(f.caminho)}`);
-        if (!res.ok) continue;
-        const blob = await res.blob();
-
-        // Cria subpasta da empresa se existir
-        let targetDir = dir;
-        if (f.empresa) {
-          const parts = f.empresa.split('/').filter(Boolean);
-          for (const part of parts) {
-            targetDir = await targetDir.getDirectoryHandle(part, { create: true });
-          }
-        }
-
-        const fileHandle = await targetDir.getFileHandle(f.nome, { create: true });
-        const writable = await fileHandle.createWritable();
-        await writable.write(blob);
-        await writable.close();
-        setSavedCount(i + 1);
-      }
-      toast(`${files.length} arquivo(s) salvos em "${dir.name}"`, 'ok');
-    } catch (e: any) {
-      toast(`Erro ao salvar: ${e?.message || e}`, 'err');
-    } finally {
-      setSavingFiles(false);
     }
   };
 
@@ -267,36 +203,9 @@ export default function AgenteFiscalPage() {
             const data = await res.json();
             const files = data.files || [];
             setArquivos(files);
-            // Auto-save: pasta escolhida → File System API; sem pasta → Downloads do browser
+            // Auto-save → Downloads do browser
             if (files.length > 0) {
-              if (dirHandleRef.current) {
-                // Salvar na pasta escolhida via File System API
-                setSavingFiles(true);
-                setSavedCount(0);
-                for (let i = 0; i < files.length; i++) {
-                  try {
-                    const fr = await fetch(`${AGENT_API}/api/arquivos/${m}/download?path=${encodeURIComponent(files[i].caminho)}`);
-                    if (!fr.ok) continue;
-                    const blob = await fr.blob();
-                    let targetDir = dirHandleRef.current;
-                    if (files[i].empresa) {
-                      for (const part of files[i].empresa.split('/').filter(Boolean)) {
-                        targetDir = await targetDir.getDirectoryHandle(part, { create: true });
-                      }
-                    }
-                    const fh = await targetDir.getFileHandle(files[i].nome, { create: true });
-                    const w = await fh.createWritable();
-                    await w.write(blob);
-                    await w.close();
-                    setSavedCount(i + 1);
-                  } catch { /* skip file */ }
-                }
-                setSavingFiles(false);
-                toast(`${files.length} arquivo(s) salvos em "${dirHandleRef.current.name}"`, 'ok');
-              } else {
-                // Sem pasta escolhida → Downloads nativo do browser
-                await browserDownload(files);
-              }
+              await browserDownload(files);
             }
           }
         } catch { /* silent */ }
@@ -736,20 +645,6 @@ export default function AgenteFiscalPage() {
                 <h3 className="text-sm font-semibold flex items-center gap-2"><Download size={15} className="text-primary" /> Configurar</h3>
                 <div><label className="text-xs font-medium text-muted-foreground block mb-1.5">Empresa</label><EmpresaSelect /></div>
                 <div><label className="text-xs font-medium text-muted-foreground block mb-1.5">Mes de referencia</label><MesInput /></div>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground block mb-1.5">Salvar em</label>
-                  <button onClick={chooseSaveFolder} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-border bg-card text-sm hover:bg-muted/50 transition-colors">
-                    <FolderOpen size={16} className={selectedFolder ? 'text-emerald-400' : 'text-primary'} />
-                    <span className={selectedFolder ? 'text-emerald-400 font-medium' : 'text-primary font-medium'}>
-                      {selectedFolder || '📥 Downloads (padrão)'}
-                    </span>
-                  </button>
-                  {!selectedFolder && (
-                    <p className="text-[10px] text-muted-foreground mt-1 text-center">
-                      Arquivos irão para Downloads. Clique para escolher outra pasta.
-                    </p>
-                  )}
-                </div>
                 <button onClick={runBaixarSefaz} disabled={running} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50">
                   {running ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} Iniciar Download
                 </button>
@@ -765,15 +660,6 @@ export default function AgenteFiscalPage() {
                     <FileText size={15} className="text-primary" /> Arquivos Baixados ({arquivos.length})
                   </h3>
                   <div className="flex items-center gap-2">
-                    {selectedFolder && (
-                      <button
-                        onClick={() => saveFilesToFolder()}
-                        disabled={savingFiles}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
-                      >
-                        {savingFiles ? <><Loader2 size={14} className="animate-spin" /> Salvando {savedCount}/{arquivos.length}...</> : <><Save size={14} /> Salvar na Pasta</>}
-                      </button>
-                    )}
                     <button
                       onClick={deleteAllArquivos}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-xs font-medium hover:bg-red-500/20"
@@ -894,20 +780,6 @@ export default function AgenteFiscalPage() {
                 <h3 className="text-sm font-semibold flex items-center gap-2"><DollarSign size={15} className="text-primary" /> Configurar</h3>
                 <div><label className="text-xs font-medium text-muted-foreground block mb-1.5">Empresa</label><EmpresaSelect /></div>
                 <div><label className="text-xs font-medium text-muted-foreground block mb-1.5">Mes de referencia</label><MesInput /></div>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground block mb-1.5">Salvar em</label>
-                  <button onClick={chooseSaveFolder} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-border bg-card text-sm hover:bg-muted/50 transition-colors">
-                    <FolderOpen size={16} className={selectedFolder ? 'text-emerald-400' : 'text-primary'} />
-                    <span className={selectedFolder ? 'text-emerald-400 font-medium' : 'text-primary font-medium'}>
-                      {selectedFolder || '📥 Downloads (padrão)'}
-                    </span>
-                  </button>
-                  {!selectedFolder && (
-                    <p className="text-[10px] text-muted-foreground mt-1 text-center">
-                      Arquivos irão para Downloads. Clique para escolher outra pasta.
-                    </p>
-                  )}
-                </div>
                 <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 text-xs text-muted-foreground space-y-0.5">
                   <div className="flex items-center gap-1.5 font-medium text-primary"><Info size={13} /> Filtros automaticos:</div>
                   <div>Competencia: {selectedMes || 'mes selecionado'}</div>
@@ -929,15 +801,6 @@ export default function AgenteFiscalPage() {
                     <FileText size={15} className="text-primary" /> DARs Baixados ({arquivosImpostos.length})
                   </h3>
                   <div className="flex items-center gap-2">
-                    {selectedFolder && (
-                      <button
-                        onClick={() => saveFilesToFolder(arquivosImpostos)}
-                        disabled={savingFiles}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
-                      >
-                        {savingFiles ? <><Loader2 size={14} className="animate-spin" /> Salvando {savedCount}/{arquivosImpostos.length}...</> : <><Save size={14} /> Salvar na Pasta</>}
-                      </button>
-                    )}
                     <button
                       onClick={deleteAllImpostos}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-xs font-medium hover:bg-red-500/20"
@@ -996,11 +859,6 @@ export default function AgenteFiscalPage() {
               </div>
             )}
 
-            {savingFiles && (
-              <div className="flex items-center gap-2 text-sm text-emerald-400">
-                <Loader2 size={16} className="animate-spin" /> Salvando arquivos na pasta... ({savedCount}/{arquivosImpostos.length})
-              </div>
-            )}
           </div>
           );
         })()}
@@ -1008,15 +866,6 @@ export default function AgenteFiscalPage() {
         {/* ── Parcelamento ────────────────────────────────────────────── */}
         {activeTab === 'parcela' && (
           <div className="space-y-6">
-            {/* Pasta de destino */}
-            <div className="bg-card border border-border rounded-xl p-4">
-              <button onClick={chooseSaveFolder} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-border bg-background text-sm hover:bg-muted/50 transition-colors">
-                <FolderOpen size={16} className={selectedFolder ? 'text-emerald-400' : 'text-muted-foreground'} />
-                <span className={selectedFolder ? 'text-emerald-400 font-medium' : 'text-muted-foreground'}>
-                  {selectedFolder ? `Salvar em: ${selectedFolder}` : 'Escolher pasta para salvar DARs...'}
-                </span>
-              </button>
-            </div>
             <div className="grid lg:grid-cols-2 gap-6">
               <div className="bg-card border border-border rounded-xl p-5 space-y-4">
                 <h3 className="text-sm font-semibold flex items-center gap-2"><Search size={15} className="text-primary" /> Analisar Parcelamentos</h3>
@@ -1034,12 +883,6 @@ export default function AgenteFiscalPage() {
               </div>
             </div>
             <TerminalOutput title="parcelamentos" />
-            {/* Arquivos salvos */}
-            {savingFiles && (
-              <div className="flex items-center gap-2 text-sm text-emerald-400">
-                <Loader2 size={16} className="animate-spin" /> Salvando arquivos na pasta... ({savedCount}/{arquivos.length})
-              </div>
-            )}
           </div>
         )}
 
