@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { Building2 } from 'lucide-react';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:44001/api';
 
@@ -466,7 +467,10 @@ export default function ClientesPage() {
 
                 {/* Rodapé: contador + contagens */}
                 <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border/60">
-                  <span className="truncate">👤 {c.accountant?.name || 'Sem contador'}</span>
+                  <span className="truncate flex items-center gap-1">
+                    <Building2 className="w-3.5 h-3.5 shrink-0" />
+                    {c.lead?.ficha_contabil?.razao_social || c.lead?.name || 'Sem razão social'}
+                  </span>
                   <span className="shrink-0 ml-2">
                     📅 {c._count?.obrigacoes ?? 0}
                     {' · '}📄 {c._count?.documentos ?? 0}

@@ -127,7 +127,12 @@ export class ClientesContabilService {
     }
 
     const include = {
-      lead: { select: { id: true, name: true, phone: true, email: true, tags: true, cpf_cnpj: true } },
+      lead: {
+        select: {
+          id: true, name: true, phone: true, email: true, tags: true, cpf_cnpj: true,
+          ficha_contabil: { select: { razao_social: true } },
+        },
+      },
       accountant: { select: { id: true, name: true } },
       _count: { select: { obrigacoes: true, documentos: true, tasks: true } },
     };
