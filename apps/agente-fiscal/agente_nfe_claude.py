@@ -55,13 +55,14 @@ GRUPOS_IMPOSTOS = [
 
 # ── Candidatos para relatório PDF de cobranças ────────────────────────────────
 # Endpoint do botão "Imprimir relatório completo" do portal Cobrança DF-e.
+# Endpoint correto identificado via DevTools: gerar-relatorio-cobrancas
 # Tentados em ordem até retornar PDF válido; o que funcionar é cacheado.
-_CACHE_KEY_REL_PDF = "relatorio-cobrancas-pdf-endpoint"
+_CACHE_KEY_REL_PDF = "relatorio-cobrancas-pdf-endpoint-v2"
 API_COBRANCA_RELATORIO_CANDIDATOS = [
+    f"{BASE_COBRANCA_DFE}/sfz-cobranca-dfe-api/api/cobranca-nfe/gerar-relatorio-cobrancas",
     f"{BASE_COBRANCA_DFE}/sfz-cobranca-dfe-api/api/cobranca-nfe/relatorio",
     f"{BASE_COBRANCA_DFE}/sfz-cobranca-dfe-api/api/cobranca-nfe/imprimir",
     f"{BASE_COBRANCA_DFE}/sfz-cobranca-dfe-api/api/relatorio/cobranca-nfe",
-    f"{BASE_COBRANCA_DFE}/cobranca-dfe-obrigacao-api/api/relatorio/cobrancas",
 ]
 
 # ── Cache de endpoints descobertos ────────────────────────────────────────────
