@@ -78,6 +78,16 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
   const clienteId = cliente?.id;
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [users, setUsers] = useState<{ id: string; name: string; role: string }[]>([]);
+
+  useEffect(() => {
+    fetch(`${API}/users/lawyers`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+    })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setUsers(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, []);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [sefazSync, setSefazSync] = useState<'idle' | 'syncing' | 'ok' | 'error'>('idle');
   const [activeSection, setActiveSection] = useState<string>('contato');
@@ -179,6 +189,9 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
       qtd_funcionarios:    f.qtd_funcionarios || '',
       tem_pro_labore:      f.tem_pro_labore || false,
       regime_contratacao:  f.regime_contratacao || '',
+      resp_fiscal:         f.resp_fiscal || '',
+      resp_pessoal:        f.resp_pessoal || '',
+      resp_contabil:       f.resp_contabil || '',
       sistema_erp:         f.sistema_erp || '',
       sistema_nf:          f.sistema_nf || '',
       sistema_folha:       f.sistema_folha || '',
@@ -303,7 +316,7 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
     { id: 'socios',     label: '👥 Sócios',               fields: [] },
     { id: 'endereco',   label: '📍 Endereço',             fields: ['cep', 'cidade'] },
     { id: 'contatos',   label: '🔐 Acessos',              fields: ['email_contabil', 'banco'] },
-    { id: 'dp',         label: '👷 Dep. Pessoal',          fields: [] },
+    { id: 'dp',         label: '👥 Responsáveis',           fields: [] },
     { id: 'sistemas',   label: '💻 Sistemas',             fields: [] },
     { id: 'anterior',   label: '🔄 Contab. Anterior',     fields: [] },
     { id: 'servicos',   label: '📋 Serviços',             fields: [] },
@@ -697,41 +710,37 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
         </div>
       )}
 
-      {/* ── Seção: Departamento Pessoal ── */}
+      {/* ── Seção: Responsáveis ── */}
       {activeSection === 'dp' && (
         <div className="card bg-base-200 border border-base-300">
           <div className="card-body p-4 space-y-4">
-            <h3 className="font-bold text-sm">👷 Departamento Pessoal</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" className="checkbox checkbox-sm checkbox-primary" checked={form.tem_funcionarios} onChange={e => set('tem_funcionarios', e.target.checked)} />
-                <div>
-                  <span className="font-medium text-sm">Possui funcionários registrados</span>
-                  <p className="text-xs text-base-content/50">CLT, PJ ou autônomos</p>
-                </div>
-              </label>
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" className="checkbox checkbox-sm checkbox-primary" checked={form.tem_pro_labore} onChange={e => set('tem_pro_labore', e.target.checked)} />
-                <div>
-                  <span className="font-medium text-sm">Possui pró-labore</span>
-                  <p className="text-xs text-base-content/50">Remuneração dos sócios via folha</p>
-                </div>
-              </label>
-            </div>
-            {form.tem_funcionarios && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="form-control">
-                  <label className="label py-0"><span className="label-text text-xs">Qtd. Funcionários</span></label>
-                  <input className="input input-bordered input-sm" type="number" min={0} value={form.qtd_funcionarios} onChange={e => set('qtd_funcionarios', e.target.value)} />
-                </div>
-                <div className="form-control">
-                  <label className="label py-0"><span className="label-text text-xs">Regime de Contratação</span></label>
-                  <select className="select select-bordered select-sm" value={form.regime_contratacao} onChange={e => set('regime_contratacao', e.target.value)}>
-                    <option value="">Selecionar...</option>
-                    {REGIMES_CONTRATACAO.map(r => <option key={r} value={r}>{r}</option>)}
+            <h3 className="font-bold text-sm">👥 Responsáveis por Setor</h3>
+            <p className="text-xs text-base-content/50">Defina o responsável de cada área para este cliente.</p>
+            <div className="space-y-3">
+              {([
+                { key: 'resp_fiscal',   label: 'Fiscal',   emoji: '📊' },
+                { key: 'resp_pessoal',  label: 'Pessoal',  emoji: '👷' },
+                { key: 'resp_contabil', label: 'Contábil', emoji: '📒' },
+              ] as const).map(({ key, label, emoji }) => (
+                <div key={key} className="flex items-center gap-3 bg-base-100 rounded-lg px-4 py-3 border border-base-300">
+                  <span className="text-sm font-bold w-24 shrink-0">{emoji} {label}</span>
+                  <select
+                    className="select select-bordered select-sm flex-1"
+                    value={(form as any)[key]}
+                    onChange={e => set(key, e.target.value)}
+                  >
+                    <option value="">— Não definido —</option>
+                    {users.map(u => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}{u.role ? ` (${u.role})` : ''}
+                      </option>
+                    ))}
                   </select>
                 </div>
-              </div>
+              ))}
+            </div>
+            {users.length === 0 && (
+              <p className="text-xs text-warning">Nenhum usuário encontrado. Verifique a conexão com a API.</p>
             )}
           </div>
         </div>

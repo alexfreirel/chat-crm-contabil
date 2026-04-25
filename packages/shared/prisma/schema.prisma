@@ -583,6 +583,10 @@ model FichaContabil {
   qtd_funcionarios       Int?
   tem_pro_labore         Boolean   @default(false)
   regime_contratacao     String?   // CLT | PJ | AUTONOMO | MISTO
+  // Responsáveis por setor
+  resp_fiscal            String?   // userId do responsável fiscal
+  resp_pessoal           String?   // userId do responsável pessoal
+  resp_contabil          String?   // userId do responsável contábil
   // Sócios (JSON: [{nome, cpf, percentual, pro_labore}])
   socios                 Json?
   // Faturamento estimado
