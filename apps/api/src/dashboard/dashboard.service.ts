@@ -91,11 +91,11 @@ export class DashboardService {
       this.prisma.conversation.count({ where: convWhere }),
       // 3. Pending transfers
       this.prisma.conversation.count({ where: pendingTransferWhere }),
-      // 4. Lead pipeline
+      // 4. Lead pipeline — exclui PERDIDO e FINALIZADO (não estão no funil ativo)
       this.prisma.lead.groupBy({
         by: ['stage'],
         _count: true,
-        where: tw,
+        where: { ...tw, stage: { notIn: ['PERDIDO', 'FINALIZADO'] } },
       }),
       // 5. Clientes contábeis por stage
       this.prisma.clienteContabil.groupBy({
