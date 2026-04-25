@@ -6,7 +6,7 @@ import {
   Building2, Download, BarChart3, Receipt, DollarSign, Plus,
   Play, Printer, Trash2, Pencil, X, ChevronDown, Loader2,
   Search, FileText, AlertCircle, CheckCircle2, Info,
-  Sparkles, Terminal, HardDrive,
+  Sparkles, Terminal, HardDrive, ExternalLink,
 } from 'lucide-react';
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -304,6 +304,25 @@ export default function AgenteFiscalPage() {
     await fetch(`${AGENT_API}/api/empresas/todas`, { method: 'DELETE' });
     toast('Todas as empresas foram excluidas', 'info');
     fetchEmpresas();
+  };
+
+  const [openingPortalIdx, setOpeningPortalIdx] = useState<number | null>(null);
+
+  const abrirPortal = async (e: Empresa) => {
+    setOpeningPortalIdx(e.idx);
+    try {
+      const res = await fetch(`${AGENT_API}/api/empresas/${e.idx}/abrir-portal`, { method: 'POST' });
+      const data = await res.json();
+      if (data.ok) {
+        toast(`Portal sendo aberto para ${e.nome}...`, 'info');
+      } else {
+        toast(data.error || 'Erro ao abrir portal', 'err');
+      }
+    } catch {
+      toast('Agente offline — não foi possível abrir o portal', 'err');
+    } finally {
+      setOpeningPortalIdx(null);
+    }
   };
 
   // ── Períodos (armazenamento VPS) ─────────────────────────────────────
@@ -952,6 +971,14 @@ export default function AgenteFiscalPage() {
                         <td className="px-5 py-3 text-sm text-muted-foreground">{e.usuario}</td>
                         <td className="px-5 py-3 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => abrirPortal(e)}
+                              disabled={openingPortalIdx === e.idx}
+                              title="Abrir Portal SEFAZ logado"
+                              className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-muted-foreground hover:text-emerald-400 disabled:opacity-50"
+                            >
+                              {openingPortalIdx === e.idx ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
+                            </button>
                             <button onClick={() => openEditModal(e)} className="p-1.5 rounded-lg hover:bg-muted/50 text-muted-foreground hover:text-foreground"><Pencil size={14} /></button>
                             <button onClick={() => deleteEmpresa(e.idx, e.nome)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400"><Trash2 size={14} /></button>
                           </div>

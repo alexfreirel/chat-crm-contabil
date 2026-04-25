@@ -170,6 +170,18 @@ def delete_empresa(idx):
     return jsonify({"ok": True, "nome": removida["nome"]})
 
 
+@app.route("/api/empresas/<int:idx>/abrir-portal", methods=["POST"])
+def abrir_portal(idx):
+    """Abre o Portal do Contribuinte SEFAZ AL com login automático para a empresa."""
+    empresas = carregar()
+    if idx < 0 or idx >= len(empresas):
+        return jsonify({"error": "Empresa não encontrada"}), 404
+    e = empresas[idx]
+    cmd = [sys.executable, str(BASE_DIR / "abrir_portal_sefaz.py"), e["usuario"], e["senha"]]
+    task_id = _iniciar_tarefa(cmd)
+    return jsonify({"ok": True, "task_id": task_id, "nome": e["nome"]})
+
+
 # ── API: Streaming de tarefas (SSE) ────────────────────────────────────────────
 
 @app.route("/api/tarefa/<task_id>/stream")
