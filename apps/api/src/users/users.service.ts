@@ -176,7 +176,7 @@ export class UsersService {
         AND: [
           {
             OR: [
-              { role: { in: ['ESPECIALISTA', 'CONTADOR', 'ADMIN'] } },
+              { role: { in: ['ESPECIALISTA', 'CONTADOR', 'ADMIN', 'ASSISTENTE', 'OPERADOR'] } },
             ],
           },
           // Isolamento multi-tenant combinado via AND para não sobrescrever o OR acima
