@@ -6,7 +6,7 @@ import {
   Building2, Download, BarChart3, Receipt, DollarSign, Plus,
   Play, Printer, Trash2, Pencil, X, ChevronDown, Loader2,
   Search, FileText, AlertCircle, CheckCircle2, Info,
-  Sparkles, Terminal, HardDrive, ExternalLink,
+  Sparkles, Terminal, HardDrive, ExternalLink, Copy, Check,
 } from 'lucide-react';
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -307,18 +307,18 @@ export default function AgenteFiscalPage() {
   };
 
   const [portalModal, setPortalModal] = useState<Empresa | null>(null);
+  const [copiedField, setCopiedField] = useState<'usuario' | 'senha' | null>(null);
 
-  const abrirPortal = (e: Empresa) => setPortalModal(e);
+  const abrirPortal = (e: Empresa) => { setPortalModal(e); setCopiedField(null); };
 
-  const confirmarAbrirPortal = async (e: Empresa) => {
+  const copiarCampo = async (campo: 'usuario' | 'senha', valor: string) => {
+    try { await navigator.clipboard.writeText(valor); } catch { /* fallback silencioso */ }
+    setCopiedField(campo);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
+
+  const abrirPortalSefaz = () => {
     window.open('https://contribuinte.sefaz.al.gov.br', '_blank');
-    try {
-      await navigator.clipboard.writeText(e.senha);
-      toast(`Usuário: ${e.usuario} | Senha copiada — cole no portal`, 'info');
-    } catch {
-      toast(`Usuário: ${e.usuario} | Senha: ${e.senha}`, 'info');
-    }
-    setPortalModal(null);
   };
 
   // ── Períodos (armazenamento VPS) ─────────────────────────────────────
@@ -991,35 +991,65 @@ export default function AgenteFiscalPage() {
 
       {/* ── Modal Portal SEFAZ ─────────────────────────────────────────── */}
       {portalModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setPortalModal(null)}>
-          <div className="bg-card border border-border rounded-2xl w-[400px] max-w-[94vw] p-6 shadow-2xl" onClick={ev => ev.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-card border border-border rounded-2xl w-[420px] max-w-[94vw] p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-1">
               <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                <ExternalLink size={16} className="text-emerald-400" /> Abrir Portal SEFAZ
+                <ExternalLink size={16} className="text-emerald-400" /> Portal SEFAZ
               </h3>
               <button onClick={() => setPortalModal(null)} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
             </div>
-            <p className="text-xs text-muted-foreground mb-4">O portal será aberto em nova aba e a senha será copiada automaticamente para a área de transferência.</p>
+            <p className="text-xs text-muted-foreground mb-4">{portalModal.nome}</p>
+
             <div className="space-y-2 mb-5">
+              {/* Empresa */}
               <div className="flex items-center justify-between bg-muted/40 rounded-lg px-3 py-2">
-                <span className="text-xs text-muted-foreground">Empresa</span>
-                <span className="text-sm font-medium text-foreground truncate max-w-[220px]">{portalModal.nome}</span>
+                <span className="text-xs text-muted-foreground w-14">Empresa</span>
+                <span className="text-sm font-medium text-foreground truncate flex-1 text-right">{portalModal.nome}</span>
               </div>
-              <div className="flex items-center justify-between bg-muted/40 rounded-lg px-3 py-2">
-                <span className="text-xs text-muted-foreground">Usuário</span>
-                <span className="text-sm font-mono font-semibold text-foreground">{portalModal.usuario}</span>
+
+              {/* Usuário com botão copiar */}
+              <div className="flex items-center gap-2 bg-muted/40 rounded-lg px-3 py-2">
+                <span className="text-xs text-muted-foreground w-14 shrink-0">Usuário</span>
+                <span className="text-sm font-mono font-semibold text-foreground flex-1 text-right">{portalModal.usuario}</span>
+                <button
+                  onClick={() => copiarCampo('usuario', portalModal.usuario)}
+                  className={`ml-1 p-1 rounded transition-colors shrink-0 ${copiedField === 'usuario' ? 'text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
+                  title="Copiar usuário"
+                >
+                  {copiedField === 'usuario' ? <Check size={13} /> : <Copy size={13} />}
+                </button>
               </div>
-              <div className="flex items-center justify-between bg-muted/40 rounded-lg px-3 py-2">
-                <span className="text-xs text-muted-foreground">Senha</span>
-                <span className="text-sm font-mono font-semibold text-foreground tracking-widest">{'•'.repeat(Math.min(portalModal.senha.length, 10))}</span>
+
+              {/* Senha com botão copiar */}
+              <div className="flex items-center gap-2 bg-muted/40 rounded-lg px-3 py-2">
+                <span className="text-xs text-muted-foreground w-14 shrink-0">Senha</span>
+                <span className="text-sm font-mono font-semibold text-foreground flex-1 text-right tracking-widest">{'•'.repeat(Math.min(portalModal.senha.length, 10))}</span>
+                <button
+                  onClick={() => copiarCampo('senha', portalModal.senha)}
+                  className={`ml-1 p-1 rounded transition-colors shrink-0 ${copiedField === 'senha' ? 'text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
+                  title="Copiar senha"
+                >
+                  {copiedField === 'senha' ? <Check size={13} /> : <Copy size={13} />}
+                </button>
               </div>
             </div>
-            <button
-              onClick={() => confirmarAbrirPortal(portalModal)}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors"
-            >
-              <ExternalLink size={14} /> Abrir Portal e Copiar Senha
-            </button>
+
+            <div className="flex flex-col gap-2">
+              <p className="text-[11px] text-muted-foreground text-center">Copie o usuário e a senha antes de abrir o portal</p>
+              <button
+                onClick={abrirPortalSefaz}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors"
+              >
+                <ExternalLink size={14} /> Abrir Portal SEFAZ
+              </button>
+              <button
+                onClick={() => setPortalModal(null)}
+                className="w-full py-2 rounded-xl text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}
