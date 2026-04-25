@@ -1095,10 +1095,23 @@ export default function CrmPage() {
   const [loadError, setLoadError] = useState(false);
   const [exporting, setExporting] = useState(false);
 
+  // Role do usuário logado
+  const [userRole, setUserRole] = useState<string>('');
+  useEffect(() => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      setUserRole(payload?.role || '');
+    } catch {}
+  }, []);
+  const canDelete = userRole === 'ADMIN' || userRole === 'CONTADOR';
+
   // Bulk actions
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
   const [bulkTargetStage, setBulkTargetStage] = useState('');
   const [bulkMoving, setBulkMoving] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Modal de motivo de perda
   const [lossModal, setLossModal] = useState<{ leadId: string; leadName: string } | null>(null);
@@ -1402,6 +1415,24 @@ export default function CrmPage() {
       showError('Erro ao mover alguns leads. A lista foi atualizada.');
     } finally {
       setBulkMoving(false);
+    }
+  };
+
+  const bulkDeleteLeads = async () => {
+    if (selectedLeads.size === 0 || bulkDeleting) return;
+    if (!window.confirm(`Excluir permanentemente ${selectedLeads.size} lead(s) selecionado(s)? Esta ação não pode ser desfeita.`)) return;
+    setBulkDeleting(true);
+    const ids = [...selectedLeads];
+    try {
+      await Promise.all(ids.map(id => api.delete(`/leads/${id}`)));
+      setLeads(prev => prev.filter(l => !ids.includes(l.id)));
+      showSuccess(`${ids.length} lead(s) excluído(s) com sucesso.`);
+      clearSelection();
+    } catch {
+      fetchLeads(true);
+      showError('Erro ao excluir alguns leads. A lista foi atualizada.');
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -1841,6 +1872,18 @@ export default function CrmPage() {
                 {bulkMoving ? 'Movendo…' : 'Mover'}
               </button>
             </div>
+            {canDelete && (
+              <>
+                <div className="w-px h-5 bg-border" />
+                <button
+                  onClick={bulkDeleteLeads}
+                  disabled={bulkDeleting}
+                  className="px-4 py-1.5 text-[12px] rounded-lg bg-destructive text-destructive-foreground font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {bulkDeleting ? 'Excluindo…' : 'Excluir'}
+                </button>
+              </>
+            )}
             <button
               onClick={clearSelection}
               className="ml-1 w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
