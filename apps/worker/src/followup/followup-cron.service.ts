@@ -99,7 +99,7 @@ export class FollowupCronService {
     if (!apiUrl) return;
     const instanceName = convo.instance_name || process.env.EVOLUTION_INSTANCE_NAME || '';
     const msg = template.replace(/\{\{name\}\}/g, lead.name || 'cliente');
-    await axios.post(`${apiUrl}/message/sendText/${instanceName}`, { number: lead.phone, text: `*Sophia:* ${msg}` }, { headers: { 'Content-Type': 'application/json', apikey: apiKey }, timeout: 15000 });
+    await axios.post(`${apiUrl}/message/sendText/${instanceName}`, { number: lead.phone, text: `*Miguel:* ${msg}` }, { headers: { 'Content-Type': 'application/json', apikey: apiKey }, timeout: 15000 });
     await this.prisma.message.create({ data: { conversation_id: convo.id, direction: 'out', type: 'text', text: msg, external_message_id: `sys_followup_legacy_${Date.now()}`, status: 'enviado' } });
     await Promise.all([
       this.prisma.conversation.update({ where: { id: convo.id }, data: { last_message_at: new Date() } }),

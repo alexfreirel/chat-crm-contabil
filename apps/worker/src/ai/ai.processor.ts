@@ -827,7 +827,7 @@ export class AiProcessor extends WorkerHost {
                   m.direction === 'in'
                     ? 'Cliente'
                     : m.external_message_id?.startsWith('sys_')
-                      ? 'Sophia'
+                      ? 'Miguel'
                       : 'Operador';
                 const content =
                   m.text ||
@@ -986,7 +986,7 @@ export class AiProcessor extends WorkerHost {
             m.direction === 'in'
               ? 'Cliente'
               : m.external_message_id?.startsWith('sys_')
-                ? 'Sophia'
+                ? 'Miguel'
                 : 'Operador';
           // Indica tipo de mídia quando não há texto
           const content =
@@ -1022,7 +1022,7 @@ export class AiProcessor extends WorkerHost {
           if (routerApiKey) {
             // Últimas 5 mensagens para contexto do router
             const lastMsgs = chronological.slice(-5).map((m: any) => {
-              const sender = m.direction === 'in' ? 'Cliente' : 'Sophia';
+              const sender = m.direction === 'in' ? 'Cliente' : 'Miguel';
               return `${sender}: ${(m.text || '[mídia]').slice(0, 200)}`;
             });
 
@@ -1166,10 +1166,10 @@ PRIMEIRA MENSAGEM — APRESENTAÇÃO OBRIGATÓRIA:
 Se não houver nenhuma mensagem sua (assistant) no histórico, esta é a primeira mensagem do cliente.
 Nesse caso, você DEVE:
 1. Cumprimentar com "Bom dia", "Boa tarde" ou "Boa noite" conforme o horário atual ({{data_hoje}}).
-2. Apresentar-se: "Me chamo Sophia, atendente do Escritório André Lustosa Advogados."
+2. Apresentar-se: "Me chamo Miguel, atendente do escritório Lexcon Assessoria Contábil."
 3. Perguntar o nome do cliente.
 NÃO mencione que é IA. Seja breve e natural, estilo WhatsApp.
-Exemplo: "Olá! Boa tarde 😊 Me chamo Sophia, atendente do Escritório André Lustosa Advogados. Qual é o seu nome?"
+Exemplo: "Olá! Boa tarde 😊 Me chamo Miguel, atendente do escritório Lexcon Assessoria Contábil. Qual é o seu nome?"
 
 PROGRESSÃO DE ETAPAS DO FUNIL — OBRIGATÓRIA:
 Atualize o status do lead assim que a situação mudar. NÃO espere o atendimento terminar.
@@ -1416,7 +1416,7 @@ scheduling_action: Use SOMENTE quando agendar reunião.
         systemPrompt =
           MEDIA_CAPABILITIES_HEADER +
           this.injectVariables(BEHAVIOR_RULES, vars) +
-          `Você é Sophia, assistente de pré-atendimento do escritório André Lustosa Advogados.
+          `Você é Miguel, assistente de pré-atendimento do escritório Lexcon Assessoria Contábil.
 Seu objetivo é coletar informações sobre o caso do cliente para o advogado conseguir avaliar.
 
 ROTEIRO (siga na ordem, UMA pergunta por vez):
@@ -1723,8 +1723,8 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
       const instanceName =
         convo.instance_name || process.env.EVOLUTION_INSTANCE_NAME || '';
 
-      // Assinatura "Sophia:" em negrito no WhatsApp (salva sem assinatura no DB)
-      const textToSend = `*Sophia:* ${finalText}`;
+      // Assinatura "Miguel:" em negrito no WhatsApp (salva sem assinatura no DB)
+      const textToSend = `*Miguel:* ${finalText}`;
 
       // Exibe "digitando..." por 5s via endpoint dedicado da Evolution API.
       // Fire-and-forget (sem await): dispara o indicador e imediatamente começa
