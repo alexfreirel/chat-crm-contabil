@@ -109,6 +109,58 @@ export class LeadsCleanupService {
   }
 
   /**
+   * Retorna contagem e amostra de leads sem nenhum ClienteContabil vinculado.
+   */
+  async previewSemEmpresa(): Promise<{
+    total: number;
+    porStage: { stage: string; count: number }[];
+    amostra: { id: string; name: string | null; phone: string; stage: string }[];
+  }> {
+    const where = { clientes_contabil: { none: {} } };
+
+    const [total, porStageRaw, amostra] = await Promise.all([
+      this.prisma.lead.count({ where }),
+      this.prisma.lead.groupBy({
+        by: ['stage'],
+        where,
+        _count: { id: true },
+        orderBy: { _count: { id: 'desc' } },
+      }),
+      this.prisma.lead.findMany({
+        where,
+        select: { id: true, name: true, phone: true, stage: true },
+        orderBy: { created_at: 'desc' },
+        take: 20,
+      }),
+    ]);
+
+    return {
+      total,
+      porStage: porStageRaw.map((r) => ({ stage: r.stage, count: r._count.id })),
+      amostra,
+    };
+  }
+
+  /**
+   * Exclui permanentemente todos os leads sem ClienteContabil vinculado.
+   * Cascata remove conversations, messages, tasks, memory, etc. via onDelete: Cascade.
+   */
+  async deletarSemEmpresa(): Promise<{ deletados: number }> {
+    const where = { clientes_contabil: { none: {} } };
+    const ids = await this.prisma.lead.findMany({ where, select: { id: true } });
+    const idList = ids.map((l) => l.id);
+
+    this.logger.warn(`[CLEANUP] Excluindo ${idList.length} leads sem empresa...`);
+
+    const { count } = await this.prisma.lead.deleteMany({
+      where: { id: { in: idList } },
+    });
+
+    this.logger.warn(`[CLEANUP] ${count} leads excluídos.`);
+    return { deletados: count };
+  }
+
+  /**
    * Move todas as relações do lead source para o target e deleta o source.
    * Executado dentro de uma transaction para garantir atomicidade.
    */

@@ -104,4 +104,16 @@ export class LeadsController {
   deduplicatePhones() {
     return this.leadsCleanupService.deduplicatePhones();
   }
+
+  @Get('cleanup/sem-empresa/preview')
+  @Roles('ADMIN')
+  previewSemEmpresa() {
+    return this.leadsCleanupService.previewSemEmpresa();
+  }
+
+  @Delete('cleanup/sem-empresa')
+  @Roles('ADMIN')
+  deletarSemEmpresa() {
+    return this.leadsCleanupService.deletarSemEmpresa();
+  }
 }
