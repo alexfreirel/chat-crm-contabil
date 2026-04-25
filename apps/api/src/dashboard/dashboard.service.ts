@@ -97,11 +97,11 @@ export class DashboardService {
         _count: true,
         where: { ...tw, stage: { notIn: ['PERDIDO', 'FINALIZADO'] } },
       }),
-      // 5. Clientes contábeis por stage
+      // 5. Clientes contábeis ativos (exclui ENCERRADO e arquivados)
       this.prisma.clienteContabil.groupBy({
         by: ['stage'],
         _count: true,
-        where: tw,
+        where: { ...tw, archived: false, stage: { not: 'ENCERRADO' } },
       }),
       // 6. (removed — sem tracking separado)
       Promise.resolve([]),

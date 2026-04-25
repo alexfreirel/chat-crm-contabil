@@ -172,11 +172,11 @@ export function StatsGrid({ data, aggressive, funnel, responseTime, velocity }: 
       />
       <AggressiveCard
         icon={UserCheck}
-        label="Leads Convertidos"
-        value={funnel?.totalClients ?? 0}
+        label="Clientes Ativos"
+        value={data.clientesContabil?.total ?? funnel?.totalClients ?? 0}
         color="text-emerald-400 bg-emerald-500/10"
         trendColor="#34d399"
-        sub={funnel ? `de ${funnel.totalLeads} total` : undefined}
+        sub={funnel && funnel.totalLeads > 0 ? `de ${funnel.totalLeads} no funil` : undefined}
       />
 
       {/* Row 2 */}
