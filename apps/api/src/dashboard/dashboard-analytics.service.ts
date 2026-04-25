@@ -79,7 +79,7 @@ export class DashboardAnalyticsService {
     const pipeline = await this.prisma.lead.groupBy({
       by: ['stage'],
       _count: true,
-      where: { ...tw, ...dateFilter },
+      where: { ...tw, ...dateFilter, stage: { notIn: ['PERDIDO'] } },
     });
 
     const totalLeads = pipeline.reduce((s, g) => s + g._count, 0);
