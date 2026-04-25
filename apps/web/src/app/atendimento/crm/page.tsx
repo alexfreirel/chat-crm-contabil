@@ -1113,9 +1113,13 @@ export default function CrmPage() {
   const [bulkMoving, setBulkMoving] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
-  // Modal de motivo de perda
+  // Modal de motivo de perda (individual)
   const [lossModal, setLossModal] = useState<{ leadId: string; leadName: string } | null>(null);
   const [lossReason, setLossReason] = useState('');
+
+  // Modal de motivo de perda (bulk)
+  const [bulkLossModal, setBulkLossModal] = useState(false);
+  const [bulkLossReason, setBulkLossReason] = useState('');
 
   // Modal de confirmação — Finalizado
   const [finalizedModal, setFinalizedModal] = useState<{ leadId: string; leadName: string } | null>(null);
@@ -1394,9 +1398,13 @@ export default function CrmPage() {
 
   const bulkMoveLeads = async () => {
     if (!bulkTargetStage || selectedLeads.size === 0 || bulkMoving) return;
-    // Não permite bulk move para PERDIDO (exige motivo) ou FINALIZADO (exige validações)
-    if (bulkTargetStage === 'PERDIDO' || bulkTargetStage === 'FINALIZADO') {
-      showError('Mova leads para PERDIDO ou FINALIZADO individualmente (requerem validações).');
+    if (bulkTargetStage === 'FINALIZADO') {
+      showError('Mova leads para FINALIZADO individualmente.');
+      return;
+    }
+    if (bulkTargetStage === 'PERDIDO') {
+      setBulkLossReason('');
+      setBulkLossModal(true);
       return;
     }
     setBulkMoving(true);
@@ -1411,6 +1419,26 @@ export default function CrmPage() {
       clearSelection();
     } catch {
       // Rollback parcial — rebusca do servidor
+      fetchLeads(true);
+      showError('Erro ao mover alguns leads. A lista foi atualizada.');
+    } finally {
+      setBulkMoving(false);
+    }
+  };
+
+  const confirmBulkLoss = async () => {
+    if (!bulkLossReason.trim() || selectedLeads.size === 0 || bulkMoving) return;
+    setBulkLossModal(false);
+    setBulkMoving(true);
+    const ids = [...selectedLeads];
+    setLeads(prev => prev.map(l =>
+      ids.includes(l.id) ? { ...l, stage: 'PERDIDO', loss_reason: bulkLossReason.trim(), stage_entered_at: new Date().toISOString() } : l
+    ));
+    try {
+      await Promise.all(ids.map(id => api.patch(`/leads/${id}/stage`, { stage: 'PERDIDO', loss_reason: bulkLossReason.trim() })));
+      showSuccess(`${ids.length} lead(s) marcados como Perdido.`);
+      clearSelection();
+    } catch {
       fetchLeads(true);
       showError('Erro ao mover alguns leads. A lista foi atualizada.');
     } finally {
@@ -1860,7 +1888,7 @@ export default function CrmPage() {
                 className="appearance-none pl-3 pr-7 py-1.5 text-[12px] bg-accent border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40 cursor-pointer"
               >
                 <option value="">Mover para…</option>
-                {CRM_STAGES.filter(s => s.id !== 'PERDIDO' && s.id !== 'FINALIZADO').map(s => (
+                {CRM_STAGES.filter(s => s.id !== 'FINALIZADO').map(s => (
                   <option key={s.id} value={s.id}>{s.emoji} {s.label}</option>
                 ))}
               </select>
@@ -1987,6 +2015,55 @@ export default function CrmPage() {
                   className="px-4 py-2 text-sm rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 transition-colors"
                 >
                   Confirmar ✅
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de motivo de perda — Bulk */}
+        {bulkLossModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6">
+              <h3 className="text-lg font-bold text-foreground mb-1">Marcar como Perdido</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Por que os <strong>{selectedLeads.size} leads</strong> selecionados foram perdidos?
+              </p>
+              <div className="space-y-2 mb-4">
+                {LOSS_REASONS.map(reason => (
+                  <button
+                    key={reason}
+                    onClick={() => setBulkLossReason(reason)}
+                    className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition-all ${
+                      bulkLossReason === reason
+                        ? 'border-red-500 bg-red-500/10 text-red-400 font-medium'
+                        : 'border-border hover:bg-accent text-muted-foreground'
+                    }`}
+                  >
+                    {reason}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                value={LOSS_REASONS.includes(bulkLossReason) ? '' : bulkLossReason}
+                onChange={e => setBulkLossReason(e.target.value)}
+                placeholder="Outro motivo..."
+                className="w-full px-3 py-2 text-sm bg-accent/50 border border-border rounded-lg placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40 mb-4"
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setBulkLossModal(false)}
+                  className="px-4 py-2 text-sm rounded-lg border border-border text-muted-foreground hover:bg-accent transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmBulkLoss}
+                  disabled={!bulkLossReason.trim()}
+                  className="px-4 py-2 text-sm rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Confirmar Perda
                 </button>
               </div>
             </div>
