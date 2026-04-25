@@ -306,23 +306,19 @@ export default function AgenteFiscalPage() {
     fetchEmpresas();
   };
 
-  const [openingPortalIdx, setOpeningPortalIdx] = useState<number | null>(null);
+  const [portalModal, setPortalModal] = useState<Empresa | null>(null);
 
-  const abrirPortal = async (e: Empresa) => {
-    setOpeningPortalIdx(e.idx);
+  const abrirPortal = (e: Empresa) => setPortalModal(e);
+
+  const confirmarAbrirPortal = async (e: Empresa) => {
+    window.open('https://contribuinte.sefaz.al.gov.br', '_blank');
     try {
-      const res = await fetch(`${AGENT_API}/api/empresas/${e.idx}/abrir-portal`, { method: 'POST' });
-      const data = await res.json();
-      if (data.ok) {
-        toast(`Portal sendo aberto para ${e.nome}...`, 'info');
-      } else {
-        toast(data.error || 'Erro ao abrir portal', 'err');
-      }
+      await navigator.clipboard.writeText(e.senha);
+      toast(`Usuário: ${e.usuario} | Senha copiada — cole no portal`, 'info');
     } catch {
-      toast('Agente offline — não foi possível abrir o portal', 'err');
-    } finally {
-      setOpeningPortalIdx(null);
+      toast(`Usuário: ${e.usuario} | Senha: ${e.senha}`, 'info');
     }
+    setPortalModal(null);
   };
 
   // ── Períodos (armazenamento VPS) ─────────────────────────────────────
@@ -973,11 +969,10 @@ export default function AgenteFiscalPage() {
                           <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={() => abrirPortal(e)}
-                              disabled={openingPortalIdx === e.idx}
-                              title="Abrir Portal SEFAZ logado"
-                              className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-muted-foreground hover:text-emerald-400 disabled:opacity-50"
+                              title="Abrir Portal SEFAZ"
+                              className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-muted-foreground hover:text-emerald-400"
                             >
-                              {openingPortalIdx === e.idx ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
+                              <ExternalLink size={14} />
                             </button>
                             <button onClick={() => openEditModal(e)} className="p-1.5 rounded-lg hover:bg-muted/50 text-muted-foreground hover:text-foreground"><Pencil size={14} /></button>
                             <button onClick={() => deleteEmpresa(e.idx, e.nome)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400"><Trash2 size={14} /></button>
@@ -993,6 +988,41 @@ export default function AgenteFiscalPage() {
           </div>
         )}
       </div>
+
+      {/* ── Modal Portal SEFAZ ─────────────────────────────────────────── */}
+      {portalModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setPortalModal(null)}>
+          <div className="bg-card border border-border rounded-2xl w-[400px] max-w-[94vw] p-6 shadow-2xl" onClick={ev => ev.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                <ExternalLink size={16} className="text-emerald-400" /> Abrir Portal SEFAZ
+              </h3>
+              <button onClick={() => setPortalModal(null)} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">O portal será aberto em nova aba e a senha será copiada automaticamente para a área de transferência.</p>
+            <div className="space-y-2 mb-5">
+              <div className="flex items-center justify-between bg-muted/40 rounded-lg px-3 py-2">
+                <span className="text-xs text-muted-foreground">Empresa</span>
+                <span className="text-sm font-medium text-foreground truncate max-w-[220px]">{portalModal.nome}</span>
+              </div>
+              <div className="flex items-center justify-between bg-muted/40 rounded-lg px-3 py-2">
+                <span className="text-xs text-muted-foreground">Usuário</span>
+                <span className="text-sm font-mono font-semibold text-foreground">{portalModal.usuario}</span>
+              </div>
+              <div className="flex items-center justify-between bg-muted/40 rounded-lg px-3 py-2">
+                <span className="text-xs text-muted-foreground">Senha</span>
+                <span className="text-sm font-mono font-semibold text-foreground tracking-widest">{'•'.repeat(Math.min(portalModal.senha.length, 10))}</span>
+              </div>
+            </div>
+            <button
+              onClick={() => confirmarAbrirPortal(portalModal)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors"
+            >
+              <ExternalLink size={14} /> Abrir Portal e Copiar Senha
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Modal Add/Edit ─────────────────────────────────────────────── */}
       {showModal && (
