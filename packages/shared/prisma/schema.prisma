@@ -236,6 +236,10 @@ model Task {
   due_at                DateTime?
   status                String              @default("A_FAZER")
   setor                 String?
+  recorrente            Boolean             @default(false)
+  recorrencia_meses     Int?
+  recorrencia_pai_id    String?
+  recorrencia_dia       Int?
   assigned_user_id      String?
   created_at            DateTime            @default(now())
   completion_note       String?

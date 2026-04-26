@@ -148,7 +148,15 @@ export class TasksService {
     tenant_id?: string;
     created_by_id?: string;
     setor?: string;
+    recorrente?: boolean;
+    recorrencia_meses?: number;
+    recorrencia_pai_id?: string;
+    recorrencia_dia?: number;
   }) {
+    const dueDate = data.due_at ? new Date(data.due_at) : null;
+    const isInfinite = data.recorrente && !data.recorrencia_meses;
+    const isFixed = data.recorrente && data.recorrencia_meses && data.recorrencia_meses > 0;
+
     const task = await this.prisma.task.create({
       data: {
         title: data.title,
@@ -157,12 +165,45 @@ export class TasksService {
         conversation_id: data.conversation_id,
         cliente_contabil_id: data.cliente_contabil_id,
         assigned_user_id: data.assigned_user_id,
-        due_at: data.due_at ? new Date(data.due_at) : null,
+        due_at: dueDate,
         tenant_id: data.tenant_id,
         status: 'A_FAZER',
         setor: data.setor,
+        recorrente: isInfinite ? true : false,
+        recorrencia_meses: data.recorrencia_meses ?? null,
+        recorrencia_pai_id: data.recorrencia_pai_id ?? null,
+        recorrencia_dia: dueDate ? dueDate.getDate() : (data.recorrencia_dia ?? null),
       },
     });
+
+    // Para recorrência fixa: criar as cópias mensais antecipadamente
+    if (isFixed && dueDate) {
+      for (let i = 1; i < data.recorrencia_meses!; i++) {
+        const nextDue = new Date(dueDate);
+        nextDue.setMonth(nextDue.getMonth() + i);
+        // Ajusta para último dia do mês se necessário
+        const lastDay = new Date(nextDue.getFullYear(), nextDue.getMonth() + 1, 0).getDate();
+        if (nextDue.getDate() > lastDay) nextDue.setDate(lastDay);
+
+        await this.prisma.task.create({
+          data: {
+            title: data.title,
+            description: data.description,
+            lead_id: data.lead_id,
+            conversation_id: data.conversation_id,
+            cliente_contabil_id: data.cliente_contabil_id,
+            assigned_user_id: data.assigned_user_id,
+            due_at: nextDue,
+            tenant_id: data.tenant_id,
+            status: 'A_FAZER',
+            setor: data.setor,
+            recorrente: false,
+            recorrencia_pai_id: task.id,
+            recorrencia_dia: dueDate.getDate(),
+          },
+        });
+      }
+    }
 
     // Sync to calendar if has due_at
     if (task.due_at && data.created_by_id) {

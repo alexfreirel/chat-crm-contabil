@@ -113,6 +113,9 @@ export function TasksPanel() {
   const [newDue, setNewDue] = useState('');
   const [newAssigned, setNewAssigned] = useState('');
   const [newSetor, setNewSetor] = useState('');
+  const [newRecorrente, setNewRecorrente] = useState(false);
+  const [newRecorrenciaTipo, setNewRecorrenciaTipo] = useState<'meses' | 'infinito'>('meses');
+  const [newRecorrenciaMeses, setNewRecorrenciaMeses] = useState(12);
   const [creating, setCreating] = useState(false);
 
   // ── Produtividade (contadores gerais, sem filtro)
@@ -254,9 +257,17 @@ export function TasksPanel() {
         due_at: newDue ? new Date(newDue).toISOString() : undefined,
         assigned_user_id: newAssigned || undefined,
         setor: newSetor || undefined,
+        recorrente: newRecorrente || undefined,
+        recorrencia_meses: newRecorrente && newRecorrenciaTipo === 'meses' ? newRecorrenciaMeses : undefined,
       });
-      showSuccess('Tarefa criada');
+      const msg = newRecorrente
+        ? newRecorrenciaTipo === 'infinito'
+          ? 'Tarefa recorrente criada (nova cópia todo mês)'
+          : `Tarefa criada com ${newRecorrenciaMeses} repetições mensais`
+        : 'Tarefa criada';
+      showSuccess(msg);
       setNewTitle(''); setNewDesc(''); setNewDue(''); setNewAssigned(''); setNewSetor('');
+      setNewRecorrente(false); setNewRecorrenciaTipo('meses'); setNewRecorrenciaMeses(12);
       setShowNew(false);
       fetchTasks(1);
       fetchStats();
@@ -554,7 +565,7 @@ export function TasksPanel() {
                   );
                 })()}
               </div>
-              <button onClick={() => { setShowNew(false); setNewSetor(''); }} className="px-3 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-accent transition-colors">
+              <button onClick={() => { setShowNew(false); setNewSetor(''); setNewRecorrente(false); }} className="px-3 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-accent transition-colors">
                 <X size={14} />
               </button>
               <button
@@ -565,6 +576,39 @@ export function TasksPanel() {
                 {creating ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
                 Criar
               </button>
+            </div>
+            {/* Repetição mensal */}
+            <div className="flex items-center gap-3 flex-wrap pt-1">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded accent-primary"
+                  checked={newRecorrente}
+                  onChange={e => setNewRecorrente(e.target.checked)}
+                />
+                <span className="text-xs text-muted-foreground font-medium">Repetir mensalmente</span>
+              </label>
+              {newRecorrente && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input type="radio" name="recorrencia-panel" className="accent-primary" checked={newRecorrenciaTipo === 'meses'} onChange={() => setNewRecorrenciaTipo('meses')} />
+                    <span className="text-xs text-foreground">Por</span>
+                    <input
+                      type="number"
+                      min={1} max={120}
+                      className="w-16 px-2 py-1 rounded-lg border border-border bg-background text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30"
+                      value={newRecorrenciaMeses}
+                      onChange={e => setNewRecorrenciaMeses(Math.max(1, Math.min(120, Number(e.target.value))))}
+                      disabled={newRecorrenciaTipo !== 'meses'}
+                    />
+                    <span className="text-xs text-foreground">meses</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input type="radio" name="recorrencia-panel" className="accent-primary" checked={newRecorrenciaTipo === 'infinito'} onChange={() => setNewRecorrenciaTipo('infinito')} />
+                    <span className="text-xs text-foreground">Infinitamente</span>
+                  </label>
+                </div>
+              )}
             </div>
           </div>
         </div>

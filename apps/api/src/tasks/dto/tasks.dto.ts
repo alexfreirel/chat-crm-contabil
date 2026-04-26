@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsDateString, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsDateString, IsIn, IsBoolean, IsInt, Min, Max } from 'class-validator';
 
 export class CreateTaskDto {
   @IsString()
@@ -24,6 +24,12 @@ export class CreateTaskDto {
 
   @IsOptional() @IsIn(['FISCAL', 'PESSOAL', 'CONTABIL'])
   setor?: string;
+
+  @IsOptional() @IsBoolean()
+  recorrente?: boolean;
+
+  @IsOptional() @IsInt() @Min(1) @Max(120)
+  recorrencia_meses?: number;
 }
 
 export class UpdateTaskDto {
