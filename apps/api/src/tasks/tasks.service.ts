@@ -183,9 +183,11 @@ export class TasksService {
       },
     });
 
-    // Para recorrência fixa: criar as cópias mensais antecipadamente
-    if (isFixed && dueDate) {
-      for (let i = 1; i < data.recorrencia_meses!; i++) {
+    // Para recorrência fixa OU infinita: criar cópias mensais antecipadas
+    // Infinita pré-cria 12 meses; o cron do worker continua gerando os meses seguintes
+    const copiesToCreate = isFixed ? data.recorrencia_meses! - 1 : isInfinite ? 12 : 0;
+    if (copiesToCreate > 0 && dueDate) {
+      for (let i = 1; i <= copiesToCreate; i++) {
         const nextDue = new Date(dueDate);
         nextDue.setMonth(nextDue.getMonth() + i);
         // Ajusta para último dia do mês se necessário
