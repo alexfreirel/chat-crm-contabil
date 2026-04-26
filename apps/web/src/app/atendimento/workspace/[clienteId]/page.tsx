@@ -43,6 +43,7 @@ export default function WorkspacePage() {
   const [activeTab, setActiveTab] = useState<TabId>('ficha');
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [archiveReason, setArchiveReason] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   useEffect(() => { if (clienteId) fetchData(); }, [clienteId]);
 
@@ -64,6 +65,14 @@ export default function WorkspacePage() {
       body: JSON.stringify({ stage }),
     });
     fetchData();
+  }
+
+  async function handleDelete() {
+    await fetch(`${API}/clientes-contabil/${clienteId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+    });
+    router.push('/atendimento/clientes');
   }
 
   async function handleArchive() {
@@ -139,6 +148,9 @@ export default function WorkspacePage() {
               Encerrar
             </button>
           )}
+          <button onClick={() => setShowDeleteModal(true)} className="btn btn-sm btn-error">
+            Excluir
+          </button>
         </div>
       </div>
 
@@ -169,6 +181,21 @@ export default function WorkspacePage() {
         {activeTab === 'timeline' && <TabTimeline clienteId={clienteId} cliente={data} />}
         {activeTab === 'comunicacoes' && <TabComunicacoes conversationId={data.conversation_id} />}
       </div>
+
+      {/* Modal de exclusão */}
+      {showDeleteModal && (
+        <div className="modal modal-open">
+          <div className="modal-box">
+            <h3 className="font-bold text-lg mb-2">Excluir cliente</h3>
+            <p className="text-sm text-base-content/70">Tem certeza que deseja excluir este cliente? Esta ação não pode ser desfeita.</p>
+            <div className="modal-action">
+              <button onClick={() => setShowDeleteModal(false)} className="btn btn-ghost">Cancelar</button>
+              <button onClick={handleDelete} className="btn btn-error">Excluir</button>
+            </div>
+          </div>
+          <div className="modal-backdrop" onClick={() => setShowDeleteModal(false)} />
+        </div>
+      )}
 
       {/* Modal de encerramento */}
       {showArchiveModal && (
