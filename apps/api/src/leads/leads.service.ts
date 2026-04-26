@@ -117,6 +117,7 @@ export class LeadsService {
           messages: { orderBy: { created_at: 'desc' as const }, take: 1 },
           assigned_user: { select: { id: true, name: true } },
           assigned_accountant: { select: { id: true, name: true } },
+          inbox: { select: { id: true, name: true } },
         },
       },
       calendar_events: {

@@ -33,6 +33,7 @@ interface CrmLead {
     messages: Array<{ text: string | null; direction: string; created_at: string }>;
     assigned_user: { id: string; name: string } | null;
     assigned_lawyer: { id: string; name: string } | null;
+    inbox: { id: string; name: string } | null;
   }>;
   calendar_events?: Array<{
     id: string;
@@ -80,9 +81,8 @@ const NEXT_STEP_MAP: Record<string, { label: string; color: string }> = {
 // ─── Lead Score ─────────────────────────────────────────────────────────────
 
 const STAGE_BASE_SCORES: Record<string, number> = {
-  NOVO: 10, INICIAL: 15, EM_ATENDIMENTO: 25, QUALIFICANDO: 35, QUALIFICADO: 40,
-  AGUARDANDO_FORM: 50, REUNIAO_AGENDADA: 65, AGUARDANDO_DOCS: 70,
-  AGUARDANDO_PROC: 80, FINALIZADO: 100, PERDIDO: 0,
+  NOVO: 10, INICIAL: 15, QUALIFICANDO: 35, DOCUMENTOS: 60,
+  EM_ATENDIMENTO: 80, FINALIZADO: 100, PERDIDO: 0,
 };
 
 function computeLeadScore(lead: CrmLead): number {
@@ -151,15 +151,7 @@ function getScoreFactors(lead: CrmLead): string[] {
   return factors;
 }
 
-function validateStageTransition(lead: CrmLead, newStage: string): string | null {
-  const conv = lead.conversations?.[0];
-  if (newStage === 'REUNIAO_AGENDADA' && !conv?.legal_area) {
-    return 'Defina a área contábil antes de agendar reunião.';
-  }
-  if (newStage === 'FINALIZADO') {
-    if (!conv?.legal_area) return 'Defina a área contábil antes de finalizar.';
-    if (!conv?.assigned_lawyer_id) return 'Atribua um responsável antes de finalizar.';
-  }
+function validateStageTransition(_lead: CrmLead, _newStage: string): string | null {
   return null;
 }
 
@@ -210,6 +202,7 @@ function LeadCard({
   const score = computeLeadScore(lead);
   const isNew = (Date.now() - new Date(lead.created_at).getTime()) < 3_600_000;
   const agingBorder = agingBorderClass(days, normalizedStage);
+  const inboxName = conv?.inbox?.name ?? null;
   const upcomingEvent = lead.calendar_events?.find(e => new Date(e.start_at).getTime() >= Date.now() - 3600000);
   const upcomingDays = upcomingEvent ? eventDaysUntil(upcomingEvent.start_at) : null;
 
@@ -292,13 +285,6 @@ function LeadCard({
                 <MessageSquare size={12} />
                 <span>Enviar mensagem</span>
               </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); onStageChange('REUNIAO_AGENDADA'); setShowMenu(false); }}
-                className="w-full text-left px-3 py-1.5 hover:bg-accent transition-colors flex items-center gap-2 text-muted-foreground"
-              >
-                <Calendar size={12} />
-                <span>Agendar reunião</span>
-              </button>
               <div className="border-t border-border my-1" />
               <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Mover para etapa</p>
               {CRM_STAGES.map(s => (
@@ -324,9 +310,19 @@ function LeadCard({
             NOVO
           </span>
         )}
+        {/* Badge de setor — mostra qual setor atende este lead */}
+        {inboxName ? (
+          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-500/12 text-amber-400 text-[9px] font-bold border border-amber-500/20">
+            🏢 {inboxName}
+          </span>
+        ) : (normalizedStage === 'QUALIFICANDO' && (
+          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gray-500/12 text-gray-400 text-[9px] font-bold border border-gray-500/20">
+            ❓ A qualificar
+          </span>
+        ))}
         {legalArea && (
           <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-violet-500/12 text-violet-400 text-[9px] font-bold border border-violet-500/20">
-            ⚖️ {legalArea}
+            📊 {legalArea}
           </span>
         )}
         {lawyerName && (
@@ -411,18 +407,6 @@ function LeadCard({
           <MessageSquare size={11} />
           Chat
         </button>
-
-        {/* Reunião rápida */}
-        {normalizedStage !== 'REUNIAO_AGENDADA' && normalizedStage !== 'FINALIZADO' && normalizedStage !== 'PERDIDO' && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onStageChange('REUNIAO_AGENDADA'); }}
-            title="Agendar reunião"
-            className="flex-1 flex items-center justify-center gap-1 py-1 rounded-lg bg-accent hover:bg-violet-500/15 hover:text-violet-400 text-muted-foreground text-[10px] font-semibold transition-colors"
-          >
-            <Calendar size={11} />
-            Reunião
-          </button>
-        )}
 
         {/* Avançar etapa */}
         {nextStageInfo && normalizedStage !== 'FINALIZADO' && (
@@ -939,10 +923,10 @@ function CrmAnalyticsPanel({ leads, onClose }: { leads: CrmLead[]; onClose: () =
 
   // Funil simplificado
   const funnelStages = [
-    { label: 'Entrada', count: leads.filter(l => ['INICIAL', 'NOVO'].includes(normalizeStage(l.stage))).length, color: '#6b7280' },
+    { label: 'Inicial', count: leads.filter(l => ['INICIAL', 'NOVO'].includes(normalizeStage(l.stage))).length, color: '#6b7280' },
     { label: 'Qualificando', count: leads.filter(l => normalizeStage(l.stage) === 'QUALIFICANDO').length, color: '#3b82f6' },
-    { label: 'Formulário', count: leads.filter(l => normalizeStage(l.stage) === 'AGUARDANDO_FORM').length, color: '#f59e0b' },
-    { label: 'Reunião', count: leads.filter(l => normalizeStage(l.stage) === 'REUNIAO_AGENDADA').length, color: '#8b5cf6' },
+    { label: 'Documentos', count: leads.filter(l => normalizeStage(l.stage) === 'DOCUMENTOS').length, color: '#f97316' },
+    { label: 'Em Atendimento', count: leads.filter(l => normalizeStage(l.stage) === 'EM_ATENDIMENTO').length, color: '#10b981' },
     { label: 'Finalizado', count: finalized.length, color: '#10b981' },
   ];
   const funnelMax = Math.max(...funnelStages.map(s => s.count), 1);
@@ -1770,7 +1754,7 @@ export default function CrmPage() {
             onMouseUp={handleBoardMouseUp}
             onMouseLeave={handleBoardMouseUp}
           >
-            <div className="flex h-full gap-4" style={{ minWidth: `${(CRM_STAGES.length - 2) * 272}px` }}>
+            <div className="flex h-full gap-4" style={{ minWidth: `${(CRM_STAGES.filter(s => s.id !== 'PERDIDO' && s.id !== 'FINALIZADO').length) * 272}px` }}>
               {CRM_STAGES.filter(s => s.id !== 'PERDIDO' && s.id !== 'FINALIZADO').map(stage => {
                 const stageLeads = getStageLeads(stage.id);
                 const isTerminal = false;
