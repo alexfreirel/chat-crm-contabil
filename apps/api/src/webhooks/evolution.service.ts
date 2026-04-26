@@ -94,13 +94,14 @@ export class EvolutionService {
     this.logger.log(`[WEBHOOK] messages.upsert received from ${instanceName ?? 'unknown'}`);
     this.logger.debug(`Payload: ${summarizePayload(payload)}`);
     const dataPayload = payload?.data as any;
-    const inbox = instanceName ? await this.inboxesService.findByInstanceName(instanceName) : null;
-    
-    if (!inbox) {
+    const instance = instanceName ? await this.inboxesService.findByInstanceName(instanceName) : null;
+
+    if (!instance || !instance.inboxes?.length) {
       this.logger.warn(`[WEBHOOK] No inbox found for instanceName: ${instanceName}. Message might be lost or assigned to no tenant.`);
     }
 
-    const inboxId = inbox?.inbox_id || null;
+    // Usa o primeiro setor vinculado como padrão; o roteamento por IA determinará o setor correto
+    const inboxId = instance?.inboxes?.[0]?.id || null;
 
     const messages = Array.isArray(dataPayload?.messages)
       ? (dataPayload.messages as any[])
@@ -674,8 +675,8 @@ export class EvolutionService {
     this.logger.debug(`Recebendo webhook de chats: ${summarizePayload(payload)}`);
     const dataPayload = payload?.data as any;
     const instanceName = payload?.instance || payload?.instanceId;
-    const inbox = instanceName ? await this.inboxesService.findByInstanceName(instanceName) : null;
-    const inboxId = inbox?.inbox_id || null;
+    const instance = instanceName ? await this.inboxesService.findByInstanceName(instanceName) : null;
+    const inboxId = instance?.inboxes?.[0]?.id || null;
 
     const chats = Array.isArray(dataPayload)
       ? (dataPayload as any[])
@@ -709,7 +710,7 @@ export class EvolutionService {
         name: nameToSet,
         ...(profilePicUrl ? { profile_picture_url: profilePicUrl } : {}),
         origin: 'whatsapp',
-        tenant: inbox?.tenant_id ? { connect: { id: inbox.tenant_id } } : undefined,
+        tenant: instance?.tenant_id ? { connect: { id: instance.tenant_id } } : undefined,
       });
 
       // 2. Find or Create Conversation

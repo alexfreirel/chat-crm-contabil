@@ -268,19 +268,29 @@ export default function InboxesSettingsPage() {
                                 <Link size={14} />
                                 {inst.name}
                                 <span className="opacity-50 font-normal">({inst.type})</span>
+                                <button
+                                  onClick={async () => {
+                                    await api.delete(`/inboxes/${inbox.id}/instances/${inst.name}`);
+                                    fetchData();
+                                  }}
+                                  className="ml-1 hover:text-red-500 transition-colors"
+                                  title="Desvincular instância"
+                                >
+                                  ×
+                                </button>
                               </div>
                             ))}
-                            
-                            <select 
+
+                            <select
                               onChange={(e) => {
-                                if(e.target.value) handleAddInstanceToInbox(inbox.id, e.target.value);
-                                e.target.value = "";
+                                if (e.target.value) handleAddInstanceToInbox(inbox.id, e.target.value);
+                                e.target.value = '';
                               }}
                               className="bg-muted border border-border hover:border-primary/30 rounded-xl px-3 py-1.5 text-xs font-bold transition-all cursor-pointer outline-none"
                             >
                               <option value="">+ Vincular WhatsApp</option>
                               {whatsappInstances
-                                .filter(wi => !inboxes.some(i => i.instances?.some(inst => inst.name === wi.instanceName)))
+                                .filter(wi => !inbox.instances?.some(inst => inst.name === wi.instanceName))
                                 .map(wi => (
                                   <option key={wi.instanceName} value={wi.instanceName}>{wi.instanceName}</option>
                                 ))

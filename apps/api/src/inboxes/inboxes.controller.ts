@@ -69,4 +69,13 @@ export class InboxesController {
   ) {
     return this.inboxesService.addInstance(id, data.name, data.type);
   }
+
+  @Delete(':id/instances/:instanceName')
+  @Roles('ADMIN')
+  async removeInstance(
+    @Param('id') id: string,
+    @Param('instanceName') instanceName: string,
+  ) {
+    return this.inboxesService.removeInstance(id, instanceName);
+  }
 }

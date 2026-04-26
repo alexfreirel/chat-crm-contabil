@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -120,18 +120,10 @@ export class InboxesService {
   }
 
   async remove(id: string) {
-    // Desassociar conversas e instancias antes de deletar
-    // (onDelete: SetNull no schema cuida disso, mas garantimos manualmente)
-    await Promise.all([
-      (this.prisma as any).conversation.updateMany({
-        where: { inbox_id: id },
-        data: { inbox_id: null },
-      }),
-      (this.prisma as any).instance.updateMany({
-        where: { inbox_id: id },
-        data: { inbox_id: null },
-      }),
-    ]);
+    await (this.prisma as any).conversation.updateMany({
+      where: { inbox_id: id },
+      data: { inbox_id: null },
+    });
     return this.inbox.delete({ where: { id } });
   }
 
@@ -158,40 +150,35 @@ export class InboxesService {
   // --- Gestão de Instâncias ---
 
   async addInstance(inboxId: string, instanceName: string, type: 'whatsapp' | 'instagram') {
-    // Verifica se a instância já está vinculada a outro inbox
-    const existing = await this.instance.findUnique({ where: { name: instanceName } });
-    if (existing?.inbox_id && existing.inbox_id !== inboxId) {
-      const otherInbox = await this.inbox.findUnique({ where: { id: existing.inbox_id }, select: { name: true } });
-      throw new ConflictException(
-        `A instância "${instanceName}" já está vinculada ao setor "${otherInbox?.name ?? existing.inbox_id}". Remova-a de lá primeiro.`
-      );
-    }
-
-    // 1. Vincula a instância ao setor
+    // Cria ou atualiza a instância e conecta ao setor (many-to-many)
     const instance = await this.instance.upsert({
       where: { name: instanceName },
-      update: { inbox_id: inboxId, type },
+      update: {
+        type,
+        inboxes: { connect: { id: inboxId } },
+      },
       create: {
         name: instanceName,
         type,
-        inbox_id: inboxId
-      }
-    });
-
-    // 2. MIGRACAO: Vincula todas as conversas existentes desta instancia ao novo setor
-    // Isso garante que contatos antigos "apareçam" no novo setor imediatamente
-    await (this.prisma as any).conversation.updateMany({
-      where: { instance_name: instanceName },
-      data: { inbox_id: inboxId }
+        inboxes: { connect: { id: inboxId } },
+      },
+      include: { inboxes: true },
     });
 
     return instance;
   }
 
+  async removeInstance(inboxId: string, instanceName: string) {
+    return this.instance.update({
+      where: { name: instanceName },
+      data: { inboxes: { disconnect: { id: inboxId } } },
+    });
+  }
+
   async findByInstanceName(instanceName: string) {
     return this.instance.findUnique({
       where: { name: instanceName },
-      include: { inbox: true }
+      include: { inboxes: true },
     });
   }
 

@@ -406,7 +406,7 @@ model Inbox {
   tenant        Tenant?        @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
   users         User[]
   conversations Conversation[]
-  instances     Instance[]
+  instances     Instance[]     @relation("InboxInstances")
 
   @@index([tenant_id])
 }
@@ -414,17 +414,15 @@ model Inbox {
 model Instance {
   id         String   @id @default(uuid())
   tenant_id  String?
-  inbox_id   String?
   name       String   @unique
   type       String   @default("whatsapp")
   connection String   @default("evolution")
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
   tenant     Tenant?  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-  inbox      Inbox?   @relation(fields: [inbox_id], references: [id], onDelete: SetNull)
+  inboxes    Inbox[]  @relation("InboxInstances")
 
   @@index([tenant_id])
-  @@index([inbox_id])
 }
 
 model TransferAudio {
