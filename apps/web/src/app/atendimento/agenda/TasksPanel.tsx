@@ -800,7 +800,12 @@ export function TasksPanel() {
           taskId={drawerTaskId}
           onClose={() => setDrawerTaskId(null)}
           onStatusChange={(id, status) => {
-            setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+            if (status === 'DELETED') {
+              setTasks(prev => prev.filter(t => t.id !== id));
+              setTotal(prev => Math.max(0, prev - 1));
+            } else {
+              setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+            }
             fetchStats();
           }}
         />

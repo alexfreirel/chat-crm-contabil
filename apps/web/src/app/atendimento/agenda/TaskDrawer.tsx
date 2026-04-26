@@ -129,9 +129,7 @@ export function TaskDrawer({
     if (!task || !confirm('Excluir esta tarefa permanentemente?')) return;
     setDeleting(true);
     try {
-      await api.delete(`/calendar/events/${task.id}`).catch(() =>
-        api.delete(`/tasks/${task.id}`)
-      );
+      await api.delete(`/tasks/${task.id}`);
       showSuccess('Tarefa excluída');
       onClose();
       onStatusChange?.(task.id, 'DELETED');
