@@ -55,31 +55,15 @@ jobs:
           tags: lexconassessoria/chat-crm-contabil-${{ matrix.suffix }}:latest
           no-cache: true
 
-  # ─── Deploy automático via Portainer Webhook ─────────────────────────────
-  deploy:
-    name: Deploy via Portainer
+  # ─── Notificação pós-deploy ───────────────────────────────────────────────
+  notify:
+    name: Notificar deploy concluído
     runs-on: ubuntu-latest
     needs: build-and-push
 
     steps:
-      - name: ⚠️ Verificar webhook do Portainer
-        id: check
+      - name: ✅ Imagens publicadas no Docker Hub
         run: |
-          if [ -z "${{ secrets.PORTAINER_WEBHOOK }}" ]; then
-            echo "skip=true" >> $GITHUB_OUTPUT
-            echo "::warning::Secret PORTAINER_WEBHOOK não configurado — deploy ignorado. Configure em Settings > Secrets > Actions."
-          else
-            echo "skip=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: 🚀 Disparar redeploy no Portainer
-        if: steps.check.outputs.skip == 'false'
-        run: |
-          echo "📦 Notificando Portainer para puxar novas imagens..."
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${{ secrets.PORTAINER_WEBHOOK }}")
-          if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 300 ]; then
-            echo "✅ Portainer notificado com sucesso! (HTTP $STATUS)"
-          else
-            echo "⚠️ Portainer retornou HTTP $STATUS — verifique o webhook."
-            exit 1
-          fi
+          echo "✅ Build e push concluídos com sucesso!"
+          echo "📦 Imagens disponíveis no Docker Hub com a tag :latest"
+          echo "👉 Para aplicar no servidor: acesse o Portainer e clique em 'Atualizar a pilha'"
