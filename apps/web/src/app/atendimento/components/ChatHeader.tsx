@@ -6,10 +6,7 @@ import { CRM_STAGES, findStage, normalizeStage } from '@/lib/crmStages';
 import type { ConversationSummary, ActiveTask } from '../types';
 import { ContactAvatar } from './ContactAvatar';
 
-const LEGAL_AREAS = [
-  'Trabalhista', 'Consumidor', 'Família', 'Previdenciário',
-  'Penal', 'Civil', 'Empresarial', 'Imobiliário', 'Outro',
-];
+const DEFAULT_AREAS = ['Fiscal', 'Pessoal', 'Contábil', 'Formalização', 'Outro'];
 
 function getInitial(name?: string) {
   return (name || 'V')[0].toUpperCase();
@@ -67,6 +64,7 @@ export interface ChatHeaderProps {
   onCreateTask: () => void;
   onSyncHistory?: () => void;
   contactPresence?: string;
+  sectors?: string[];
   // Task management
   activeTask?: ActiveTask | null;
   onCompleteTask?: (note: string) => void;
@@ -111,6 +109,7 @@ export function ChatHeader({
   onCreateTask,
   onSyncHistory,
   contactPresence,
+  sectors,
   activeTask,
   onCompleteTask,
   onPostponeTask,
@@ -248,22 +247,22 @@ export function ChatHeader({
             <div className="relative" ref={legalAreaDropdownRef}>
               <button
                 onClick={(e) => { e.stopPropagation(); onToggleLegalArea(); }}
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors hover:opacity-80 ${selected.legalArea ? 'bg-violet-500/15 text-violet-400 border-violet-500/20 hover:bg-violet-500/25' : 'bg-muted/50 text-muted-foreground border-border hover:bg-muted'}`}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors hover:opacity-80 ${selected.legalArea ? 'bg-amber-500/15 text-amber-400 border-amber-500/20 hover:bg-amber-500/25' : 'bg-muted/50 text-muted-foreground border-border hover:bg-muted'}`}
                 title="Clique para definir ou alterar a área de atendimento"
               >
-                ⚖️ {selected.legalArea || 'Definir área'}
+                🏢 {selected.legalArea || 'Definir área'}
                 <ChevronDown size={9} className="ml-0.5 opacity-70" />
               </button>
               {showLegalAreaDropdown && (
                 <div className="absolute left-0 top-full mt-1 bg-card border border-border rounded-xl shadow-xl w-44 py-1 text-[12px] z-[200]">
                   <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Área de Atendimento</p>
-                  {LEGAL_AREAS.map(area => (
+                  {(sectors?.length ? sectors : DEFAULT_AREAS).map(area => (
                     <button
                       key={area}
                       onClick={(e) => { e.stopPropagation(); onChangeLegalArea(area); }}
-                      className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2 ${selected.legalArea === area ? 'text-violet-400 font-semibold' : 'text-foreground'}`}
+                      className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2 ${selected.legalArea === area ? 'text-amber-400 font-semibold' : 'text-foreground'}`}
                     >
-                      ⚖️ {area}
+                      🏢 {area}
                     </button>
                   ))}
                   {selected.legalArea && (

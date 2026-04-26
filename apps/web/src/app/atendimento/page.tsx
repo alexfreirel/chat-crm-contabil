@@ -2283,6 +2283,7 @@ export default function Dashboard() {
               onKeepInInbox={handleKeepInInbox}
               onToggleStage={() => setShowStageDropdown(v => !v)}
               onChangeStage={handleChangeLeadStage}
+              sectors={userInboxes.map((i: any) => i.name)}
               onSendFormLink={handleSendFormLink}
 
               onShowDetails={() => setShowDetailsPanel(true)}
