@@ -276,7 +276,7 @@ export class EvolutionService {
               external_id: `${phone}@s.whatsapp.net`,
               inbox_id: inboxId,
               instance_name: instanceName,
-              tenant_id: inbox?.tenant_id || lead.tenant_id,
+              tenant_id: instance?.tenant_id || lead.tenant_id,
             },
           });
         }
@@ -737,7 +737,7 @@ export class EvolutionService {
               last_message_at: new Date(),
               inbox_id: inboxId || closedConv.inbox_id,
               instance_name: instanceName,
-              tenant_id: inbox?.tenant_id || closedConv.tenant_id || lead.tenant_id,
+              tenant_id: instance?.tenant_id || closedConv.tenant_id || lead.tenant_id,
             },
           });
           this.logger.log(`[REOPEN] Conversa ${conv.id} reaberta via chat webhook: ${phone}`);
@@ -766,10 +766,10 @@ export class EvolutionService {
               external_id: remoteJid,
               inbox_id: inboxId,
               instance_name: instanceName,
-              tenant_id: inbox?.tenant_id || lead.tenant_id,
+              tenant_id: instance?.tenant_id || lead.tenant_id,
             },
           });
-          this.logger.log(`Nova conversa criada via chat webhook: ${phone} no setor ${inbox?.inbox?.name || 'Nenhum'}`);
+          this.logger.log(`Nova conversa criada via chat webhook: ${phone} no setor ${instance?.inboxes?.[0]?.name || 'Nenhum'}`);
         }
       } else {
         // Só atualiza inbox_id se tiver valor — evita apagar o setor da conversa
@@ -778,7 +778,7 @@ export class EvolutionService {
           data: {
             ...(inboxId ? { inbox_id: inboxId } : {}),
             instance_name: instanceName,
-            tenant_id: inbox?.tenant_id || conv.tenant_id || lead.tenant_id
+            tenant_id: instance?.tenant_id || conv.tenant_id || lead.tenant_id
           }
         });
       }
