@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { 
-  Building2, 
-  Plus, 
-  Trash2, 
-  UserPlus, 
-  Users, 
+import {
+  Building2,
+  Plus,
+  Trash2,
+  UserPlus,
+  Users,
   Settings2,
   CheckCircle2,
   RefreshCw,
@@ -15,7 +15,10 @@ import {
   ChevronRight,
   ShieldCheck,
   Zap,
-  Layout
+  Layout,
+  Pencil,
+  X,
+  Check,
 } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -49,6 +52,8 @@ export default function InboxesSettingsPage() {
   const [showAddInbox, setShowAddInbox] = useState(false);
   const [newInboxName, setNewInboxName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [editingInboxId, setEditingInboxId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
 
   const fetchData = async () => {
     setLoading(true);
@@ -84,6 +89,17 @@ export default function InboxesSettingsPage() {
       alert('Erro ao criar setor');
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleUpdateInbox = async (id: string) => {
+    if (!editingName.trim()) return;
+    try {
+      await api.put(`/inboxes/${id}`, { name: editingName.trim() });
+      setEditingInboxId(null);
+      fetchData();
+    } catch {
+      alert('Erro ao renomear setor');
     }
   };
 
@@ -189,24 +205,55 @@ export default function InboxesSettingsPage() {
                     {/* Infos Básicas */}
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-2xl bg-primary/5 text-primary flex items-center justify-center">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <div className="w-12 h-12 shrink-0 rounded-2xl bg-primary/5 text-primary flex items-center justify-center">
                             <Building2 size={24} />
                           </div>
-                          <div>
-                            <h3 className="text-2xl font-black text-foreground">{inbox.name}</h3>
+                          <div className="flex-1 min-w-0">
+                            {editingInboxId === inbox.id ? (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  autoFocus
+                                  value={editingName}
+                                  onChange={e => setEditingName(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') handleUpdateInbox(inbox.id);
+                                    if (e.key === 'Escape') setEditingInboxId(null);
+                                  }}
+                                  className="text-xl font-black bg-muted border border-primary/40 rounded-lg px-3 py-1 outline-none focus:ring-2 focus:ring-primary/30 w-56"
+                                />
+                                <button onClick={() => handleUpdateInbox(inbox.id)} className="p-1.5 rounded-lg bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-colors">
+                                  <Check size={15} />
+                                </button>
+                                <button onClick={() => setEditingInboxId(null)} className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors">
+                                  <X size={15} />
+                                </button>
+                              </div>
+                            ) : (
+                              <h3 className="text-2xl font-black text-foreground">{inbox.name}</h3>
+                            )}
                             <div className="flex items-center gap-4 text-xs font-bold text-muted-foreground uppercase tracking-wider mt-1">
                               <span className="flex items-center gap-1"><Users size={12} /> {inbox._count.users} Operadores</span>
                               <span className="flex items-center gap-1"><MessageSquare size={12} /> {inbox._count.conversations} Chats</span>
                             </div>
                           </div>
                         </div>
-                        <button 
-                          onClick={() => handleDeleteInbox(inbox.id)}
-                          className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                        >
-                          <Trash2 size={18} />
-                        </button>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all shrink-0">
+                          <button
+                            onClick={() => { setEditingInboxId(inbox.id); setEditingName(inbox.name); }}
+                            className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-all"
+                            title="Renomear setor"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteInbox(inbox.id)}
+                            className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                            title="Excluir setor"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
