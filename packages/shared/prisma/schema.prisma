@@ -235,6 +235,7 @@ model Task {
   description           String?
   due_at                DateTime?
   status                String              @default("A_FAZER")
+  setor                 String?
   assigned_user_id      String?
   created_at            DateTime            @default(now())
   completion_note       String?

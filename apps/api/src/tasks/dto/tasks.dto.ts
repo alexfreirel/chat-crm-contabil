@@ -21,6 +21,9 @@ export class CreateTaskDto {
 
   @IsOptional() @IsDateString()
   due_at?: string;
+
+  @IsOptional() @IsIn(['FISCAL', 'PESSOAL', 'CONTABIL'])
+  setor?: string;
 }
 
 export class UpdateTaskDto {

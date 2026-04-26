@@ -112,6 +112,7 @@ export function TasksPanel() {
   const [newDesc, setNewDesc] = useState('');
   const [newDue, setNewDue] = useState('');
   const [newAssigned, setNewAssigned] = useState('');
+  const [newSetor, setNewSetor] = useState('');
   const [creating, setCreating] = useState(false);
 
   // ── Produtividade (contadores gerais, sem filtro)
@@ -237,6 +238,12 @@ export function TasksPanel() {
     }
   };
 
+  const SETOR_OPTIONS = [
+    { value: 'FISCAL',   label: 'Fiscal',   icon: '📊' },
+    { value: 'PESSOAL',  label: 'Pessoal',  icon: '👷' },
+    { value: 'CONTABIL', label: 'Contábil', icon: '📒' },
+  ];
+
   const handleCreate = async () => {
     if (!newTitle.trim()) return;
     setCreating(true);
@@ -246,9 +253,10 @@ export function TasksPanel() {
         description: newDesc.trim() || undefined,
         due_at: newDue ? new Date(newDue).toISOString() : undefined,
         assigned_user_id: newAssigned || undefined,
+        setor: newSetor || undefined,
       });
       showSuccess('Tarefa criada');
-      setNewTitle(''); setNewDesc(''); setNewDue(''); setNewAssigned('');
+      setNewTitle(''); setNewDesc(''); setNewDue(''); setNewAssigned(''); setNewSetor('');
       setShowNew(false);
       fetchTasks(1);
       fetchStats();
@@ -504,14 +512,24 @@ export function TasksPanel() {
               value={newDesc}
               onChange={e => setNewDesc(e.target.value)}
             />
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
+              <select
+                className="px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30"
+                value={newSetor}
+                onChange={e => setNewSetor(e.target.value)}
+              >
+                <option value="">Setor (opcional)</option>
+                {SETOR_OPTIONS.map(s => (
+                  <option key={s.value} value={s.value}>{s.icon} {s.label}</option>
+                ))}
+              </select>
               <input
                 type="datetime-local"
                 className="px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30"
                 value={newDue}
                 onChange={e => setNewDue(e.target.value)}
               />
-              <div className="flex-1 relative">
+              <div className="flex-1 relative min-w-[180px]">
                 <select
                   className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30"
                   value={newAssigned}
@@ -536,7 +554,7 @@ export function TasksPanel() {
                   );
                 })()}
               </div>
-              <button onClick={() => setShowNew(false)} className="px-3 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-accent transition-colors">
+              <button onClick={() => { setShowNew(false); setNewSetor(''); }} className="px-3 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-accent transition-colors">
                 <X size={14} />
               </button>
               <button

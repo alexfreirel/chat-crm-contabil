@@ -147,6 +147,7 @@ export class TasksService {
     due_at?: string | Date;
     tenant_id?: string;
     created_by_id?: string;
+    setor?: string;
   }) {
     const task = await this.prisma.task.create({
       data: {
@@ -159,6 +160,7 @@ export class TasksService {
         due_at: data.due_at ? new Date(data.due_at) : null,
         tenant_id: data.tenant_id,
         status: 'A_FAZER',
+        setor: data.setor,
       },
     });
 
