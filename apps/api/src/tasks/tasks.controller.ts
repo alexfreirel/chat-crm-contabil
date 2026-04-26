@@ -37,6 +37,7 @@ export class TasksController {
     @Query('dueFilter') dueFilter?: string,
     @Query('search') search?: string,
     @Query('viewAll') viewAll?: string,
+    @Query('clienteContabilId') clienteContabilId?: string,
     @Request() req?: any,
   ) {
     const p = page ? parseInt(page, 10) : undefined;
@@ -56,6 +57,7 @@ export class TasksController {
       assignedUserId: effectiveAssignedUserId,
       dueFilter,
       search,
+      clienteContabilId,
     });
   }
 

@@ -36,6 +36,7 @@ export class TasksService {
       assignedUserId?: string;
       dueFilter?: string; // 'today' | 'week' | 'overdue'
       search?: string;
+      clienteContabilId?: string;
     },
   ) {
     const baseTenant = this.tenantWhere(tenantId);
@@ -46,6 +47,9 @@ export class TasksService {
     }
     if (filters?.assignedUserId) {
       andClauses.push({ assigned_user_id: filters.assignedUserId });
+    }
+    if (filters?.clienteContabilId) {
+      andClauses.push({ cliente_contabil_id: filters.clienteContabilId });
     }
     if (filters?.search?.trim()) {
       andClauses.push({ title: { contains: filters.search.trim(), mode: 'insensitive' } });
