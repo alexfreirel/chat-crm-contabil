@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Plus, CheckCircle2, Circle, Search, X, ChevronDown,
+  Plus, CheckCircle2, Circle, Search, X, ChevronDown, ChevronLeft, ChevronRight,
   User, AlertTriangle, Loader2, CheckSquare, RotateCcw,
   CalendarDays, Sparkles, Zap, List,
 } from 'lucide-react';
@@ -84,6 +84,12 @@ export default function TabObrigacoes({
   const [searchInput, setSearchInput] = useState('');
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Competência (mês/ano)
+  const now = new Date();
+  const [compYear, setCompYear] = useState(now.getFullYear());
+  const [compMonth, setCompMonth] = useState(now.getMonth()); // 0-based
+  const [useCompFilter, setUseCompFilter] = useState(false);
+
   // ── Paginação
   const [page, setPage] = useState(1);
   const LIMIT = 25;
@@ -141,6 +147,12 @@ export default function TabObrigacoes({
       if (assignedFilter) params.assignedUserId = assignedFilter;
       if (dueFilter) params.dueFilter = dueFilter;
       if (search) params.search = search;
+      if (useCompFilter) {
+        const from = new Date(compYear, compMonth, 1);
+        const to = new Date(compYear, compMonth + 1, 0, 23, 59, 59);
+        params.dateFrom = from.toISOString();
+        params.dateTo = to.toISOString();
+      }
 
       const res = await api.get('/tasks', { params });
       const { data, total: t } = res.data;
@@ -151,7 +163,7 @@ export default function TabObrigacoes({
     } finally {
       setLoading(false);
     }
-  }, [clienteId, statusFilter, assignedFilter, dueFilter, search]);
+  }, [clienteId, statusFilter, assignedFilter, dueFilter, search, useCompFilter, compYear, compMonth]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -526,6 +538,50 @@ export default function TabObrigacoes({
           </div>
         </div>
       )}
+
+      {/* ── Navegador de competência ── */}
+      <div className="shrink-0 px-6 py-2 border-b border-border bg-card/30 flex items-center gap-3">
+        <button
+          onClick={() => setUseCompFilter(v => !v)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+            useCompFilter ? 'bg-primary text-primary-foreground' : 'border border-border text-muted-foreground hover:bg-accent'
+          }`}
+        >
+          <CalendarDays size={12} />
+          Competência
+        </button>
+        {useCompFilter && (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                if (compMonth === 0) { setCompMonth(11); setCompYear(y => y - 1); }
+                else setCompMonth(m => m - 1);
+              }}
+              className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <span className="text-xs font-bold text-foreground min-w-[110px] text-center">
+              {new Date(compYear, compMonth).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+            </span>
+            <button
+              onClick={() => {
+                if (compMonth === 11) { setCompMonth(0); setCompYear(y => y + 1); }
+                else setCompMonth(m => m + 1);
+              }}
+              className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ChevronRight size={14} />
+            </button>
+            <button
+              onClick={() => { setCompMonth(now.getMonth()); setCompYear(now.getFullYear()); }}
+              className="ml-1 px-2 py-1 rounded text-[10px] text-primary hover:bg-primary/10 transition-colors font-semibold"
+            >
+              Hoje
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* ── Filtros ── */}
       <div className="shrink-0 px-6 py-3 border-b border-border bg-card/20 flex flex-wrap items-center gap-2">

@@ -6,6 +6,7 @@ import {
   User, Briefcase, MessageSquare, AlertTriangle, Loader2,
   CheckSquare, Filter, RotateCcw, CalendarDays, Sparkles,
   Zap, TrendingDown, LayoutGrid, List, Printer,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 import api from '@/lib/api';
@@ -118,6 +119,11 @@ export function TasksPanel() {
   const [newRecorrenciaMeses, setNewRecorrenciaMeses] = useState(12);
   const [creating, setCreating] = useState(false);
 
+  // ── Filtro por competência (mês)
+  const [useCompFilter, setUseCompFilter] = useState(false);
+  const [compYear, setCompYear] = useState(() => new Date().getFullYear());
+  const [compMonth, setCompMonth] = useState(() => new Date().getMonth()); // 0-based
+
   // ── Produtividade (contadores gerais, sem filtro)
   const [stats, setStats] = useState({ total: 0, a_fazer: 0, em_progresso: 0, concluida: 0, vencidas: 0 });
 
@@ -149,6 +155,12 @@ export function TasksPanel() {
       if (assignedFilter) params.assignedUserId = assignedFilter;
       if (dueFilter) params.dueFilter = dueFilter;
       if (search) params.search = search;
+      if (useCompFilter) {
+        const firstDay = new Date(compYear, compMonth, 1);
+        const lastDay = new Date(compYear, compMonth + 1, 0, 23, 59, 59);
+        params.dateFrom = firstDay.toISOString();
+        params.dateTo = lastDay.toISOString();
+      }
 
       const res = await api.get('/tasks', { params });
       const { data, total: t } = res.data;
@@ -159,7 +171,7 @@ export function TasksPanel() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, assignedFilter, dueFilter, search, viewMode]);
+  }, [statusFilter, assignedFilter, dueFilter, search, viewMode, useCompFilter, compYear, compMonth]);
 
   // Fetch de contadores (sem filtros)
   const fetchStats = useCallback(async () => {
@@ -613,6 +625,50 @@ export function TasksPanel() {
           </div>
         </div>
       )}
+
+      {/* ── Navegador de competência ── */}
+      <div className="shrink-0 px-6 py-2 border-b border-border bg-card/30 flex items-center gap-3">
+        <button
+          onClick={() => setUseCompFilter(v => !v)}
+          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+            useCompFilter ? 'bg-primary text-primary-foreground' : 'border border-border text-muted-foreground hover:bg-accent'
+          }`}
+        >
+          <CalendarDays size={12} />
+          Competência
+        </button>
+        {useCompFilter && (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                if (compMonth === 0) { setCompYear(y => y - 1); setCompMonth(11); }
+                else setCompMonth(m => m - 1);
+              }}
+              className="p-1 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <span className="text-xs font-semibold text-foreground min-w-[110px] text-center capitalize">
+              {new Date(compYear, compMonth, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+            </span>
+            <button
+              onClick={() => {
+                if (compMonth === 11) { setCompYear(y => y + 1); setCompMonth(0); }
+                else setCompMonth(m => m + 1);
+              }}
+              className="p-1 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ChevronRight size={14} />
+            </button>
+            <button
+              onClick={() => { setCompYear(new Date().getFullYear()); setCompMonth(new Date().getMonth()); }}
+              className="ml-1 px-2 py-0.5 rounded-lg border border-border text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            >
+              Hoje
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* ── Filtros ── */}
       <div className="shrink-0 px-6 py-3 border-b border-border bg-card/20 flex flex-wrap items-center gap-2">

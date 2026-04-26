@@ -38,6 +38,8 @@ export class TasksController {
     @Query('search') search?: string,
     @Query('viewAll') viewAll?: string,
     @Query('clienteContabilId') clienteContabilId?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
     @Request() req?: any,
   ) {
     const p = page ? parseInt(page, 10) : undefined;
@@ -45,8 +47,6 @@ export class TasksController {
     const roles = req?.user?.roles || [];
     const userId = req?.user?.id;
 
-    // ADMIN/CONTADOR podem ver todas as tarefas (viewAll=true) ou filtrar por assignedUserId
-    // ASSISTENTE/OPERADOR veem apenas as próprias tarefas por padrão
     let effectiveAssignedUserId = assignedUserId;
     if (!effectiveAssignedUserId && !roles.some((r: string) => ['ADMIN', 'CONTADOR'].includes(r)) && viewAll !== 'true') {
       effectiveAssignedUserId = userId;
@@ -58,6 +58,8 @@ export class TasksController {
       dueFilter,
       search,
       clienteContabilId,
+      dateFrom,
+      dateTo,
     });
   }
 

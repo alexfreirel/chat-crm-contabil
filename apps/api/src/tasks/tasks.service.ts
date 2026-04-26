@@ -37,6 +37,8 @@ export class TasksService {
       dueFilter?: string; // 'today' | 'week' | 'overdue'
       search?: string;
       clienteContabilId?: string;
+      dateFrom?: string;
+      dateTo?: string;
     },
   ) {
     const baseTenant = this.tenantWhere(tenantId);
@@ -63,6 +65,11 @@ export class TasksService {
       andClauses.push({ due_at: { lte: end } });
     } else if (filters?.dueFilter === 'overdue') {
       andClauses.push({ due_at: { lt: new Date() }, status: { notIn: ['CONCLUIDA', 'CANCELADA'] } });
+    } else if (filters?.dateFrom || filters?.dateTo) {
+      const range: any = {};
+      if (filters.dateFrom) range.gte = new Date(filters.dateFrom);
+      if (filters.dateTo) range.lte = new Date(filters.dateTo);
+      andClauses.push({ due_at: range });
     }
 
     const where = andClauses.length === 1 ? baseTenant : { AND: andClauses };
