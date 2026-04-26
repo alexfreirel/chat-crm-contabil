@@ -344,6 +344,27 @@ export class TasksService {
     return { ok: true, conversationId: task.conversation_id };
   }
 
+  // ─── Remove Task ───────────────────────────────────────────────
+
+  async remove(id: string, tenantId?: string) {
+    await this.verifyTenantOwnership(id, tenantId);
+    const task = await this.prisma.task.findUnique({ where: { id }, select: { calendar_event_id: true } });
+    if (!task) throw new NotFoundException('Tarefa não encontrada');
+
+    await this.prisma.$transaction([
+      this.prisma.taskComment.deleteMany({ where: { task_id: id } }),
+      this.prisma.taskChecklistItem.deleteMany({ where: { task_id: id } }),
+      (this.prisma as any).taskPostponement.deleteMany({ where: { task_id: id } }),
+      this.prisma.task.delete({ where: { id } }),
+    ]);
+
+    if (task.calendar_event_id) {
+      try { await this.calendarService.remove(task.calendar_event_id); } catch {}
+    }
+
+    return { ok: true };
+  }
+
   // ─── Find Active Task by Conversation ─────────────────────────
 
   async findActiveByConversation(conversationId: string, tenantId?: string) {

@@ -145,4 +145,9 @@ export class TasksController {
   deleteChecklistItem(@Param('id') id: string, @Param('itemId') itemId: string, @Request() req: any) {
     return this.tasksService.deleteChecklistItem(id, itemId, req.user?.tenant_id);
   }
+
+  @Delete(':id')
+  remove(@Param('id') id: string, @Request() req: any) {
+    return this.tasksService.remove(id, req.user?.tenant_id);
+  }
 }
