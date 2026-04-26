@@ -535,12 +535,45 @@ export function TasksPanel() {
                 ))}
               </select>
               <input
-                type="datetime-local"
+                type="date"
                 className="px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30"
                 value={newDue}
                 onChange={e => setNewDue(e.target.value)}
               />
-              <div className="flex-1 relative min-w-[180px]">
+              {/* Repetição inline */}
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-background">
+                <label className="flex items-center gap-1.5 cursor-pointer select-none whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    className="w-3.5 h-3.5 accent-primary"
+                    checked={newRecorrente}
+                    onChange={e => setNewRecorrente(e.target.checked)}
+                  />
+                  <span className="text-xs text-muted-foreground">Repetir</span>
+                </label>
+                {newRecorrente && (
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1 cursor-pointer select-none">
+                      <input type="radio" name="recorrencia-panel" className="accent-primary" checked={newRecorrenciaTipo === 'meses'} onChange={() => setNewRecorrenciaTipo('meses')} />
+                      <input
+                        type="number"
+                        min={1} max={120}
+                        className="w-14 px-2 py-0.5 rounded-lg border border-border bg-background text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30"
+                        value={newRecorrenciaMeses}
+                        onChange={e => setNewRecorrenciaMeses(Math.max(1, Math.min(120, Number(e.target.value))))}
+                        disabled={newRecorrenciaTipo !== 'meses'}
+                        onClick={() => setNewRecorrenciaTipo('meses')}
+                      />
+                      <span className="text-xs text-muted-foreground">meses</span>
+                    </label>
+                    <label className="flex items-center gap-1 cursor-pointer select-none">
+                      <input type="radio" name="recorrencia-panel" className="accent-primary" checked={newRecorrenciaTipo === 'infinito'} onChange={() => setNewRecorrenciaTipo('infinito')} />
+                      <span className="text-xs text-muted-foreground">∞</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 relative min-w-[160px]">
                 <select
                   className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30"
                   value={newAssigned}
@@ -576,39 +609,6 @@ export function TasksPanel() {
                 {creating ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
                 Criar
               </button>
-            </div>
-            {/* Repetição mensal */}
-            <div className="flex items-center gap-3 flex-wrap pt-1">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  className="w-4 h-4 rounded accent-primary"
-                  checked={newRecorrente}
-                  onChange={e => setNewRecorrente(e.target.checked)}
-                />
-                <span className="text-xs text-muted-foreground font-medium">Repetir mensalmente</span>
-              </label>
-              {newRecorrente && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                    <input type="radio" name="recorrencia-panel" className="accent-primary" checked={newRecorrenciaTipo === 'meses'} onChange={() => setNewRecorrenciaTipo('meses')} />
-                    <span className="text-xs text-foreground">Por</span>
-                    <input
-                      type="number"
-                      min={1} max={120}
-                      className="w-16 px-2 py-1 rounded-lg border border-border bg-background text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30"
-                      value={newRecorrenciaMeses}
-                      onChange={e => setNewRecorrenciaMeses(Math.max(1, Math.min(120, Number(e.target.value))))}
-                      disabled={newRecorrenciaTipo !== 'meses'}
-                    />
-                    <span className="text-xs text-foreground">meses</span>
-                  </label>
-                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                    <input type="radio" name="recorrencia-panel" className="accent-primary" checked={newRecorrenciaTipo === 'infinito'} onChange={() => setNewRecorrenciaTipo('infinito')} />
-                    <span className="text-xs text-foreground">Infinitamente</span>
-                  </label>
-                </div>
-              )}
             </div>
           </div>
         </div>
