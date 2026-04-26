@@ -56,7 +56,7 @@ export class ObrigacoesController {
     },
     @Request() req: any,
   ) {
-    return this.service.create(clienteId, body, req.user?.tenant_id);
+    return this.service.create(clienteId, body, req.user?.tenant_id, req.user?.id);
   }
 
   /** Gera obrigações padrão por regime tributário */
@@ -78,6 +78,7 @@ export class ObrigacoesController {
       body.tem_funcionarios ?? false,
       competencia,
       req.user?.tenant_id,
+      req.user?.id,
     );
   }
 

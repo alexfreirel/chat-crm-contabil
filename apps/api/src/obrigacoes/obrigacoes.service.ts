@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { TasksService } from '../tasks/tasks.service';
 
 // Mapa de obrigações por regime
 const OBRIGACOES_POR_REGIME: Record<string, Array<{
@@ -56,7 +57,10 @@ function buildDueDate(diaVencimento: number, competencia: Date, frequencia: stri
 export class ObrigacoesService {
   private readonly logger = new Logger(ObrigacoesService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private tasksService: TasksService,
+  ) {}
 
   async findByCliente(clienteId: string, tenantId?: string) {
     await this.verifyClienteAccess(clienteId, tenantId);
@@ -112,9 +116,9 @@ export class ObrigacoesService {
     frequencia?: string;
     alert_days?: number;
     responsavel_id?: string;
-  }, tenantId?: string) {
+  }, tenantId?: string, userId?: string) {
     await this.verifyClienteAccess(clienteId, tenantId);
-    return this.prisma.obrigacaoFiscal.create({
+    const obrigacao = await this.prisma.obrigacaoFiscal.create({
       data: {
         cliente_id: clienteId,
         tenant_id: tenantId,
@@ -128,6 +132,18 @@ export class ObrigacoesService {
         responsavel_id: data.responsavel_id,
       },
     });
+
+    await this.tasksService.create({
+      title: data.titulo,
+      description: `Obrigação fiscal: ${data.tipo}`,
+      cliente_contabil_id: clienteId,
+      due_at: obrigacao.due_at,
+      tenant_id: tenantId,
+      assigned_user_id: data.responsavel_id,
+      created_by_id: userId,
+    }).catch(e => this.logger.warn(`Erro ao criar task para obrigação: ${e.message}`));
+
+    return obrigacao;
   }
 
   /**
@@ -140,6 +156,7 @@ export class ObrigacoesService {
     temFuncionarios: boolean,
     competenciaInicio: string, // 'YYYY-MM' ou 'YYYY-MM-DD'
     tenantId?: string,
+    userId?: string,
   ) {
     await this.verifyClienteAccess(clienteId, tenantId);
 
@@ -190,6 +207,19 @@ export class ObrigacoesService {
     });
 
     this.logger.log(`Geradas ${created.length} obrigações para cliente ${clienteId} (regime: ${regime})`);
+
+    // Criar uma task para cada obrigação gerada
+    for (const ob of created) {
+      await this.tasksService.create({
+        title: ob.titulo,
+        description: `Obrigação fiscal: ${ob.tipo}`,
+        cliente_contabil_id: clienteId,
+        due_at: ob.due_at,
+        tenant_id: tenantId,
+        created_by_id: userId,
+      }).catch(e => this.logger.warn(`Erro ao criar task para obrigação ${ob.tipo}: ${e.message}`));
+    }
+
     return { criadas: created.length, obrigacoes: created };
   }
 
