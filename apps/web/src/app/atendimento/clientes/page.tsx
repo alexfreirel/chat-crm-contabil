@@ -510,7 +510,7 @@ export default function ClientesPage() {
                 <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border/60">
                   <span className="truncate flex items-center gap-1">
                     <Building2 className="w-3.5 h-3.5 shrink-0" />
-                    {c.nome_empresa || c.lead?.ficha_contabil?.razao_social || c.lead?.name || 'Sem razão social'}
+                    {c.lead?.ficha_contabil?.razao_social || c.nome_empresa || c.lead?.name || 'Sem razão social'}
                   </span>
                   <span className="shrink-0 ml-2">
                     📅 {c._count?.obrigacoes ?? 0}

@@ -110,6 +110,7 @@ export class ClientesContabilController {
       lead_id?: string;
       service_type?: string;
       regime_tributario?: string;
+      nome_empresa?: string;
       competencia_inicio?: string;
       data_encerramento?: string;
       notes?: string;
@@ -146,6 +147,4 @@ export class ClientesContabilController {
   @Delete(':id')
   @Roles('ADMIN')
   remove(@Param('id') id: string, @Request() req: any) {
-    return this.service.remove(id, req.user?.tenant_id);
-  }
-}
+    return this.service.remove(id, r

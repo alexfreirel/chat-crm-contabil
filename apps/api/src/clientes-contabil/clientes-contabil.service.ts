@@ -296,6 +296,7 @@ export class ClientesContabilService {
     lead_id?: string;
     service_type?: string;
     regime_tributario?: string;
+    nome_empresa?: string;
     competencia_inicio?: string;
     data_encerramento?: string;
     notes?: string;
@@ -417,6 +418,4 @@ export class ClientesContabilService {
     if (!tenantId) return;
     const c = await this.prisma.clienteContabil.findUnique({ where: { id }, select: { tenant_id: true } });
     if (!c) throw new NotFoundException('Cliente contábil não encontrado');
-    if (c.tenant_id && c.tenant_id !== tenantId) throw new ForbiddenException('Acesso negado');
-  }
-}
+    if (c.tenant_id && c.tenant_id !== tenantId) throw new ForbiddenExcepti
