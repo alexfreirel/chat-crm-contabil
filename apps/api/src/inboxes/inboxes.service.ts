@@ -14,19 +14,19 @@ export class InboxesService {
   }
 
   async findAllOperators() {
-    const [inboxes, sectors, allEligible] = await Promise.all([
+    const [inboxes, allEligible] = await Promise.all([
+      // Setores (inboxes) com seus usuários vinculados
       this.inbox.findMany({
-        include: { users: { select: { id: true, name: true } } },
-      }),
-      (this.prisma as any).sector.findMany({
         include: { users: { select: { id: true, name: true } } },
         orderBy: { name: 'asc' },
       }),
-      // Inclui TODOS os usuários que têm role de OPERADOR ou CONTADOR (multi-role)
-      // Mesmo que não estejam vinculados a um inbox específico
+      // Todos os usuários com roles que podem receber transferências
+      // User.role é singular String: ADMIN | ESPECIALISTA | ASSISTENTE | OPERADOR
       (this.prisma as any).user.findMany({
-        where: { roles: { hasSome: ['OPERADOR', 'CONTADOR', 'ADMIN'] } },
-        select: { id: true, name: true },
+        where: {
+          role: { in: ['ADMIN', 'ESPECIALISTA', 'ASSISTENTE', 'OPERADOR', 'CONTADOR'] },
+        },
+        select: { id: true, name: true, role: true },
         orderBy: { name: 'asc' },
       }),
     ]);
@@ -39,29 +39,20 @@ export class InboxesService {
       users: inbox.users as { id: string; name: string }[],
     }));
 
-    const sectorGroups = sectors.map((sector: any) => ({
-      id: sector.id,
-      name: sector.name,
-      type: 'SECTOR' as const,
-      auto_route: sector.auto_route ?? false,
-      users: sector.users as { id: string; name: string }[],
-    }));
-
-    // Grupo "Todos" com usuários elegíveis que podem receber transferências
+    // Usuários que não estão vinculados a nenhum setor (inbox)
     const inboxUserIds = new Set(inboxes.flatMap((i: any) => (i.users || []).map((u: any) => u.id)));
-    const sectorUserIds = new Set(sectors.flatMap((s: any) => (s.users || []).map((u: any) => u.id)));
-    const ungroupedUsers = (allEligible as { id: string; name: string }[]).filter(
-      u => !inboxUserIds.has(u.id) && !sectorUserIds.has(u.id),
-    );
+    const ungroupedUsers = (allEligible as { id: string; name: string; role: string }[])
+      .filter(u => !inboxUserIds.has(u.id))
+      .map(u => ({ id: u.id, name: u.name }));
 
-    const result = [...inboxGroups, ...sectorGroups];
+    const result = [...inboxGroups];
 
-    // Adicionar grupo "Equipe" com usuários que não estão em nenhum inbox/setor
+    // Grupo "Equipe" com usuários que não estão em nenhum setor
     if (ungroupedUsers.length > 0) {
       result.push({
         id: '__team__',
-        name: 'Equipe',
-        type: 'SECTOR' as const,
+        name: 'Equipe Geral',
+        type: 'INBOX' as const,
         auto_route: false,
         users: ungroupedUsers,
       });

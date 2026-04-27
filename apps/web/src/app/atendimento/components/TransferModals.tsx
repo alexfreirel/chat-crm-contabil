@@ -12,7 +12,7 @@ interface Group {
   name: string;
   type: string;
   auto_route?: boolean;
-  users: { id: string; name: string }[];
+  users: { id: string; name: string; role?: string }[];
 }
 
 export interface TransferModalsProps {
@@ -103,70 +103,30 @@ export function TransferModals({
               <>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 px-1 shrink-0">Selecione o destino</p>
                 <div className="flex flex-col gap-4 overflow-y-auto custom-scrollbar flex-1 min-h-0">
-                  {transferGroups.map(g => ({ ...g, users: g.users.filter(u => u.id !== currentUserId) })).filter(g => g.users.length > 0 || (g.type === 'SECTOR' && g.auto_route)).map(group => (
+                  {transferGroups
+                    .map(g => ({ ...g, users: g.users.filter(u => u.id !== currentUserId) }))
+                    .filter(g => g.users.length > 0)
+                    .map(group => (
                     <div key={group.id}>
                       <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5 px-1">
-                        {group.type === 'SECTOR' ? (group.auto_route ? '{"⚖️"}' : '{"🏢"}') : '{"📥"}'} {group.name}
-                        {group.auto_route && <span className="ml-1 text-violet-400">(auto)</span>}
+                        🏢 {group.name}
                       </p>
-                      {group.type === 'SECTOR' && group.auto_route ? (
-                        <div className="space-y-2">
-                          {selected?.assignedLawyerId ? (
-                            (() => {
-                              const lawyer = group.users.find(u => u.id === selected.assignedLawyerId);
-                              const lawyerName = lawyer?.name || selected.assignedLawyerName || 'Advogado vinculado';
-                              return (
-                                <button
-                                  onClick={() => onOpenReasonPopup('lawyer', lawyerName)}
-                                  className="w-full py-3 bg-violet-500/10 border border-violet-500/30 text-violet-300 rounded-xl font-bold text-sm hover:bg-violet-500/20 transition-colors flex items-center justify-center gap-2"
-                                >
-                                  {"⚖️"} Transferir para {lawyerName}{selected.legalArea ? ` (${selected.legalArea})` : ''}
-                                </button>
-                              );
-                            })()
-                          ) : (
-                            group.users.length > 0 ? (
-                              <div className="flex flex-col gap-1">
-                                {group.users.map(user => (
-                                  <button
-                                    key={user.id}
-                                    onClick={() => onSelectTransferUser(user.id)}
-                                    className={`w-full text-left px-4 py-2.5 rounded-xl border transition-colors font-medium text-sm ${
-                                      selectedTransferUserId === user.id
-                                        ? 'bg-sky-500/20 text-sky-400 border-sky-500/40'
-                                        : 'bg-muted/30 hover:bg-sky-500/10 hover:text-sky-400 border-border hover:border-sky-500/30'
-                                    }`}
-                                  >
-                                    {selectedTransferUserId === user.id && <span className="mr-2">{"✓"}</span>}
-                                    {user.name}
-                                  </button>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="text-sm text-muted-foreground text-center py-2 px-1 italic">
-                                Nenhum advogado especialista cadastrado.
-                              </p>
-                            )
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex flex-col gap-1">
-                          {group.users.map(user => (
-                            <button
-                              key={user.id}
-                              onClick={() => onSelectTransferUser(user.id)}
-                              className={`w-full text-left px-4 py-2.5 rounded-xl border transition-colors font-medium text-sm ${
-                                selectedTransferUserId === user.id
-                                  ? 'bg-sky-500/20 text-sky-400 border-sky-500/40'
-                                  : 'bg-muted/30 hover:bg-sky-500/10 hover:text-sky-400 border-border hover:border-sky-500/30'
-                              }`}
-                            >
-                              {selectedTransferUserId === user.id && <span className="mr-2">{"✓"}</span>}
-                              {user.name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                      <div className="flex flex-col gap-1">
+                        {group.users.map(user => (
+                          <button
+                            key={user.id}
+                            onClick={() => onSelectTransferUser(user.id)}
+                            className={`w-full text-left px-4 py-2.5 rounded-xl border transition-colors font-medium text-sm ${
+                              selectedTransferUserId === user.id
+                                ? 'bg-sky-500/20 text-sky-400 border-sky-500/40'
+                                : 'bg-muted/30 hover:bg-sky-500/10 hover:text-sky-400 border-border hover:border-sky-500/30'
+                            }`}
+                          >
+                            {selectedTransferUserId === user.id && <span className="mr-2">✓</span>}
+                            {user.name}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>
