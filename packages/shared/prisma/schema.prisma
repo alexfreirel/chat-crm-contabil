@@ -143,6 +143,8 @@ model Conversation {
   pending_transfer_audio_ids String[]            @default([])
   service_type               String?             // Tipo de serviço contábil detectado pela IA
   assigned_accountant_id     String?             // Especialista pré-designado pela IA
+  assigned_lawyer_id         String?             // Especialista/contador vinculado manualmente
+  legal_area                 String?             // Área de atendimento (Fiscal, Contábil, DP…)
   origin_assigned_user_id    String?
   next_step                  String?             // "duvidas" | "triagem_concluida" | "formulario" | "reuniao" | "encerrado"
   ai_notes                   String?

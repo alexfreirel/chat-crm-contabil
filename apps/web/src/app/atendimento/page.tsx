@@ -1549,11 +1549,6 @@ export default function Dashboard() {
   const handleChangeLeadStage = async (newStage: string) => {
     const conv = conversations.find(c => c.id === selectedId) ?? adiadoConversations.find(c => c.id === selectedId);
     if (!conv?.leadId) return;
-    // Bloquear FINALIZADO sem área de atendimento definida
-    if (newStage === 'FINALIZADO' && !conv?.legalArea) {
-      alert('⚠️ Defina a Área de Atendimento antes de marcar como Finalizado.');
-      return;
-    }
     setShowStageDropdown(false);
     // PERDIDO exige motivo — abre modal antes de prosseguir
     if (newStage === 'PERDIDO') {
