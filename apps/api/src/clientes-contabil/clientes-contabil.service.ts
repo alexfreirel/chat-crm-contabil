@@ -142,7 +142,7 @@ export class ClientesContabilService {
   }) {
     const lead = await this.prisma.lead.findUnique({
       where: { id: leadId },
-      select: { id: true, name: true, phone: true, tenant_id: true, cpf_cnpj: true },
+      select: { id: true, name: true, phone: true, tenant_id: true },
     });
     if (!lead) throw new NotFoundException('Lead não encontrado');
 
@@ -152,7 +152,7 @@ export class ClientesContabilService {
       accountant_id: data.accountant_id,
       service_type: data.service_type,
       regime_tributario: data.regime_tributario,
-      cpf_cnpj: data.cpf_cnpj ?? lead.cpf_cnpj ?? undefined,
+      cpf_cnpj: data.cpf_cnpj ?? undefined,
       nome_empresa: data.nome_empresa,
       tenant_id: data.tenant_id ?? lead.tenant_id ?? undefined,
     });
