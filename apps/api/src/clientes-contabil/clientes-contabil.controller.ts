@@ -76,7 +76,7 @@ export class ClientesContabilController {
   }
 
   @Post('from-lead/:leadId')
-  @Roles('ADMIN', 'CONTADOR', 'ASSISTENTE')
+  @Roles('ADMIN', 'CONTADOR', 'OPERADOR', 'ASSISTENTE')
   createFromLead(
     @Param('leadId') leadId: string,
     @Body() body: { service_type: string; conversation_id?: string; regime_tributario?: string; nome_empresa?: string; cpf_cnpj?: string },
@@ -147,4 +147,6 @@ export class ClientesContabilController {
   @Delete(':id')
   @Roles('ADMIN')
   remove(@Param('id') id: string, @Request() req: any) {
-    return this.service.remove(id, r
+    return this.service.remove(id, req.user?.tenant_id);
+  }
+}
