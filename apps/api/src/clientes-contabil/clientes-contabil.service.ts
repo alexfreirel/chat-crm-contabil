@@ -27,56 +27,108 @@ export class ClientesContabilService {
     if (data.cpf_cnpj) duplicateWhere.cpf_cnpj = data.cpf_cnpj;
     else if (data.nome_empresa) duplicateWhere.nome_empresa = data.nome_empresa;
 
-    const existing = await this.prisma.clienteContabil.findFirst({ where: duplicateWhere });
-    if (existing) {
-      throw new BadRequestException(
-        'Já existe um cliente ativo com este tipo de serviço para a mesma empresa. Use um CNPJ ou nome de empresa diferente para cadastrar outra empresa do mesmo contato.',
-      );
+    try {
+      const existing = await this.prisma.clienteContabil.findFirst({ where: duplicateWhere });
+      if (existing) {
+        throw new BadRequestException(
+          'Já existe um cliente ativo com este tipo de serviço para a mesma empresa. Use um CNPJ ou nome de empresa diferente para cadastrar outra empresa do mesmo contato.',
+        );
+      }
+    } catch (e) {
+      if (e instanceof BadRequestException) throw e;
+      // Coluna nome_empresa pode não existir ainda — tenta sem ela
+      this.logger.warn(`[create] Falha na checagem de duplicata (coluna nova?): ${(e as any)?.message}`);
     }
 
-    const [cliente] = await this.prisma.$transaction(async (tx) => {
-      const c = await tx.clienteContabil.create({
-        data: {
-          lead_id: data.lead_id,
-          conversation_id: data.conversation_id,
-          accountant_id: data.accountant_id,
-          service_type: data.service_type,
-          regime_tributario: data.regime_tributario,
-          cpf_cnpj: data.cpf_cnpj,
-          tipo_pessoa: data.tipo_pessoa,
-          nome_empresa: data.nome_empresa,
-          notes: data.notes,
-          priority: data.priority ?? 'NORMAL',
-          tenant_id: data.tenant_id,
-          stage: 'ONBOARDING',
-        },
-        include: {
-          lead: { select: { id: true, name: true, phone: true } },
-          accountant: { select: { id: true, name: true } },
-        },
+    try {
+      const cliente = await this.prisma.$transaction(async (tx) => {
+        const c = await tx.clienteContabil.create({
+          data: {
+            lead_id: data.lead_id,
+            conversation_id: data.conversation_id,
+            accountant_id: data.accountant_id,
+            service_type: data.service_type,
+            regime_tributario: data.regime_tributario,
+            cpf_cnpj: data.cpf_cnpj,
+            tipo_pessoa: data.tipo_pessoa,
+            nome_empresa: data.nome_empresa,
+            notes: data.notes,
+            priority: data.priority ?? 'NORMAL',
+            tenant_id: data.tenant_id,
+            stage: 'ONBOARDING',
+          },
+          include: {
+            lead: { select: { id: true, name: true, phone: true } },
+            accountant: { select: { id: true, name: true } },
+          },
+        });
+
+        // Mark lead as client
+        await tx.lead.update({
+          where: { id: data.lead_id },
+          data: { is_client: true, became_client_at: new Date() },
+        });
+
+        // Register creation event
+        await tx.clienteEvento.create({
+          data: {
+            cliente_id: c.id,
+            type: 'INICIO_SERVICO',
+            title: `Início de serviço: ${this.getServiceLabel(data.service_type)}`,
+            description: data.regime_tributario ? `Regime: ${data.regime_tributario.replace(/_/g, ' ')}` : undefined,
+            event_date: new Date(),
+          },
+        });
+
+        return c;
       });
 
-      // Mark lead as client
-      await tx.lead.update({
-        where: { id: data.lead_id },
-        data: { is_client: true, became_client_at: new Date() },
-      });
-
-      // Register creation event
-      await tx.clienteEvento.create({
-        data: {
-          cliente_id: c.id,
-          type: 'INICIO_SERVICO',
-          title: `Início de serviço: ${this.getServiceLabel(data.service_type)}`,
-          description: data.regime_tributario ? `Regime: ${data.regime_tributario.replace(/_/g, ' ')}` : undefined,
-          event_date: new Date(),
-        },
-      });
-
-      return [c];
-    });
-
-    return cliente;
+      return cliente;
+    } catch (e) {
+      this.logger.error(`[create] Erro ao criar cliente: ${(e as any)?.message}`, (e as any)?.stack);
+      // Se o erro é de coluna desconhecida (nome_empresa não existe no DB), tenta sem ela
+      const msg: string = (e as any)?.message ?? '';
+      if (msg.includes('nome_empresa') || msg.includes('column') || msg.includes('Unknown field')) {
+        this.logger.warn('[create] Tentando criar cliente sem nome_empresa (coluna ainda não existe no DB)');
+        const cliente = await this.prisma.$transaction(async (tx) => {
+          const c = await tx.clienteContabil.create({
+            data: {
+              lead_id: data.lead_id,
+              conversation_id: data.conversation_id,
+              accountant_id: data.accountant_id,
+              service_type: data.service_type,
+              regime_tributario: data.regime_tributario,
+              cpf_cnpj: data.cpf_cnpj,
+              tipo_pessoa: data.tipo_pessoa,
+              notes: data.notes,
+              priority: data.priority ?? 'NORMAL',
+              tenant_id: data.tenant_id,
+              stage: 'ONBOARDING',
+            } as any,
+            include: {
+              lead: { select: { id: true, name: true, phone: true } },
+              accountant: { select: { id: true, name: true } },
+            },
+          });
+          await tx.lead.update({
+            where: { id: data.lead_id },
+            data: { is_client: true, became_client_at: new Date() },
+          });
+          await tx.clienteEvento.create({
+            data: {
+              cliente_id: c.id,
+              type: 'INICIO_SERVICO',
+              title: `Início de serviço: ${this.getServiceLabel(data.service_type)}`,
+              description: data.regime_tributario ? `Regime: ${data.regime_tributario.replace(/_/g, ' ')}` : undefined,
+              event_date: new Date(),
+            },
+          });
+          return c;
+        });
+        return cliente;
+      }
+      throw new BadRequestException((e as any)?.message || 'Erro ao criar cliente contábil');
+    }
   }
 
   async createFromLead(leadId: string, data: {
