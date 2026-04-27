@@ -7,7 +7,7 @@ import { PodiumCards } from './PodiumCards';
 import { PerformanceTable } from './PerformanceTable';
 import type { TeamPerformanceResponse } from '../types';
 
-type RoleTab = 'TODOS' | 'CONTADOR' | 'OPERADOR' | 'ASSISTENTE';
+type RoleTab = 'TODOS' | 'CONTADOR' | 'ASSISTENTE';
 
 interface Props {
   data: TeamPerformanceResponse | null;
@@ -17,7 +17,6 @@ interface Props {
 const TABS: { key: RoleTab; label: string }[] = [
   { key: 'TODOS', label: 'Todos' },
   { key: 'CONTADOR', label: 'Contadores' },
-  { key: 'OPERADOR', label: 'Operadores' },
   { key: 'ASSISTENTE', label: 'Assistentes' },
 ];
 
@@ -49,7 +48,6 @@ export function TeamPerformanceBoard({ data, loading }: Props) {
   const tabCounts: Record<string, number> = {
     TODOS: data.members.length,
     CONTADOR: data.members.filter(m => m.role === 'CONTADOR').length,
-    OPERADOR: data.members.filter(m => m.role === 'OPERADOR').length,
     ASSISTENTE: data.members.filter(m => m.role === 'ASSISTENTE').length,
   };
 
