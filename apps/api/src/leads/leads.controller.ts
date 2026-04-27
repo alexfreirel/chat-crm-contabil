@@ -33,10 +33,12 @@ export class LeadsController {
     @Query('limit') limit?: string,
     @Query('search') search?: string,
     @Query('stage') stage?: string,
+    @Query('includeAllStages') includeAllStages?: string,
   ) {
     const p = page ? parseInt(page, 10) : undefined;
     const l = limit ? parseInt(limit, 10) : undefined;
-    return this.leadsService.findAll(req.user?.tenant_id, inboxId, p, l, search, stage, req.user?.id);
+    const allStages = includeAllStages === 'true';
+    return this.leadsService.findAll(req.user?.tenant_id, inboxId, p, l, search, stage, req.user?.id, allStages);
   }
 
   @Get('check-phone')

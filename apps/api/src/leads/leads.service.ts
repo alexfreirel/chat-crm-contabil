@@ -53,14 +53,17 @@ export class LeadsService {
     return lead;
   }
 
-  async findAll(tenant_id?: string, inbox_id?: string, page?: number, limit?: number, search?: string, stage?: string, userId?: string) {
+  async findAll(tenant_id?: string, inbox_id?: string, page?: number, limit?: number, search?: string, stage?: string, userId?: string, includeAllStages?: boolean) {
     const baseWhere: any = tenant_id
       ? { OR: [{ tenant_id }, { tenant_id: null }] }
       : {};
 
     if (stage) {
       baseWhere.stage = stage;
-    } else {
+    } else if (!includeAllStages) {
+      // Por padrão oculta leads PERDIDOS da listagem principal.
+      // Quando includeAllStages=true (ex: seleção de contato no modal),
+      // retorna todos os stages para que contatos "perdidos" possam ser vinculados.
       baseWhere.stage = { not: 'PERDIDO' };
     }
 

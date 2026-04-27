@@ -65,6 +65,20 @@ function normalizePhone(raw: string): string {
   return digits;
 }
 
+/**
+ * Mesma lógica do backend to12Digits:
+ * remove o 9º dígito de celulares brasileiros (55+DD+9+8dig → 55+DD+8dig)
+ * para que a busca bata com o telefone armazenado no banco.
+ */
+function to12DigitsFE(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  const withCode = digits.length <= 11 ? `55${digits}` : digits;
+  if (withCode.length === 13 && withCode.startsWith('55') && withCode[4] === '9') {
+    return withCode.slice(0, 4) + withCode.slice(5);
+  }
+  return withCode;
+}
+
 function CreateClienteModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [leadSearch, setLeadSearch] = useState('');
   const [leads, setLeads] = useState<any[]>([]);
@@ -89,7 +103,11 @@ function CreateClienteModal({ onClose, onCreated }: { onClose: () => void; onCre
     setShowNewContact(false);
     if (leadSearch.length < 2) { setLeads([]); return; }
     debounceRef.current = setTimeout(async () => {
-      const res = await fetch(`${API}/leads?search=${encodeURIComponent(leadSearch)}&limit=10`, {
+      // Se parece com telefone (só dígitos/formatação), normaliza para o formato armazenado no banco
+      const rawDigits = leadSearch.replace(/[\s\-\(\)\.]/g, '');
+      const isPhone = /^\+?[\d]+$/.test(rawDigits) && rawDigits.replace(/\D/g, '').length >= 8;
+      const searchTerm = isPhone ? to12DigitsFE(leadSearch) : leadSearch;
+      const res = await fetch(`${API}/leads?search=${encodeURIComponent(searchTerm)}&limit=10&includeAllStages=true`, {
         headers: authHeaders(),
       });
       const d = await res.json();
@@ -117,7 +135,9 @@ function CreateClienteModal({ onClose, onCreated }: { onClose: () => void; onCre
           const errData = await r.json().catch(() => ({}));
           // Telefone já existe → buscar o lead e usar ele
           if (r.status === 409 || (errData?.message && String(errData.message).toLowerCase().includes('unique'))) {
-            const searchRes = await fetch(`${API}/leads?search=${encodeURIComponent(normalizedPhone)}&limit=1`, { headers: authHeaders() });
+            // Usa o telefone normalizado (12 dígitos, sem o 9º dígito) para bater com o formato armazenado no banco
+            const searchPhone = to12DigitsFE(newPhone);
+            const searchRes = await fetch(`${API}/leads?search=${encodeURIComponent(searchPhone)}&limit=1&includeAllStages=true`, { headers: authHeaders() });
             const searchData = await searchRes.json();
             const found = Array.isArray(searchData) ? searchData[0] : searchData?.data?.[0];
             if (found?.id) { leadId = found.id; }
