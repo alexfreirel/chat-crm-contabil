@@ -485,17 +485,17 @@ export class WhatsappService {
 
   async syncContacts(instanceName: string, tenantId?: string) {
     // 0. Buscar o inbox vinculado a esta instância para marcar as conversas corretamente
-    const inbox = await (this.prisma as any).instance.findUnique({
+    const instanceRecord = await (this.prisma as any).instance.findUnique({
       where: { name: instanceName },
-      include: { inbox: true }
+      include: { inboxes: true }
     });
-    const inboxId = inbox?.inbox_id || null;
+    const inboxId = instanceRecord?.inboxes?.[0]?.id || null;
 
     // Busca apenas chats — inclui contatos não salvos na agenda (via pushName do WhatsApp)
     // findContacts só retorna quem está salvo na agenda e foi removido propositalmente
     const chatsList = await this.fetchChats(instanceName);
 
-    this.logger.log(`Sync ${instanceName}: ${chatsList.length} chats para o setor ${inbox?.inbox?.name || 'Nenhum'}`);
+    this.logger.log(`Sync ${instanceName}: ${chatsList.length} chats para o setor ${instanceRecord?.inboxes?.[0]?.name || 'Nenhum'}`);
 
     // Log amostra da estrutura para debug
     if (chatsList.length > 0) {
