@@ -91,14 +91,15 @@ export class ConversationsService {
         // Conversas atribuídas diretamente ao usuário (qualquer role)
         orConditions.push({ assigned_user_id: userId });
 
-        // Visibilidade de OPERADOR: cs_user_id (clientes) + inbox membership (leads)
+        // Visibilidade de OPERADOR: cs_user_id (clientes) + todas as conversas de leads
         if (isOperadorUser) {
           if (clientMode === true) {
             orConditions.push({ lead: { ...(where.lead ?? {}), cs_user_id: userId } });
           }
-          // Inboxes vinculados — APENAS para operadores no modo leads
-          if (userInboxIds.length > 0 && clientMode !== true) {
-            orConditions.push({ inbox_id: { in: userInboxIds } });
+          // Modo leads sem filtro de setor: operador vê todas as conversas de leads,
+          // assim pode iniciar atendimento mesmo enquanto a IA ainda está respondendo.
+          if (clientMode !== true) {
+            orConditions.push({ lead: { is_client: false } });
           }
         }
 
