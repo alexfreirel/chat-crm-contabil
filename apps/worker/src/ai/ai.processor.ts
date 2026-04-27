@@ -846,6 +846,25 @@ export class AiProcessor extends WorkerHost {
       // 3. Verificar ai_mode ativo
       if (!convo) return;
 
+      // 3b-extra. Verificar se o lead já é cliente contábil cadastrado
+      let clienteContabil: any = null;
+      try {
+        clienteContabil = await (this.prisma as any).clienteContabil.findFirst({
+          where: { lead_id: convo.lead_id },
+          select: {
+            id: true,
+            service_type: true,
+            regime_tributario: true,
+            stage: true,
+            cpf_cnpj: true,
+            accountant: { select: { name: true } },
+            lead: { select: { name: true } },
+          },
+        });
+      } catch (e: any) {
+        this.logger.warn(`[AI] Falha ao buscar ClienteContabil: ${e.message}`);
+      }
+
       // 3a. Mesmo sem ai_mode, atualiza Long Memory para conversas do operador humano.
       // Isso garante que o "Resumo dos Fatos" seja atualizado mesmo quando um humano atende.
       if (!convo.ai_mode) {
@@ -1148,17 +1167,45 @@ export class AiProcessor extends WorkerHost {
         }
       }
 
+      // Monta bloco de contexto do cliente cadastrado (se existir)
+      let clienteInfoBlock = '';
+      if (clienteContabil) {
+        const serviceLabels: Record<string, string> = {
+          CLIENTE_EFETIVO: 'Cliente Efetivo',
+          BPO_FISCAL: 'BPO Fiscal',
+          BPO_CONTABIL: 'BPO Contábil',
+          DP: 'Departamento Pessoal',
+          ABERTURA: 'Abertura de Empresa',
+          ENCERRAMENTO: 'Encerramento de Empresa',
+          IR_PF: 'Imposto de Renda PF',
+          IR_PJ: 'Imposto de Renda PJ',
+          CONSULTORIA: 'Consultoria',
+          OUTRO: 'Outro',
+        };
+        const stageLabels: Record<string, string> = {
+          ONBOARDING: 'em onboarding',
+          ATIVO: 'ativo',
+          SUSPENSO: 'suspenso',
+          ENCERRADO: 'encerrado',
+        };
+        const clientName = clienteContabil.lead?.name || convo.lead.name || '';
+        const serviceName = serviceLabels[clienteContabil.service_type] || clienteContabil.service_type;
+        const stageName = stageLabels[clienteContabil.stage] || clienteContabil.stage;
+        const regime = clienteContabil.regime_tributario ? ` | Regime: ${clienteContabil.regime_tributario.replace(/_/g, ' ')}` : '';
+        const accountantName = clienteContabil.accountant?.name ? ` | Contador(a): ${clienteContabil.accountant.name}` : '';
+        clienteInfoBlock = `CLIENTE CADASTRADO NO SISTEMA:\nNome: ${clientName}\nServiço: ${serviceName} (${stageName})${regime}${accountantName}`;
+      }
+
       const vars: Record<string, string> = {
         lead_name: convo.lead.name || 'Desconhecido',
         lead_phone: convo.lead.phone || '',
         legal_area: legalArea || 'a ser identificada',
-        firm_name: 'André Lustosa Advogados',
+        firm_name: 'Lexcon Assessoria Contábil',
         lead_memory: leadMemory,
         lead_summary: memory?.summary || '',
         conversation_id: convo.id,
         lead_id: convo.lead_id || convo.lead?.id || '',
         history_summary: historyText.slice(0, 2000),
-        // URL base do site — use no prompt: "{{site_url}}/geral/arapiraca"
         site_url: siteUrl,
         data_hoje: new Date().toLocaleString('pt-BR', {
           timeZone: 'America/Maceio',
@@ -1167,6 +1214,7 @@ export class AiProcessor extends WorkerHost {
         }),
         available_slots: availableSlots,
         reminder_context: reminderContextBlock,
+        cliente_info: clienteInfoBlock,
       };
 
       // Cabeçalho fixo de capacidades — injetado antes de qualquer skill prompt
@@ -1186,6 +1234,7 @@ Use essa data para referências temporais e para saber os valores vigentes (ex: 
 MEMÓRIA DO LEAD (tudo que já foi coletado sobre este cliente):
 {{lead_memory}}
 ═══════════════════════════════════════════════════
+{{cliente_info}}
 {{reminder_context}}
 REGRA CRÍTICA — PROIBIDO REPETIR PERGUNTAS:
 - O histórico COMPLETO da conversa está nos turns acima (user/assistant). LEIA TUDO antes de responder.
@@ -1197,21 +1246,40 @@ REGRA CRÍTICA — PROIBIDO REPETIR PERGUNTAS:
 
 PRIMEIRA MENSAGEM — APRESENTAÇÃO OBRIGATÓRIA:
 Se não houver nenhuma mensagem sua (assistant) no histórico, esta é a primeira mensagem do cliente.
-Nesse caso, você DEVE:
-1. Cumprimentar com "Bom dia", "Boa tarde" ou "Boa noite" conforme o horário atual ({{data_hoje}}).
-2. Apresentar-se: "Me chamo Miguel, atendente do escritório Lexcon Assessoria Contábil."
+Verifique se há "CLIENTE CADASTRADO NO SISTEMA" acima ({{cliente_info}}).
+
+CASO O CLIENTE SEJA CADASTRADO NO SISTEMA:
+1. Cumprimentar com "Bom dia", "Boa tarde" ou "Boa noite" conforme o horário ({{data_hoje}}).
+2. Apresentar-se: "Me chamo Miguel, atendente da Lexcon Assessoria Contábil."
+3. Chamar pelo nome já conhecido: "Tudo bem, [Nome]?"
+4. Perguntar o motivo do contato: "Em que posso te ajudar hoje?"
+NUNCA pergunte o nome de um cliente já cadastrado. Você já o conhece.
+Exemplo: "Olá! Boa tarde 😊 Me chamo Miguel, atendente da Lexcon. Tudo bem, João? Em que posso te ajudar hoje?"
+
+CASO O CLIENTE NÃO SEJA CADASTRADO ({{cliente_info}} vazio):
+1. Cumprimentar com "Bom dia", "Boa tarde" ou "Boa noite" conforme o horário ({{data_hoje}}).
+2. Apresentar-se: "Me chamo Miguel, atendente da Lexcon Assessoria Contábil."
 3. Perguntar o nome do cliente.
 NÃO mencione que é IA. Seja breve e natural, estilo WhatsApp.
-Exemplo: "Olá! Boa tarde 😊 Me chamo Miguel, atendente do escritório Lexcon Assessoria Contábil. Qual é o seu nome?"
+Exemplo: "Olá! Boa tarde 😊 Me chamo Miguel, atendente da Lexcon Assessoria Contábil. Qual é o seu nome?
+
+ARQUIVO SEM CONTEXTO — OBRIGATÓRIO:
+Se a última mensagem do cliente for apenas um arquivo (imagem, documento, PDF) SEM nenhum texto explicativo:
+1. Analise visualmente o arquivo (você consegue ver imagens e documentos).
+2. Descreva brevemente o que identificou no arquivo (ex: "Vi que é uma nota fiscal de...").
+3. Pergunte o que o cliente deseja com aquele arquivo: "O que você precisa em relação a este documento?"
+NUNCA ignore um arquivo recebido. NUNCA peça para o cliente "explicar o que enviou" sem antes tentar identificar o conteúdo.
 
 IDENTIFICAÇÃO DE SETOR — OBRIGATÓRIA:
 Assim que o cliente informar o motivo do contato, identifique o setor responsável e defina updates.area com o nome EXATO abaixo:
-- area = "Fiscal": imposto de renda, MEI, SIMPLES NACIONAL, PGDAS, nota fiscal, SPED, DAS, parcelamento fiscal, malha fina
-- area = "Pessoal": folha de pagamento, admissão, demissão, férias, rescisão, e-Social, FGTS, INSS, salário
-- area = "Contábil": balanço, DRE, contabilidade, demonstrações financeiras, balancete, livro caixa
-- area = "Formalização": abrir empresa, CNPJ, contrato social, alvará, MEI, encerramento de empresa, alteração contratual
+- area = "Fiscal": imposto de renda, MEI, SIMPLES NACIONAL, PGDAS, nota fiscal, SPED, DAS, parcelamento fiscal, malha fina, IRPF, IRPJ
+- area = "Pessoal": folha de pagamento, admissão, demissão, férias, rescisão, e-Social, FGTS, INSS, salário, holerite, ponto
+- area = "Contábil": balanço, DRE, contabilidade, demonstrações financeiras, balancete, livro caixa, relatório contábil
+- area = "Formalização": abrir empresa, CNPJ, contrato social, alvará, MEI, encerramento de empresa, alteração contratual, registro
 Se o assunto não se encaixar claramente em nenhum setor, NÃO defina area — deixe null para qualificação manual.
 DEFINA SEMPRE area junto com status = "QUALIFICANDO" na primeira mensagem em que o cliente revela o motivo.
+
+CLIENTES CADASTRADOS E ÁREA: Se {{cliente_info}} estiver preenchido e o serviço for DP → area = "Pessoal"; BPO_FISCAL, IR_PF, IR_PJ → area = "Fiscal"; BPO_CONTABIL → area = "Contábil"; ABERTURA, ENCERRAMENTO → area = "Formalização". Defina area imediatamente na primeira resposta ao cliente cadastrado, sem precisar perguntar o motivo primeiro.
 
 PROGRESSÃO DE ETAPAS DO FUNIL — OBRIGATÓRIA:
 Atualize o status do lead assim que a situação mudar. NÃO espere o atendimento terminar.
