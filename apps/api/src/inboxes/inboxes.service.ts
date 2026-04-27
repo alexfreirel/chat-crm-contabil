@@ -24,7 +24,7 @@ export class InboxesService {
       // User.role é singular String: ADMIN | ESPECIALISTA | ASSISTENTE | OPERADOR
       (this.prisma as any).user.findMany({
         where: {
-          role: { in: ['ADMIN', 'ESPECIALISTA', 'ASSISTENTE', 'OPERADOR', 'CONTADOR'] },
+          role: { in: ['ADMIN', 'CONTADOR', 'ASSISTENTE'] },
         },
         select: { id: true, name: true, role: true },
         orderBy: { name: 'asc' },

@@ -239,7 +239,7 @@ export class DashboardService {
           return {
             userId: member.id,
             name: member.name,
-            role: member.role ?? 'OPERADOR',
+            role: member.role ?? 'ASSISTENTE',
             openConversations,
             activeCases,
             pendingTasks,

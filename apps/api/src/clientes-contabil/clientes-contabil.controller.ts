@@ -76,7 +76,7 @@ export class ClientesContabilController {
   }
 
   @Post('from-lead/:leadId')
-  @Roles('ADMIN', 'CONTADOR', 'OPERADOR', 'ASSISTENTE')
+  @Roles('ADMIN', 'CONTADOR', 'ASSISTENTE')
   createFromLead(
     @Param('leadId') leadId: string,
     @Body() body: { service_type: string; conversation_id?: string; regime_tributario?: string; nome_empresa?: string; cpf_cnpj?: string },

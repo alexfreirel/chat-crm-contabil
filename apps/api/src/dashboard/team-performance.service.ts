@@ -37,13 +37,13 @@ export class TeamPerformanceService {
     // Normalize: treat role as array for compatibility
     const usersNorm = users.map(u => ({ ...u, roles: u.role ? [u.role] : [] }));
 
-    const especialistas = usersNorm.filter(u => u.roles?.includes('ESPECIALISTA') || u.roles?.includes('CONTADOR'));
-    const operadores = usersNorm.filter(u => u.roles?.includes('OPERADOR'));
+    const especialistas = usersNorm.filter(u => u.roles?.includes('CONTADOR') || u.roles?.includes('ADMIN'));
+    const assistentes2 = usersNorm.filter(u => u.roles?.includes('ASSISTENTE'));
     const assistentes = usersNorm.filter(u => u.roles?.includes('ASSISTENTE'));
     const allIds = usersNorm.map(u => u.id);
     const espIds = especialistas.map(u => u.id);
-    const opIds = operadores.map(u => u.id);
-    const estIds = assistentes.map(u => u.id);
+    const opIds: string[] = []; // OPERADOR removido
+    const estIds = assistentes2.map(u => u.id);
 
     // ─── 2. Batch queries (all roles in parallel) ──
     const [
@@ -172,7 +172,7 @@ export class TeamPerformanceService {
       let score = 0;
       let prevScore = 0;
 
-      if (user.roles?.some((r: string) => ['ESPECIALISTA', 'CONTADOR', 'ADMIN'].includes(r))) {
+      if (user.roles?.some((r: string) => ['CONTADOR', 'ADMIN'].includes(r))) {
         const active = gc(activeCases, 'accountant_id', user.id);
         const filed = gc(casesFiledCurrent, 'accountant_id', user.id);
 
@@ -196,7 +196,7 @@ export class TeamPerformanceService {
         prevScore = Math.min(30, active * 3) + Math.min(25, prevFiled * 5) + (prevTaskRate / 100) * 30 + 15;
       }
 
-      if (user.roles?.includes('OPERADOR')) {
+      if (false) { // OPERADOR removido
         const open = gc(openConvs, 'assigned_user_id', user.id);
         const closed = gc(closedConvs, 'assigned_user_id', user.id);
         const handled = gc(leadsHandled, 'cs_user_id', user.id);
@@ -247,7 +247,7 @@ export class TeamPerformanceService {
       prevScore = Math.max(0, Math.min(100, Math.round(prevScore)));
 
       members.push({
-        userId: user.id, name: user.name, role: user.role ?? 'OPERADOR', roles: user.roles,
+        userId: user.id, name: user.name, role: user.role ?? 'ASSISTENTE', roles: user.roles,
         compositeScore: score, previousScore: prevScore, scoreDelta: score - prevScore,
         rank: 0, quartile: 'MID' as Quartile,
         contadorKPIs: advKPIs, operadorKPIs: opKPIs, assistenteKPIs: estKPIs,
@@ -278,9 +278,9 @@ export class TeamPerformanceService {
       }
     };
 
-    rankGroup('ESPECIALISTA');
+    
     rankGroup('CONTADOR');
-    rankGroup('OPERADOR');
+    
     rankGroup('ASSISTENTE');
     rankGroup('ADMIN');
 

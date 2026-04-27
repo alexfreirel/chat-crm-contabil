@@ -666,7 +666,7 @@ function highlightSearch(text: string, query: string): React.ReactElement {
 
 export default function ManualPage() {
   return (
-    <RouteGuard allowedRoles={['ADMIN', 'CONTADOR', 'OPERADOR', 'ASSISTENTE', 'FINANCEIRO']}>
+    <RouteGuard allowedRoles={['ADMIN', 'CONTADOR', 'ASSISTENTE', 'FINANCEIRO']}>
       <ManualContent />
     </RouteGuard>
   );

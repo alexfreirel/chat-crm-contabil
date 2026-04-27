@@ -43,7 +43,7 @@ import { InadimplenciaWidget } from './components/InadimplenciaWidget';
    ═══════════════════════════════════════════════════════════════ */
 export default function DashboardPage() {
   const roleInfo = useRole();
-  const { isAdmin, isContador, isOperador, isAssistente, isFinanceiro } = roleInfo;
+  const { isAdmin, isContador, isAssistente, isFinanceiro } = roleInfo;
 
   const { period, setPeriod, setCustomRange } = usePeriodFilter('30d');
   const { data, loading } = useDashboardData(period);
@@ -60,23 +60,23 @@ export default function DashboardPage() {
   const teamPerf = useTeamPerformance(period, isAdmin);
   const contabil = useContabilDashboard(period.key);
 
-  // Dashboard agressivo para ADMIN e OPERADOR
-  const aggressive = isAdmin || isOperador;
+  // Dashboard agressivo para ADMIN e CONTADOR
+  const aggressive = isAdmin || isContador;
 
   // Visibility per role
-  const showInbox = isAdmin || isOperador;
+  const showInbox = isAdmin || isContador;
   const showFinancials = isAdmin || isContador || isFinanceiro;
   const showRevenue = isAdmin || isContador || isFinanceiro;
-  const showFunnel = isAdmin || isOperador;
-  const showTasks = isAdmin || isContador || isOperador || isAssistente;
-  const showPipeline = isAdmin || isOperador;
+  const showFunnel = isAdmin || isContador;
+  const showTasks = isAdmin || isContador || isAssistente;
+  const showPipeline = isAdmin || isContador;
   const showAging = isAdmin || isContador || isFinanceiro;
-  const showVelocity = isAdmin || isOperador;
-  const showResponse = isAdmin || isOperador;
-  const showSources = isAdmin || isOperador;
+  const showVelocity = isAdmin || isContador;
+  const showResponse = isAdmin || isContador;
+  const showSources = isAdmin || isContador;
   const showAi = isAdmin;
   const showTeam = isAdmin;
-  const showEvents = isAdmin || isContador || isOperador || isAssistente;
+  const showEvents = isAdmin || isContador || isAssistente;
 
   // Full-page loading
   if (loading && !data) {
@@ -120,7 +120,7 @@ export default function DashboardPage() {
           </div>
         </MotionWidget>
 
-        {/* Row 2: Stats Grid — agressivo (8 cards) para ADMIN/OPERADOR, padrao para demais */}
+        {/* Row 2: Stats Grid — agressivo (8 cards) para ADMIN/CONTADOR, padrao para demais */}
         <MotionWidget delay={0.05}>
           <StatsGrid
             data={data}
@@ -131,7 +131,7 @@ export default function DashboardPage() {
           />
         </MotionWidget>
 
-        {/* Row 3: Performance Strip (ADMIN + OPERADOR) */}
+        {/* Row 3: Performance Strip (ADMIN + CONTADOR) */}
         {aggressive && (
           <MotionWidget delay={0.08}>
             <OperatorPerformanceStrip

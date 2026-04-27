@@ -84,7 +84,7 @@ export class UsersService {
         email: data.email,
         phone: data.phone || null,
         password_hash,
-        role: data.role || 'OPERADOR',
+        role: data.role || 'ASSISTENTE',
         tenant_id: data.tenant_id,
         inboxes: data.inboxIds ? { connect: data.inboxIds.map(id => ({ id })) } : undefined
       },
@@ -168,7 +168,7 @@ export class UsersService {
 
   // ─── Lawyer / Intern helpers ──────────────────────────────────
 
-  /** Lista especialistas/contadores (role ESPECIALISTA ou ADMIN com specialties) */
+  /** Lista contadores/admins com especialidades */
   async findLawyers(tenantId?: string) {
     const tenantFilter = this.tenantWhere(tenantId);
     return this.prisma.user.findMany({
@@ -176,7 +176,7 @@ export class UsersService {
         AND: [
           {
             OR: [
-              { role: { in: ['ESPECIALISTA', 'CONTADOR', 'ADMIN', 'ASSISTENTE', 'OPERADOR'] } },
+              { role: { in: ['CONTADOR', 'ADMIN', 'ASSISTENTE'] } },
             ],
           },
           // Isolamento multi-tenant combinado via AND para não sobrescrever o OR acima

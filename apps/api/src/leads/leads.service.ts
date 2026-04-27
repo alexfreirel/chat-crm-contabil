@@ -90,18 +90,16 @@ export class LeadsService {
 
       const userRoles = normalizeRoles(user?.role as any);
       const isAdminUser = userRoles.includes('ADMIN');
-      const isContadorUser = userRoles.includes('CONTADOR') || userRoles.includes('ESPECIALISTA');
-      const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL') || userRoles.includes('ASSISTENTE');
+      const isContadorUser = userRoles.includes('CONTADOR');
+      const isOperadorUser = userRoles.includes('ASSISTENTE');
       const userInboxIds = (user?.inboxes ?? []).map((i: any) => i.id);
 
-      if (!isAdminUser) {
+      // ADMIN e CONTADOR/ESPECIALISTA veem todos os contatos do tenant
+      // OPERADOR/COMERCIAL/ASSISTENTE veem apenas contatos atribuídos a eles
+      if (!isAdminUser && !isContadorUser) {
         const orConditions: any[] = [];
 
-        if (isContadorUser) {
-          orConditions.push({ conversations: { some: { assigned_accountant_id: userId } } });
-        }
-
-        if (isOperadorUser || isContadorUser) {
+        if (isOperadorUser) {
           orConditions.push({ conversations: { some: { assigned_user_id: userId } } });
           orConditions.push({ cs_user_id: userId });
         }
@@ -611,7 +609,4 @@ export class LeadsService {
         data: { facts_json: facts, summary: newSummary, last_updated_at: new Date(), version: { increment: 1 } },
       });
     } else {
-      await this.prisma.aiMemory.create({ data: { lead_id: leadId, summary: newSummary, facts_json: facts } });
-    }
-  }
-}
+      await this.prisma.aiMemory.create({ data: { lead_id: leadId, summary: newSummary, facts_json: facts }

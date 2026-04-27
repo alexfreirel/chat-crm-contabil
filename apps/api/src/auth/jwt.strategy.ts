@@ -24,7 +24,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // Backward compat: tokens antigos têm role (string), novos têm roles (array)
     const roles: string[] = Array.isArray(payload.roles)
       ? payload.roles
-      : (payload.role ? [payload.role] : ['OPERADOR']);
+      : (payload.role ? [payload.role] : ['ASSISTENTE']);
     return { id: payload.sub, email: payload.email, roles, role: roles[0], tenant_id: payload.tenant_id };
   }
 }

@@ -43,7 +43,7 @@ model User {
   phone                    String?
   password_hash            String
   role                     String                 @default("ADMIN")
-  // Roles: ADMIN | ESPECIALISTA | ASSISTENTE | OPERADOR
+  // Roles: ADMIN | CONTADOR | ASSISTENTE | FINANCEIRO
   specialties              String[]               @default([])
   created_at               DateTime               @default(now())
   updated_at               DateTime               @updatedAt

@@ -15,22 +15,20 @@ const SPECIALTY_SUGGESTIONS = [
 // ─── Perfis de acesso ────────────────────────────────────────────────────────
 // ADMIN removido da UI — CONTADOR assume controle total do sistema
 const ROLE_OPTIONS = [
-  { value: 'CONTADOR',   label: '📊 Contador',            desc: 'Controle total do sistema e dos clientes contábeis' },
-  { value: 'OPERADOR',   label: '💼 Atendente Comercial', desc: 'Atendimento, leads e conversões' },
-  { value: 'ASSISTENTE', label: '🎓 Assistente',          desc: 'Suporte administrativo e tarefas' },
-  { value: 'FINANCEIRO', label: '💰 Financeiro',          desc: 'Gestão financeira e cobranças' },
+  { value: 'CONTADOR',   label: '📊 Contador',   desc: 'Controle total do sistema e dos clientes contábeis' },
+  { value: 'ASSISTENTE', label: '🎓 Assistente', desc: 'Suporte administrativo e tarefas' },
+  { value: 'FINANCEIRO', label: '💰 Financeiro', desc: 'Gestão financeira e cobranças' },
 ];
 
 function roleBadge(role: string) {
   const map: Record<string, string> = {
     ADMIN:      'bg-violet-900/30 text-violet-300 border-violet-800/30', // backward-compat
     CONTADOR:   'bg-violet-900/30 text-violet-300 border-violet-800/30', // superadmin
-    OPERADOR:   'bg-blue-900/30 text-blue-300 border-blue-800/30',
     ASSISTENTE: 'bg-amber-900/30 text-amber-300 border-amber-800/30',
     FINANCEIRO: 'bg-emerald-900/30 text-emerald-300 border-emerald-800/30',
   };
   const label: Record<string, string> = {
-    ADMIN: 'Contador', CONTADOR: 'Contador', OPERADOR: 'Atendente',
+    ADMIN: 'Contador', CONTADOR: 'Contador',
     ASSISTENTE: 'Assistente', FINANCEIRO: 'Financeiro',
   };
   const cls = map[role] || 'bg-muted/20 text-muted-foreground border-border';
@@ -560,3 +558,4 @@ export default function UsersSettingsPage() {
     </div>
   );
 }
+                                                                                                                                                                                                                             

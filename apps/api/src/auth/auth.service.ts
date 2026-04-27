@@ -23,7 +23,7 @@ export class AuthService {
     // Multi-role: roles é array. Fallback se vazio ou ausente.
     const roles: string[] = (Array.isArray(user.roles) && user.roles.length > 0)
       ? user.roles
-      : (user.role ? [user.role] : ['OPERADOR']);
+      : (user.role ? [user.role] : ['ASSISTENTE']);
     const payload = { email: user.email, sub: user.id, roles, tenant_id: user.tenant_id };
     return {
       access_token: this.jwtService.sign(payload),
@@ -34,7 +34,7 @@ export class AuthService {
   async generateMcpToken(user: any) {
     const roles: string[] = (Array.isArray(user.roles) && user.roles.length > 0)
       ? user.roles
-      : (user.role ? [user.role] : ['OPERADOR']);
+      : (user.role ? [user.role] : ['ASSISTENTE']);
     const payload = { email: user.email, sub: user.id, roles, tenant_id: user.tenant_id };
     const mcp_token = this.jwtService.sign(payload, { expiresIn: '365d' });
     return { mcp_token };

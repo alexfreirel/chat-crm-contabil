@@ -41,7 +41,7 @@ export class ConversationsService {
         })
       : null;
 
-    const userRole = effectiveRole((user as any)?.roles ?? user?.role ?? 'OPERADOR');
+    const userRole = effectiveRole((user as any)?.roles ?? user?.role ?? 'ASSISTENTE');
     const userInboxIds = (user?.inboxes ?? []).map((i: any) => i.id);
 
     // ─── Filtro por clientMode (modo Leads vs Clientes) ──────────────────
@@ -60,8 +60,8 @@ export class ConversationsService {
     // ─── Controle de acesso por role (multi-role aware) ────────────────
     const userRoles: string[] = Array.isArray((user as any)?.roles) ? (user as any).roles : [userRole];
     const isAdminUser = userRoles.includes('ADMIN');
-    const isContadorUser = userRoles.includes('CONTADOR') || userRoles.includes('ESPECIALISTA');
-    const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL') || userRoles.includes('ASSISTENTE');
+    const isContadorUser = userRoles.includes('CONTADOR');
+    const isOperadorUser = userRoles.includes('ASSISTENTE');
 
     if (isAdminUser) {
       // Admin vê tudo — apenas filtra por inboxId se explicitamente pedido
@@ -676,8 +676,7 @@ export class ConversationsService {
    * Regra de negócio (notificações — mais restritiva que visibilidade):
    *  - ADMIN: badges apenas das conversas atribuídas a ele (assigned_user_id)
    *  - CONTADOR: badges apenas de clientes atribuídos a ele (assigned_lawyer_id)
-   *  - OPERADOR: badges apenas de leads/clientes atribuídos a ele (assigned_user_id)
-   *  - CONTADOR+OPERADOR: combina ambos (clientes como contador + leads como operador)
+   *  - ASSISTENTE: badges apenas de leads/clientes atribuídos a ele (assigned_user_id)
    *  - Exclui leads PERDIDO/FINALIZADO
    *
    * Nota: findAll() controla VISIBILIDADE (o que aparece na lista).
@@ -695,9 +694,9 @@ export class ConversationsService {
 
       const userRoles: string[] = Array.isArray((user as any)?.roles)
         ? (user as any).roles
-        : [effectiveRole((user as any)?.roles ?? user?.role ?? 'OPERADOR')];
+        : [effectiveRole((user as any)?.roles ?? user?.role ?? 'ASSISTENTE')];
       const isContadorUser2 = userRoles.includes('CONTADOR');
-      const isOperadorUser = userRoles.includes('OPERADOR') || userRoles.includes('COMERCIAL') || userRoles.includes('ASSISTENTE');
+      const isOperadorUser = userRoles.includes('ASSISTENTE');
       const isAdminUser = userRoles.includes('ADMIN');
 
       // Filtro base: tenant + exclui leads PERDIDO/FINALIZADO

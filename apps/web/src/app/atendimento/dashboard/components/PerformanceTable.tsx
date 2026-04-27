@@ -6,7 +6,7 @@ import { Area, AreaChart, ResponsiveContainer } from 'recharts';
 import { fmtBRL } from '../utils';
 import type { TeamPerformanceEntry, TeamAverages, Quartile } from '../types';
 
-type RoleTab = 'TODOS' | 'CONTADOR' | 'OPERADOR' | 'ASSISTENTE';
+type RoleTab = 'TODOS' | 'CONTADOR' | 'ASSISTENTE';
 
 interface Props {
   members: TeamPerformanceEntry[];
@@ -105,12 +105,7 @@ export function PerformanceTable({ members, averages, activeTab }: Props) {
           <SH field="collectionRate" label="Tx Coleta" className="justify-center" />
           <SH field="deadlineCompletionRate" label="Prazos" className="justify-center" />
         </>)}
-        {activeTab === 'OPERADOR' && (<>
-          <SH field="conversionRate" label="Conversao" className="justify-center" />
-          <SH field="closedConversations" label="Fechadas" className="justify-center" />
-          <SH field="stagesAdvanced" label="Pipeline" className="justify-center" />
-          <SH field="leadsLost" label="Perdas" className="justify-center" />
-        </>)}
+
         {activeTab === 'ASSISTENTE' && (<>
           <SH field="taskCompletionRate" label="Tarefas" className="justify-center" />
           <SH field="deadlinesCompletedOnTime" label="Prazos" className="justify-center" />
@@ -153,12 +148,7 @@ export function PerformanceTable({ members, averages, activeTab }: Props) {
                   <div className="text-center"><span className="text-xs font-bold">{m.contadorKPIs.collectionRate}%</span><br /><VsAvgBadge value={m.contadorKPIs.collectionRate} avg={averages.contador?.collectionRate || 0} /></div>
                   <div className="text-center"><span className="text-xs font-bold">{m.contadorKPIs.deadlineCompletionRate}%</span></div>
                 </>)}
-                {activeTab === 'OPERADOR' && m.operadorKPIs && (<>
-                  <div className="text-center"><span className="text-xs font-bold">{m.operadorKPIs.conversionRate}%</span><br /><VsAvgBadge value={m.operadorKPIs.conversionRate} avg={averages.operador?.conversionRate || 0} /></div>
-                  <div className="text-center text-xs font-bold">{m.operadorKPIs.closedConversations}</div>
-                  <div className="text-center text-xs font-bold">{m.operadorKPIs.stagesAdvanced}</div>
-                  <div className="text-center"><span className={`text-xs font-bold ${m.operadorKPIs.leadsLost > 0 ? 'text-red-500' : ''}`}>{m.operadorKPIs.leadsLost}</span></div>
-                </>)}
+
                 {activeTab === 'ASSISTENTE' && m.assistenteKPIs && (<>
                   <div className="text-center"><span className="text-xs font-bold">{m.assistenteKPIs.taskCompletionRate}%</span><br /><VsAvgBadge value={m.assistenteKPIs.taskCompletionRate} avg={averages.assistente?.taskCompletionRate || 0} /></div>
                   <div className="text-center text-xs font-bold">{m.assistenteKPIs.deadlinesCompletedOnTime}</div>
@@ -168,7 +158,7 @@ export function PerformanceTable({ members, averages, activeTab }: Props) {
                   <div className="text-center text-xs font-bold">{m.sharedTasks.tasksCompleted}</div>
                   <div className="text-center"><span className={`text-xs font-bold ${m.sharedTasks.tasksOverdue > 0 ? 'text-red-500' : ''}`}>{m.sharedTasks.tasksOverdue}</span></div>
                   <div className="text-center text-[9px] font-semibold text-muted-foreground">
-                    {m.contadorKPIs ? `${m.contadorKPIs.caseWinRate}% win` : m.operadorKPIs ? `${m.operadorKPIs.conversionRate}% conv` : `${m.sharedTasks.taskCompletionRate}% ok`}
+                    {m.contadorKPIs ? `${m.contadorKPIs.caseWinRate}% win` : `${m.sharedTasks.taskCompletionRate}% ok`}
                   </div>
                   <div className="text-center"><DeltaBadge delta={m.scoreDelta} /></div>
                 </>)}

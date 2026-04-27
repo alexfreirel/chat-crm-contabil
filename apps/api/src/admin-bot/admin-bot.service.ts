@@ -90,7 +90,7 @@ export class AdminBotService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.user.findFirst({
       where: {
         phone: { in: [normalized, phone] },
-        role: { in: ['ADMIN', 'CONTADOR', 'ESPECIALISTA'] }, // ESPECIALISTA: backward-compat
+        role: { in: ['ADMIN', 'CONTADOR'] },
       },
       select: { id: true, name: true, role: true, tenant_id: true },
     });
@@ -572,7 +572,7 @@ Para qual cliente contábil? (responda 1, 2, 3 ou "nenhum")`;
 
         case 'list_users': {
           const users = await this.prisma.user.findMany({
-            where: { role: { in: ['ADMIN', 'CONTADOR', 'ESPECIALISTA', 'OPERADOR'] } }, // ESPECIALISTA: backward-compat
+            where: { role: { in: ['ADMIN', 'CONTADOR', 'ASSISTENTE'] } },
             select: { id: true, name: true, role: true },
             orderBy: { name: 'asc' },
           });
