@@ -62,6 +62,7 @@ export class ClientesContabilController {
       regime_tributario?: string;
       cpf_cnpj?: string;
       tipo_pessoa?: string;
+      nome_empresa?: string;
       notes?: string;
       priority?: string;
     },
@@ -78,7 +79,7 @@ export class ClientesContabilController {
   @Roles('ADMIN', 'CONTADOR', 'OPERADOR')
   createFromLead(
     @Param('leadId') leadId: string,
-    @Body() body: { service_type: string; conversation_id?: string; regime_tributario?: string },
+    @Body() body: { service_type: string; conversation_id?: string; regime_tributario?: string; nome_empresa?: string; cpf_cnpj?: string },
     @Request() req: any,
   ) {
     return this.service.createFromLead(leadId, {

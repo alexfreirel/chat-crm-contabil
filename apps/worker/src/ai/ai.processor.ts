@@ -846,21 +846,24 @@ export class AiProcessor extends WorkerHost {
       // 3. Verificar ai_mode ativo
       if (!convo) return;
 
-      // 3b-extra. Verificar se o lead já é cliente contábil cadastrado
+      // 3b-extra. Verificar se o lead já é cliente contábil cadastrado (pode ter múltiplas empresas)
       let clienteContabil: any = null;
+      let clientesContabil: any[] = [];
       try {
-        clienteContabil = await (this.prisma as any).clienteContabil.findFirst({
-          where: { lead_id: convo.lead_id },
+        clientesContabil = await (this.prisma as any).clienteContabil.findMany({
+          where: { lead_id: convo.lead_id, archived: false },
           select: {
             id: true,
             service_type: true,
             regime_tributario: true,
             stage: true,
             cpf_cnpj: true,
+            nome_empresa: true,
             accountant: { select: { name: true } },
             lead: { select: { name: true } },
           },
         });
+        clienteContabil = clientesContabil[0] ?? null;
       } catch (e: any) {
         this.logger.warn(`[AI] Falha ao buscar ClienteContabil: ${e.message}`);
       }
@@ -1167,33 +1170,49 @@ export class AiProcessor extends WorkerHost {
         }
       }
 
-      // Monta bloco de contexto do cliente cadastrado (se existir)
+      // Monta bloco de contexto do cliente cadastrado (suporta múltiplas empresas)
+      const SERVICE_LABELS: Record<string, string> = {
+        CLIENTE_EFETIVO: 'Cliente Efetivo',
+        BPO_FISCAL: 'BPO Fiscal',
+        BPO_CONTABIL: 'BPO Contábil',
+        DP: 'Departamento Pessoal',
+        ABERTURA: 'Abertura de Empresa',
+        ENCERRAMENTO: 'Encerramento de Empresa',
+        IR_PF: 'Imposto de Renda PF',
+        IR_PJ: 'Imposto de Renda PJ',
+        CONSULTORIA: 'Consultoria',
+        OUTRO: 'Outro',
+      };
+      const STAGE_LABELS: Record<string, string> = {
+        ONBOARDING: 'em onboarding',
+        ATIVO: 'ativo',
+        SUSPENSO: 'suspenso',
+        ENCERRADO: 'encerrado',
+      };
       let clienteInfoBlock = '';
-      if (clienteContabil) {
-        const serviceLabels: Record<string, string> = {
-          CLIENTE_EFETIVO: 'Cliente Efetivo',
-          BPO_FISCAL: 'BPO Fiscal',
-          BPO_CONTABIL: 'BPO Contábil',
-          DP: 'Departamento Pessoal',
-          ABERTURA: 'Abertura de Empresa',
-          ENCERRAMENTO: 'Encerramento de Empresa',
-          IR_PF: 'Imposto de Renda PF',
-          IR_PJ: 'Imposto de Renda PJ',
-          CONSULTORIA: 'Consultoria',
-          OUTRO: 'Outro',
-        };
-        const stageLabels: Record<string, string> = {
-          ONBOARDING: 'em onboarding',
-          ATIVO: 'ativo',
-          SUSPENSO: 'suspenso',
-          ENCERRADO: 'encerrado',
-        };
+      if (clientesContabil.length > 1) {
+        // Contato com múltiplas empresas — instrui a IA a perguntar qual empresa
+        const empresasList = clientesContabil.map((c: any, i: number) => {
+          const nome = c.nome_empresa || c.cpf_cnpj || `Empresa ${i + 1}`;
+          const servico = SERVICE_LABELS[c.service_type] || c.service_type;
+          const stage = STAGE_LABELS[c.stage] || c.stage;
+          return `  ${i + 1}. ${nome} — ${servico} (${stage})`;
+        }).join('\n');
+        const clientName = clienteContabil?.lead?.name || convo.lead.name || '';
+        clienteInfoBlock =
+          `ATENÇÃO — CLIENTE COM MÚLTIPLAS EMPRESAS:\n` +
+          `Nome do contato: ${clientName}\n` +
+          `Empresas cadastradas:\n${empresasList}\n\n` +
+          `INSTRUÇÃO OBRIGATÓRIA: No início de CADA atendimento, pergunte para qual empresa o cliente deseja atendimento. ` +
+          `Exemplo: "Olá! Você possui ${clientesContabil.length} empresas conosco. Para qual empresa você precisa de atendimento hoje?"`;
+      } else if (clienteContabil) {
         const clientName = clienteContabil.lead?.name || convo.lead.name || '';
-        const serviceName = serviceLabels[clienteContabil.service_type] || clienteContabil.service_type;
-        const stageName = stageLabels[clienteContabil.stage] || clienteContabil.stage;
+        const serviceName = SERVICE_LABELS[clienteContabil.service_type] || clienteContabil.service_type;
+        const stageName = STAGE_LABELS[clienteContabil.stage] || clienteContabil.stage;
         const regime = clienteContabil.regime_tributario ? ` | Regime: ${clienteContabil.regime_tributario.replace(/_/g, ' ')}` : '';
+        const empresa = clienteContabil.nome_empresa ? ` | Empresa: ${clienteContabil.nome_empresa}` : '';
         const accountantName = clienteContabil.accountant?.name ? ` | Contador(a): ${clienteContabil.accountant.name}` : '';
-        clienteInfoBlock = `CLIENTE CADASTRADO NO SISTEMA:\nNome: ${clientName}\nServiço: ${serviceName} (${stageName})${regime}${accountantName}`;
+        clienteInfoBlock = `CLIENTE CADASTRADO NO SISTEMA:\nNome: ${clientName}\nServiço: ${serviceName} (${stageName})${empresa}${regime}${accountantName}`;
       }
 
       const vars: Record<string, string> = {

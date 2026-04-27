@@ -59,12 +59,20 @@ function authHeaders() {
 }
 
 /* ─── Modal criar cliente ─── */
+function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length <= 11) return `55${digits}`;
+  return digits;
+}
+
 function CreateClienteModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [leadSearch, setLeadSearch] = useState('');
   const [leads, setLeads] = useState<any[]>([]);
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [serviceType, setServiceType] = useState('CLIENTE_EFETIVO');
   const [regime, setRegime] = useState('');
+  const [nomeEmpresa, setNomeEmpresa] = useState('');
+  const [cnpj, setCnpj] = useState('');
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -99,16 +107,17 @@ function CreateClienteModal({ onClose, onCreated }: { onClose: () => void; onCre
       // Criar novo lead se não existe
       if (!leadId) {
         if (!newPhone) { setCreateError('Informe o telefone do contato'); setSaving(false); return; }
+        const normalizedPhone = normalizePhone(newPhone);
         const r = await fetch(`${API}/leads`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...authHeaders() },
-          body: JSON.stringify({ name: newName || leadSearch || 'Sem nome', phone: newPhone }),
+          body: JSON.stringify({ name: newName || leadSearch || 'Sem nome', phone: normalizedPhone }),
         });
         if (!r.ok) {
           const errData = await r.json().catch(() => ({}));
           // Telefone já existe → buscar o lead e usar ele
           if (r.status === 409 || (errData?.message && String(errData.message).toLowerCase().includes('unique'))) {
-            const searchRes = await fetch(`${API}/leads?search=${encodeURIComponent(newPhone)}&limit=1`, { headers: authHeaders() });
+            const searchRes = await fetch(`${API}/leads?search=${encodeURIComponent(normalizedPhone)}&limit=1`, { headers: authHeaders() });
             const searchData = await searchRes.json();
             const found = Array.isArray(searchData) ? searchData[0] : searchData?.data?.[0];
             if (found?.id) { leadId = found.id; }
@@ -127,7 +136,12 @@ function CreateClienteModal({ onClose, onCreated }: { onClose: () => void; onCre
       const res = await fetch(`${API}/clientes-contabil/from-lead/${leadId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ service_type: serviceType, regime_tributario: regime || undefined }),
+        body: JSON.stringify({
+          service_type: serviceType,
+          regime_tributario: regime || undefined,
+          nome_empresa: nomeEmpresa.trim() || undefined,
+          cpf_cnpj: cnpj.trim() || undefined,
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -240,6 +254,33 @@ function CreateClienteModal({ onClose, onCreated }: { onClose: () => void; onCre
               </button>
             </div>
           )}
+
+          {/* Nome da empresa e CNPJ — obrigatório quando já existe registro para este contato */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Nome da empresa</label>
+              <input
+                type="text"
+                value={nomeEmpresa}
+                onChange={e => setNomeEmpresa(e.target.value)}
+                placeholder="Razão social ou fantasia"
+                className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">CNPJ / CPF</label>
+              <input
+                type="text"
+                value={cnpj}
+                onChange={e => setCnpj(e.target.value)}
+                placeholder="00.000.000/0001-00"
+                className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground -mt-2">
+            Preencha o CNPJ (ou nome) para diferenciar empresas do mesmo contato.
+          </p>
 
           {/* Tipo de serviço */}
           <div>
@@ -469,7 +510,7 @@ export default function ClientesPage() {
                 <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border/60">
                   <span className="truncate flex items-center gap-1">
                     <Building2 className="w-3.5 h-3.5 shrink-0" />
-                    {c.lead?.ficha_contabil?.razao_social || c.lead?.name || 'Sem razão social'}
+                    {c.nome_empresa || c.lead?.ficha_contabil?.razao_social || c.lead?.name || 'Sem razão social'}
                   </span>
                   <span className="shrink-0 ml-2">
                     📅 {c._count?.obrigacoes ?? 0}

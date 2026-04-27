@@ -15,16 +15,23 @@ export class ClientesContabilService {
     regime_tributario?: string;
     cpf_cnpj?: string;
     tipo_pessoa?: string;
+    nome_empresa?: string;
     notes?: string;
     priority?: string;
     tenant_id?: string;
   }) {
-    // Prevent duplicate for same lead + service_type
-    const existing = await this.prisma.clienteContabil.findFirst({
-      where: { lead_id: data.lead_id, service_type: data.service_type, archived: false },
-    });
+    // Permitir o mesmo contato em múltiplas empresas:
+    // bloqueia apenas se lead + service_type + cpf_cnpj forem exatamente iguais.
+    // Se o CNPJ for diferente (ou não informado), considera empresa diferente.
+    const duplicateWhere: any = { lead_id: data.lead_id, service_type: data.service_type, archived: false };
+    if (data.cpf_cnpj) duplicateWhere.cpf_cnpj = data.cpf_cnpj;
+    else if (data.nome_empresa) duplicateWhere.nome_empresa = data.nome_empresa;
+
+    const existing = await this.prisma.clienteContabil.findFirst({ where: duplicateWhere });
     if (existing) {
-      throw new BadRequestException('Já existe um cliente contábil ativo para este lead e tipo de serviço');
+      throw new BadRequestException(
+        'Já existe um cliente ativo com este tipo de serviço para a mesma empresa. Use um CNPJ ou nome de empresa diferente para cadastrar outra empresa do mesmo contato.',
+      );
     }
 
     const [cliente] = await this.prisma.$transaction(async (tx) => {
@@ -37,6 +44,7 @@ export class ClientesContabilService {
           regime_tributario: data.regime_tributario,
           cpf_cnpj: data.cpf_cnpj,
           tipo_pessoa: data.tipo_pessoa,
+          nome_empresa: data.nome_empresa,
           notes: data.notes,
           priority: data.priority ?? 'NORMAL',
           tenant_id: data.tenant_id,
@@ -77,6 +85,8 @@ export class ClientesContabilService {
     regime_tributario?: string;
     accountant_id?: string;
     tenant_id?: string;
+    nome_empresa?: string;
+    cpf_cnpj?: string;
   }) {
     const lead = await this.prisma.lead.findUnique({
       where: { id: leadId },
@@ -90,7 +100,8 @@ export class ClientesContabilService {
       accountant_id: data.accountant_id,
       service_type: data.service_type,
       regime_tributario: data.regime_tributario,
-      cpf_cnpj: lead.cpf_cnpj ?? undefined,
+      cpf_cnpj: data.cpf_cnpj ?? lead.cpf_cnpj ?? undefined,
+      nome_empresa: data.nome_empresa,
       tenant_id: data.tenant_id ?? lead.tenant_id ?? undefined,
     });
   }

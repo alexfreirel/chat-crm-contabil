@@ -482,6 +482,8 @@ model ClienteContabil {
   // Identificação fiscal
   cpf_cnpj          String?
   tipo_pessoa       String?   // PF | PJ
+  // Empresa (para contatos com múltiplas empresas)
+  nome_empresa      String?   // Nome ou razão social da empresa — discrimina múltiplos cadastros do mesmo contato
   // Serviço contábil
   service_type      String    // CLIENTE_EFETIVO | BPO_FISCAL | BPO_CONTABIL | DP | ABERTURA | ENCERRAMENTO | IR_PF | IR_PJ | CONSULTORIA | OUTRO
   regime_tributario String?   // SIMPLES_NACIONAL | LUCRO_PRESUMIDO | LUCRO_REAL | MEI | ISENTO
