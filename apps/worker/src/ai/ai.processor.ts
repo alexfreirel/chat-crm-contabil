@@ -347,6 +347,7 @@ export class AiProcessor extends WorkerHost {
     leadId: string,
     leadPhone: string,
     instanceName: string | null,
+    tenantId?: string | null,
   ) {
     if (!updates || typeof updates !== 'object') return;
 
@@ -402,10 +403,10 @@ export class AiProcessor extends WorkerHost {
     } else if (!updates.status && updates.next_step) {
       // Se a IA enviou next_step mas esqueceu o status, inferir o stage automaticamente
       const inferMap: Record<string, string> = {
-        formulario:        'AGUARDANDO_FORM',
-        reuniao:           'REUNIAO_AGENDADA',
-        documentos:        'AGUARDANDO_DOCS',
-        procuracao:        'AGUARDANDO_PROC',
+        formulario:        'DOCUMENTOS',
+        reuniao:           'EM_ATENDIMENTO',
+        documentos:        'DOCUMENTOS',
+        procuracao:        'EM_ATENDIMENTO',
         encerrado:         'FINALIZADO',
         triagem_concluida: 'QUALIFICANDO',
         perdido:           'PERDIDO',
@@ -467,11 +468,11 @@ export class AiProcessor extends WorkerHost {
       }
     }
 
-    // c. Área → Conversation.legal_area (só se não classificada) + auto-atribuir especialista
+    // c. Área → Conversation.legal_area + roteamento automático para o setor (inbox)
     if (updates.area && updates.area !== 'null') {
       const conv = await (this.prisma as any).conversation.findUnique({
         where: { id: convoId },
-        select: { legal_area: true, assigned_lawyer_id: true },
+        select: { legal_area: true, assigned_lawyer_id: true, inbox_id: true },
       });
       if (!conv?.legal_area) {
         await (this.prisma as any).conversation.update({
@@ -479,6 +480,37 @@ export class AiProcessor extends WorkerHost {
           data: { legal_area: updates.area },
         });
         this.logger.log(`[AI] Área classificada: "${updates.area}"`);
+
+        // ── Roteamento para setor (inbox) correspondente à área identificada ──
+        if (!conv?.inbox_id) {
+          try {
+            const whereInbox: any = { name: { contains: updates.area, mode: 'insensitive' } };
+            if (tenantId) whereInbox.tenant_id = tenantId;
+            const matchingInbox = await (this.prisma as any).inbox.findFirst({ where: whereInbox });
+
+            if (matchingInbox) {
+              await (this.prisma as any).conversation.update({
+                where: { id: convoId },
+                data: { inbox_id: matchingInbox.id },
+              });
+              this.logger.log(`[AI] Conversa roteada para setor "${matchingInbox.name}" (id: ${matchingInbox.id})`);
+
+              // Avança lead para QUALIFICANDO se ainda estiver em INICIAL/NOVO
+              const lead = await this.prisma.lead.findUnique({ where: { id: leadId }, select: { stage: true } });
+              if (lead && ['INICIAL', 'NOVO', 'inicial', 'novo'].includes(lead.stage || '')) {
+                await this.prisma.lead.update({
+                  where: { id: leadId },
+                  data: { stage: 'QUALIFICANDO', stage_entered_at: new Date() },
+                });
+                this.logger.log(`[AI] Lead avançado para QUALIFICANDO após identificação de setor`);
+              }
+            } else {
+              this.logger.warn(`[AI] Nenhum setor encontrado para área "${updates.area}" — lead aguarda qualificação manual`);
+            }
+          } catch (e: any) {
+            this.logger.warn(`[AI] Erro ao rotear para setor: ${e.message}`);
+          }
+        }
 
         // Auto-atribuir o especialista menos ocupado (só se ainda não houver um)
         if (!conv?.assigned_lawyer_id) {
@@ -807,6 +839,7 @@ export class AiProcessor extends WorkerHost {
             take: 80,
             include: { media: true },
           },
+          inbox: { select: { id: true, name: true } },
         },
       });
 
@@ -1171,15 +1204,22 @@ Nesse caso, você DEVE:
 NÃO mencione que é IA. Seja breve e natural, estilo WhatsApp.
 Exemplo: "Olá! Boa tarde 😊 Me chamo Miguel, atendente do escritório Lexcon Assessoria Contábil. Qual é o seu nome?"
 
+IDENTIFICAÇÃO DE SETOR — OBRIGATÓRIA:
+Assim que o cliente informar o motivo do contato, identifique o setor responsável e defina updates.area com o nome EXATO abaixo:
+- area = "Fiscal": imposto de renda, MEI, SIMPLES NACIONAL, PGDAS, nota fiscal, SPED, DAS, parcelamento fiscal, malha fina
+- area = "Pessoal": folha de pagamento, admissão, demissão, férias, rescisão, e-Social, FGTS, INSS, salário
+- area = "Contábil": balanço, DRE, contabilidade, demonstrações financeiras, balancete, livro caixa
+- area = "Formalização": abrir empresa, CNPJ, contrato social, alvará, MEI, encerramento de empresa, alteração contratual
+Se o assunto não se encaixar claramente em nenhum setor, NÃO defina area — deixe null para qualificação manual.
+DEFINA SEMPRE area junto com status = "QUALIFICANDO" na primeira mensagem em que o cliente revela o motivo.
+
 PROGRESSÃO DE ETAPAS DO FUNIL — OBRIGATÓRIA:
 Atualize o status do lead assim que a situação mudar. NÃO espere o atendimento terminar.
-- status = "QUALIFICANDO": assim que o cliente informar o motivo do contato (primeira informação sobre o caso). Mude IMEDIATAMENTE nessa resposta.
-- status = "AGUARDANDO_FORM": ao enviar link do formulário.
-- status = "AGUARDANDO_DOCS": ao solicitar documentos.
-- status = "AGUARDANDO_PROC": ao solicitar procuração.
-- status = "REUNIAO_AGENDADA": quando o cliente confirmar horário de reunião.
-- status = "FINALIZADO": quando o cliente contratar o escritório.
-- status = "PERDIDO": quando o cliente desistir ou caso for inviável.
+- status = "QUALIFICANDO": assim que o cliente informar o motivo do contato. Mude IMEDIATAMENTE e defina area.
+- status = "DOCUMENTOS": ao solicitar documentos ou comprovantes ao cliente.
+- status = "EM_ATENDIMENTO": quando um especialista do setor iniciar o atendimento direto.
+- status = "FINALIZADO": quando o atendimento for concluído com sucesso.
+- status = "PERDIDO": quando o cliente desistir ou o caso for inviável.
 
 REGRAS DE ATENDIMENTO — OBRIGATÓRIAS:
 1. FAÇA SOMENTE UMA PERGUNTA POR MENSAGEM. Nunca envie duas ou mais perguntas juntas.
@@ -1416,22 +1456,23 @@ scheduling_action: Use SOMENTE quando agendar reunião.
         systemPrompt =
           MEDIA_CAPABILITIES_HEADER +
           this.injectVariables(BEHAVIOR_RULES, vars) +
-          `Você é Miguel, assistente de pré-atendimento do escritório Lexcon Assessoria Contábil.
-Seu objetivo é coletar informações sobre o caso do cliente para o advogado conseguir avaliar.
+          `Você é Miguel, assistente de pré-atendimento da Lexcon Assessoria Contábil.
+Seu objetivo é identificar o setor que melhor atende o cliente e coletar as informações iniciais.
 
 ROTEIRO (siga na ordem, UMA pergunta por vez):
 1. Cumprimente e pergunte o nome do cliente.
-2. Pergunte qual é o problema principal (deixe o cliente descrever com as próprias palavras).
-3. Colete detalhes: quando ocorreu, quem é a outra parte (empresa ou pessoa), se há valores envolvidos.
-4. Pergunte se possui documentos ou provas (contrato, mensagens, fotos, etc.).
-5. Quando tiver informações suficientes, informe que o advogado vai analisar e oriente o próximo passo.
+2. Pergunte qual é o assunto ou necessidade (deixe o cliente descrever com as próprias palavras).
+3. Com base na resposta, identifique o setor (Fiscal, Pessoal, Contábil ou Formalização) e defina updates.area + status="QUALIFICANDO" imediatamente.
+4. Colete mais detalhes específicos do setor identificado (ex: para Fiscal — qual tributo; para Pessoal — quantos funcionários).
+5. Quando tiver informações suficientes, informe que o especialista do setor vai dar continuidade ao atendimento.
 
 Retorne SOMENTE JSON válido: {"reply":"texto para enviar","updates":{"name":null,"status":"INICIAL","area":null,"lead_summary":"resumo","next_step":"duvidas","notes":"","loss_reason":null,"form_data":null},"scheduling_action":null}
 
-Valores válidos para updates.status: INICIAL | QUALIFICANDO | AGUARDANDO_FORM | REUNIAO_AGENDADA | AGUARDANDO_DOCS | AGUARDANDO_PROC | FINALIZADO | PERDIDO
-Valores válidos para updates.next_step: duvidas | triagem_concluida | entrevista | formulario | reuniao | documentos | procuracao | encerrado | perdido
-updates.loss_reason: motivo da perda em português (ex: "Sem interesse"). Obrigatório quando next_step="perdido". Null nos demais casos.
-form_data: objeto com campos trabalhistas extraídos (só quando area=Trabalhista). Null quando não se aplica.
+Valores válidos para updates.status: INICIAL | QUALIFICANDO | DOCUMENTOS | EM_ATENDIMENTO | FINALIZADO | PERDIDO
+Valores válidos para updates.area: Fiscal | Pessoal | Contábil | Formalização | null
+Valores válidos para updates.next_step: duvidas | triagem_concluida | documentos | encerrado | perdido
+updates.loss_reason: motivo da perda em português (ex: "Sem interesse"). Obrigatório quando status="PERDIDO". Null nos demais casos.
+form_data: objeto com campos extraídos do cliente. Null quando não se aplica.
 scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} quando confirmar agendamento. Null quando não se aplica.`;
         model = this.normalizeModelId(await this.settings.getDefaultModel());
         maxTokens = 1500;
@@ -1675,6 +1716,7 @@ scheduling_action: {"action":"confirm_slot","date":"YYYY-MM-DD","time":"HH:MM"} 
         convo.lead.id,
         convo.lead.phone,
         convo.instance_name || null,
+        (convo as any).tenant_id || null,
       );
 
       // 15b. Processar scheduling_action (agendamento automático de reunião)
