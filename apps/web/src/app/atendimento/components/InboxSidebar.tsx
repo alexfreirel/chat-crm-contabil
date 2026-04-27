@@ -8,7 +8,6 @@ import {
 } from '@/lib/desktopNotifications';
 import { showSuccess } from '@/lib/toast';
 import { normalizeStage } from '@/lib/crmStages';
-import { useRole } from '@/lib/useRole';
 import { getDateKey, formatDateLabel, formatTime, getInitial } from '@/lib/chatUtils';
 import type { ConversationSummary } from '../types';
 import { ContactAvatar } from './ContactAvatar';
@@ -165,7 +164,6 @@ export function InboxSidebar({
   onLightbox,
   hasDisconnectedInstance,
 }: InboxSidebarProps) {
-  const { isAdmin } = useRole();
 
   const myActiveConvs = (c: ConversationSummary) =>
     (c.status === 'ACTIVE' || c.status === 'MONITORING') && c.assignedAgentId === currentUserId;

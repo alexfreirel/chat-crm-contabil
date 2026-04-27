@@ -8,7 +8,6 @@ import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X
 
 import { EventModal, type UserOption } from '@/components/EventModal';
 import { AudioRecorder } from '@/components/AudioRecorder';
-import { useRole } from '@/lib/useRole';
 import { AuthAudioPlayer } from '@/components/AuthAudioPlayer';
 import { EmojiPickerButton } from '@/components/EmojiPickerButton';
 import { SophIAButton } from '@/components/SophIAButton';
@@ -105,7 +104,6 @@ function DateSeparator({ label }: { label: string }) {
 
 export default function Dashboard() {
   const router = useRouter();
-  const { isAdmin } = useRole();
   // Todos os usuários começam no filtro "TUDO" para ver todas as conversas
   const [leadFilter, setLeadFilter] = useState('');
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
