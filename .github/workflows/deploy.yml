@@ -10,6 +10,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false  # permite que todos os jobs rodem mesmo que um falhe
       matrix:
         include:
           - name: api
