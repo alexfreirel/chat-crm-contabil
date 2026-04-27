@@ -94,8 +94,8 @@ export class LeadsService {
       const isOperadorUser = userRoles.includes('ASSISTENTE');
       const userInboxIds = (user?.inboxes ?? []).map((i: any) => i.id);
 
-      // ADMIN e CONTADOR/ESPECIALISTA veem todos os contatos do tenant
-      // OPERADOR/COMERCIAL/ASSISTENTE veem apenas contatos atribuídos a eles
+      // ADMIN e CONTADOR veem todos os contatos do tenant
+      // ASSISTENTE vê apenas contatos atribuídos a eles
       if (!isAdminUser && !isContadorUser) {
         const orConditions: any[] = [];
 
@@ -609,4 +609,7 @@ export class LeadsService {
         data: { facts_json: facts, summary: newSummary, last_updated_at: new Date(), version: { increment: 1 } },
       });
     } else {
-      await this.prisma.aiMemory.create({ data: { lead_id: leadId, summary: newSummary, facts_json: facts }
+      await this.prisma.aiMemory.create({ data: { lead_id: leadId, summary: newSummary, facts_json: facts } });
+    }
+  }
+}
