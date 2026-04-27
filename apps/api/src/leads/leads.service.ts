@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException, ConflictException } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatGateway } from '../gateway/chat.gateway';
@@ -36,7 +36,17 @@ export class LeadsService {
 
   async create(data: Prisma.LeadCreateInput): Promise<Lead> {
     if (data.phone) data = { ...data, phone: to12Digits(data.phone) };
-    const lead = await this.prisma.lead.create({ data });
+    let lead: Lead;
+    try {
+      lead = await this.prisma.lead.create({ data });
+    } catch (e: any) {
+      // P2002: unique constraint — phone já cadastrado → 409 Conflict
+      if (e?.code === 'P2002') {
+        const fields = (e.meta?.target as string[])?.join(', ') ?? 'phone';
+        throw new ConflictException(`Já existe um contato com este ${fields}.`);
+      }
+      throw e;
+    }
     this.automationsService.onNewLead(lead.id, lead.tenant_id ?? undefined).catch(err =>
       this.logger.warn(`onNewLead automation error for lead ${lead.id}: ${err}`),
     );

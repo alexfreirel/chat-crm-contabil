@@ -90,42 +90,47 @@ export class ClientesContabilService {
       const msg: string = (e as any)?.message ?? '';
       if (msg.includes('nome_empresa') || msg.includes('column') || msg.includes('Unknown field')) {
         this.logger.warn('[create] Tentando criar cliente sem nome_empresa (coluna ainda não existe no DB)');
-        const cliente = await this.prisma.$transaction(async (tx) => {
-          const c = await tx.clienteContabil.create({
-            data: {
-              lead_id: data.lead_id,
-              conversation_id: data.conversation_id,
-              accountant_id: data.accountant_id,
-              service_type: data.service_type,
-              regime_tributario: data.regime_tributario,
-              cpf_cnpj: data.cpf_cnpj,
-              tipo_pessoa: data.tipo_pessoa,
-              notes: data.notes,
-              priority: data.priority ?? 'NORMAL',
-              tenant_id: data.tenant_id,
-              stage: 'ONBOARDING',
-            } as any,
-            include: {
-              lead: { select: { id: true, name: true, phone: true } },
-              accountant: { select: { id: true, name: true } },
-            },
+        try {
+          const cliente = await this.prisma.$transaction(async (tx) => {
+            const c = await tx.clienteContabil.create({
+              data: {
+                lead_id: data.lead_id,
+                conversation_id: data.conversation_id,
+                accountant_id: data.accountant_id,
+                service_type: data.service_type,
+                regime_tributario: data.regime_tributario,
+                cpf_cnpj: data.cpf_cnpj,
+                tipo_pessoa: data.tipo_pessoa,
+                notes: data.notes,
+                priority: data.priority ?? 'NORMAL',
+                tenant_id: data.tenant_id,
+                stage: 'ONBOARDING',
+              } as any,
+              include: {
+                lead: { select: { id: true, name: true, phone: true } },
+                accountant: { select: { id: true, name: true } },
+              },
+            });
+            await tx.lead.update({
+              where: { id: data.lead_id },
+              data: { is_client: true, became_client_at: new Date() },
+            });
+            await tx.clienteEvento.create({
+              data: {
+                cliente_id: c.id,
+                type: 'INICIO_SERVICO',
+                title: `Início de serviço: ${this.getServiceLabel(data.service_type)}`,
+                description: data.regime_tributario ? `Regime: ${data.regime_tributario.replace(/_/g, ' ')}` : undefined,
+                event_date: new Date(),
+              },
+            });
+            return c;
           });
-          await tx.lead.update({
-            where: { id: data.lead_id },
-            data: { is_client: true, became_client_at: new Date() },
-          });
-          await tx.clienteEvento.create({
-            data: {
-              cliente_id: c.id,
-              type: 'INICIO_SERVICO',
-              title: `Início de serviço: ${this.getServiceLabel(data.service_type)}`,
-              description: data.regime_tributario ? `Regime: ${data.regime_tributario.replace(/_/g, ' ')}` : undefined,
-              event_date: new Date(),
-            },
-          });
-          return c;
-        });
-        return cliente;
+          return cliente;
+        } catch (fallbackErr: any) {
+          this.logger.error(`[create] Fallback também falhou: ${fallbackErr?.message}`, fallbackErr?.stack);
+          throw new BadRequestException(fallbackErr?.message || 'Erro ao criar cliente contábil (fallback)');
+        }
       }
       throw new BadRequestException((e as any)?.message || 'Erro ao criar cliente contábil');
     }
