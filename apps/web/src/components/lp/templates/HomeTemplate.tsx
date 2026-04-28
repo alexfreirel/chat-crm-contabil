@@ -1352,7 +1352,7 @@ export function HomeTemplate({
         {/* BOTTOM BAR */}
         <div className="relative z-10 mx-auto w-[90vw] lg:w-[min(90rem,80vw)] px-4 sm:px-6 lg:px-8">
           <div className="border-t border-white/10 pt-8 pb-4 flex flex-col md:flex-row items-center justify-between text-[13px] text-slate-400 font-medium">
-            <p>&copy; {new Date().getFullYear()} – Todos os Direitos Reservados à André Lustosa Advogados.</p>
+            <p>&copy; {new Date().getFullYear()} – Todos os Direitos Reservados à Lexcon Assessoria Contábil.</p>
             <div className="flex items-center gap-2 mt-4 md:mt-0 font-bold">
               <a href="#" className="hover:text-white transition-colors">Termos de Uso</a>
               <span className="opacity-50">|</span>
