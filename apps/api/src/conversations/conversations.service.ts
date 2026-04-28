@@ -34,10 +34,12 @@ export class ConversationsService {
     }
 
     // ─── Filtro por clientMode (modo Leads vs Clientes) ──────────────────
+    // A separação é feita pela existência de ClienteContabil, não por is_client,
+    // pois is_client pode ser setado por outros fluxos (Asaas, stage FINALIZADO).
     if (clientMode === true) {
-      where.lead = { is_client: true };
+      where.lead = { clientes_contabil: { some: {} } };
     } else if (clientMode === false) {
-      where.lead = { is_client: false, stage: { notIn: ['PERDIDO', 'FINALIZADO'] } };
+      where.lead = { clientes_contabil: { none: {} }, stage: { notIn: ['PERDIDO', 'FINALIZADO'] } };
     } else {
       where.lead = { stage: { notIn: ['PERDIDO', 'FINALIZADO'] } };
     }
