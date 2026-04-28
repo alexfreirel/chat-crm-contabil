@@ -175,12 +175,18 @@ export function TasksPanel() {
     }
   }, [statusFilter, assignedFilter, dueFilter, search, viewMode, useCompFilter, compYear, compMonth]);
 
-  // Fetch de contadores (sem filtros)
   const fetchStats = useCallback(async () => {
     try {
+      const dateParams: Record<string, string> = {};
+      if (useCompFilter) {
+        const firstDay = new Date(compYear, compMonth, 1);
+        const lastDay = new Date(compYear, compMonth + 1, 0, 23, 59, 59);
+        dateParams.dateFrom = firstDay.toISOString();
+        dateParams.dateTo = lastDay.toISOString();
+      }
       const [all, overdue] = await Promise.all([
-        api.get('/tasks', { params: { limit: '2000' } }),
-        api.get('/tasks', { params: { limit: '2000', dueFilter: 'overdue' } }),
+        api.get('/tasks', { params: { limit: '2000', ...dateParams } }),
+        api.get('/tasks', { params: { limit: '2000', dueFilter: 'overdue', ...dateParams } }),
       ]);
       const allTasks: Task[] = all.data?.data || [];
       setStats({
@@ -191,7 +197,7 @@ export function TasksPanel() {
         vencidas: overdue.data?.total ?? 0,
       });
     } catch {}
-  }, []);
+  }, [useCompFilter, compYear, compMonth]);
 
   useEffect(() => {
     api.get('/users?limit=100').then(r => {
