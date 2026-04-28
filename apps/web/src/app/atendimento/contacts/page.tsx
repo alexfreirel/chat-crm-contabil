@@ -4,13 +4,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Search, User, Phone, Loader2, MessageSquare, FolderOpen, RotateCcw,
   ArrowLeft, UserPlus, AlertCircle, RefreshCw, Archive, CheckSquare,
-  Square, Trash2, X,
+  Square, Trash2, X, Pencil,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { formatPhone } from '@/lib/utils';
 import { showError, showSuccess } from '@/lib/toast';
 import NewContactModal from './components/NewContactModal';
+import EditContactModal from './components/EditContactModal';
 import { ClientPanel } from '@/components/ClientPanel';
 
 type ChatStatus = 'BOT' | 'ACTIVE' | 'WAITING' | null;
@@ -20,6 +21,7 @@ interface Contact {
   name: string;
   phone: string;
   email: string;
+  cpf_cnpj?: string;
   conversations: number;
   conversationId?: string | null;
   lastMessage: string;
@@ -81,6 +83,7 @@ export default function ContactsPage() {
   const [archivedLeads, setArchivedLeads] = useState<Contact[]>([]);
   const [loadingArchived, setLoadingArchived] = useState(false);
   const [showNewContact, setShowNewContact] = useState(false);
+  const [editContact, setEditContact] = useState<Contact | null>(null);
   const [isAdmin]    = useState<boolean>(getIsAdminFromToken);
   const [isContador] = useState<boolean>(getIsContadorFromToken);
 
@@ -141,6 +144,7 @@ export default function ContactsPage() {
         name: lead.name || 'Sem Nome',
         phone: lead.phone,
         email: lead.email || '-',
+        cpf_cnpj: lead.cpf_cnpj || '',
         conversations: lead._count?.conversations || 0,
         conversationId: lead.conversations?.[0]?.id || null,
         lastMessage: lead.conversations?.[0]?.messages?.[0]?.text || '-',
@@ -179,6 +183,14 @@ export default function ContactsPage() {
     setContacts(prev => prev.filter(c => c.id !== deletedId));
     setSelectedLeadId(null);
     setSelectedIds(prev => { const n = new Set(prev); n.delete(deletedId); return n; });
+  };
+
+  const handleContactUpdated = (updated: { id: string; name: string; phone: string; email: string; cpf_cnpj?: string }) => {
+    setContacts(prev => prev.map(c =>
+      c.id === updated.id
+        ? { ...c, name: updated.name, phone: updated.phone, email: updated.email || '-', cpf_cnpj: updated.cpf_cnpj }
+        : c
+    ));
   };
 
   const handleUnarchive = async (contactId: string) => {
@@ -821,6 +833,13 @@ export default function ContactsPage() {
                             >
                               <MessageSquare size={15} />
                             </button>
+                            <button
+                              onClick={() => setEditContact(contact)}
+                              title="Editar contato"
+                              className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
+                            >
+                              <Pencil size={15} />
+                            </button>
                             {isContador && (
                               <button
                                 onClick={() => handleDeleteContact(contact.id, contact.name)}
@@ -897,6 +916,15 @@ export default function ContactsPage() {
         />
       )}
 
+      {/* Modal: Editar Contato */}
+      {editContact && (
+        <EditContactModal
+          contact={editContact}
+          onClose={() => setEditContact(null)}
+          onUpdated={handleContactUpdated}
+        />
+      )}
+
       {/* Lightbox */}
       {lightbox && (
         <div
@@ -925,28 +953,4 @@ export default function ContactsPage() {
                 <p className="text-[13px] text-muted-foreground">Esta página contém <strong>{contacts.length}</strong> contatos.</p>
               </div>
             </div>
-            <div className="p-3 rounded-xl bg-red-500/5 border border-red-500/20 text-[13px] text-red-600">
-              ⚠️ Todos os dados, conversas e histórico serão <strong>excluídos permanentemente</strong>. Esta ação <strong>não pode ser desfeita</strong>.
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setDeletingAllConfirm(false)}
-                className="flex-1 px-4 py-2.5 rounded-xl text-[13px] font-semibold border border-border bg-card hover:bg-accent transition-colors"
-                disabled={deletingAll}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleDeleteAll}
-                disabled={deletingAll}
-                className="flex-1 px-4 py-2.5 rounded-xl text-[13px] font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {deletingAll ? <><Loader2 size={14} className="animate-spin" /> Excluindo...</> : <><Trash2 size={14} /> Excluir todos</>}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+            
