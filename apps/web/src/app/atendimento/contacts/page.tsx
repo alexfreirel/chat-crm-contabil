@@ -215,6 +215,7 @@ export default function ContactsPage() {
         name: lead.name || 'Sem Nome',
         phone: lead.phone,
         email: lead.email || '-',
+        cpf_cnpj: lead.cpf_cnpj || '',
         conversations: lead._count?.conversations || 0,
         conversationId: lead.conversations?.[0]?.id || null,
         lastMessage: lead.conversations?.[0]?.messages?.[0]?.text || '-',
@@ -953,4 +954,28 @@ export default function ContactsPage() {
                 <p className="text-[13px] text-muted-foreground">Esta página contém <strong>{contacts.length}</strong> contatos.</p>
               </div>
             </div>
-            
+            <div className="p-3 rounded-xl bg-red-500/5 border border-red-500/20 text-[13px] text-red-600">
+              ⚠️ Todos os dados, conversas e histórico serão <strong>excluídos permanentemente</strong>. Esta ação <strong>não pode ser desfeita</strong>.
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeletingAllConfirm(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl text-[13px] font-semibold border border-border bg-card hover:bg-accent transition-colors"
+                disabled={deletingAll}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDeleteAll}
+                disabled={deletingAll}
+                className="flex-1 px-4 py-2.5 rounded-xl text-[13px] font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {deletingAll ? <><Loader2 size={14} className="animate-spin" /> Excluindo...</> : <><Trash2 size={14} /> Excluir todos</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
