@@ -174,9 +174,10 @@ export default function ContactsPage() {
 
   const totalPages = Math.ceil(totalContacts / PAGE_SIZE);
 
-  const handleNewContactCreated = (convId: string) => {
-    sessionStorage.setItem('crm_open_conv', convId);
-    router.push('/atendimento');
+  const handleNewContactCreated = () => {
+    setShowNewContact(false);
+    showSuccess('Contato cadastrado com sucesso');
+    fetchAllContacts();
   };
 
   const handleContactDeleted = (deletedId: string) => {

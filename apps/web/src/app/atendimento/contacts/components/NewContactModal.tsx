@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Loader2, X, UserPlus, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useState, useRef, useCallback } from 'react';
+import { Loader2, X, UserPlus, AlertCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
-import { useRole } from '@/lib/useRole';
 
 function normalizePhone(raw: string): string {
   const digits = raw.replace(/\D/g, '');
@@ -12,31 +11,18 @@ function normalizePhone(raw: string): string {
   return digits;
 }
 
-const LEGAL_AREAS = ['Trabalhista', 'Civil', 'Criminal', 'Previdenciário', 'Família', 'Consumidor', 'Administrativo', 'Tributário', 'Empresarial'];
-
 export default function NewContactModal({ onClose, onCreated }: {
   onClose: () => void;
-  onCreated: (convId: string) => void;
+  onCreated: () => void;
 }) {
   const router = useRouter();
-  const { isAdmin, isFinanceiro, userId } = useRole();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [legalArea, setLegalArea] = useState('');
-  const [selectedLawyerId, setSelectedLawyerId] = useState('');
-  const [lawyers, setLawyers] = useState<{ id: string; name: string | null }[]>([]);
   const [checking, setChecking] = useState(false);
   const [duplicate, setDuplicate] = useState<{ name: string; convId?: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Carregar advogados (para admin/financeiro)
-  useEffect(() => {
-    if (isAdmin || isFinanceiro) {
-      api.get('/users/lawyers').then(r => setLawyers(r.data || [])).catch(() => {});
-    }
-  }, [isAdmin, isFinanceiro]);
 
   const checkPhoneDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const checkPhone = useCallback((phoneVal: string) => {
@@ -104,17 +90,7 @@ export default function NewContactModal({ onClose, onCreated }: {
       // Atribuir atendente (quem cadastrou)
       await api.patch(`/conversations/${convR.data.id}/assign`).catch(() => {});
 
-      // Atribuir advogado responsável
-      if (selectedLawyerId) {
-        await api.patch(`/conversations/${convR.data.id}/assign-lawyer`, { lawyerId: selectedLawyerId }).catch(() => {});
-      }
-
-      // Definir área jurídica
-      if (legalArea) {
-        await api.patch(`/conversations/${convR.data.id}/legal-area`, { legalArea }).catch(() => {});
-      }
-
-      onCreated(convR.data.id);
+      onCreated();
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Erro ao cadastrar contato. Tente novamente.');
     } finally { setSubmitting(false); }
@@ -170,28 +146,6 @@ export default function NewContactModal({ onClose, onCreated }: {
               className="w-full px-3.5 py-2.5 bg-background border border-border rounded-xl text-[13px] text-foreground outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-muted-foreground/40" />
           </div>
 
-          {/* Área Jurídica */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Área Jurídica <span className="normal-case font-normal opacity-60">(opcional)</span></label>
-            <select value={legalArea} onChange={e => setLegalArea(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-background border border-border rounded-xl text-[13px] text-foreground outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all">
-              <option value="">Selecionar...</option>
-              {LEGAL_AREAS.map(a => <option key={a} value={a}>{a}</option>)}
-            </select>
-          </div>
-
-          {/* Advogado (admin/financeiro) */}
-          {(isAdmin || isFinanceiro) && lawyers.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Advogado Responsável <span className="normal-case font-normal opacity-60">(opcional)</span></label>
-              <select value={selectedLawyerId} onChange={e => setSelectedLawyerId(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-background border border-border rounded-xl text-[13px] text-foreground outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all">
-                <option value="">Sem advogado</option>
-                {lawyers.map(l => <option key={l.id} value={l.id}>{l.name || l.id}</option>)}
-              </select>
-            </div>
-          )}
-
           {/* Erro */}
           {error && (
             <div className="flex items-center gap-2 px-3 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-[12px] text-red-500">
@@ -209,7 +163,7 @@ export default function NewContactModal({ onClose, onCreated }: {
             <button type="submit" disabled={submitting || !!duplicate}
               className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-[13px] font-bold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2">
               {submitting ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
-              Cadastrar e Abrir Chat
+              Cadastrar
             </button>
           </div>
         </form>
@@ -217,3 +171,4 @@ export default function NewContactModal({ onClose, onCreated }: {
     </>
   );
 }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
