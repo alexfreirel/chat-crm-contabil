@@ -33,22 +33,7 @@ export class ConversationsService {
       where.tenant_id = tenantId;
     }
 
-    // Carrega dados do usuário para aplicar regras de acesso
-    const user = userId
-      ? await this.prisma.user.findUnique({
-          where: { id: userId },
-          include: { inboxes: { select: { id: true } } },
-        })
-      : null;
-
-    const userRole = effectiveRole((user as any)?.roles ?? user?.role ?? 'ASSISTENTE');
-    const userInboxIds = (user?.inboxes ?? []).map((i: any) => i.id);
-
     // ─── Filtro por clientMode (modo Leads vs Clientes) ──────────────────
-    // Visibilidade controlada por lead.stage e lead.is_client:
-    //   - Aba Leads (clientMode=false): is_client=false, exclui FINALIZADO e PERDIDO
-    //   - Aba Clientes (clientMode=true): is_client=true (todos os clientes)
-    //   - Legado (clientMode=undefined): exclui apenas PERDIDO
     if (clientMode === true) {
       where.lead = { is_client: true };
     } else if (clientMode === false) {
@@ -57,55 +42,12 @@ export class ConversationsService {
       where.lead = { stage: { notIn: ['PERDIDO', 'FINALIZADO'] } };
     }
 
-    // ─── Controle de acesso por role (multi-role aware) ────────────────
-    const userRoles: string[] = Array.isArray((user as any)?.roles) ? (user as any).roles : [userRole];
-    const isAdminUser = userRoles.includes('ADMIN');
-    const isContadorUser = userRoles.includes('CONTADOR');
-    const isOperadorUser = userRoles.includes('ASSISTENTE');
-
-    if (isAdminUser) {
-      // Admin vê tudo — apenas filtra por inboxId se explicitamente pedido
-      if (inboxId) where.inbox_id = inboxId;
-
-    } else {
-      // Multi-role: combina visibilidade de todos os papéis do usuário
-      // CONTADOR vê: assigned_lawyer_id + clientes_contabil.accountant_id
-      // OPERADOR vê: assigned_user_id + cs_user_id (clientes)
-      // Ambos: combina tudo via OR
-      if (inboxId) {
-        // Valida que o usuário pertence ao inbox solicitado
-        if (userInboxIds.length > 0 && !userInboxIds.includes(inboxId)) {
-          where.inbox_id = '__none__'; // retorna vazio se não pertence ao inbox
-        } else {
-          where.inbox_id = inboxId;
-        }
-      } else {
-        const orConditions: any[] = [];
-
-        // Visibilidade de CONTADOR: apenas CLIENTES atribuídos como contador + processos
-        // Na aba Leads: contador NÃO vê leads de outros operadores via assigned_lawyer_id
-        if (isContadorUser && clientMode === true) {
-          orConditions.push({ assigned_accountant_id: userId, lead: { is_client: true } });
-        }
-
-        // Conversas atribuídas diretamente ao usuário (qualquer role)
-        orConditions.push({ assigned_user_id: userId });
-
-        // Visibilidade de OPERADOR: cs_user_id (clientes) + todas as conversas de leads
-        if (isOperadorUser) {
-          if (clientMode === true) {
-            orConditions.push({ lead: { ...(where.lead ?? {}), cs_user_id: userId } });
-          }
-          // Modo leads sem filtro de setor: operador vê todas as conversas de leads,
-          // assim pode iniciar atendimento mesmo enquanto a IA ainda está respondendo.
-          if (clientMode !== true) {
-            orConditions.push({ lead: { is_client: false } });
-          }
-        }
-
-        where.OR = orConditions;
-      }
-    }
+    // ─── Controle de acesso ────────────────────────────────────────────
+    // Todos os usuários do tenant veem TODAS as conversas do tenant.
+    // O isolamento por tenant acima já garante separação entre escritórios.
+    // O filtro por inbox (setor) é aplicado apenas se explicitamente solicitado.
+    if (inboxId) where.inbox_id = inboxId;
+    void userId;
 
     const [conversations, total] = await Promise.all([
       this.prisma.conversation.findMany({
