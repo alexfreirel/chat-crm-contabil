@@ -287,6 +287,15 @@ export class LeadsService {
       },
     });
 
+    // Fechar conversas abertas quando lead é FINALIZADO ou PERDIDO
+    // Isso garante que o card desaparece do inbox imediatamente via socket
+    if (stage === 'FINALIZADO' || stage === 'PERDIDO') {
+      await this.prisma.conversation.updateMany({
+        where: { lead_id: id, status: 'ABERTO' },
+        data: { status: 'FECHADO' },
+      });
+    }
+
     this.prisma.leadStageHistory.create({
       data: {
         lead_id: id,
