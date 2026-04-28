@@ -120,7 +120,9 @@ export function TasksPanel() {
   const [creating, setCreating] = useState(false);
 
   // ── Filtro por competência (mês)
-  const [useCompFilter, setUseCompFilter] = useState(false);
+  // Inicia ATIVO no mês corrente. O usuário pode desativar (botão "Competência")
+  // ou navegar para outro mês com as setas. Botão "Hoje" volta ao mês atual.
+  const [useCompFilter, setUseCompFilter] = useState(true);
   const [compYear, setCompYear] = useState(() => new Date().getFullYear());
   const [compMonth, setCompMonth] = useState(() => new Date().getMonth()); // 0-based
 
