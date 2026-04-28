@@ -57,9 +57,9 @@ const staticContent = {
 };
 
 export async function generateMetadata(): Promise<Metadata> {
-  const title = 'André Lustosa Advogados | Escritório Digital';
+  const title = 'Lexcon Assessoria Contábil';
   const description =
-    'Escritório de advocacia atuando em todo o Brasil. Direito Trabalhista, Previdenciário, Consumidor e Civil. Agende sua consulta online.';
+    'Assessoria contábil com atendimento em todo o Brasil. Contabilidade, Fiscal, Trabalhista e Legalização de Empresas.';
   const url = `${baseUrl}/`;
   return {
     title,

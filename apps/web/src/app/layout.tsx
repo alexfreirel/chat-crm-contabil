@@ -11,8 +11,8 @@ const ubuntuSans = Ubuntu_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'André Lustosa Advogados | Advocacia Especializada',
-  description: 'Escritório de advocacia especializado em direito previdenciário, trabalhista e cível em Alagoas.',
+  title: 'Lexcon Assessoria Contábil',
+  description: 'Assessoria contábil especializada.',
 };
 
 export default function RootLayout({
