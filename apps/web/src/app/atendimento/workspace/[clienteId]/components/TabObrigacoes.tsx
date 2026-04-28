@@ -167,9 +167,16 @@ export default function TabObrigacoes({
 
   const fetchStats = useCallback(async () => {
     try {
+      const dateParams: Record<string, string> = {};
+      if (useCompFilter) {
+        const firstDay = new Date(compYear, compMonth, 1);
+        const lastDay = new Date(compYear, compMonth + 1, 0, 23, 59, 59);
+        dateParams.dateFrom = firstDay.toISOString();
+        dateParams.dateTo = lastDay.toISOString();
+      }
       const [all, overdue] = await Promise.all([
-        api.get('/tasks', { params: { limit: '500', clienteContabilId: clienteId, viewAll: 'true' } }),
-        api.get('/tasks', { params: { limit: '500', clienteContabilId: clienteId, viewAll: 'true', dueFilter: 'overdue' } }),
+        api.get('/tasks', { params: { limit: '500', clienteContabilId: clienteId, viewAll: 'true', ...dateParams } }),
+        api.get('/tasks', { params: { limit: '500', clienteContabilId: clienteId, viewAll: 'true', dueFilter: 'overdue', ...dateParams } }),
       ]);
       const allTasks: Task[] = all.data?.data || [];
       setStats({
@@ -180,7 +187,7 @@ export default function TabObrigacoes({
         vencidas: overdue.data?.total ?? 0,
       });
     } catch {}
-  }, [clienteId]);
+  }, [clienteId, useCompFilter, compYear, compMonth]);
 
   useEffect(() => {
     api.get('/users?limit=100').then(r => {
