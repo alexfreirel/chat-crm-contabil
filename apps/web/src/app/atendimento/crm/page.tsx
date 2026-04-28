@@ -1358,9 +1358,10 @@ export default function CrmPage() {
     try {
       const res = await api.patch(`/leads/${leadId}/stage`, { stage: 'FINALIZADO' });
       if (res.data) setLeads(cur => cur.map(l => l.id === leadId ? { ...l, ...res.data } : l));
-    } catch {
+    } catch (err: any) {
       setLeads(cur => cur.map(l => l.id === leadId ? { ...l, stage: previousStageMap[leadId] ?? 'INICIAL' } : l));
-      showError('Erro ao mover lead. Tente novamente.');
+      const msg = err?.response?.data?.message || 'Erro ao finalizar lead. Tente novamente.';
+      showError(msg);
     } finally {
       movingLeads.current.delete(leadId);
     }

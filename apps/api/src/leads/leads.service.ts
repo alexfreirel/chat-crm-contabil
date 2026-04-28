@@ -250,16 +250,8 @@ export class LeadsService {
       throw new ForbiddenException('Motivo de perda é obrigatório ao marcar como PERDIDO');
     }
 
-    if (stage === 'FINALIZADO') {
-      const conv = await this.prisma.conversation.findFirst({
-        where: { lead_id: id },
-        orderBy: { last_message_at: 'desc' },
-        select: { service_type: true, assigned_accountant_id: true },
-      });
-      if (!conv?.service_type) {
-        throw new ForbiddenException('Lead precisa ter tipo de serviço definido para ser finalizado');
-      }
-    }
+    // Validação removida: service_type não é obrigatório para finalizar.
+    // O ClienteContabil é criado com fallback 'OUTRO' quando service_type não está definido.
 
     const current = await this.prisma.lead.findUnique({ where: { id }, select: { stage: true } });
 
