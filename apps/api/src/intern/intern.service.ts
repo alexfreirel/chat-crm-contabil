@@ -202,6 +202,9 @@ export class InternService {
    * petições devolvidas para correção (RASCUNHO com versions > 0)
    */
   async getBadgeCount(userId: string) {
+    if (!(this.prisma as any).casePetition) {
+      return { corrections: 0 };
+    }
     const corrections = await (this.prisma as any).casePetition.count({
       where: {
         created_by_id: userId,
