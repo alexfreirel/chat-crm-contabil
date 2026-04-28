@@ -6,7 +6,6 @@ import { Prisma, Lead } from '@crm/shared';
 import { AutomationsService } from '../automations/automations.service';
 import { FollowupService } from '../followup/followup.service';
 import { GoogleDriveService } from '../google-drive/google-drive.service';
-import { effectiveRole, normalizeRoles } from '../common/utils/permissions.util';
 import OpenAI from 'openai';
 
 /**
@@ -84,39 +83,14 @@ export class LeadsService {
       ? { ...baseWhere, conversations: { some: { inbox_id } } }
       : baseWhere;
 
-    // ─── Controle de acesso por role (mesmo padrão de conversations) ────
-    if (userId) {
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: { role: true, inboxes: { select: { id: true } } },
-      });
-
-      const userRoles = normalizeRoles(user?.role as any);
-      const isAdminUser = userRoles.includes('ADMIN');
-      const isContadorUser = userRoles.includes('CONTADOR');
-      const isOperadorUser = userRoles.includes('ASSISTENTE');
-      const userInboxIds = (user?.inboxes ?? []).map((i: any) => i.id);
-
-      // ADMIN e CONTADOR veem todos os contatos do tenant
-      // ASSISTENTE vê apenas contatos atribuídos a eles
-      if (!isAdminUser && !isContadorUser) {
-        const orConditions: any[] = [];
-
-        if (isOperadorUser) {
-          orConditions.push({ conversations: { some: { assigned_user_id: userId } } });
-          orConditions.push({ cs_user_id: userId });
-        }
-
-        if (orConditions.length === 0) {
-          orConditions.push({ conversations: { some: { assigned_user_id: userId } } });
-        }
-
-        // Combina com AND para manter os filtros de tenant/stage/search
-        if (!where.AND) where.AND = [];
-        if (!Array.isArray(where.AND)) where.AND = [where.AND];
-        where.AND.push({ OR: orConditions });
-      }
-    }
+    // ─── Controle de acesso ────────────────────────────────────────────
+    // Todos os usuários do tenant (ADMIN, CONTADOR, ASSISTENTE e demais roles)
+    // veem TODOS os contatos/leads do tenant. A separação por tenant acima já
+    // garante o isolamento entre escritórios. Se no futuro for preciso voltar
+    // a restringir por usuário (ex.: visão "minhas conversas atribuídas"),
+    // criar um parâmetro explícito (ex.: ?onlyMine=true) em vez de filtrar
+    // por role aqui — para manter a tela de Contatos sempre completa.
+    void userId;
 
     const includeOpts = {
       _count: { select: { conversations: true } },
