@@ -158,7 +158,8 @@ export default function TabObrigacoes({
       const { data, total: t } = res.data;
       setTasks(pg === 1 ? data : prev => [...prev, ...data]);
       setTotal(t);
-    } catch {
+    } catch (err: any) {
+      console.error('[TabObrigacoes] fetchTasks erro:', err?.response?.status, err?.response?.data || err?.message);
       showError('Erro ao carregar tarefas');
     } finally {
       setLoading(false);
@@ -249,7 +250,7 @@ export default function TabObrigacoes({
       await api.post('/tasks', {
         title: newTitle.trim(),
         description: newDesc.trim() || undefined,
-        due_at: newDue ? new Date(newDue).toISOString() : undefined,
+        due_at: newDue ? new Date(`${newDue}T18:00:00`).toISOString() : undefined,
         assigned_user_id: newAssigned || undefined,
         cliente_contabil_id: clienteId,
         setor: newSetor || undefined,
@@ -793,8 +794,7 @@ export default function TabObrigacoes({
           onClose={() => setDrawerTaskId(null)}
           onStatusChange={(id, status) => {
             if (status === 'DELETED') {
-              setTasks(prev => prev.filter(t => t.id !== id));
-              setTotal(prev => Math.max(0, prev - 1));
+              fetchTasks(1);
             } else {
               setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
             }

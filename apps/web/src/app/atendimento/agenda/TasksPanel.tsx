@@ -274,7 +274,7 @@ export function TasksPanel() {
       await api.post('/tasks', {
         title: newTitle.trim(),
         description: newDesc.trim() || undefined,
-        due_at: newDue ? new Date(newDue).toISOString() : undefined,
+        due_at: newDue ? new Date(`${newDue}T18:00:00`).toISOString() : undefined,
         assigned_user_id: newAssigned || undefined,
         setor: newSetor || undefined,
         recorrente: newRecorrente || undefined,
@@ -927,8 +927,7 @@ export function TasksPanel() {
           onClose={() => setDrawerTaskId(null)}
           onStatusChange={(id, status) => {
             if (status === 'DELETED') {
-              setTasks(prev => prev.filter(t => t.id !== id));
-              setTotal(prev => Math.max(0, prev - 1));
+              fetchTasks(1);
             } else {
               setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
             }

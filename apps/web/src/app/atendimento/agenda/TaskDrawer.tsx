@@ -37,6 +37,9 @@ interface TaskDetail {
   checklist_items: ChecklistItem[];
   comments: Comment[];
   _count: { comments: number; checklist_items: number };
+  recorrente?: boolean;
+  recorrencia_meses?: number | null;
+  recorrencia_pai_id?: string | null;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -126,11 +129,18 @@ export function TaskDrawer({
 
   const [deleting, setDeleting] = useState(false);
   const handleDeleteTask = async () => {
-    if (!task || !confirm('Excluir esta tarefa permanentemente?')) return;
+    if (!task) return;
+    const isInfiniteParent = task.recorrente === true && !task.recorrencia_meses;
+    const isChildOfSeries = !!task.recorrencia_pai_id;
+    const isInfiniteSeries = isInfiniteParent || isChildOfSeries;
+    const msg = isInfiniteSeries
+      ? 'Esta tarefa faz parte de uma série recorrente. Deseja excluir esta e todas as repetições futuras?'
+      : 'Excluir esta tarefa permanentemente?';
+    if (!confirm(msg)) return;
     setDeleting(true);
     try {
       await api.delete(`/tasks/${task.id}`);
-      showSuccess('Tarefa excluída');
+      showSuccess(isInfiniteSeries ? 'Tarefas excluídas' : 'Tarefa excluída');
       onClose();
       onStatusChange?.(task.id, 'DELETED');
     } catch { showError('Erro ao excluir tarefa'); }

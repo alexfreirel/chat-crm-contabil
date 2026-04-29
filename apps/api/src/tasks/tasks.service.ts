@@ -404,9 +404,58 @@ export class TasksService {
 
   async remove(id: string, tenantId?: string) {
     await this.verifyTenantOwnership(id, tenantId);
-    const task = await this.prisma.task.findUnique({ where: { id }, select: { calendar_event_id: true } });
+    const task = await this.prisma.task.findUnique({
+      where: { id },
+      select: { calendar_event_id: true, recorrente: true, recorrencia_meses: true, recorrencia_pai_id: true, due_at: true },
+    });
     if (!task) throw new NotFoundException('Tarefa não encontrada');
 
+    const isInfiniteParent = task.recorrente === true && task.recorrencia_meses === null && !task.recorrencia_pai_id;
+
+    // Caso 1: é o pai de uma série infinita — deleta pai + todos os filhos
+    if (isInfiniteParent) {
+      const children = await this.prisma.task.findMany({
+        where: { recorrencia_pai_id: id },
+        select: { id: true },
+      });
+      const allIds = [id, ...children.map(c => c.id)];
+      await this.prisma.$transaction([
+        this.prisma.taskComment.deleteMany({ where: { task_id: { in: allIds } } }),
+        this.prisma.taskChecklistItem.deleteMany({ where: { task_id: { in: allIds } } }),
+        (this.prisma as any).taskPostponement.deleteMany({ where: { task_id: { in: allIds } } }),
+        this.prisma.task.deleteMany({ where: { id: { in: allIds } } }),
+      ]);
+      return { ok: true, deleted: allIds.length };
+    }
+
+    // Caso 2: é filho de uma série infinita — deleta este + futuros do mesmo pai e para o cron
+    if (task.recorrencia_pai_id) {
+      const parent = await this.prisma.task.findUnique({
+        where: { id: task.recorrencia_pai_id },
+        select: { id: true, recorrente: true, recorrencia_meses: true },
+      });
+      if (parent && parent.recorrente === true && parent.recorrencia_meses === null) {
+        const futureSiblings = await this.prisma.task.findMany({
+          where: {
+            recorrencia_pai_id: task.recorrencia_pai_id,
+            ...(task.due_at ? { due_at: { gte: task.due_at } } : {}),
+          },
+          select: { id: true },
+        });
+        const allIds = [...new Set([id, ...futureSiblings.map(s => s.id)])];
+        await this.prisma.$transaction([
+          this.prisma.taskComment.deleteMany({ where: { task_id: { in: allIds } } }),
+          this.prisma.taskChecklistItem.deleteMany({ where: { task_id: { in: allIds } } }),
+          (this.prisma as any).taskPostponement.deleteMany({ where: { task_id: { in: allIds } } }),
+          this.prisma.task.deleteMany({ where: { id: { in: allIds } } }),
+        ]);
+        // Para o cron de geração de novos meses
+        await this.prisma.task.update({ where: { id: parent.id }, data: { recorrente: false } });
+        return { ok: true, deleted: allIds.length };
+      }
+    }
+
+    // Caso 3: tarefa simples ou filho de série fixa — deleta apenas esta
     await this.prisma.$transaction([
       this.prisma.taskComment.deleteMany({ where: { task_id: id } }),
       this.prisma.taskChecklistItem.deleteMany({ where: { task_id: id } }),
