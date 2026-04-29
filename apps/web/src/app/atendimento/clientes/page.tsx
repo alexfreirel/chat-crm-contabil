@@ -388,16 +388,22 @@ export default function ClientesPage() {
     finally { setLoading(false); }
   }
 
-  const filtered = clientes.filter(c => {
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return (
-      c.lead?.name?.toLowerCase().includes(s) ||
-      c.lead?.phone?.includes(s) ||
-      c.lead?.cpf_cnpj?.includes(s) ||
-      c.cpf_cnpj?.includes(s)
-    );
-  });
+  const filtered = clientes
+    .filter(c => {
+      if (!search) return true;
+      const s = search.toLowerCase();
+      return (
+        c.lead?.name?.toLowerCase().includes(s) ||
+        c.lead?.phone?.includes(s) ||
+        c.lead?.cpf_cnpj?.includes(s) ||
+        c.cpf_cnpj?.includes(s)
+      );
+    })
+    .sort((a, b) => {
+      const nameA = (a.lead?.name ?? '').toLowerCase();
+      const nameB = (b.lead?.name ?? '').toLowerCase();
+      return nameA.localeCompare(nameB, 'pt-BR');
+    });
 
   const counts: Record<string, number> = {
     ONBOARDING: clientes.filter(c => c.stage === 'ONBOARDING').length,
