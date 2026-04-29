@@ -144,6 +144,12 @@ export class ClientesContabilController {
     return this.service.unarchive(id, req.user?.tenant_id);
   }
 
+  @Post('admin/migrar-leads-normalizados')
+  @Roles('ADMIN')
+  migrarLeadsNormalizados(@Request() req: any) {
+    return this.service.migrarLeadsNormalizados(req.user?.tenant_id);
+  }
+
   @Delete(':id')
   @Roles('ADMIN')
   remove(@Param('id') id: string, @Request() req: any) {

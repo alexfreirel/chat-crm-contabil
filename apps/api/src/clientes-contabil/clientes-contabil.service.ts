@@ -309,17 +309,30 @@ export class ClientesContabilService {
     google_drive_folder_id?: string;
   }, tenantId?: string) {
     await this.verifyAccess(id, tenantId);
-    return this.prisma.clienteContabil.update({
-      where: { id },
-      data: {
-        ...data,
-        competencia_inicio: data.competencia_inicio ? new Date(data.competencia_inicio) : undefined,
-        data_encerramento: data.data_encerramento ? new Date(data.data_encerramento) : undefined,
-      },
-      include: {
-        lead: { select: { id: true, name: true, phone: true } },
-        accountant: { select: { id: true, name: true } },
-      },
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.clienteContabil.update({
+        where: { id },
+        data: {
+          ...data,
+          competencia_inicio: data.competencia_inicio ? new Date(data.competencia_inicio) : undefined,
+          data_encerramento: data.data_encerramento ? new Date(data.data_encerramento) : undefined,
+        },
+        include: {
+          lead: { select: { id: true, name: true, phone: true } },
+          accountant: { select: { id: true, name: true } },
+        },
+      });
+
+      // When lead_id changes, mark the new lead as is_client=true
+      if (data.lead_id) {
+        await tx.lead.update({
+          where: { id: data.lead_id },
+          data: { is_client: true, became_client_at: new Date() },
+        });
+      }
+
+      return updated;
     });
   }
 
@@ -407,6 +420,66 @@ export class ClientesContabilService {
       IR_PF: 'IRPF', IR_PJ: 'IRPJ', CONSULTORIA: 'Consultoria', OUTRO: 'Outro',
     };
     return map[serviceType] || serviceType;
+  }
+
+  /**
+   * Migração em massa: encontra todos ClienteContabil cujo lead tem telefone com
+   * 13 dígitos (com 9º dígito) e existe um lead correspondente com 12 dígitos
+   * (normalizado, criado pelo WhatsApp). Religa o ClienteContabil ao lead correto
+   * e marca is_client=true nele.
+   */
+  async migrarLeadsNormalizados(tenantId?: string) {
+    // Carrega todos os clientes com lead phone de 13 dígitos
+    const clientes = await this.prisma.clienteContabil.findMany({
+      where: tenantId ? { tenant_id: tenantId } : undefined,
+      select: {
+        id: true,
+        lead_id: true,
+        lead: { select: { id: true, phone: true } },
+      },
+    });
+
+    const resultados: Array<{ cliente_id: string; old_lead_id: string; new_lead_id: string }> = [];
+    const erros: Array<{ cliente_id: string; erro: string }> = [];
+
+    for (const cliente of clientes) {
+      const phone = cliente.lead?.phone;
+      if (!phone) continue;
+
+      const d = phone.replace(/\D/g, '');
+      // Só processa phones com 13 dígitos (55 + DD + 9 + 8 dígitos)
+      if (d.length !== 13 || !d.startsWith('55') || d[4] !== '9') continue;
+
+      const normalizado = d.slice(0, 4) + d.slice(5); // remove o 9º dígito
+
+      // Busca lead com phone normalizado
+      const leadNormalizado = await this.prisma.lead.findUnique({
+        where: { phone: normalizado },
+        select: { id: true },
+      });
+
+      if (!leadNormalizado) continue;
+      if (leadNormalizado.id === cliente.lead_id) continue; // já está correto
+
+      try {
+        await this.prisma.$transaction([
+          this.prisma.clienteContabil.update({
+            where: { id: cliente.id },
+            data: { lead_id: leadNormalizado.id },
+          }),
+          this.prisma.lead.update({
+            where: { id: leadNormalizado.id },
+            data: { is_client: true, became_client_at: new Date() },
+          }),
+        ]);
+        resultados.push({ cliente_id: cliente.id, old_lead_id: cliente.lead_id!, new_lead_id: leadNormalizado.id });
+      } catch (e: any) {
+        erros.push({ cliente_id: cliente.id, erro: e?.message ?? 'erro desconhecido' });
+      }
+    }
+
+    this.logger.log(`[migrarLeadsNormalizados] ${resultados.length} clientes migrados, ${erros.length} erros`);
+    return { migrados: resultados.length, erros: erros.length, detalhes: resultados, falhas: erros };
   }
 
   private async verifyAccess(id: string, tenantId?: string) {
