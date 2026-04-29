@@ -209,7 +209,17 @@ export class LeadsService {
         throw new ForbiddenException('Acesso negado a este recurso');
       }
     }
-    return this.prisma.lead.update({ where: { id }, data });
+    const payload = { ...data };
+    if (payload.phone) payload.phone = to12Digits(payload.phone);
+    try {
+      return await this.prisma.lead.update({ where: { id }, data: payload });
+    } catch (e: any) {
+      if (e?.code === 'P2002') {
+        const fields = (e.meta?.target as string[])?.join(', ') ?? 'phone';
+        throw new ConflictException(`Já existe um contato com este ${fields}.`);
+      }
+      throw e;
+    }
   }
 
   async updateStatus(id: string, stage: string, tenantId?: string, lossReason?: string, actorId?: string): Promise<Lead> {
