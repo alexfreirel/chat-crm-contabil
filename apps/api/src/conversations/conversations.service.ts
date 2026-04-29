@@ -34,12 +34,13 @@ export class ConversationsService {
     }
 
     // ─── Filtro por clientMode (modo Leads vs Clientes) ──────────────────
-    // A separação é feita pela existência de ClienteContabil, não por is_client,
-    // pois is_client pode ser setado por outros fluxos (Asaas, stage FINALIZADO).
+    // Cliente = tem ClienteContabil ativo OU is_client=true (setado ao criar ClienteContabil
+    // ou ao finalizar o lead). Usar os dois critérios garante que clientes cadastrados
+    // manualmente no módulo Clientes Contábeis apareçam na aba correta ao contatar via WhatsApp.
     if (clientMode === true) {
-      where.lead = { clientes_contabil: { some: {} } };
+      where.lead = { OR: [{ clientes_contabil: { some: {} } }, { is_client: true }] };
     } else if (clientMode === false) {
-      where.lead = { clientes_contabil: { none: {} }, stage: { notIn: ['PERDIDO', 'FINALIZADO'] } };
+      where.lead = { clientes_contabil: { none: {} }, is_client: false, stage: { notIn: ['PERDIDO', 'FINALIZADO'] } };
     } else {
       where.lead = { stage: { notIn: ['PERDIDO', 'FINALIZADO'] } };
     }

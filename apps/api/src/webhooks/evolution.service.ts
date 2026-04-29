@@ -211,8 +211,9 @@ export class EvolutionService {
       });
 
       // 1b. Lead PERDIDO/FINALIZADO voltou a falar → reativar para QUALIFICANDO
-      // Sem isso, a conversa existe mas fica invisível no inbox (filtro de stage).
-      if (!isFromMe && ['PERDIDO', 'FINALIZADO'].includes(lead.stage)) {
+      // Clientes (is_client=true) NÃO são reativados: já ficam na aba Clientes pelo
+      // ClienteContabil/is_client. Sem isso, a conversa existe mas fica invisível no inbox.
+      if (!isFromMe && !lead.is_client && ['PERDIDO', 'FINALIZADO'].includes(lead.stage)) {
         await this.prisma.lead.update({
           where: { id: lead.id },
           data: {
