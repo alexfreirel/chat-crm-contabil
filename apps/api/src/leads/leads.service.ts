@@ -215,8 +215,14 @@ export class LeadsService {
       return await this.prisma.lead.update({ where: { id }, data: payload });
     } catch (e: any) {
       if (e?.code === 'P2002') {
-        const fields = (e.meta?.target as string[])?.join(', ') ?? 'phone';
-        throw new ConflictException(`Já existe um contato com este ${fields}.`);
+        // Retorna o ID do lead conflitante para que o frontend possa religar automaticamente
+        const conflicting = payload.phone
+          ? await this.prisma.lead.findUnique({ where: { phone: payload.phone }, select: { id: true } })
+          : null;
+        throw new ConflictException({
+          message: 'Já existe um contato com este phone.',
+          conflicting_lead_id: conflicting?.id ?? null,
+        });
       }
       throw e;
     }

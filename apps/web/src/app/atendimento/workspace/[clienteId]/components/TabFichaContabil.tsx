@@ -127,6 +127,21 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
+        // Telefone normalizado já pertence a outro lead (duplicata com/sem 9º dígito)
+        // Religar automaticamente o ClienteContabil ao lead correto (o do WhatsApp)
+        if (res.status === 409 && err.conflicting_lead_id) {
+          const relinkRes = await fetch(`${API}/clientes-contabil/${clienteId}/details`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+            body: JSON.stringify({ lead_id: err.conflicting_lead_id }),
+          });
+          if (relinkRes.ok) {
+            setLeadSaved(true);
+            onRefresh();
+            setTimeout(() => setLeadSaved(false), 3000);
+            return;
+          }
+        }
         setSaveError(`❌ Erro ao salvar contato: ${err.message || res.status}`);
         return;
       }
