@@ -527,9 +527,9 @@ export default function ClientesPage() {
                       {c.regime_tributario.replace(/_/g, ' ')}
                     </span>
                   )}
-                  {c.cpf_cnpj && (
+                  {(c.cpf_cnpj || c.lead?.ficha_contabil?.cnpj) && (
                     <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-mono">
-                      {c.cpf_cnpj}
+                      {c.cpf_cnpj || c.lead?.ficha_contabil?.cnpj}
                     </span>
                   )}
                 </div>

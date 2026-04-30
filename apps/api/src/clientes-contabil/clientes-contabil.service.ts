@@ -193,7 +193,7 @@ export class ClientesContabilService {
       lead: {
         select: {
           id: true, name: true, phone: true, email: true, tags: true, cpf_cnpj: true,
-          ficha_contabil: { select: { razao_social: true } },
+          ficha_contabil: { select: { razao_social: true, cnpj: true } },
         },
       },
       accountant: { select: { id: true, name: true } },
