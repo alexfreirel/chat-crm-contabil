@@ -371,33 +371,8 @@ export default function ClientesPage() {
   const [stage, setStage] = useState('');
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
-  const [migrating, setMigrating] = useState(false);
-  const [migrateResult, setMigrateResult] = useState<string | null>(null);
 
   useEffect(() => { fetchClientes(); }, [stage]);
-
-  async function migrarLeads() {
-    if (!confirm('Migrar todos os clientes com telefone duplicado (com/sem 9º dígito) para o lead correto do WhatsApp?')) return;
-    setMigrating(true);
-    setMigrateResult(null);
-    try {
-      const res = await fetch(`${API}/clientes-contabil/admin/migrar-leads-normalizados`, {
-        method: 'POST',
-        headers: authHeaders(),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setMigrateResult(`✅ ${data.migrados} clientes migrados${data.erros ? `, ${data.erros} erros` : ''}`);
-        fetchClientes();
-      } else {
-        setMigrateResult(`❌ Erro: ${data.message || res.status}`);
-      }
-    } catch (e: any) {
-      setMigrateResult(`❌ ${e.message}`);
-    } finally {
-      setMigrating(false);
-    }
-  }
 
   async function fetchClientes() {
     setLoading(true);
@@ -448,17 +423,6 @@ export default function ClientesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {migrateResult && (
-            <span className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground">{migrateResult}</span>
-          )}
-          <button
-            onClick={migrarLeads}
-            disabled={migrating}
-            title="Corrigir clientes com telefone duplicado (com/sem 9º dígito)"
-            className="flex items-center gap-1 px-3 py-2 text-xs font-medium text-muted-foreground border border-border rounded-lg hover:bg-muted/50 transition-colors disabled:opacity-50"
-          >
-            {migrating ? '...' : '🔗 Corrigir vínculos'}
-          </button>
           <button
             onClick={() => setShowCreate(true)}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors shadow-sm"
@@ -563,9 +527,9 @@ export default function ClientesPage() {
                       {c.regime_tributario.replace(/_/g, ' ')}
                     </span>
                   )}
-                  {(c.cpf_cnpj || c.lead?.cpf_cnpj) && (
+                  {c.cpf_cnpj && (
                     <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-mono">
-                      {c.cpf_cnpj || c.lead?.cpf_cnpj}
+                      {c.cpf_cnpj}
                     </span>
                   )}
                 </div>

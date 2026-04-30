@@ -9,7 +9,7 @@ interface EditContactData {
   id: string;
   name: string;
   phone: string;
-  email: string;
+  email?: string;
   cpf_cnpj?: string;
 }
 
@@ -31,8 +31,6 @@ function formatPhoneDisplay(phone: string): string {
 export default function EditContactModal({ contact, onClose, onUpdated }: Props) {
   const [name, setName]         = useState(contact.name === 'Sem Nome' ? '' : contact.name);
   const [phone, setPhone]       = useState(formatPhoneDisplay(contact.phone));
-  const [email, setEmail]       = useState(contact.email === '-' ? '' : contact.email);
-  const [cpfCnpj, setCpfCnpj]   = useState(contact.cpf_cnpj || '');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]       = useState<string | null>(null);
 
@@ -53,8 +51,6 @@ export default function EditContactModal({ contact, onClose, onUpdated }: Props)
         name: name.trim(),
         phone: normalized,
       };
-      if (email.trim()) body.email = email.trim();
-      if (cpfCnpj.trim()) body.cpf_cnpj = cpfCnpj.trim().replace(/\D/g, '');
 
       await api.patch(`/leads/${contact.id}`, body);
 
@@ -63,8 +59,6 @@ export default function EditContactModal({ contact, onClose, onUpdated }: Props)
         id: contact.id,
         name: body.name,
         phone: body.phone,
-        email: body.email || '-',
-        cpf_cnpj: body.cpf_cnpj,
       });
       onClose();
     } catch (err: any) {
@@ -112,33 +106,6 @@ export default function EditContactModal({ contact, onClose, onUpdated }: Props)
               value={phone}
               onChange={e => setPhone(e.target.value)}
               placeholder="(82) 99913-0127"
-              className="w-full px-3.5 py-2.5 bg-background border border-border rounded-xl text-[13px] text-foreground outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-muted-foreground/40"
-            />
-          </div>
-
-          {/* Email */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-              E-mail <span className="normal-case font-normal opacity-60">(opcional)</span>
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="email@exemplo.com"
-              className="w-full px-3.5 py-2.5 bg-background border border-border rounded-xl text-[13px] text-foreground outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-muted-foreground/40"
-            />
-          </div>
-
-          {/* CPF/CNPJ */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-              CPF / CNPJ <span className="normal-case font-normal opacity-60">(opcional)</span>
-            </label>
-            <input
-              value={cpfCnpj}
-              onChange={e => setCpfCnpj(e.target.value)}
-              placeholder="000.000.000-00 ou 00.000.000/0001-00"
               className="w-full px-3.5 py-2.5 bg-background border border-border rounded-xl text-[13px] text-foreground outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-muted-foreground/40"
             />
           </div>
