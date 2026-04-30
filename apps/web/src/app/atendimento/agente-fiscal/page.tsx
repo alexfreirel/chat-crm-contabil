@@ -102,7 +102,7 @@ export default function AgenteFiscalPage() {
       const res = await fetch(`${AGENT_API}/api/empresas`);
       if (res.ok) {
         const data = await res.json();
-        setEmpresas(data);
+        setEmpresas([...data].sort((a: any, b: any) => a.nome.localeCompare(b.nome, 'pt-BR')));
         setAgentOnline(true);
       }
     } catch {

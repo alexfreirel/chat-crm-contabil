@@ -6,11 +6,25 @@ import { RouteGuard } from '@/components/RouteGuard';
 import {
   Clock, CheckCircle2, AlertTriangle, FileText, User,
   Loader2, ChevronDown, ChevronRight,
-  Send, Trophy, Zap,
+  Send, Trophy, Zap, ExternalLink, Building2, Copy, Check, X,
 } from 'lucide-react';
 import api from '@/lib/api';
 
+const AGENT_API = process.env.NEXT_PUBLIC_AGENT_FISCAL_URL
+  || (typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+    ? `${window.location.origin}/agente-fiscal-api`
+    : 'http://localhost:5000');
+
 // ─── Tipos ─────────────────────────────────────────────────────
+
+interface Empresa {
+  idx: number;
+  nome: string;
+  cnpj: string;
+  cnpj_fmt: string;
+  usuario: string;
+  senha: string;
+}
 
 interface DashboardData {
   internName: string;
@@ -182,10 +196,19 @@ function TaskCard({
 
 // ─── Lista View ──────────────────────────────────────────────────
 
+function fmtCnpj(cnpj: string) {
+  const d = cnpj.replace(/\D/g, '');
+  if (d.length !== 14) return cnpj;
+  return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8,12)}-${d.slice(12)}`;
+}
+
 function ListView() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [empresas, setEmpresas] = useState<Empresa[]>([]);
+  const [portalModal, setPortalModal] = useState<Empresa | null>(null);
+  const [copiedField, setCopiedField] = useState<'usuario' | 'senha' | null>(null);
 
   const pendingRef = useRef<HTMLElement>(null);
   const completedRef = useRef<HTMLElement>(null);
@@ -202,7 +225,23 @@ function ListView() {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  const fetchEmpresas = useCallback(async () => {
+    try {
+      const res = await fetch(`${AGENT_API}/api/empresas`);
+      if (res.ok) {
+        const data: Empresa[] = await res.json();
+        setEmpresas(data.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')));
+      }
+    } catch { /* agente offline, ignora */ }
+  }, []);
+
+  const copiarCampo = async (campo: 'usuario' | 'senha', valor: string) => {
+    try { await navigator.clipboard.writeText(valor); } catch {}
+    setCopiedField(campo);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
+
+  useEffect(() => { fetchData(); fetchEmpresas(); }, [fetchData, fetchEmpresas]);
 
   useEffect(() => {
     const interval = setInterval(() => fetchData(), 60_000);
@@ -374,8 +413,100 @@ function ListView() {
             )}
           </section>
         )}
+
+        {/* Acesso Rápido — Portal SEFAZ */}
+        {empresas.length > 0 && (
+          <section>
+            <h2 className="text-[12px] font-bold text-emerald-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <Building2 size={13} /> Portal SEFAZ ({empresas.length} empresas)
+            </h2>
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border bg-muted/30">
+                    <th className="px-4 py-2.5 text-left font-semibold">Empresa</th>
+                    <th className="px-4 py-2.5 text-left font-semibold hidden sm:table-cell">CNPJ</th>
+                    <th className="px-4 py-2.5 text-left font-semibold hidden sm:table-cell">Usuário</th>
+                    <th className="px-4 py-2.5 text-right font-semibold">Portal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {empresas.map((e) => (
+                    <tr key={e.cnpj} className="border-t border-border/50 hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-2.5 text-[12px] font-medium text-foreground">{e.nome}</td>
+                      <td className="px-4 py-2.5 text-[11px] text-muted-foreground font-mono hidden sm:table-cell">{fmtCnpj(e.cnpj)}</td>
+                      <td className="px-4 py-2.5 text-[11px] text-muted-foreground hidden sm:table-cell">{e.usuario}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <button
+                          onClick={() => { setPortalModal(e); setCopiedField(null); }}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 text-[10px] font-medium hover:bg-emerald-500/20 transition-colors"
+                        >
+                          <ExternalLink size={11} /> Abrir
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
       </div>
     </div>
+
+    {/* Modal Portal SEFAZ */}
+    {portalModal && (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="bg-card border border-border rounded-2xl w-[420px] max-w-[94vw] p-6 shadow-2xl">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+              <ExternalLink size={16} className="text-emerald-400" /> Portal SEFAZ
+            </h3>
+            <button onClick={() => setPortalModal(null)} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
+          </div>
+          <p className="text-xs text-muted-foreground mb-4">{portalModal.nome}</p>
+
+          <div className="space-y-2 mb-5">
+            <div className="flex items-center justify-between bg-muted/40 rounded-lg px-3 py-2">
+              <span className="text-xs text-muted-foreground w-14">Empresa</span>
+              <span className="text-sm font-medium text-foreground truncate flex-1 text-right">{portalModal.nome}</span>
+            </div>
+            <div className="flex items-center gap-2 bg-muted/40 rounded-lg px-3 py-2">
+              <span className="text-xs text-muted-foreground w-14 shrink-0">Usuário</span>
+              <span className="text-sm font-mono font-semibold text-foreground flex-1 text-right">{portalModal.usuario}</span>
+              <button
+                onClick={() => copiarCampo('usuario', portalModal.usuario)}
+                className={`ml-1 p-1 rounded transition-colors shrink-0 ${copiedField === 'usuario' ? 'text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
+                title="Copiar usuário"
+              >
+                {copiedField === 'usuario' ? <Check size={13} /> : <Copy size={13} />}
+              </button>
+            </div>
+            <div className="flex items-center gap-2 bg-muted/40 rounded-lg px-3 py-2">
+              <span className="text-xs text-muted-foreground w-14 shrink-0">Senha</span>
+              <span className="text-sm font-mono font-semibold text-foreground flex-1 text-right tracking-widest">{'•'.repeat(Math.min(portalModal.senha.length, 10))}</span>
+              <button
+                onClick={() => copiarCampo('senha', portalModal.senha)}
+                className={`ml-1 p-1 rounded transition-colors shrink-0 ${copiedField === 'senha' ? 'text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
+                title="Copiar senha"
+              >
+                {copiedField === 'senha' ? <Check size={13} /> : <Copy size={13} />}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <p className="text-[11px] text-muted-foreground text-center">Copie o usuário e a senha antes de abrir o portal</p>
+            <button
+              onClick={() => window.open('https://contribuinte.sefaz.al.gov.br', '_blank')}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors"
+            >
+              <ExternalLink size={14} /> Abrir Portal SEFAZ
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   );
 }
 
