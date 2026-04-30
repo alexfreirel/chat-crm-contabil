@@ -57,6 +57,7 @@ interface TaskItem {
     lawyer: { id: string; name: string } | null;
   } | null;
   created_by: { id: string; name: string } | null;
+  assigned_user: { id: string; name: string } | null;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -111,7 +112,9 @@ function TaskCard({
   const area = task.legal_case?.legal_area || null;
   const caseNumber = task.legal_case?.case_number || null;
   const lawyerName = task.legal_case?.lawyer?.name || null;
-  const createdByName = !lawyerName ? (task.created_by?.name || null) : null;
+  const createdByName = task.created_by?.name || null;
+  const assignedName = task.assigned_user?.name || null;
+  const isDelegated = createdByName && assignedName && createdByName !== assignedName;
   const isConfirmado = task.status === 'CONFIRMADO';
   const isUrgent = task.priority === 'URGENTE' || due?.urgent;
   const [confirming, setConfirming] = useState(false);
@@ -161,7 +164,14 @@ function TaskCard({
             )}
             {caseNumber && <span className="opacity-60">{caseNumber}</span>}
             {lawyerName && <span className="opacity-50">Adv: {lawyerName}</span>}
-            {createdByName && <span className="opacity-50">Criado por: {createdByName}</span>}
+            {isDelegated ? (
+              <>
+                <span className="opacity-50">Delegado por: {createdByName}</span>
+                <span className="opacity-50">Resp: {assignedName}</span>
+              </>
+            ) : (
+              createdByName && <span className="opacity-50">Criado por: {createdByName}</span>
+            )}
           </div>
         </div>
         {!dimmed && (
