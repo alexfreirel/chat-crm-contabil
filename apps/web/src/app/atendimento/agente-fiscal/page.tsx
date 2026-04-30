@@ -31,9 +31,29 @@ interface Empresa {
 
 type TabId = 'dashboard' | 'sefaz' | 'analitico' | 'impostos' | 'parcela' | 'empresas';
 
+function getTokenPayload(): any {
+  try {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) return null;
+    return JSON.parse(atob(token.split('.')[1]));
+  } catch {
+    return null;
+  }
+}
+
+function canDeleteEmpresas(): boolean {
+  const p = getTokenPayload();
+  if (!p) return false;
+  return (
+    p.role === 'ADMIN' || p.role === 'CONTADOR' ||
+    (Array.isArray(p.roles) && (p.roles.includes('ADMIN') || p.roles.includes('CONTADOR')))
+  );
+}
+
 export default function AgenteFiscalPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+  const [isAllowedToDelete] = useState<boolean>(() => canDeleteEmpresas());
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [loading, setLoading] = useState(true);
   const [agentOnline, setAgentOnline] = useState(false);
@@ -933,7 +953,7 @@ export default function AgenteFiscalPage() {
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold flex items-center gap-2"><Building2 size={15} className="text-primary" /> Gerenciar Empresas ({empresas.length})</h3>
               <div className="flex items-center gap-2">
-                {empresas.length > 0 && (
+                {isAllowedToDelete && empresas.length > 0 && (
                   <button onClick={deleteAllEmpresas} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-xs font-medium hover:bg-red-500/20">
                     <Trash2 size={14} /> Excluir Todas
                   </button>
@@ -975,7 +995,9 @@ export default function AgenteFiscalPage() {
                               <ExternalLink size={14} />
                             </button>
                             <button onClick={() => openEditModal(e)} className="p-1.5 rounded-lg hover:bg-muted/50 text-muted-foreground hover:text-foreground"><Pencil size={14} /></button>
-                            <button onClick={() => deleteEmpresa(e.idx, e.nome)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400"><Trash2 size={14} /></button>
+                            {isAllowedToDelete && (
+                              <button onClick={() => deleteEmpresa(e.idx, e.nome)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400"><Trash2 size={14} /></button>
+                            )}
                           </div>
                         </td>
                       </tr>
