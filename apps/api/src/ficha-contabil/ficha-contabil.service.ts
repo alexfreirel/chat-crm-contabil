@@ -77,6 +77,38 @@ export class FichaContabilService {
       const merged = existing ? { ...(existing as any), ...sanitized } : sanitized;
       const completion_pct = calcCompletion(merged);
 
+      // Reatribuir tarefas pendentes quando o responsável por setor muda
+      const RESP_FIELDS = ['resp_fiscal', 'resp_pessoal', 'resp_contabil'] as const;
+      if (existing) {
+        const changes = RESP_FIELDS
+          .filter(f => sanitized[f] && existing[f] && sanitized[f] !== existing[f])
+          .map(f => ({ oldId: existing[f] as string, newId: sanitized[f] as string }));
+
+        if (changes.length > 0) {
+          const cliente = await this.prisma.clienteContabil.findFirst({
+            where: { lead_id: leadId },
+            select: { id: true },
+          });
+          if (cliente) {
+            for (const { oldId, newId } of changes) {
+              const updated = await this.prisma.calendarEvent.updateMany({
+                where: {
+                  cliente_contabil_id: cliente.id,
+                  assigned_user_id: oldId,
+                  status: { in: ['AGENDADO', 'CONFIRMADO'] },
+                },
+                data: { assigned_user_id: newId },
+              });
+              if (updated.count > 0) {
+                this.logger.log(
+                  `Reatribuídas ${updated.count} tarefas do cliente ${cliente.id}: ${oldId} → ${newId}`,
+                );
+              }
+            }
+          }
+        }
+      }
+
       if (existing) {
         return this.prisma.fichaContabil.update({
           where: { lead_id: leadId },
