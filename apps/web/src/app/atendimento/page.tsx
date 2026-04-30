@@ -1919,11 +1919,10 @@ export default function Dashboard() {
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
+    const files = Array.from(e.target.files || []);
     e.target.value = '';
-    for (let i = 0; i < files.length; i++) {
-      addFileToPending(files[i]);
+    for (const file of files) {
+      addFileToPending(file);
     }
   };
 
