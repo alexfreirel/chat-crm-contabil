@@ -58,6 +58,13 @@ function authHeaders() {
   return { Authorization: `Bearer ${localStorage.getItem('token')}` };
 }
 
+function formatCpfCnpj(value: string): string {
+  const d = value.replace(/\D/g, '');
+  if (d.length === 14) return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+  if (d.length === 11) return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  return value;
+}
+
 /* ─── Modal criar cliente ─── */
 function normalizePhone(raw: string): string {
   const digits = raw.replace(/\D/g, '');
@@ -529,7 +536,7 @@ export default function ClientesPage() {
                   )}
                   {(c.cpf_cnpj || c.lead?.ficha_contabil?.cnpj) && (
                     <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-mono">
-                      {c.cpf_cnpj || c.lead?.ficha_contabil?.cnpj}
+                      {formatCpfCnpj(c.cpf_cnpj || c.lead?.ficha_contabil?.cnpj)}
                     </span>
                   )}
                 </div>
