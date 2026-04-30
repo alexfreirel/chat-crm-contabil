@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Bot, BotOff, UserCheck, CornerDownLeft, Inbox, Eye, ClipboardList, ArrowLeft, ChevronDown, ChevronRight, MoreVertical, Clock, Copy, Check, Tag, Plus, X as XIcon, RefreshCw } from 'lucide-react';
 import { CRM_STAGES, findStage, normalizeStage } from '@/lib/crmStages';
+import { useRole } from '@/lib/useRole';
 import type { ConversationSummary, ActiveTask } from '../types';
 import { ContactAvatar } from './ContactAvatar';
 
@@ -117,6 +118,7 @@ export function ChatHeader({
   leadTags,
   onUpdateTags,
 }: ChatHeaderProps) {
+  const { isAssistente } = useRole();
   const [copiedPhone, setCopiedPhone] = useState(false);
   // Modais de tarefa
   const [showCompleteModal, setShowCompleteModal] = useState(false);
@@ -438,7 +440,7 @@ export function ChatHeader({
               {showStageDropdown && (
                 <div className="absolute top-full right-0 mt-1 bg-card border border-border rounded-xl shadow-xl w-56 py-1" style={{ zIndex: 9999 }}>
                   <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Etapa do Funil</p>
-                  {CRM_STAGES.map(s => (
+                  {CRM_STAGES.filter(s => !(isAssistente && s.id === 'PERDIDO')).map(s => (
                     <button
                       key={s.id}
                       onClick={() => onChangeStage(s.id)}
