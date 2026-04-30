@@ -186,10 +186,10 @@ export default function ContactsPage() {
     setSelectedIds(prev => { const n = new Set(prev); n.delete(deletedId); return n; });
   };
 
-  const handleContactUpdated = (updated: { id: string; name: string; phone: string; email: string; cpf_cnpj?: string }) => {
+  const handleContactUpdated = (updated: { id: string; name: string; phone: string; email?: string; cpf_cnpj?: string }) => {
     setContacts(prev => prev.map(c =>
       c.id === updated.id
-        ? { ...c, name: updated.name, phone: updated.phone, email: updated.email || '-', cpf_cnpj: updated.cpf_cnpj }
+        ? { ...c, name: updated.name, phone: updated.phone }
         : c
     ));
   };
