@@ -317,6 +317,7 @@ function ListView() {
   const totalTasks = data.stats.completedTodayCount + data.stats.pendingCount;
 
   return (
+    <>
     <div className="flex-1 overflow-y-auto custom-scrollbar">
       <div className="max-w-4xl mx-auto px-6 py-4 space-y-6">
 
@@ -507,6 +508,7 @@ function ListView() {
         </div>
       </div>
     )}
+    </>
   );
 }
 
