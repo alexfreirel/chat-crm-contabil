@@ -1288,6 +1288,10 @@ export default function Dashboard() {
   // ──────────────────────────────────────────────────────────────────────────
 
   const handleSend = async () => {
+    if (pendingFiles.length > 0 && !text.trim()) {
+      sendPendingFiles();
+      return;
+    }
     if (!text.trim() || !selectedId || selectedId.startsWith('demo-') || sending || text.length > 5000) return;
 
     // ── Slash command selecionado pelo menu ─────────────────────────────────
