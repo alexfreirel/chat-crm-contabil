@@ -110,7 +110,8 @@ function TaskCard({
   const clientPhone = task.legal_case?.lead?.phone || task.lead?.phone || null;
   const area = task.legal_case?.legal_area || null;
   const caseNumber = task.legal_case?.case_number || null;
-  const lawyerName = task.legal_case?.lawyer?.name || task.created_by?.name || null;
+  const lawyerName = task.legal_case?.lawyer?.name || null;
+  const createdByName = !lawyerName ? (task.created_by?.name || null) : null;
   const isConfirmado = task.status === 'CONFIRMADO';
   const isUrgent = task.priority === 'URGENTE' || due?.urgent;
   const [confirming, setConfirming] = useState(false);
@@ -147,6 +148,9 @@ function TaskCard({
             )}
           </div>
           <h3 className="text-[13px] font-bold text-foreground leading-tight mb-1">{task.title}</h3>
+          {task.description && (
+            <p className="text-[11px] text-muted-foreground mb-1 leading-relaxed">{task.description}</p>
+          )}
           <div className="flex items-center gap-3 text-[10px] text-muted-foreground flex-wrap">
             {clientName && (
               <span className="flex items-center gap-1">
@@ -157,6 +161,7 @@ function TaskCard({
             )}
             {caseNumber && <span className="opacity-60">{caseNumber}</span>}
             {lawyerName && <span className="opacity-50">Adv: {lawyerName}</span>}
+            {createdByName && <span className="opacity-50">Por: {createdByName}</span>}
           </div>
         </div>
         {!dimmed && (
