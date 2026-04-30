@@ -2869,6 +2869,36 @@ export default function Dashboard() {
                 );
               })()}
 
+              {/* ── Arquivos pendentes (preview acima do input) ── */}
+              {!isClosed && pendingFiles.length > 0 && (
+                <div className="max-w-4xl mx-auto mb-2 p-2 bg-accent/20 border border-border rounded-xl flex flex-wrap gap-2 items-center">
+                  {pendingFiles.map((pf, idx) => (
+                    <div key={idx} className="relative group">
+                      {pf.preview ? (
+                        <img src={pf.preview} alt="" className="w-16 h-16 object-cover rounded-lg border border-border" />
+                      ) : (
+                        <div className="w-16 h-16 flex items-center justify-center bg-accent/40 rounded-lg border border-border">
+                          <span className="text-[9px] text-muted-foreground text-center leading-tight px-1 truncate">{pf.file.name.slice(-12)}</span>
+                        </div>
+                      )}
+                      <button
+                        onClick={() => removePendingFile(idx)}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={sendPendingFiles}
+                    disabled={uploadingFile}
+                    className="ml-auto flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-bold hover:opacity-90 disabled:opacity-50"
+                  >
+                    {uploadingFile ? <span>Enviando...</span> : <>Enviar {pendingFiles.length} arquivo{pendingFiles.length > 1 ? 's' : ''}</>}
+                  </button>
+                </div>
+              )}
+
               {isClosed ? (
                 <div className="max-w-4xl mx-auto text-center text-sm text-muted-foreground py-3 border border-border rounded-xl bg-card/50">
                   Conversa encerrada. Não é possível enviar mensagens.
@@ -2903,7 +2933,6 @@ export default function Dashboard() {
                       )}
                     </button>
                   )}
-                  {/* Busca e quick snooze removidos da toolbar — acessíveis via Ctrl+F e botão Adiar no header */}
 
                   {/* Hidden file input */}
                   <input
@@ -2914,40 +2943,6 @@ export default function Dashboard() {
                     className="hidden"
                     onChange={handleFileSelect}
                   />
-
-                  {/* ── Arquivos pendentes (preview antes de enviar) ── */}
-                  {pendingFiles.length > 0 && (
-                    <div className="flex items-center gap-2 p-2 bg-accent/20 border border-border rounded-xl mb-2 flex-wrap">
-                      {pendingFiles.map((pf, idx) => (
-                        <div key={idx} className="relative group">
-                          {pf.preview ? (
-                            <img src={pf.preview} alt="" className="w-16 h-16 object-cover rounded-lg border border-border" />
-                          ) : (
-                            <div className="w-16 h-16 flex items-center justify-center bg-accent/40 rounded-lg border border-border">
-                              <span className="text-[9px] text-muted-foreground text-center leading-tight px-1 truncate">{pf.file.name.slice(-12)}</span>
-                            </div>
-                          )}
-                          <button
-                            onClick={() => removePendingFile(idx)}
-                            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                      <button
-                        onClick={sendPendingFiles}
-                        disabled={uploadingFile}
-                        className="ml-auto flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-bold hover:opacity-90 disabled:opacity-50"
-                      >
-                        {uploadingFile ? (
-                          <span>Enviando...</span>
-                        ) : (
-                          <>Enviar {pendingFiles.length} arquivo{pendingFiles.length > 1 ? 's' : ''}</>
-                        )}
-                      </button>
-                    </div>
-                  )}
 
                   {/* ── Textarea + ícones internos ──────────────────── */}
                   <div className="relative flex-1">
