@@ -161,7 +161,7 @@ function TaskCard({
             )}
             {caseNumber && <span className="opacity-60">{caseNumber}</span>}
             {lawyerName && <span className="opacity-50">Adv: {lawyerName}</span>}
-            {createdByName && <span className="opacity-50">Por: {createdByName}</span>}
+            {createdByName && <span className="opacity-50">Criado por: {createdByName}</span>}
           </div>
         </div>
         {!dimmed && (
