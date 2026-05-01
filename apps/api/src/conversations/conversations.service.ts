@@ -290,6 +290,24 @@ export class ConversationsService {
     return conv;
   }
 
+  async reopen(id: string): Promise<Conversation> {
+    const conv = await this.prisma.conversation.update({
+      where: { id },
+      data: { status: 'ABERTO', assigned_user_id: null },
+      include: { lead: { select: { id: true, stage: true } } },
+    });
+    // Se o lead está FINALIZADO ou PERDIDO, reativar para QUALIFICANDO
+    const lead = (conv as any).lead;
+    if (lead && ['FINALIZADO', 'PERDIDO'].includes(lead.stage)) {
+      await this.prisma.lead.update({
+        where: { id: lead.id },
+        data: { stage: 'QUALIFICANDO', stage_entered_at: new Date(), loss_reason: null },
+      });
+    }
+    this.chatGateway.emitConversationsUpdate((conv as any).tenant_id ?? null);
+    return conv;
+  }
+
   async defer(id: string): Promise<Conversation> {
     const conv = await this.prisma.conversation.update({
       where: { id },

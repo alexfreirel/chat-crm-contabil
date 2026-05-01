@@ -1387,6 +1387,18 @@ export default function Dashboard() {
     }
   };
 
+  const handleReopen = async () => {
+    if (!selectedId || selectedId.startsWith('demo-')) return;
+    try {
+      await api.patch(`/conversations/${selectedId}/reopen`);
+      fetchConversations(selectedInboxIdRef.current, true);
+      showSuccess('Conversa reaberta');
+    } catch (e) {
+      console.error('Failed to reopen', e);
+      showError('Falha ao reabrir conversa');
+    }
+  };
+
   const handleClose = () => {
     if (!selectedId || selectedId.startsWith('demo-')) return;
     setCloseConvModal(true);
@@ -2914,8 +2926,14 @@ export default function Dashboard() {
               )}
 
               {isClosed ? (
-                <div className="max-w-4xl mx-auto text-center text-sm text-muted-foreground py-3 border border-border rounded-xl bg-card/50">
-                  Conversa encerrada. Não é possível enviar mensagens.
+                <div className="max-w-4xl mx-auto flex items-center justify-between gap-4 text-sm text-muted-foreground py-3 px-4 border border-border rounded-xl bg-card/50">
+                  <span>Conversa encerrada. Não é possível enviar mensagens.</span>
+                  <button
+                    onClick={handleReopen}
+                    className="shrink-0 px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors"
+                  >
+                    Reabrir conversa
+                  </button>
                 </div>
               ) : (
                 <div className="max-w-4xl mx-auto flex gap-2 md:gap-3 items-end">

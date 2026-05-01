@@ -105,6 +105,11 @@ export class ConversationsController {
     return this.conversationsService.close(id);
   }
 
+  @Patch(':id/reopen')
+  reopen(@Param('id') id: string) {
+    return this.conversationsService.reopen(id);
+  }
+
   @Patch(':id/defer')
   defer(@Param('id') id: string) {
     return this.conversationsService.defer(id);
