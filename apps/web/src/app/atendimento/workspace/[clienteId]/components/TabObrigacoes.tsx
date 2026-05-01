@@ -247,9 +247,10 @@ export default function TabObrigacoes({
     if (!newTitle.trim()) return;
     setCreating(true);
     try {
+      const razaoSocial = cliente?.lead?.ficha_contabil?.razao_social || cliente?.nome_empresa;
       await api.post('/tasks', {
         title: newTitle.trim(),
-        description: newDesc.trim() || undefined,
+        description: newDesc.trim() || razaoSocial || undefined,
         due_at: newDue ? new Date(`${newDue}T18:00:00`).toISOString() : undefined,
         assigned_user_id: newAssigned || undefined,
         cliente_contabil_id: clienteId,

@@ -133,9 +133,15 @@ export class ObrigacoesService {
       },
     });
 
+    const clienteParaTask = await this.prisma.clienteContabil.findUnique({
+      where: { id: clienteId },
+      select: { nome_empresa: true, lead: { select: { ficha_contabil: { select: { razao_social: true } } } } },
+    });
+    const razaoSocialTask = clienteParaTask?.lead?.ficha_contabil?.razao_social || clienteParaTask?.nome_empresa;
+
     await this.tasksService.create({
       title: data.titulo,
-      description: `Obrigação fiscal: ${data.tipo}`,
+      description: razaoSocialTask || undefined,
       cliente_contabil_id: clienteId,
       due_at: obrigacao.due_at,
       tenant_id: tenantId,
@@ -159,6 +165,12 @@ export class ObrigacoesService {
     userId?: string,
   ) {
     await this.verifyClienteAccess(clienteId, tenantId);
+
+    const clienteData = await this.prisma.clienteContabil.findUnique({
+      where: { id: clienteId },
+      select: { nome_empresa: true, lead: { select: { ficha_contabil: { select: { razao_social: true } } } } },
+    });
+    const razaoSocial = clienteData?.lead?.ficha_contabil?.razao_social || clienteData?.nome_empresa;
 
     const regimeKey = regime.toUpperCase().replace(' ', '_');
     const templates = [...(OBRIGACOES_POR_REGIME[regimeKey] ?? [])];
@@ -212,7 +224,7 @@ export class ObrigacoesService {
     for (const ob of created) {
       await this.tasksService.create({
         title: ob.titulo,
-        description: `Obrigação fiscal: ${ob.tipo}`,
+        description: razaoSocial || undefined,
         cliente_contabil_id: clienteId,
         due_at: ob.due_at,
         tenant_id: tenantId,
