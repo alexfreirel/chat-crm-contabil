@@ -19,7 +19,7 @@ export class MediaDownloadWorker extends WorkerHost {
   }
 
   async process(job: Job): Promise<void> {
-    const { message_id, conversation_id, media_data, msg_id, instance_name } = job.data;
+    const { message_id, conversation_id, media_data, msg_id, instance_name, remote_jid, from_me, full_message } = job.data;
 
     this.logger.log(
       `[WORKER] Processando job ${job.id}: msg=${message_id} instância=${instance_name ?? 'desconhecida'}`,
@@ -31,6 +31,9 @@ export class MediaDownloadWorker extends WorkerHost {
       externalMessageId: msg_id,
       instanceName: instance_name,
       mediaData: media_data,
+      remoteJid: remote_jid,
+      fromMe: from_me,
+      fullMessage: full_message,
     });
 
     if (!result) {

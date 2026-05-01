@@ -37,8 +37,11 @@ export class MediaDownloadService {
     externalMessageId: string;
     instanceName?: string;
     mediaData: any;
+    remoteJid?: string;
+    fromMe?: boolean;
+    fullMessage?: any;
   }): Promise<any | null> {
-    const { messageId, conversationId, externalMessageId, instanceName, mediaData } = params;
+    const { messageId, conversationId, externalMessageId, instanceName, mediaData, remoteJid, fromMe, fullMessage } = params;
 
     try {
       // 1. Config da Evolution
@@ -51,20 +54,40 @@ export class MediaDownloadService {
       const instance = instanceName || process.env.EVOLUTION_INSTANCE_NAME || '';
 
       // 2. Download base64 da Evolution API (COM timeout)
-      const response = await axios.post(
-        `${apiUrl}/chat/getBase64FromMediaMessage/${instance}`,
-        { message: { key: { id: externalMessageId } } },
-        {
-          headers: { apikey: apiKey },
-          timeout: MediaDownloadService.DOWNLOAD_TIMEOUT,
-        },
-      );
+      // A Evolution API v2 precisa de remoteJid/fromMe para localizar/descriptografar a mídia
+      const messagePayload: any = {
+        key: { id: externalMessageId },
+      };
+      if (remoteJid) messagePayload.key.remoteJid = remoteJid;
+      if (fromMe !== undefined) messagePayload.key.fromMe = fromMe;
+      if (fullMessage) messagePayload.message = fullMessage;
+
+      this.logger.log(`[MEDIA-SYNC] Chamando getBase64FromMediaMessage para msg ${messageId} (instance=${instance})`);
+
+      let response: any;
+      try {
+        response = await axios.post(
+          `${apiUrl}/chat/getBase64FromMediaMessage/${instance}`,
+          { message: messagePayload },
+          {
+            headers: { apikey: apiKey, 'Content-Type': 'application/json' },
+            timeout: MediaDownloadService.DOWNLOAD_TIMEOUT,
+          },
+        );
+      } catch (axiosErr: any) {
+        const status = axiosErr.response?.status;
+        const body = JSON.stringify(axiosErr.response?.data).substring(0, 300);
+        this.logger.warn(`[MEDIA-SYNC] Evolution API erro HTTP ${status} para msg ${messageId}: ${body}`);
+        return null;
+      }
 
       const base64Data = response.data?.base64;
       const mimeType = response.data?.mimetype || 'application/octet-stream';
 
       if (!base64Data) {
-        this.logger.warn(`[MEDIA-SYNC] Sem base64 retornado para msg ${messageId}`);
+        this.logger.warn(
+          `[MEDIA-SYNC] Sem base64 retornado para msg ${messageId}. Resposta: ${JSON.stringify(response.data).substring(0, 300)}`,
+        );
         return null;
       }
 
@@ -107,7 +130,7 @@ export class MediaDownloadService {
       return media;
     } catch (e: any) {
       const reason = e.code === 'ECONNABORTED' ? 'timeout' : e.message;
-      this.logger.warn(`[MEDIA-SYNC] Falha no download para msg ${messageId}: ${reason}`);
+      this.logger.error(`[MEDIA-SYNC] Falha inesperada para msg ${messageId}: ${reason}`, e?.stack?.substring(0, 500));
       return null;
     }
   }

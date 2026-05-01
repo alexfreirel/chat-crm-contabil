@@ -14,6 +14,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaS3Service } from './s3.service';
+import { MediaDownloadService } from './media-download.service';
 import { Public } from '../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import * as https from 'https';
@@ -26,6 +27,7 @@ export class MediaController {
   constructor(
     private prisma: PrismaService,
     private s3: MediaS3Service,
+    private mediaDownload: MediaDownloadService,
     @InjectQueue('media-jobs') private mediaQueue: Queue,
   ) {}
 
@@ -73,6 +75,67 @@ export class MediaController {
 
     this.logger.log(`[RETRY] Job de mídia re-enfileirado para msg ${messageId}`);
     return { ok: true, message: 'Download de mídia re-enfileirado' };
+  }
+
+  /**
+   * GET /media/:messageId/diagnose — diagnóstico de mídia para debug.
+   * Verifica se existe Media record, se a chave S3 é acessível, e re-tenta download se necessário.
+   */
+  @Get(':messageId/diagnose')
+  @UseGuards(JwtAuthGuard)
+  async diagnoseMedia(@Param('messageId') messageId: string) {
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      include: {
+        media: true,
+        conversation: { select: { id: true, instance_name: true } },
+      },
+    });
+
+    if (!message) {
+      return { error: 'Mensagem não encontrada', messageId };
+    }
+
+    const result: any = {
+      messageId,
+      type: message.type,
+      external_message_id: message.external_message_id,
+      instance_name: message.conversation?.instance_name,
+      has_media_record: !!message.media,
+    };
+
+    if (message.media) {
+      result.s3_key = message.media.s3_key;
+      result.mime_type = message.media.mime_type;
+      result.original_url = message.media.original_url;
+      result.size = message.media.size;
+
+      try {
+        await this.s3.getObjectStream(message.media.s3_key);
+        result.s3_accessible = true;
+      } catch (e: any) {
+        result.s3_accessible = false;
+        result.s3_error = e.message;
+      }
+    } else {
+      result.has_media_record = false;
+      // Tenta download agora com os dados disponíveis
+      if (message.external_message_id) {
+        const instanceName = message.conversation?.instance_name || process.env.EVOLUTION_INSTANCE_NAME || '';
+        result.download_attempted = true;
+        const downloaded = await this.mediaDownload.downloadAndStore({
+          messageId: message.id,
+          conversationId: message.conversation_id,
+          externalMessageId: message.external_message_id,
+          instanceName,
+          mediaData: null,
+        });
+        result.download_success = !!downloaded;
+        if (downloaded) result.s3_key = downloaded.s3_key;
+      }
+    }
+
+    return result;
   }
 
   // Rota pública (sem JWT) para que a Evolution API possa baixar o áudio

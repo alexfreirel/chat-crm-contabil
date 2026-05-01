@@ -447,6 +447,7 @@ export class EvolutionService {
 
       if (msgType !== 'text') {
         const mediaData = (data.message as any)?.[messageType];
+        const fullMessage = data.message as any;
         try {
           const mediaRecord = await this.mediaDownloadService.downloadAndStore({
             messageId: msg.id,
@@ -454,6 +455,9 @@ export class EvolutionService {
             externalMessageId,
             instanceName,
             mediaData,
+            remoteJid,
+            fromMe: isFromMe,
+            fullMessage,
           });
 
           if (mediaRecord) {
@@ -471,6 +475,8 @@ export class EvolutionService {
               conversation_id: conv.id,
               media_data: mediaData,
               remote_jid: remoteJid,
+              from_me: isFromMe,
+              full_message: fullMessage,
               msg_id: externalMessageId,
               instance_name: instanceName,
             }, { delay: 5000 });
@@ -483,6 +489,8 @@ export class EvolutionService {
             conversation_id: conv.id,
             media_data: mediaData,
             remote_jid: remoteJid,
+            from_me: isFromMe,
+            full_message: fullMessage,
             msg_id: externalMessageId,
             instance_name: instanceName,
           }, { delay: 5000 });
