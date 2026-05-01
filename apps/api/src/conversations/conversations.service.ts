@@ -39,9 +39,16 @@ export class ConversationsService {
     if (clientMode === true) {
       where.lead = { clientes_contabil: { some: {} } };
     } else if (clientMode === false) {
-      where.lead = { clientes_contabil: { none: {} }, stage: { notIn: ['PERDIDO', 'FINALIZADO'] } };
+      // Leads ativos (sem ClienteContabil e não perdidos/finalizados) OU
+      // leads finalizados (permanecem visíveis na aba Tudo após conclusão do atendimento)
+      where.lead = {
+        OR: [
+          { stage: 'FINALIZADO' },
+          { clientes_contabil: { none: {} }, stage: { notIn: ['PERDIDO', 'FINALIZADO'] } },
+        ],
+      };
     } else {
-      where.lead = { stage: { notIn: ['PERDIDO', 'FINALIZADO'] } };
+      where.lead = { stage: { notIn: ['PERDIDO'] } };
     }
 
     // ─── Controle de acesso ────────────────────────────────────────────
