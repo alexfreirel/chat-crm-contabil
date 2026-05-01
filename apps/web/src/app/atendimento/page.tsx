@@ -919,6 +919,41 @@ export default function Dashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-abrir/criar conversa de lead sem conversa ativa (via sessionStorage 'crm_open_lead')
+  useEffect(() => {
+    const leadId = sessionStorage.getItem('crm_open_lead');
+    if (!leadId) return;
+    sessionStorage.removeItem('crm_open_lead');
+
+    (async () => {
+      try {
+        // Buscar conversas existentes do lead
+        const r = await api.get(`/conversations/lead/${leadId}`, { _silent401: true } as any);
+        const convs = r.data as any[];
+        const open = convs.find((c: any) => c.status !== 'FECHADO') ?? convs[0];
+        if (open?.id) {
+          setSelectedId(open.id);
+          fetchConversations(selectedInboxIdRef.current, true);
+          return;
+        }
+      } catch { /* sem conversas — cria nova */ }
+
+      try {
+        const newConv = await api.post('/conversations', {
+          lead_id: leadId,
+          channel: 'whatsapp',
+          instance_name: 'whatsapp',
+        });
+        await api.patch(`/conversations/${newConv.data.id}/assign`).catch(() => {});
+        await fetchConversations(selectedInboxIdRef.current, true);
+        setSelectedId(newConv.data.id);
+      } catch {
+        showError('Não foi possível abrir o chat com esse contato.');
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Buscar stage do lead + limpar unread ao selecionar conversa
   useEffect(() => {
     if (!selectedId) { setLeadStage(null); setOpenQuestions([]); return; }
