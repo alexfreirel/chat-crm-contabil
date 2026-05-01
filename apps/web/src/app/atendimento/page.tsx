@@ -1391,6 +1391,14 @@ export default function Dashboard() {
     if (!selectedId || selectedId.startsWith('demo-')) return;
     try {
       await api.patch(`/conversations/${selectedId}/reopen`);
+      // Atualiza leadStage para QUALIFICANDO imediatamente (sem esperar re-fetch)
+      setLeadStage('QUALIFICANDO');
+      setConversations(prev => prev.map(c =>
+        c.id === selectedId ? { ...c, status: 'WAITING', leadStage: 'QUALIFICANDO' } : c
+      ));
+      setAdiadoConversations(prev => prev.map(c =>
+        c.id === selectedId ? { ...c, status: 'WAITING', leadStage: 'QUALIFICANDO' } : c
+      ));
       fetchConversations(selectedInboxIdRef.current, true);
       showSuccess('Conversa reaberta');
     } catch (e) {
