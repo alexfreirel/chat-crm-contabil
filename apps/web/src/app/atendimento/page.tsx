@@ -1301,6 +1301,17 @@ export default function Dashboard() {
     }
     // ───────────────────────────────────────────────────────────────────────
 
+    // Auto-aceitar atendimento ao digitar a primeira resposta (Leads e Clientes)
+    const currentConv = conversations.find(c => c.id === selectedId) ?? adiadoConversations.find(c => c.id === selectedId);
+    if (currentConv?.status === 'WAITING') {
+      try {
+        await api.patch(`/conversations/${selectedId}/assign`);
+        fetchConversations(selectedInboxIdRef.current, true);
+      } catch (e) {
+        console.error('Failed to auto-accept', e);
+      }
+    }
+
     const msgText = text;
     const replyId = replyingTo?.id;
     setSending(true);
