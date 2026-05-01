@@ -45,13 +45,20 @@ export class MediaDownloadService {
 
     try {
       // 1. Config da Evolution
-      const { apiUrl, apiKey } = await this.settings.getWhatsAppConfig();
-      if (!apiUrl) {
+      const { apiUrl: rawApiUrl, apiKey } = await this.settings.getWhatsAppConfig();
+      if (!rawApiUrl) {
         this.logger.warn('[MEDIA-SYNC] EVOLUTION_API_URL nao configurada');
         return null;
       }
 
-      const instance = instanceName || process.env.EVOLUTION_INSTANCE_NAME || '';
+      // Normaliza URL: remove trailing slash, garante protocolo
+      const apiUrl = rawApiUrl.trim().replace(/\/+$/, '');
+      const instance = (instanceName || process.env.EVOLUTION_INSTANCE_NAME || '').trim();
+
+      if (!instance) {
+        this.logger.warn('[MEDIA-SYNC] Instance name vazio — não é possível baixar mídia');
+        return null;
+      }
 
       // 2. Download base64 da Evolution API (COM timeout)
       // A Evolution API v2 precisa de remoteJid/fromMe para localizar/descriptografar a mídia
@@ -62,22 +69,26 @@ export class MediaDownloadService {
       if (fromMe !== undefined) messagePayload.key.fromMe = fromMe;
       if (fullMessage) messagePayload.message = fullMessage;
 
-      this.logger.log(`[MEDIA-SYNC] Chamando getBase64FromMediaMessage para msg ${messageId} (instance=${instance})`);
+      const evolutionUrl = `${apiUrl}/chat/getBase64FromMediaMessage/${instance}`;
+      this.logger.log(
+        `[MEDIA-SYNC] Chamando ${evolutionUrl} para msg ${messageId} ` +
+        `(remoteJid=${remoteJid ?? 'n/a'}, fromMe=${fromMe ?? 'n/a'}, hasFullMsg=${!!fullMessage})`,
+      );
 
       let response: any;
       try {
         response = await axios.post(
-          `${apiUrl}/chat/getBase64FromMediaMessage/${instance}`,
+          evolutionUrl,
           { message: messagePayload },
           {
-            headers: { apikey: apiKey, 'Content-Type': 'application/json' },
+            headers: { apikey: apiKey || '', 'Content-Type': 'application/json' },
             timeout: MediaDownloadService.DOWNLOAD_TIMEOUT,
           },
         );
       } catch (axiosErr: any) {
-        const status = axiosErr.response?.status;
-        const body = JSON.stringify(axiosErr.response?.data).substring(0, 300);
-        this.logger.warn(`[MEDIA-SYNC] Evolution API erro HTTP ${status} para msg ${messageId}: ${body}`);
+        const status = axiosErr.response?.status ?? 'sem resposta';
+        const body = JSON.stringify(axiosErr.response?.data ?? axiosErr.message).substring(0, 400);
+        this.logger.warn(`[MEDIA-SYNC] Evolution API falhou (HTTP ${status}) para msg ${messageId}: ${body}`);
         return null;
       }
 
@@ -86,7 +97,7 @@ export class MediaDownloadService {
 
       if (!base64Data) {
         this.logger.warn(
-          `[MEDIA-SYNC] Sem base64 retornado para msg ${messageId}. Resposta: ${JSON.stringify(response.data).substring(0, 300)}`,
+          `[MEDIA-SYNC] Sem base64 retornado para msg ${messageId}. Resposta: ${JSON.stringify(response.data).substring(0, 400)}`,
         );
         return null;
       }

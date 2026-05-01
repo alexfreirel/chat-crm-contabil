@@ -9,14 +9,17 @@ import {
   NotFoundException,
   Logger,
   UseGuards,
+  Inject,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaS3Service } from './s3.service';
 import { MediaDownloadService } from './media-download.service';
+import { SettingsService } from '../settings/settings.service';
 import { Public } from '../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import axios from 'axios';
 import * as https from 'https';
 import * as http from 'http';
 
@@ -28,6 +31,7 @@ export class MediaController {
     private prisma: PrismaService,
     private s3: MediaS3Service,
     private mediaDownload: MediaDownloadService,
+    private settings: SettingsService,
     @InjectQueue('media-jobs') private mediaQueue: Queue,
   ) {}
 
@@ -40,7 +44,16 @@ export class MediaController {
   async retryMediaDownload(@Param('messageId') messageId: string) {
     const message = await this.prisma.message.findUnique({
       where: { id: messageId },
-      include: { media: true, conversation: { select: { id: true, instance_name: true } } },
+      include: {
+        media: true,
+        conversation: {
+          select: {
+            id: true,
+            instance_name: true,
+            lead: { select: { phone: true } },
+          },
+        },
+      },
     });
 
     if (!message) throw new NotFoundException('Mensagem não encontrada');
@@ -61,20 +74,44 @@ export class MediaController {
       throw new NotFoundException('Mensagem sem external_message_id — não é possível re-baixar');
     }
 
-    const instanceName = message.conversation?.instance_name
-      || process.env.EVOLUTION_INSTANCE_NAME || '';
+    const instanceName = (message.conversation?.instance_name || process.env.EVOLUTION_INSTANCE_NAME || '').trim();
+    // Reconstrói o remoteJid a partir do telefone do lead
+    const leadPhone = message.conversation?.lead?.phone;
+    const remoteJid = leadPhone ? `${leadPhone}@s.whatsapp.net` : undefined;
+    const fromMe = message.direction === 'out';
 
+    this.logger.log(`[RETRY] Tentando download síncrono: msg=${messageId} instance=${instanceName} remoteJid=${remoteJid ?? 'n/a'}`);
+
+    // Tenta download síncrono primeiro (retorno imediato ao usuário)
+    const downloaded = await this.mediaDownload.downloadAndStore({
+      messageId: message.id,
+      conversationId: message.conversation_id,
+      externalMessageId: message.external_message_id,
+      instanceName,
+      mediaData: null,
+      remoteJid,
+      fromMe,
+    });
+
+    if (downloaded) {
+      this.logger.log(`[RETRY] Download síncrono bem-sucedido para msg ${messageId}`);
+      return { ok: true, message: 'Mídia baixada com sucesso', synced: true };
+    }
+
+    // Fallback: enfileira no BullMQ para retry com backoff
     await this.mediaQueue.add('download_media', {
       message_id: message.id,
       conversation_id: message.conversation_id,
-      media_data: null, // Dados originais perdidos, worker baixará o essencial
-      remote_jid: null,
+      media_data: null,
+      remote_jid: remoteJid ?? null,
+      from_me: fromMe,
+      full_message: null,
       msg_id: message.external_message_id,
       instance_name: instanceName,
     });
 
-    this.logger.log(`[RETRY] Job de mídia re-enfileirado para msg ${messageId}`);
-    return { ok: true, message: 'Download de mídia re-enfileirado' };
+    this.logger.log(`[RETRY] Fallback BullMQ enfileirado para msg ${messageId}`);
+    return { ok: true, message: 'Download re-enfileirado para processamento em background' };
   }
 
   /**
@@ -133,6 +170,55 @@ export class MediaController {
         result.download_success = !!downloaded;
         if (downloaded) result.s3_key = downloaded.s3_key;
       }
+    }
+
+    return result;
+  }
+
+  /**
+   * GET /media/health — testa conectividade com Evolution API e S3.
+   * Útil para diagnosticar por que mídias não estão sendo baixadas.
+   */
+  @Get('health')
+  @UseGuards(JwtAuthGuard)
+  async mediaHealth() {
+    const result: any = { timestamp: new Date().toISOString() };
+
+    // Testa S3/MinIO
+    try {
+      const bucket = process.env.S3_BUCKET || 'chat-crm-media';
+      const endpoint = process.env.S3_ENDPOINT || 'http://minio:9000';
+      result.s3 = { endpoint, bucket, ok: false };
+      // Tenta criar bucket (já existindo é OK)
+      const testKey = `health-check-${Date.now()}.txt`;
+      await this.s3.uploadBuffer(testKey, Buffer.from('ok'), 'text/plain');
+      await this.s3.deleteObject(testKey);
+      result.s3.ok = true;
+    } catch (e: any) {
+      result.s3.error = e.message;
+    }
+
+    // Testa Evolution API
+    try {
+      const { apiUrl: rawUrl, apiKey } = await this.settings.getWhatsAppConfig();
+      const apiUrl = (rawUrl || '').trim().replace(/\/+$/, '');
+      result.evolution = { url: apiUrl, hasApiKey: !!apiKey, ok: false };
+
+      if (!apiUrl) {
+        result.evolution.error = 'EVOLUTION_API_URL não configurada nas configurações';
+      } else {
+        const resp = await axios.get(`${apiUrl}/instance/fetchInstances`, {
+          headers: { apikey: apiKey || '' },
+          timeout: 8000,
+        });
+        result.evolution.ok = resp.status === 200;
+        result.evolution.instances = Array.isArray(resp.data)
+          ? resp.data.map((i: any) => i.instance?.instanceName || i.instanceName || 'n/a')
+          : [];
+      }
+    } catch (e: any) {
+      const status = e.response?.status ?? 'sem resposta';
+      result.evolution = { ...result.evolution, ok: false, error: `HTTP ${status}: ${e.message}` };
     }
 
     return result;
