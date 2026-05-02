@@ -44,6 +44,7 @@ API_ARRECADACAO_AUTH     = f"{BASE_ARRECADACAO}/api/authenticate"
 API_ARRECADACAO_AUTH_SFZ = f"{BASE_ARRECADACAO}/sfz-portal-fazendario-arrecadacao-api/api/authenticate"
 _ARRECADACAO_CANDIDATOS = [
     f"{BASE_ARRECADACAO}/sfz-portal-fazendario-arrecadacao-api/api/relatorio/extratoArrecadacao",
+    f"{BASE_ARRECADACAO}/api/relatorio/extratoArrecadacao",
 ]
 
 # ── Cobrança DF-e ─────────────────────────────────────────────────────────────
@@ -425,24 +426,12 @@ def _baixar_extrato_arrecadacao(sess: requests.Session, empresa: Empresa, cache:
             f"&numeroDocumento={inscricao}"
         )
         url = f"{url_base}{params}"
-        log.info(f"  [Arrecadação] Tentando: {url_base.split('/')[-1]}")
-        # Probe: sem auth mas COM sec-fetch → confirma se sec-fetch é a chave
-        try:
-            _p = requests.get(url, timeout=(10, 15), headers={
-                "User-Agent": sess.headers.get("User-Agent", ""),
-                "Sec-Fetch-Site": "same-origin",
-                "Sec-Fetch-Mode": "cors",
-                "Referer": f"{BASE}/arrecadacaocontribuinte/",
-            })
-            log.info(f"  [Arrecadação] sem-auth+sec-fetch: HTTP {_p.status_code}  size={len(_p.content)}")
-        except Exception:
-            pass
+        log.info(f"  [Arrecadação] Tentando: {'/'.join(url_base.split('/')[-2:])}")
         try:
             r = sess.get(url, timeout=(15, 120))
             ct = r.headers.get("Content-Type", "")
-            log.info(f"  [Arrecadação] com-auth: HTTP {r.status_code}  CT={ct[:60]}  size={len(r.content)}")
+            log.info(f"  [Arrecadação] HTTP {r.status_code}  CT={ct[:60]}")
             if r.status_code != 200:
-                log.warning(f"  [Arrecadação] Resposta: {r.text[:300]}")
                 continue
             if "pdf" in ct.lower() or r.content[:4] == b"%PDF":
                 empresa.pasta.mkdir(parents=True, exist_ok=True)
@@ -454,12 +443,15 @@ def _baixar_extrato_arrecadacao(sess: requests.Session, empresa: Empresa, cache:
                     log.info(f"  Endpoint arrecadação cacheado: {url_base}")
                 sess.headers.update(headers_orig)
                 return destino
-            log.warning(f"  [Arrecadação] Content-Type inesperado — primeiros bytes: {r.content[:80]}")
         except Exception as e:
             log.warning(f"  [Arrecadação] Erro: {e}")
 
     sess.headers.update(headers_orig)
-    log.warning(f"  [{empresa.nome}] Nenhum endpoint funcionou para Extrato de Arrecadação")
+    log.warning(
+        f"  [{empresa.nome}] Extrato de Arrecadação não disponível via API "
+        f"(endpoint sfz-portal-fazendario-arrecadacao-api pode estar restrito ao IP do browser). "
+        f"Baixe manualmente em: {BASE}/arrecadacaocontribuinte/#/relatorioExtratos"
+    )
     return None
 
 
