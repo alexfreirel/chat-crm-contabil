@@ -383,14 +383,13 @@ def _baixar_extrato_arrecadacao(sess: requests.Session, empresa: Empresa, cache:
         log.info(f"  Já existe: {nome_arquivo}")
         return destino
 
-    # Tenta autenticar no portal de arrecadação (auth própria, com fallback no token atual)
-    token_arr = _autenticar(sess, API_ARRECADACAO_AUTH, empresa.usuario, empresa.senha, "arrecadacao")
-    if not token_arr:
-        log.warning(f"  [{empresa.nome}] Login arrecadação falhou — tentando com token malhafiscal")
-        token_arr = sess.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    if not token_arr:
-        log.warning(f"  [{empresa.nome}] Sem token para arrecadação — ignorando")
+    # Usa o token do malhafiscal (mesmo domínio JHipster).
+    # Se retornar 404/401, tenta auth própria do portal de arrecadação como fallback.
+    token_malha = sess.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    if not token_malha:
+        log.warning(f"  [{empresa.nome}] Sem token malhafiscal — ignorando Extrato de Arrecadação")
         return None
+    token_arr = token_malha
 
     # usuario já é a inscrição estadual (CACEAL), remove formatação por segurança
     inscricao = empresa.usuario.replace("-", "").replace(".", "").strip()
@@ -420,6 +419,15 @@ def _baixar_extrato_arrecadacao(sess: requests.Session, empresa: Empresa, cache:
             r = sess.get(url, timeout=(15, 120))
             ct = r.headers.get("Content-Type", "")
             log.info(f"  [Arrecadação] HTTP {r.status_code}  CT={ct[:60]}  size={len(r.content)}")
+            if r.status_code in (401, 404) and token_arr == token_malha:
+                # Malha fiscal token rejeitado — tenta auth própria da arrecadação
+                log.info(f"  [Arrecadação] Token malhafiscal rejeitado ({r.status_code}), tentando auth própria...")
+                token_arr = _autenticar(sess, API_ARRECADACAO_AUTH, empresa.usuario, empresa.senha, "arrecadacao") or ""
+                if token_arr:
+                    sess.headers["Authorization"] = f"Bearer {token_arr}"
+                    r = sess.get(url, timeout=(15, 120))
+                    ct = r.headers.get("Content-Type", "")
+                    log.info(f"  [Arrecadação] (retry) HTTP {r.status_code}  CT={ct[:60]}  size={len(r.content)}")
             if r.status_code != 200:
                 log.warning(f"  [Arrecadação] Resposta: {r.text[:300]}")
                 continue
