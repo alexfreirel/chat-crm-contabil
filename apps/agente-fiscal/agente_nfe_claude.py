@@ -416,17 +416,26 @@ def _baixar_extrato_arrecadacao(sess: requests.Session, empresa: Empresa, cache:
         )
         url = f"{url_base}{params}"
         log.info(f"  [Arrecadação] Tentando: {url_base.split('/')[-1]}")
-        pdf = _get_pdf(sess, url, max_tentativas=4 if not cached_url else 15)
-        if pdf:
-            empresa.pasta.mkdir(parents=True, exist_ok=True)
-            destino.write_bytes(pdf)
-            log.info(f"  Salvo: {nome_arquivo} ({len(pdf):,} bytes) — mês ref: {mes_ant}")
-            if not cached_url:
-                cache[cache_key] = url_base
-                _salvar_cache(cache)
-                log.info(f"  Endpoint arrecadação cacheado: {url_base}")
-            sess.headers.update(headers_orig)
-            return destino
+        try:
+            r = sess.get(url, timeout=(15, 120))
+            ct = r.headers.get("Content-Type", "")
+            log.info(f"  [Arrecadação] HTTP {r.status_code}  CT={ct[:60]}  size={len(r.content)}")
+            if r.status_code != 200:
+                log.warning(f"  [Arrecadação] Resposta: {r.text[:300]}")
+                continue
+            if "pdf" in ct.lower() or r.content[:4] == b"%PDF":
+                empresa.pasta.mkdir(parents=True, exist_ok=True)
+                destino.write_bytes(r.content)
+                log.info(f"  Salvo: {nome_arquivo} ({len(r.content):,} bytes) — mês ref: {mes_ant}")
+                if not cached_url:
+                    cache[cache_key] = url_base
+                    _salvar_cache(cache)
+                    log.info(f"  Endpoint arrecadação cacheado: {url_base}")
+                sess.headers.update(headers_orig)
+                return destino
+            log.warning(f"  [Arrecadação] Content-Type inesperado — primeiros bytes: {r.content[:80]}")
+        except Exception as e:
+            log.warning(f"  [Arrecadação] Erro: {e}")
 
     sess.headers.update(headers_orig)
     log.warning(f"  [{empresa.nome}] Nenhum endpoint funcionou para Extrato de Arrecadação")
