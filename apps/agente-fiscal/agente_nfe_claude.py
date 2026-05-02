@@ -410,6 +410,9 @@ def _baixar_extrato_arrecadacao(sess: requests.Session, empresa: Empresa, cache:
     sess.headers["Authorization"] = f"Bearer {token_arr}"
     sess.headers["Accept"] = "application/json, text/plain, */*"
     sess.headers["Referer"] = f"{BASE}/arrecadacaocontribuinte/"
+    sess.headers["Sec-Fetch-Site"] = "same-origin"
+    sess.headers["Sec-Fetch-Mode"] = "cors"
+    sess.headers["Sec-Fetch-Dest"] = "empty"
     sess.headers.pop("Content-Type", None)
 
     for url_base in candidatos:
@@ -423,10 +426,15 @@ def _baixar_extrato_arrecadacao(sess: requests.Session, empresa: Empresa, cache:
         )
         url = f"{url_base}{params}"
         log.info(f"  [Arrecadação] Tentando: {url_base.split('/')[-1]}")
-        # Probe sem auth para distinguir: 401=token errado, 404=URL errada
+        # Probe: sem auth mas COM sec-fetch → confirma se sec-fetch é a chave
         try:
-            _p = requests.get(url, timeout=(10, 15), headers={"User-Agent": sess.headers.get("User-Agent","")})
-            log.info(f"  [Arrecadação] sem-auth: HTTP {_p.status_code}  size={len(_p.content)}")
+            _p = requests.get(url, timeout=(10, 15), headers={
+                "User-Agent": sess.headers.get("User-Agent", ""),
+                "Sec-Fetch-Site": "same-origin",
+                "Sec-Fetch-Mode": "cors",
+                "Referer": f"{BASE}/arrecadacaocontribuinte/",
+            })
+            log.info(f"  [Arrecadação] sem-auth+sec-fetch: HTTP {_p.status_code}  size={len(_p.content)}")
         except Exception:
             pass
         try:
