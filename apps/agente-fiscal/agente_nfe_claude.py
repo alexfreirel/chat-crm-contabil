@@ -38,6 +38,16 @@ API_EXTRATO      = f"{BASE}/debitosFiscais/sfz-debito-relatorio-api/api/relatori
 BASE_PARCELAMENTO = f"{BASE}/parcelamento"
 API_PARCELAMENTO  = f"{BASE_PARCELAMENTO}/sfz-parcelamento-api/api"
 
+# ── Arrecadação do Contribuinte ───────────────────────────────────────────────
+BASE_ARRECADACAO    = f"{BASE}/arrecadacaocontribuinte"
+API_ARRECADACAO_AUTH = f"{BASE_ARRECADACAO}/api/authenticate"
+_ARRECADACAO_CANDIDATOS = [
+    f"{BASE_ARRECADACAO}/sfz-arrecadacao-contribuinte-api/api/extrato-arrecadacoes/gerar-pdf",
+    f"{BASE_ARRECADACAO}/sfz-arrecadacao-api/api/extrato-arrecadacoes/gerar-pdf",
+    f"{BASE_ARRECADACAO}/sfz-arrecadacao-api/api/extrato/gerar-pdf",
+    f"{BASE_ARRECADACAO}/sfz-arrecadacao-api/api/relatorio/extrato",
+]
+
 # ── Cobrança DF-e ─────────────────────────────────────────────────────────────
 BASE_COBRANCA_DFE   = f"{BASE}/cobrancadfe"
 API_COBRANCA_AUTH   = f"{BASE_COBRANCA_DFE}/api/authenticate"
@@ -346,6 +356,86 @@ def _baixar_relatorio(
     return None
 
 
+# ── Extrato de Arrecadação do Contribuinte ────────────────────────────────────
+def _mes_anterior_datas() -> tuple[str, str, str]:
+    """
+    Retorna (mes_str, data_inicial_iso, data_final_iso) do mês anterior ao configurado.
+    Ex: MES_STR=2026-05 → ('2026-04', '2026-04-01', '2026-04-30')
+    """
+    if config.MES_NUM == 1:
+        ano, mes = config.ANO - 1, 12
+    else:
+        ano, mes = config.ANO, config.MES_NUM - 1
+    ultimo = calendar.monthrange(ano, mes)[1]
+    mes_str = f"{ano}-{mes:02d}"
+    di = f"{ano}-{mes:02d}-01"
+    df = f"{ano}-{mes:02d}-{ultimo:02d}"
+    return mes_str, di, df
+
+
+def _baixar_extrato_arrecadacao(sess: requests.Session, empresa: Empresa, cache: dict) -> "Path | None":
+    """
+    Baixa o Extrato de Arrecadação do mês anterior ao período selecionado.
+    Usa empresa.usuario como numeroDocumento (inscrição estadual / CACEAL).
+    """
+    mes_ant, di, df = _mes_anterior_datas()
+    nome_arquivo = f"extrato-arrecadacao-{mes_ant}.pdf"
+    destino = empresa.pasta / nome_arquivo
+
+    if destino.exists():
+        log.info(f"  Já existe: {nome_arquivo}")
+        return destino
+
+    # Tenta autenticar no portal de arrecadação (auth própria, com fallback no token atual)
+    token_arr = _autenticar(sess, API_ARRECADACAO_AUTH, empresa.usuario, empresa.senha, "arrecadacao")
+    if not token_arr:
+        log.warning(f"  [{empresa.nome}] Login arrecadação falhou — tentando com token malhafiscal")
+        token_arr = sess.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    if not token_arr:
+        log.warning(f"  [{empresa.nome}] Sem token para arrecadação — ignorando")
+        return None
+
+    # usuario já é a inscrição estadual (CACEAL), remove formatação por segurança
+    inscricao = empresa.usuario.replace("-", "").replace(".", "").strip()
+    cache_key = "extrato-arrecadacao-endpoint"
+    cached_url = cache.get(cache_key)
+
+    candidatos = [cached_url] if cached_url else _ARRECADACAO_CANDIDATOS
+    cache_buster = int(time.time() * 1000)
+
+    headers_orig = dict(sess.headers)
+    sess.headers["Authorization"] = f"Bearer {token_arr}"
+    sess.headers["Accept"] = "application/octet-stream, application/pdf, */*"
+    sess.headers.pop("Content-Type", None)
+
+    for url_base in candidatos:
+        params = (
+            f"?cacheBuster={cache_buster}"
+            f"&codigoReceita="
+            f"&codigoUnidadeGestora=900003"
+            f"&dataFinal={df}T00:00:00-00:00"
+            f"&dataInicial={di}T00:00:00-00:00"
+            f"&numeroDocumento={inscricao}"
+        )
+        url = f"{url_base}{params}"
+        log.info(f"  [Arrecadação] Tentando: {url_base.split('/')[-1]}")
+        pdf = _get_pdf(sess, url, max_tentativas=4 if not cached_url else 15)
+        if pdf:
+            empresa.pasta.mkdir(parents=True, exist_ok=True)
+            destino.write_bytes(pdf)
+            log.info(f"  Salvo: {nome_arquivo} ({len(pdf):,} bytes) — mês ref: {mes_ant}")
+            if not cached_url:
+                cache[cache_key] = url_base
+                _salvar_cache(cache)
+                log.info(f"  Endpoint arrecadação cacheado: {url_base}")
+            sess.headers.update(headers_orig)
+            return destino
+
+    sess.headers.update(headers_orig)
+    log.warning(f"  [{empresa.nome}] Nenhum endpoint funcionou para Extrato de Arrecadação")
+    return None
+
+
 # ── Processar empresa ──────────────────────────────────────────────────────────
 def processar_empresa(empresa: Empresa, cache: dict) -> dict:
     """Faz login e baixa todos os relatórios da empresa. Retorna resumo."""
@@ -366,6 +456,14 @@ def processar_empresa(empresa: Empresa, cache: dict) -> dict:
             resultado["ok"].append(rel["descricao"])
         else:
             resultado["falha"].append(rel["descricao"])
+
+    # Extrato de Arrecadação — sempre baixa o mês anterior ao período selecionado
+    log.info(f"[{empresa.nome}] Extrato de Arrecadação (mês anterior)...")
+    pdf = _baixar_extrato_arrecadacao(sess, empresa, cache)
+    if pdf:
+        resultado["ok"].append("Extrato de Arrecadação")
+    else:
+        resultado["falha"].append("Extrato de Arrecadação")
 
     return resultado
 
