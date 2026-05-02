@@ -42,16 +42,7 @@ API_PARCELAMENTO  = f"{BASE_PARCELAMENTO}/sfz-parcelamento-api/api"
 BASE_ARRECADACAO    = f"{BASE}/arrecadacaocontribuinte"
 API_ARRECADACAO_AUTH = f"{BASE_ARRECADACAO}/api/authenticate"
 _ARRECADACAO_CANDIDATOS = [
-    f"{BASE_ARRECADACAO}/sfz-arrecadacao-contribuinte-api/api/extrato-arrecadacoes/gerar-pdf",
-    f"{BASE_ARRECADACAO}/sfz-arrecadacao-contribuinte-api/api/extrato-arrecadacoes",
-    f"{BASE_ARRECADACAO}/sfz-arrecadacao-contribuinte-api/api/extrato-arrecadacao/gerar-pdf",
-    f"{BASE_ARRECADACAO}/sfz-arrecadacao-contribuinte-api/api/extrato-arrecadacao",
-    f"{BASE_ARRECADACAO}/sfz-arrecadacao-contribuinte-api/api/relatorio-extrato/gerar-pdf",
-    f"{BASE_ARRECADACAO}/sfz-arrecadacao-contribuinte-api/api/relatorio/extrato-arrecadacoes",
-    f"{BASE_ARRECADACAO}/sfz-arrecadacao-api/api/extrato-arrecadacoes/gerar-pdf",
-    f"{BASE_ARRECADACAO}/sfz-arrecadacao-api/api/extrato-arrecadacoes",
-    f"{BASE_ARRECADACAO}/sfz-arrecadacao-api/api/extrato/gerar-pdf",
-    f"{BASE_ARRECADACAO}/sfz-arrecadacao-api/api/relatorio/extrato",
+    f"{BASE_ARRECADACAO}/sfz-portal-fazendario-arrecadacao-api/api/relatorio/extratoArrecadacao",
 ]
 
 # ── Cobrança DF-e ─────────────────────────────────────────────────────────────
@@ -424,15 +415,7 @@ def _baixar_extrato_arrecadacao(sess: requests.Session, empresa: Empresa, cache:
             f"&numeroDocumento={inscricao}"
         )
         url = f"{url_base}{params}"
-        log.info(f"  [Arrecadação] Tentando: .../{'/'.join(url_base.split('/')[-3:])}")
-        try:
-            _probe = sess.get(url, timeout=(15, 30))
-            log.info(f"  [Arrecadação] HTTP {_probe.status_code}  CT={_probe.headers.get('Content-Type','?')[:60]}  size={len(_probe.content)}")
-            if _probe.status_code not in (200, 406):
-                continue
-        except Exception as _e:
-            log.warning(f"  [Arrecadação] Erro na probe: {_e}")
-            continue
+        log.info(f"  [Arrecadação] Tentando: {url_base.split('/')[-1]}")
         pdf = _get_pdf(sess, url, max_tentativas=4 if not cached_url else 15)
         if pdf:
             empresa.pasta.mkdir(parents=True, exist_ok=True)
