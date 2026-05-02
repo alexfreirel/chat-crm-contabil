@@ -42,7 +42,7 @@ const AGENT_API = typeof window !== 'undefined'
         : 'http://localhost:5000'))
   : 'http://localhost:5000';
 
-async function syncEmpresaAgenteFiscal(nome: string, cnpj: string, usuario: string, senha: string) {
+async function syncEmpresaAgenteFiscal(nome: string, cnpj: string, usuario: string, senha: string, inscricao_estadual?: string) {
   const cnpjClean = cnpj.replace(/\D/g, '');
   if (cnpjClean.length !== 14 || !usuario || !senha) return;
 
@@ -56,14 +56,14 @@ async function syncEmpresaAgenteFiscal(nome: string, cnpj: string, usuario: stri
     await fetch(`${AGENT_API}/api/empresas/${idx}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nome: nome || empresas[idx].nome, usuario, senha }),
+      body: JSON.stringify({ nome: nome || empresas[idx].nome, usuario, senha, inscricao_estadual: inscricao_estadual || '' }),
     });
   } else {
     // Cadastra nova empresa
     const res = await fetch(`${AGENT_API}/api/empresas`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nome, cnpj: cnpjClean, usuario, senha }),
+      body: JSON.stringify({ nome, cnpj: cnpjClean, usuario, senha, inscricao_estadual: inscricao_estadual || '' }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -299,7 +299,7 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
         setSefazSync('syncing');
         try {
           const nome = form.razao_social || leadName || '';
-          await syncEmpresaAgenteFiscal(nome, form.cnpj, form.acesso_sefaz, form.senha_sefaz);
+          await syncEmpresaAgenteFiscal(nome, form.cnpj, form.acesso_sefaz, form.senha_sefaz, form.inscricao_estadual);
           setSefazSync('ok');
           setTimeout(() => setSefazSync('idle'), 4000);
         } catch (e: any) {
