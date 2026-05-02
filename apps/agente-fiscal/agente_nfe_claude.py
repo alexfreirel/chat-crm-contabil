@@ -423,12 +423,16 @@ def _baixar_extrato_arrecadacao(sess: requests.Session, empresa: Empresa, cache:
         )
         url = f"{url_base}{params}"
         log.info(f"  [Arrecadação] Tentando: {url_base.split('/')[-1]}")
+        # Probe sem auth para distinguir: 401=token errado, 404=URL errada
+        try:
+            _p = requests.get(url, timeout=(10, 15), headers={"User-Agent": sess.headers.get("User-Agent","")})
+            log.info(f"  [Arrecadação] sem-auth: HTTP {_p.status_code}  size={len(_p.content)}")
+        except Exception:
+            pass
         try:
             r = sess.get(url, timeout=(15, 120))
             ct = r.headers.get("Content-Type", "")
-            log.info(f"  [Arrecadação] HTTP {r.status_code}  CT={ct[:60]}  size={len(r.content)}")
-            if r.status_code in (401, 404):
-                pass  # todos os tokens já foram tentados antes do loop
+            log.info(f"  [Arrecadação] com-auth: HTTP {r.status_code}  CT={ct[:60]}  size={len(r.content)}")
             if r.status_code != 200:
                 log.warning(f"  [Arrecadação] Resposta: {r.text[:300]}")
                 continue
