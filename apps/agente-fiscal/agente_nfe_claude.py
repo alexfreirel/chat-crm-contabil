@@ -384,20 +384,22 @@ def _baixar_extrato_arrecadacao(sess: requests.Session, empresa: Empresa, cache:
         log.info(f"  Já existe: {nome_arquivo}")
         return destino
 
-    # Tenta auth no endpoint próprio do serviço fazendário (padrão JHipster microservice)
-    token_arr = _autenticar(sess, API_ARRECADACAO_AUTH_SFZ, empresa.usuario, empresa.senha, "arrecadacao-sfz")
-    # Fallbacks: auth genérica do portal → token malhafiscal
+    # Autentica no portal de arrecadação para obter token com ROLE_EMI_EXTRATO
+    token_arr = _autenticar(sess, API_ARRECADACAO_AUTH, empresa.usuario, empresa.senha, "arrecadacao")
     if not token_arr:
-        token_arr = _autenticar(sess, API_ARRECADACAO_AUTH, empresa.usuario, empresa.senha, "arrecadacao")
-    if not token_arr:
-        token_arr = sess.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    if not token_arr:
-        log.warning(f"  [{empresa.nome}] Sem token para Extrato de Arrecadação — ignorando")
+        log.warning(f"  [{empresa.nome}] Login arrecadação falhou — ignorando Extrato de Arrecadação")
         return None
-    token_malha = sess.headers.get("Authorization", "").removeprefix("Bearer ").strip()
 
-    # usuario já é a inscrição estadual (CACEAL), remove formatação por segurança
-    inscricao = empresa.usuario.replace("-", "").replace(".", "").strip()
+    # usuario = inscrição estadual base (8 dígitos, ex: 24051960)
+    # O portal exige a inscrição COMPLETA com dígito verificador (9 dígitos, ex: 240519604)
+    # O DV é obtido do campo inscricao_estadual; se ausente, tenta concatenar o usuario com o DV do login
+    if empresa.inscricao_estadual:
+        inscricao = empresa.inscricao_estadual.replace("-", "").replace(".", "").strip()
+    else:
+        # Sem inscricao_estadual configurada — usa usuario como está (pode falhar para alguns portais)
+        inscricao = empresa.usuario.replace("-", "").replace(".", "").strip()
+        log.warning(f"  [{empresa.nome}] inscricao_estadual não configurada — usando usuario como numeroDocumento")
+
     cache_key = "extrato-arrecadacao-endpoint"
     cached_url = cache.get(cache_key)
 
@@ -406,7 +408,8 @@ def _baixar_extrato_arrecadacao(sess: requests.Session, empresa: Empresa, cache:
 
     headers_orig = dict(sess.headers)
     sess.headers["Authorization"] = f"Bearer {token_arr}"
-    sess.headers["Accept"] = "application/octet-stream, application/pdf, */*"
+    sess.headers["Accept"] = "application/json, text/plain, */*"
+    sess.headers["Referer"] = f"{BASE}/arrecadacaocontribuinte/"
     sess.headers.pop("Content-Type", None)
 
     for url_base in candidatos:

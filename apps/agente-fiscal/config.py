@@ -54,6 +54,7 @@ class Empresa:
     cnpj: str
     usuario: str
     senha: str
+    inscricao_estadual: str = ""  # Inscrição completa com DV, ex: "24051960-4" ou "240519604"
 
     @property
     def pasta(self) -> Path:

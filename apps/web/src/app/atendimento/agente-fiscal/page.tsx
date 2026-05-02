@@ -27,6 +27,7 @@ interface Empresa {
   cnpj_fmt: string;
   usuario: string;
   senha: string;
+  inscricao_estadual?: string;
 }
 
 type TabId = 'dashboard' | 'sefaz' | 'analitico' | 'impostos' | 'parcela' | 'empresas';
@@ -85,6 +86,7 @@ export default function AgenteFiscalPage() {
   const [formCnpj, setFormCnpj] = useState('');
   const [formUsuario, setFormUsuario] = useState('');
   const [formSenha, setFormSenha] = useState('');
+  const [formInscricao, setFormInscricao] = useState('');
 
   // ── Toasts ──────────────────────────────────────────────────────────
   const [toasts, setToasts] = useState<{ id: number; msg: string; type: 'ok' | 'err' | 'info' }[]>([]);
@@ -280,13 +282,13 @@ export default function AgenteFiscalPage() {
   // ── Empresa CRUD ────────────────────────────────────────────────────
   const openAddModal = () => {
     setEditIdx(null);
-    setFormNome(''); setFormCnpj(''); setFormUsuario(''); setFormSenha('');
+    setFormNome(''); setFormCnpj(''); setFormUsuario(''); setFormSenha(''); setFormInscricao('');
     setShowModal(true);
   };
 
   const openEditModal = (e: Empresa) => {
     setEditIdx(e.idx);
-    setFormNome(e.nome); setFormCnpj(e.cnpj); setFormUsuario(e.usuario); setFormSenha('');
+    setFormNome(e.nome); setFormCnpj(e.cnpj); setFormUsuario(e.usuario); setFormSenha(''); setFormInscricao(e.inscricao_estadual ?? '');
     setShowModal(true);
   };
 
@@ -295,14 +297,14 @@ export default function AgenteFiscalPage() {
       await fetch(`${AGENT_API}/api/empresas/${editIdx}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome: formNome, usuario: formUsuario, senha: formSenha }),
+        body: JSON.stringify({ nome: formNome, usuario: formUsuario, senha: formSenha, inscricao_estadual: formInscricao }),
       });
       toast('Empresa atualizada', 'ok');
     } else {
       const res = await fetch(`${AGENT_API}/api/empresas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome: formNome, cnpj: formCnpj, usuario: formUsuario, senha: formSenha }),
+        body: JSON.stringify({ nome: formNome, cnpj: formCnpj, usuario: formUsuario, senha: formSenha, inscricao_estadual: formInscricao }),
       });
       const data = await res.json();
       if (data.error) { toast(data.error, 'err'); return; }
@@ -1102,6 +1104,10 @@ export default function AgenteFiscalPage() {
               <div>
                 <label className="text-xs font-medium text-muted-foreground block mb-1">Senha</label>
                 <input type="password" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary" value={formSenha} onChange={e => setFormSenha(e.target.value)} placeholder={editIdx !== null ? '(manter atual)' : ''} />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground block mb-1">Inscrição Estadual completa <span className="text-muted-foreground/60">(com DV — ex: 24051960-4)</span></label>
+                <input className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono focus:border-primary focus:ring-1 focus:ring-primary" value={formInscricao} onChange={e => setFormInscricao(e.target.value)} placeholder="Ex: 24051960-4" />
               </div>
             </div>
             <div className="flex gap-2 mt-5">

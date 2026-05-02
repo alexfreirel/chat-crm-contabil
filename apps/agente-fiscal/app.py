@@ -62,7 +62,7 @@ def carregar() -> list[dict]:
 
 
 def salvar(empresas: list[dict]):
-    campos = ["nome", "cnpj", "usuario", "senha"]
+    campos = ["nome", "cnpj", "usuario", "senha", "inscricao_estadual"]
     clean = [{k: e[k] for k in campos if k in e} for e in empresas]
     EMPRESAS_JSON.write_text(
         json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -130,7 +130,11 @@ def add_empresa():
     if any(e["cnpj"] == cnpj for e in empresas):
         return jsonify({"error": "CNPJ já cadastrado"}), 400
 
-    empresas.append({"nome": nome, "cnpj": cnpj, "usuario": usuario, "senha": senha})
+    inscricao = d.get("inscricao_estadual", "").strip()
+    entry: dict = {"nome": nome, "cnpj": cnpj, "usuario": usuario, "senha": senha}
+    if inscricao:
+        entry["inscricao_estadual"] = inscricao
+    empresas.append(entry)
     salvar(empresas)
     return jsonify({"ok": True, "total": len(empresas)})
 
@@ -149,6 +153,12 @@ def update_empresa(idx):
         e["usuario"] = d["usuario"].strip()
     if d.get("senha"):
         e["senha"] = d["senha"].strip()
+    if "inscricao_estadual" in d:
+        val = d["inscricao_estadual"].strip()
+        if val:
+            e["inscricao_estadual"] = val
+        else:
+            e.pop("inscricao_estadual", None)
 
     salvar(empresas)
     return jsonify({"ok": True})
