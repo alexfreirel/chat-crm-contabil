@@ -139,15 +139,25 @@ export class ObrigacoesService {
     });
     const razaoSocialTask = clienteParaTask?.lead?.ficha_contabil?.razao_social || clienteParaTask?.nome_empresa;
 
-    await this.tasksService.create({
-      title: data.titulo,
-      description: razaoSocialTask || undefined,
-      cliente_contabil_id: clienteId,
-      due_at: obrigacao.due_at,
-      tenant_id: tenantId,
-      assigned_user_id: data.responsavel_id,
-      created_by_id: userId,
-    }).catch(e => this.logger.warn(`Erro ao criar task para obrigação: ${e.message}`));
+    const taskExistente = await this.prisma.task.findFirst({
+      where: {
+        cliente_contabil_id: clienteId,
+        title: data.titulo,
+        due_at: obrigacao.due_at,
+      },
+      select: { id: true },
+    });
+    if (!taskExistente) {
+      await this.tasksService.create({
+        title: data.titulo,
+        description: razaoSocialTask || undefined,
+        cliente_contabil_id: clienteId,
+        due_at: obrigacao.due_at,
+        tenant_id: tenantId,
+        assigned_user_id: data.responsavel_id,
+        created_by_id: userId,
+      }).catch(e => this.logger.warn(`Erro ao criar task para obrigação: ${e.message}`));
+    }
 
     return obrigacao;
   }
@@ -212,16 +222,30 @@ export class ObrigacoesService {
 
     await this.prisma.obrigacaoFiscal.createMany({ data: toCreate });
 
-    // Retornar obrigações criadas
+    // Retornar apenas as obrigações recém-criadas (pelo tipo + competencia exata)
     const created = await this.prisma.obrigacaoFiscal.findMany({
-      where: { cliente_id: clienteId, tipo: { in: toCreate.map(t => t.tipo) } },
+      where: {
+        cliente_id: clienteId,
+        tipo: { in: toCreate.map(t => t.tipo) },
+        competencia: competencia,
+      },
       orderBy: { due_at: 'asc' },
     });
 
     this.logger.log(`Geradas ${created.length} obrigações para cliente ${clienteId} (regime: ${regime})`);
 
-    // Criar uma task para cada obrigação gerada
+    // Criar uma task para cada obrigação gerada — verifica duplicidade por title+due_at+cliente
     for (const ob of created) {
+      const taskExiste = await this.prisma.task.findFirst({
+        where: {
+          cliente_contabil_id: clienteId,
+          title: ob.titulo,
+          due_at: ob.due_at,
+        },
+        select: { id: true },
+      });
+      if (taskExiste) continue;
+
       await this.tasksService.create({
         title: ob.titulo,
         description: razaoSocial || undefined,

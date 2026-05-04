@@ -151,7 +151,12 @@ export class TasksController {
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string, @Request() req: any) {
-    return this.tasksService.remove(id, req.user?.tenant_id);
+  remove(
+    @Param('id') id: string,
+    @Query('deleteMode') deleteMode: string | undefined,
+    @Request() req: any,
+  ) {
+    const mode = deleteMode === 'single' || deleteMode === 'series' ? deleteMode : undefined;
+    return this.tasksService.remove(id, req.user?.tenant_id, mode);
   }
 }

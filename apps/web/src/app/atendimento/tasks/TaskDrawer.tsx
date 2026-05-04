@@ -218,24 +218,31 @@ export function TaskDrawer({
               }
             </button>
           )}
-          {editingField === 'title' ? (
-            <input
-              autoFocus
-              value={editValue}
-              onChange={e => setEditValue(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleSaveField(); if (e.key === 'Escape') setEditingField(null); }}
-              onBlur={handleSaveField}
-              className="flex-1 text-sm font-semibold bg-transparent border-b border-primary outline-none text-foreground"
-            />
-          ) : (
-            <h2
-              className="flex-1 text-sm font-semibold text-foreground truncate cursor-text hover:text-primary transition-colors"
-              onClick={() => !loading && startEdit('title')}
-              title="Clique para editar"
-            >
-              {loading ? 'Carregando...' : task?.title ?? 'Tarefa'}
-            </h2>
-          )}
+          <div className="flex-1 min-w-0">
+            {editingField === 'title' ? (
+              <input
+                autoFocus
+                value={editValue}
+                onChange={e => setEditValue(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleSaveField(); if (e.key === 'Escape') setEditingField(null); }}
+                onBlur={handleSaveField}
+                className="w-full text-sm font-semibold bg-transparent border-b border-primary outline-none text-foreground"
+              />
+            ) : (
+              <h2
+                className="text-sm font-semibold text-foreground truncate cursor-text hover:text-primary transition-colors"
+                onClick={() => !loading && startEdit('title')}
+                title="Clique para editar"
+              >
+                {loading ? 'Carregando...' : task?.title ?? 'Tarefa'}
+              </h2>
+            )}
+            {task && (
+              <span className="text-[10px] font-mono text-muted-foreground/50 select-all">
+                #{task.id.slice(0, 8).toUpperCase()}
+              </span>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"

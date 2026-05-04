@@ -402,7 +402,7 @@ export class TasksService {
 
   // ─── Remove Task ───────────────────────────────────────────────
 
-  async remove(id: string, tenantId?: string) {
+  async remove(id: string, tenantId?: string, deleteMode?: 'single' | 'series') {
     await this.verifyTenantOwnership(id, tenantId);
     const task = await this.prisma.task.findUnique({
       where: { id },
@@ -412,8 +412,8 @@ export class TasksService {
 
     const isInfiniteParent = task.recorrente === true && task.recorrencia_meses === null && !task.recorrencia_pai_id;
 
-    // Caso 1: é o pai de uma série infinita — deleta pai + todos os filhos
-    if (isInfiniteParent) {
+    // Caso 1: é o pai de uma série infinita — deleteMode='series' ou sem modo deleta pai + todos os filhos
+    if (isInfiniteParent && deleteMode !== 'single') {
       const children = await this.prisma.task.findMany({
         where: { recorrencia_pai_id: id },
         select: { id: true },
@@ -428,8 +428,8 @@ export class TasksService {
       return { ok: true, deleted: allIds.length };
     }
 
-    // Caso 2: é filho de uma série infinita — deleta este + futuros do mesmo pai e para o cron
-    if (task.recorrencia_pai_id) {
+    // Caso 2: é filho de uma série infinita E usuário escolheu excluir série
+    if (task.recorrencia_pai_id && deleteMode === 'series') {
       const parent = await this.prisma.task.findUnique({
         where: { id: task.recorrencia_pai_id },
         select: { id: true, recorrente: true, recorrencia_meses: true },
@@ -455,7 +455,7 @@ export class TasksService {
       }
     }
 
-    // Caso 3: tarefa simples ou filho de série fixa — deleta apenas esta
+    // Caso 3: tarefa simples, filho de série fixa, ou deleteMode='single' — deleta apenas esta
     await this.prisma.$transaction([
       this.prisma.taskComment.deleteMany({ where: { task_id: id } }),
       this.prisma.taskChecklistItem.deleteMany({ where: { task_id: id } }),

@@ -719,6 +719,9 @@ export default function TabObrigacoes({
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-mono text-muted-foreground/40 shrink-0" title={`ID: ${task.id}`}>
+                        #{task.id.slice(0, 8).toUpperCase()}
+                      </span>
                       <span className={`text-sm font-medium ${isDone ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                         {task.title}
                       </span>

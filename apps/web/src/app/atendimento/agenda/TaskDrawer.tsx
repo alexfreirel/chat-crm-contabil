@@ -128,19 +128,20 @@ export function TaskDrawer({
   };
 
   const [deleting, setDeleting] = useState(false);
-  const handleDeleteTask = async () => {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const handleDeleteTask = () => {
     if (!task) return;
-    const isInfiniteParent = task.recorrente === true && !task.recorrencia_meses;
-    const isChildOfSeries = !!task.recorrencia_pai_id;
-    const isInfiniteSeries = isInfiniteParent || isChildOfSeries;
-    const msg = isInfiniteSeries
-      ? 'Esta tarefa faz parte de uma série recorrente. Deseja excluir esta e todas as repetições futuras?'
-      : 'Excluir esta tarefa permanentemente?';
-    if (!confirm(msg)) return;
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async (deleteMode: 'single' | 'series') => {
+    if (!task) return;
+    setShowDeleteConfirm(false);
     setDeleting(true);
     try {
-      await api.delete(`/tasks/${task.id}`);
-      showSuccess(isInfiniteSeries ? 'Tarefas excluídas' : 'Tarefa excluída');
+      await api.delete(`/tasks/${task.id}?deleteMode=${deleteMode}`);
+      showSuccess(deleteMode === 'series' ? 'Tarefas da série excluídas' : 'Tarefa excluída');
       onClose();
       onStatusChange?.(task.id, 'DELETED');
     } catch { showError('Erro ao excluir tarefa'); }
@@ -254,24 +255,31 @@ export function TaskDrawer({
               }
             </button>
           )}
-          {editingField === 'title' ? (
-            <input
-              autoFocus
-              value={editValue}
-              onChange={e => setEditValue(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleSaveField(); if (e.key === 'Escape') setEditingField(null); }}
-              onBlur={handleSaveField}
-              className="flex-1 text-sm font-semibold bg-transparent border-b border-primary outline-none text-foreground"
-            />
-          ) : (
-            <h2
-              className="flex-1 text-sm font-semibold text-foreground truncate cursor-text hover:text-primary transition-colors"
-              onClick={() => !loading && startEdit('title')}
-              title="Clique para editar"
-            >
-              {loading ? 'Carregando...' : task?.title ?? 'Tarefa'}
-            </h2>
-          )}
+          <div className="flex-1 min-w-0">
+            {editingField === 'title' ? (
+              <input
+                autoFocus
+                value={editValue}
+                onChange={e => setEditValue(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleSaveField(); if (e.key === 'Escape') setEditingField(null); }}
+                onBlur={handleSaveField}
+                className="w-full text-sm font-semibold bg-transparent border-b border-primary outline-none text-foreground"
+              />
+            ) : (
+              <h2
+                className="text-sm font-semibold text-foreground truncate cursor-text hover:text-primary transition-colors"
+                onClick={() => !loading && startEdit('title')}
+                title="Clique para editar"
+              >
+                {loading ? 'Carregando...' : task?.title ?? 'Tarefa'}
+              </h2>
+            )}
+            {task && (
+              <span className="text-[10px] font-mono text-muted-foreground/50 select-all">
+                #{task.id.slice(0, 8).toUpperCase()}
+              </span>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
@@ -538,6 +546,76 @@ export function TaskDrawer({
           </div>
         )}
       </div>
+      {/* Modal de confirmação de exclusão */}
+      {showDeleteConfirm && task && (() => {
+        const isInfiniteParent = task.recorrente === true && !task.recorrencia_meses;
+        const isChildOfSeries = !!task.recorrencia_pai_id;
+        const isSeries = isInfiniteParent || isChildOfSeries;
+        return (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="bg-card border border-border rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4">
+              <h3 className="text-sm font-bold text-foreground mb-1">
+                {isSeries ? 'Excluir tarefa recorrente' : 'Excluir tarefa'}
+              </h3>
+              <p className="text-xs text-muted-foreground mb-1">
+                <span className="font-mono text-[10px] text-muted-foreground/50">
+                  #{task.id.slice(0, 8).toUpperCase()}
+                </span>{' '}
+                {task.title}
+              </p>
+              {isSeries ? (
+                <>
+                  <p className="text-xs text-muted-foreground mb-4 mt-2">
+                    Esta tarefa faz parte de uma série recorrente. O que deseja fazer?
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => confirmDelete('single')}
+                      className="w-full px-4 py-2.5 rounded-xl bg-accent text-foreground text-xs font-semibold hover:bg-accent/80 transition-colors text-left"
+                    >
+                      Excluir só esta ocorrência
+                      <span className="block text-[10px] text-muted-foreground font-normal">As próximas repetições continuam normalmente</span>
+                    </button>
+                    <button
+                      onClick={() => confirmDelete('series')}
+                      className="w-full px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-400/30 text-red-400 text-xs font-semibold hover:bg-red-500/20 transition-colors text-left"
+                    >
+                      Excluir esta e todas as futuras
+                      <span className="block text-[10px] text-red-400/70 font-normal">Cancela a série completa a partir desta data</span>
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(false)}
+                      className="w-full px-4 py-2 rounded-xl text-xs text-muted-foreground hover:bg-accent transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground mb-4 mt-2">
+                    Esta ação é permanente e não pode ser desfeita.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowDeleteConfirm(false)}
+                      className="flex-1 px-4 py-2 rounded-xl border border-border text-xs text-muted-foreground hover:bg-accent transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={() => confirmDelete('single')}
+                      className="flex-1 px-4 py-2 rounded-xl bg-red-500 text-white text-xs font-semibold hover:bg-red-600 transition-colors"
+                    >
+                      Excluir
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }
