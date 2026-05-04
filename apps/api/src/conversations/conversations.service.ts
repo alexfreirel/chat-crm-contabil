@@ -39,13 +39,10 @@ export class ConversationsService {
     if (clientMode === true) {
       where.lead = { clientes_contabil: { some: {} } };
     } else if (clientMode === false) {
-      // Leads ativos (sem ClienteContabil e não perdidos/finalizados) OU
-      // leads finalizados (permanecem visíveis na aba Tudo após conclusão do atendimento)
+      // Apenas leads SEM nenhum ClienteContabil vinculado e não perdidos
       where.lead = {
-        OR: [
-          { stage: 'FINALIZADO' },
-          { clientes_contabil: { none: {} }, stage: { notIn: ['PERDIDO', 'FINALIZADO'] } },
-        ],
+        clientes_contabil: { none: {} },
+        stage: { notIn: ['PERDIDO'] },
       };
     } else {
       where.lead = { stage: { notIn: ['PERDIDO'] } };
