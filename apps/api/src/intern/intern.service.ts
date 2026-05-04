@@ -23,17 +23,17 @@ export class InternService {
     const supervisorIds = (user?.supervisors || []).map((s: any) => s.id);
     const supervisorNames = (user?.supervisors || []).map((s: any) => s.name);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
 
-    // 2. Tarefas pendentes (CalendarEvents tipo TAREFA/PRAZO atribuídos ao estagiário)
+    // 2. Tarefas pendentes do mês atual (CalendarEvents tipo TAREFA/PRAZO atribuídos ao estagiário)
     const pending = await this.prisma.calendarEvent.findMany({
       where: {
         assigned_user_id: userId,
         type: { in: ['TAREFA', 'PRAZO'] },
         status: { in: ['AGENDADO', 'CONFIRMADO'] },
+        start_at: { gte: monthStart, lt: monthEnd },
         ...(tenantId ? { tenant_id: tenantId } : {}),
       },
       include: {
@@ -42,7 +42,7 @@ export class InternService {
         created_by: { select: { id: true, name: true } },
       },
       orderBy: [{ start_at: 'asc' }],
-      take: 50,
+      take: 200,
     });
 
     // 3. Petições em revisão (criadas pelo estagiário, status EM_REVISAO)
@@ -95,20 +95,20 @@ export class InternService {
       });
     } catch { /* modelo não disponível neste ambiente */ }
 
-    // 5. Concluídas hoje
-    const completedToday = await this.prisma.calendarEvent.findMany({
+    // 5. Concluídas no mês atual
+    const completedThisMonth = await this.prisma.calendarEvent.findMany({
       where: {
         assigned_user_id: userId,
         type: { in: ['TAREFA', 'PRAZO'] },
         status: 'CONCLUIDO',
-        start_at: { gte: today, lt: tomorrow },
+        start_at: { gte: monthStart, lt: monthEnd },
         ...(tenantId ? { tenant_id: tenantId } : {}),
       },
       include: {
         lead: { select: { id: true, name: true } },
       },
       orderBy: { start_at: 'desc' },
-      take: 20,
+      take: 200,
     });
 
     // 6. Stats
@@ -129,12 +129,12 @@ export class InternService {
       pending,
       inReview,
       corrections: corrections.filter((p: any) => (p.versions?.length || 0) > 0),
-      completedToday,
+      completedThisMonth,
       stats: {
         pendingCount: pending.length,
         inReviewCount: inReview.length,
         correctionsCount: corrections.filter((p: any) => (p.versions?.length || 0) > 0).length,
-        completedTodayCount: completedToday.length,
+        completedThisMonthCount: completedThisMonth.length,
         approvalRate: totalPetitions > 0 ? Math.round((approvedPetitions / totalPetitions) * 100) : 0,
       },
     };

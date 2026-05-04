@@ -30,10 +30,10 @@ interface DashboardData {
   internName: string;
   supervisors: { id: string; name: string }[];
   pending: TaskItem[];
-  completedToday: TaskItem[];
+  completedThisMonth: TaskItem[];
   stats: {
     pendingCount: number;
-    completedTodayCount: number;
+    completedThisMonthCount: number;
   };
 }
 
@@ -280,11 +280,11 @@ function ListView() {
         return {
           ...prev,
           pending: prev.pending.filter(t => t.id !== eventId),
-          completedToday: [{ ...task, status: 'CONCLUIDO' }, ...prev.completedToday],
+          completedThisMonth: [{ ...task, status: 'CONCLUIDO' }, ...prev.completedThisMonth],
           stats: {
             ...prev.stats,
             pendingCount: Math.max(0, prev.stats.pendingCount - 1),
-            completedTodayCount: prev.stats.completedTodayCount + 1,
+            completedThisMonthCount: prev.stats.completedThisMonthCount + 1,
           },
         };
       }
@@ -329,7 +329,7 @@ function ListView() {
     return due.urgent || t.priority === 'URGENTE';
   });
 
-  const totalTasks = data.stats.completedTodayCount + data.stats.pendingCount;
+  const totalTasks = data.stats.completedThisMonthCount + data.stats.pendingCount;
 
   return (
     <>
@@ -345,10 +345,10 @@ function ListView() {
             onClick={() => scrollTo(pendingRef)}
           />
           <StatBadge
-            value={data.stats.completedTodayCount}
-            label="Hoje"
+            value={data.stats.completedThisMonthCount}
+            label="Este mês"
             color="bg-emerald-500/10 text-emerald-400"
-            onClick={data.stats.completedTodayCount > 0 ? () => scrollTo(completedRef) : undefined}
+            onClick={data.stats.completedThisMonthCount > 0 ? () => scrollTo(completedRef) : undefined}
           />
         </div>
 
@@ -356,17 +356,17 @@ function ListView() {
         {totalTasks > 0 && (
           <div className="bg-card border border-border rounded-xl p-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[12px] font-semibold text-foreground">Progresso do dia</span>
-              <span className="text-[12px] font-bold text-emerald-400">{totalTasks > 0 ? Math.round((data.stats.completedTodayCount / totalTasks) * 100) : 0}%</span>
+              <span className="text-[12px] font-semibold text-foreground">Progresso do mês</span>
+              <span className="text-[12px] font-bold text-emerald-400">{totalTasks > 0 ? Math.round((data.stats.completedThisMonthCount / totalTasks) * 100) : 0}%</span>
             </div>
             <div className="w-full h-2 bg-border rounded-full overflow-hidden">
               <div
                 className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                style={{ width: `${totalTasks > 0 ? Math.round((data.stats.completedTodayCount / totalTasks) * 100) : 0}%` }}
+                style={{ width: `${totalTasks > 0 ? Math.round((data.stats.completedThisMonthCount / totalTasks) * 100) : 0}%` }}
               />
             </div>
             <div className="flex justify-between mt-1.5">
-              <span className="text-[10px] text-muted-foreground">{data.stats.completedTodayCount} concluída{data.stats.completedTodayCount !== 1 ? 's' : ''}</span>
+              <span className="text-[10px] text-muted-foreground">{data.stats.completedThisMonthCount} concluída{data.stats.completedThisMonthCount !== 1 ? 's' : ''}</span>
               <span className="text-[10px] text-muted-foreground">{data.stats.pendingCount} restante{data.stats.pendingCount !== 1 ? 's' : ''}</span>
             </div>
           </div>
@@ -410,19 +410,19 @@ function ListView() {
           )}
         </section>
 
-        {/* Concluídas Hoje */}
-        {data.completedToday.length > 0 && (
+        {/* Concluídas no mês */}
+        {data.completedThisMonth.length > 0 && (
           <section ref={completedRef}>
             <button
               onClick={() => setShowCompleted(!showCompleted)}
               className="text-[12px] font-bold text-emerald-400 uppercase tracking-wider mb-3 flex items-center gap-2 hover:opacity-80 transition-opacity w-full text-left"
             >
               {showCompleted ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-              <CheckCircle2 size={13} /> Concluídas Hoje ({data.completedToday.length})
+              <CheckCircle2 size={13} /> Concluídas este mês ({data.completedThisMonth.length})
             </button>
             {showCompleted && (
               <div className="space-y-2">
-                {data.completedToday.map(t => (
+                {data.completedThisMonth.map(t => (
                   <TaskCard key={t.id} task={t} onAction={handleAction} dimmed />
                 ))}
               </div>
