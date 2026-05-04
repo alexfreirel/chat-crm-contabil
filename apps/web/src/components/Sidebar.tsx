@@ -8,7 +8,7 @@ import {
   MessageSquare, BarChart2, Calendar,
   LayoutDashboard, Wallet, HelpCircle,
   ChevronRight, Plus, UserPlus, CheckSquare,
-  CalendarPlus, ClipboardList, Sparkles,
+  ClipboardList, Sparkles,
   FileSpreadsheet, Building2, FileText, CalendarDays, Link2,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
@@ -297,7 +297,7 @@ export function Sidebar() {
       href: '/atendimento/calendario-fiscal',
       icon: <CalendarDays size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/calendario-fiscal'),
-      show: true,
+      show: !perms.isAssistente,
     },
     relatorios: {
       label: 'Relatórios',
@@ -351,7 +351,6 @@ export function Sidebar() {
     { label: 'Novo Lead', href: '/atendimento/crm', icon: <Briefcase size={15} /> },
     { label: 'Novo Contato', href: '/atendimento/contacts', icon: <UserPlus size={15} /> },
     { label: 'Nova Tarefa', href: '/atendimento/agenda', icon: <CheckSquare size={15} /> },
-    { label: 'Novo Evento', href: '/atendimento/agenda', icon: <CalendarPlus size={15} /> },
   ];
 
   // ─── Tooltip helpers (somente quando recolhido) ───────────────────
