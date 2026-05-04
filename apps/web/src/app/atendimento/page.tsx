@@ -2087,9 +2087,9 @@ export default function Dashboard() {
     }
     let result: ConversationSummary[];
     if (leadFilter === 'MINE') {
-      // Minhas conversas: atribuídas ao usuário atual (como operador OU advogado), SEM IA ativa
+      // Minhas conversas: atribuídas ao usuário atual como operador, SEM IA ativa
       result = conversations.filter(c =>
-        (c.assignedAgentId === currentUserId || c.assignedLawyerId === currentUserId) &&
+        c.assignedAgentId === currentUserId &&
         !c.aiMode && c.status !== 'CLOSED'
       );
     } else if (leadFilter === 'ACTIVE') {
