@@ -1,7 +1,9 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Request, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Request, HttpCode, HttpStatus, ForbiddenException } from '@nestjs/common';
 import { TasksService } from './tasks.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateTaskDto, UpdateTaskDto } from './dto/tasks.dto';
+
+const TASK_MANAGER_ROLES = ['ADMIN', 'CONTADOR'];
 
 @UseGuards(JwtAuthGuard)
 @Controller('tasks')
@@ -75,6 +77,10 @@ export class TasksController {
 
   @Post()
   create(@Body() data: CreateTaskDto, @Request() req: any) {
+    const userRoles: string[] = Array.isArray(req.user?.roles) ? req.user.roles : (req.user?.role ? [req.user.role] : []);
+    if (!userRoles.some(r => TASK_MANAGER_ROLES.includes(r))) {
+      throw new ForbiddenException('Apenas administradores e contadores podem criar tarefas.');
+    }
     return this.tasksService.create({
       ...data,
       tenant_id: req.user?.tenant_id,
@@ -156,6 +162,10 @@ export class TasksController {
     @Query('deleteMode') deleteMode: string | undefined,
     @Request() req: any,
   ) {
+    const userRoles: string[] = Array.isArray(req.user?.roles) ? req.user.roles : (req.user?.role ? [req.user.role] : []);
+    if (!userRoles.some(r => TASK_MANAGER_ROLES.includes(r))) {
+      throw new ForbiddenException('Apenas administradores e contadores podem excluir tarefas.');
+    }
     const mode = deleteMode === 'single' || deleteMode === 'series' ? deleteMode : undefined;
     return this.tasksService.remove(id, req.user?.tenant_id, mode);
   }

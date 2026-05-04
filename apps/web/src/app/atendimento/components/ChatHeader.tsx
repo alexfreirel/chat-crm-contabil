@@ -118,7 +118,8 @@ export function ChatHeader({
   leadTags,
   onUpdateTags,
 }: ChatHeaderProps) {
-  const { isAssistente } = useRole();
+  const { isAssistente, isAdmin, isContador } = useRole();
+  const canManageTasks = isAdmin || isContador;
   const [copiedPhone, setCopiedPhone] = useState(false);
   // Modais de tarefa
   const [showCompleteModal, setShowCompleteModal] = useState(false);
@@ -498,13 +499,15 @@ export function ChatHeader({
         </button>
 
         {/* Nova tarefa */}
-        <button
-          onClick={onNewTask}
-          className="px-2.5 py-1 text-[11px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg hover:bg-amber-500/20 transition-colors whitespace-nowrap"
-          title="Criar nova tarefa para este contato"
-        >
-          + Nova
-        </button>
+        {canManageTasks && (
+          <button
+            onClick={onNewTask}
+            className="px-2.5 py-1 text-[11px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg hover:bg-amber-500/20 transition-colors whitespace-nowrap"
+            title="Criar nova tarefa para este contato"
+          >
+            + Nova
+          </button>
+        )}
       </div>
     )}
 

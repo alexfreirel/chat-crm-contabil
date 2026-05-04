@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import api from '@/lib/api';
 import { showError, showSuccess } from '@/lib/toast';
+import { useRole } from '@/lib/useRole';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,9 @@ export function TaskDrawer({
   onClose: () => void;
   onStatusChange?: (id: string, status: string) => void;
 }) {
+  const { isAdmin, isContador } = useRole();
+  const canManageTasks = isAdmin || isContador;
+
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -517,26 +521,30 @@ export function TaskDrawer({
               >
                 <CheckCircle2 size={14} /> Concluir Tarefa
               </button>
-              <button
-                onClick={handleDeleteTask}
-                disabled={deleting}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 border border-red-400/30 text-red-400 rounded-xl text-xs font-bold hover:bg-red-500/10 transition-colors disabled:opacity-50"
-              >
-                {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Excluir
-              </button>
+              {canManageTasks && (
+                <button
+                  onClick={handleDeleteTask}
+                  disabled={deleting}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 border border-red-400/30 text-red-400 rounded-xl text-xs font-bold hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                >
+                  {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Excluir
+                </button>
+              )}
             </div>
           ) : (
             <div className="shrink-0 border-t border-border px-5 py-3 flex items-center gap-2">
               <div className="flex-1 text-xs text-emerald-400 font-semibold flex items-center gap-1.5">
                 <CheckCircle2 size={14} /> Tarefa concluída
               </div>
-              <button
-                onClick={handleDeleteTask}
-                disabled={deleting}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 border border-red-400/30 text-red-400 rounded-xl text-xs font-bold hover:bg-red-500/10 transition-colors disabled:opacity-50"
-              >
-                {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Excluir
-              </button>
+              {canManageTasks && (
+                <button
+                  onClick={handleDeleteTask}
+                  disabled={deleting}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 border border-red-400/30 text-red-400 rounded-xl text-xs font-bold hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                >
+                  {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Excluir
+                </button>
+              )}
             </div>
           )}
           </>

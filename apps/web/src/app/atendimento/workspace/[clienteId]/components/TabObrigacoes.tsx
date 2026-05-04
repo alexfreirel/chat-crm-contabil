@@ -9,6 +9,7 @@ import {
 import api from '@/lib/api';
 import { showError, showSuccess } from '@/lib/toast';
 import { TaskDrawer } from '@/app/atendimento/agenda/TaskDrawer';
+import { useRole } from '@/lib/useRole';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,9 @@ export default function TabObrigacoes({
   cliente?: any;
   onRefresh: () => void;
 }) {
+  const { isAdmin, isContador } = useRole();
+  const canManageTasks = isAdmin || isContador;
+
   // ── Dados
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
@@ -359,22 +363,24 @@ export default function TabObrigacoes({
               <p className="text-xs text-muted-foreground">{total} tarefa{total !== 1 ? 's' : ''} {hasFilters ? 'filtradas' : 'no total'}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => { setShowGerarModal(true); setGerarResult(null); }}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-accent transition-colors"
-              title="Gerar obrigações fiscais por regime"
-            >
-              ⚡ Gerar por regime
-            </button>
-            <button
-              onClick={() => setShowNew(v => !v)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm"
-            >
-              <Plus size={15} />
-              Nova tarefa
-            </button>
-          </div>
+          {canManageTasks && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setShowGerarModal(true); setGerarResult(null); }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-accent transition-colors"
+                title="Gerar obrigações fiscais por regime"
+              >
+                ⚡ Gerar por regime
+              </button>
+              <button
+                onClick={() => setShowNew(v => !v)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm"
+              >
+                <Plus size={15} />
+                Nova tarefa
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Stats cards */}
