@@ -204,7 +204,7 @@ export class ClientesContabilService {
       const [data, total] = await this.prisma.$transaction([
         this.prisma.clienteContabil.findMany({
           where, include,
-          orderBy: { created_at: 'desc' },
+          orderBy: { lead: { name: 'asc' } },
           skip: (options.page - 1) * options.limit,
           take: options.limit,
         }),
