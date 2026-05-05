@@ -407,9 +407,12 @@ export default function ClientesPage() {
       );
     })
     .sort((a, b) => {
-      const nameA = (a.lead?.name ?? '').toLowerCase();
-      const nameB = (b.lead?.name ?? '').toLowerCase();
-      return nameA.localeCompare(nameB, 'pt-BR');
+      const nameA = (a.lead?.name || '').trim().toLowerCase();
+      const nameB = (b.lead?.name || '').trim().toLowerCase();
+      if (!nameA && !nameB) return 0;
+      if (!nameA) return 1;  // sem nome vai para o final
+      if (!nameB) return -1;
+      return nameA < nameB ? -1 : nameA > nameB ? 1 : 0;
     });
 
   const counts: Record<string, number> = {
