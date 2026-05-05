@@ -30,6 +30,7 @@ interface CrmLead {
     assigned_lawyer_id: string | null;
     next_step: string | null;
     last_message_at: string;
+    status?: string;
     messages: Array<{ text: string | null; direction: string; created_at: string }>;
     assigned_user: { id: string; name: string } | null;
     assigned_lawyer: { id: string; name: string } | null;
@@ -1499,6 +1500,10 @@ export default function CrmPage() {
 
   // Filtrar leads
   const filteredLeads = leads.filter(lead => {
+    // Oculta leads cuja última conversa está FECHADA — lead sem atividade aberta
+    const latestConv = lead.conversations?.[0];
+    if (latestConv && latestConv.status === 'FECHADO') return false;
+
     const q = searchQuery.toLowerCase().trim();
     if (q) {
       const name = (lead.name || '').toLowerCase();
