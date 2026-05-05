@@ -25,8 +25,6 @@ export class ConversationsService {
     if (status) {
       where.status = status;
     }
-    // Não filtramos mais por conversation.status (FECHADO/ADIADO).
-    // A visibilidade é controlada exclusivamente por lead.stage e lead.is_client.
 
     // Tenant isolation
     if (tenantId) {

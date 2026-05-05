@@ -2111,6 +2111,9 @@ export default function Dashboard() {
       );
     }
     return result.sort((a, b) => {
+      const aIsClosed = a.status === 'CLOSED';
+      const bIsClosed = b.status === 'CLOSED';
+      if (aIsClosed !== bIsClosed) return aIsClosed ? 1 : -1;
       const ta = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
       const tb = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
       return tb - ta;
