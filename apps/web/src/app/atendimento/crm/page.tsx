@@ -1710,7 +1710,9 @@ export default function CrmPage() {
           const stagnant = leads.filter(l => {
             const stage = normalizeStage(l.stage);
             if (stage === 'PERDIDO' || stage === 'FINALIZADO') return false;
-            const lastMsg = l.conversations?.[0]?.last_message_at;
+            const latestConv = l.conversations?.[0];
+            if (latestConv && latestConv.status === 'FECHADO') return false;
+            const lastMsg = latestConv?.last_message_at;
             const daysSinceMsg = lastMsg ? Math.floor((Date.now() - new Date(lastMsg).getTime()) / 86400000) : 999;
             return daysSinceMsg >= stagnationDays;
           });
