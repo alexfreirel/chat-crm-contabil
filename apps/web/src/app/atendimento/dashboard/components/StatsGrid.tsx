@@ -176,7 +176,7 @@ export function StatsGrid({ data, aggressive, funnel, responseTime, velocity }: 
         value={data.clientesContabil?.total ?? funnel?.totalClients ?? 0}
         color="text-emerald-400 bg-emerald-500/10"
         trendColor="#34d399"
-        sub={funnel && funnel.totalLeads > 0 ? `de ${funnel.totalLeads} no funil` : undefined}
+        sub={totalLeads > 0 ? `de ${totalLeads} no funil` : undefined}
       />
 
       {/* Row 2 */}
