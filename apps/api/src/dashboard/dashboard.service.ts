@@ -91,11 +91,18 @@ export class DashboardService {
       this.prisma.conversation.count({ where: convWhere }),
       // 3. Pending transfers
       this.prisma.conversation.count({ where: pendingTransferWhere }),
-      // 4. Lead pipeline — apenas stages ativos do CRM (normaliza legados)
+      // 4. Lead pipeline — stages ativos + exclui leads sem conversa aberta (espelha o CRM)
       this.prisma.lead.groupBy({
         by: ['stage'],
         _count: true,
-        where: { ...tw, stage: { in: ['INICIAL', 'QUALIFICANDO', 'DOCUMENTOS', 'EM_ATENDIMENTO'] } },
+        where: {
+          ...tw,
+          stage: { in: ['INICIAL', 'QUALIFICANDO', 'DOCUMENTOS', 'EM_ATENDIMENTO'] },
+          OR: [
+            { conversations: { none: {} } },
+            { conversations: { some: { status: { not: 'FECHADO' } } } },
+          ],
+        },
       }),
       // 5. Clientes contábeis ativos (exclui ENCERRADO e arquivados)
       this.prisma.clienteContabil.groupBy({
