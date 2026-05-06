@@ -396,10 +396,15 @@ def _baixar_extrato_arrecadacao(sess: requests.Session, empresa: Empresa, cache:
     # O DV é obtido do campo inscricao_estadual; se ausente, tenta concatenar o usuario com o DV do login
     if empresa.inscricao_estadual:
         inscricao = empresa.inscricao_estadual.replace("-", "").replace(".", "").strip()
+        log.info(f"  numeroDocumento (inscricao_estadual): {inscricao}")
     else:
-        # Sem inscricao_estadual configurada — usa usuario como está (pode falhar para alguns portais)
+        # Sem inscricao_estadual configurada — usa usuario sem DV (provável causa de 404)
         inscricao = empresa.usuario.replace("-", "").replace(".", "").strip()
-        log.warning(f"  [{empresa.nome}] inscricao_estadual não configurada — usando usuario como numeroDocumento")
+        log.warning(
+            f"  [{empresa.nome}] inscricao_estadual NÃO configurada no empresas.json — "
+            f"enviando usuario '{inscricao}' como numeroDocumento (sem DV → provável 404). "
+            f"Adicione 'inscricao_estadual' com o número completo incluindo o dígito verificador."
+        )
 
     cache_key = "extrato-arrecadacao-endpoint"
     cached_url = cache.get(cache_key)
@@ -432,6 +437,8 @@ def _baixar_extrato_arrecadacao(sess: requests.Session, empresa: Empresa, cache:
             ct = r.headers.get("Content-Type", "")
             log.info(f"  [Arrecadação] HTTP {r.status_code}  CT={ct[:60]}")
             if r.status_code != 200:
+                body_preview = r.text[:200].replace("\n", " ").strip()
+                log.warning(f"  [Arrecadação] Resposta {r.status_code}: {body_preview}")
                 continue
             if "pdf" in ct.lower() or r.content[:4] == b"%PDF":
                 empresa.pasta.mkdir(parents=True, exist_ok=True)
