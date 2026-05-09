@@ -585,6 +585,8 @@ model FichaContabil {
   acesso_sefaz           String?   // Usuário do Portal do Contribuinte SEFAZ
   senha_sefaz            String?   // Senha do Portal do Contribuinte SEFAZ
   acesso_receita         String?
+  cpf_responsavel_simples String?  // CPF do Responsável para acesso ao Simples Nacional
+  codigo_acesso_simples  String?   // Código de acesso ao Simples Nacional
   // Departamento Pessoal
   tem_funcionarios       Boolean   @default(false)
   qtd_funcionarios       Int?

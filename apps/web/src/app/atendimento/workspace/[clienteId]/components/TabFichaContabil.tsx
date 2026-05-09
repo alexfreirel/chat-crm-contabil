@@ -196,10 +196,12 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
       banco:               f.banco || '',
       agencia:             f.agencia || '',
       conta:               f.conta || '',
-      acesso_receita:      f.acesso_receita || '',
-      acesso_sefaz:        f.acesso_sefaz || '',
-      senha_sefaz:         f.senha_sefaz || '',
-      acesso_prefeitura:   f.acesso_prefeitura || '',
+      acesso_receita:            f.acesso_receita || '',
+      acesso_sefaz:              f.acesso_sefaz || '',
+      senha_sefaz:               f.senha_sefaz || '',
+      acesso_prefeitura:         f.acesso_prefeitura || '',
+      cpf_responsavel_simples:   f.cpf_responsavel_simples || '',
+      codigo_acesso_simples:     f.codigo_acesso_simples || '',
       tem_funcionarios:    f.tem_funcionarios || false,
       qtd_funcionarios:    f.qtd_funcionarios || '',
       tem_pro_labore:      f.tem_pro_labore || false,
@@ -674,6 +676,31 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
               <div className="form-control">
                 <label className="label py-0"><span className="label-text text-xs">Acesso Prefeitura</span></label>
                 <input className="input input-bordered input-sm" value={form.acesso_prefeitura} onChange={e => set('acesso_prefeitura', e.target.value)} />
+              </div>
+            </div>
+
+            {/* Simples Nacional */}
+            <div className="divider my-1 text-xs font-bold text-base-content/50">SIMPLES NACIONAL</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="form-control">
+                <label className="label py-0"><span className="label-text text-xs">CPF do Responsável</span></label>
+                <input
+                  className="input input-bordered input-sm"
+                  value={form.cpf_responsavel_simples}
+                  onChange={e => set('cpf_responsavel_simples', e.target.value)}
+                  placeholder="Sem símbolos"
+                  autoComplete="off"
+                />
+              </div>
+              <div className="form-control">
+                <label className="label py-0"><span className="label-text text-xs">Código de Acesso</span></label>
+                <input
+                  className="input input-bordered input-sm"
+                  value={form.codigo_acesso_simples}
+                  onChange={e => set('codigo_acesso_simples', e.target.value)}
+                  placeholder="Código de acesso ao Simples Nacional"
+                  autoComplete="off"
+                />
               </div>
             </div>
 
