@@ -681,7 +681,17 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
 
             {/* Simples Nacional */}
             <div className="divider my-1 text-xs font-bold text-base-content/50">SIMPLES NACIONAL</div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="form-control">
+                <label className="label py-0"><span className="label-text text-xs">CNPJ</span></label>
+                <input
+                  className="input input-bordered input-sm"
+                  value={form.cnpj}
+                  onChange={e => set('cnpj', e.target.value)}
+                  placeholder="Sem símbolos"
+                  autoComplete="off"
+                />
+              </div>
               <div className="form-control">
                 <label className="label py-0"><span className="label-text text-xs">CPF do Responsável</span></label>
                 <input
