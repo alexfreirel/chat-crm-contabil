@@ -6,7 +6,7 @@ import {
   Building2, Download, BarChart3, Receipt, DollarSign, Plus,
   Play, Printer, Trash2, Pencil, X, ChevronDown, Loader2,
   Search, FileText, AlertCircle, CheckCircle2, Info,
-  Sparkles, Terminal, HardDrive, ExternalLink, Copy, Check,
+  Sparkles, Terminal, HardDrive, ExternalLink, Copy, Check, Calculator,
 } from 'lucide-react';
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ interface Empresa {
   inscricao_estadual?: string;
 }
 
-type TabId = 'dashboard' | 'sefaz' | 'analitico' | 'impostos' | 'parcela' | 'empresas';
+type TabId = 'dashboard' | 'sefaz' | 'analitico' | 'impostos' | 'parcela' | 'empresas' | 'icms-st';
 
 function getTokenPayload(): any {
   try {
@@ -328,6 +328,28 @@ export default function AgenteFiscalPage() {
     fetchEmpresas();
   };
 
+  // ── ICMS ST ─────────────────────────────────────────────────────────
+  const [stFiles, setStFiles] = useState<File[]>([]);
+  const [stLoading, setStLoading] = useState(false);
+  const [stResultado, setStResultado] = useState<any | null>(null);
+  const [stDragOver, setStDragOver] = useState(false);
+  const stFileInputRef = useRef<HTMLInputElement>(null);
+
+  const runCalcularST = async () => {
+    if (stLoading || stFiles.length === 0) return;
+    setStLoading(true);
+    setStResultado(null);
+    try {
+      const formData = new FormData();
+      stFiles.forEach(f => formData.append('xmls', f));
+      const res = await fetch(`${AGENT_API}/api/icms-st/calcular`, { method: 'POST', body: formData });
+      const data = await res.json();
+      if (data.erro) { toast(data.erro, 'err'); }
+      else { setStResultado(data); toast(`${data.total_nfes} NF-e(s) calculada(s)`, 'ok'); }
+    } catch { toast('Erro ao calcular ICMS ST', 'err'); }
+    finally { setStLoading(false); }
+  };
+
   const [portalModal, setPortalModal] = useState<Empresa | null>(null);
   const [copiedField, setCopiedField] = useState<'usuario' | 'senha' | null>(null);
 
@@ -393,6 +415,7 @@ export default function AgenteFiscalPage() {
     { id: 'impostos', label: 'Impostos', icon: <DollarSign size={16} /> },
     { id: 'parcela', label: 'Parcelamento', icon: <Receipt size={16} /> },
     { id: 'empresas', label: 'Empresas', icon: <Building2 size={16} /> },
+    { id: 'icms-st', label: 'Cálculo ST', icon: <Calculator size={16} /> },
   ];
 
   // ── Select empresa dropdown ─────────────────────────────────────────
@@ -535,7 +558,7 @@ export default function AgenteFiscalPage() {
                 { label: 'Empresas', value: empresas.length, icon: Building2, color: 'text-violet-400 bg-violet-500/10' },
                 { label: 'Mes Atual', value: selectedMes, icon: FileText, color: 'text-blue-400 bg-blue-500/10' },
                 { label: 'Status', value: agentOnline ? 'Online' : 'Offline', icon: Terminal, color: agentOnline ? 'text-emerald-400 bg-emerald-500/10' : 'text-red-400 bg-red-500/10' },
-                { label: 'Funcoes', value: '5', icon: Sparkles, color: 'text-amber-400 bg-amber-500/10' },
+                { label: 'Funcoes', value: '6', icon: Sparkles, color: 'text-amber-400 bg-amber-500/10' },
               ].map((s, i) => (
                 <div key={i} className="bg-card border border-border rounded-xl p-4 flex items-start gap-3">
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${s.color}`}>
@@ -594,13 +617,14 @@ export default function AgenteFiscalPage() {
               <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
                 <Sparkles size={14} className="text-primary" /> Acoes Rapidas
               </h3>
-              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
                 {[
                   { label: 'Baixar Relatorios', desc: 'Portal SEFAZ', icon: Download, tab: 'sefaz' as TabId, color: 'text-blue-400 bg-blue-500/10' },
                   { label: 'Analitico', desc: 'Relatorio consolidado', icon: BarChart3, tab: 'analitico' as TabId, color: 'text-violet-400 bg-violet-500/10' },
                   { label: 'Impostos', desc: 'Baixar DARs', icon: DollarSign, tab: 'impostos' as TabId, color: 'text-emerald-400 bg-emerald-500/10' },
                   { label: 'Parcelamento', desc: 'Analisar e emitir', icon: Receipt, tab: 'parcela' as TabId, color: 'text-amber-400 bg-amber-500/10' },
                   { label: 'Nova Empresa', desc: 'Cadastrar', icon: Plus, tab: 'empresas' as TabId, color: 'text-orange-400 bg-orange-500/10' },
+                  { label: 'Cálculo ST', desc: 'ICMS Substituição Trib.', icon: Calculator, tab: 'icms-st' as TabId, color: 'text-rose-400 bg-rose-500/10' },
                 ].map((a, i) => (
                   <button
                     key={i}
@@ -946,6 +970,175 @@ export default function AgenteFiscalPage() {
               </div>
             </div>
             <TerminalOutput title="parcelamentos" />
+          </div>
+        )}
+
+        {/* ── Cálculo ST ─────────────────────────────────────────────── */}
+        {activeTab === 'icms-st' && (
+          <div className="space-y-6">
+            <div className="grid lg:grid-cols-[360px_1fr] gap-6">
+              {/* Painel esquerdo */}
+              <div className="bg-card border border-border rounded-xl p-5 space-y-4 h-fit">
+                <h3 className="text-sm font-semibold flex items-center gap-2"><Calculator size={15} className="text-primary" /> Cálculo ICMS ST — AL</h3>
+
+                {/* Drop zone */}
+                <div
+                  onDragOver={e => { e.preventDefault(); setStDragOver(true); }}
+                  onDragLeave={() => setStDragOver(false)}
+                  onDrop={e => {
+                    e.preventDefault(); setStDragOver(false);
+                    const files = Array.from(e.dataTransfer.files).filter(f => f.name.toLowerCase().endsWith('.xml'));
+                    setStFiles(prev => [...prev, ...files]);
+                  }}
+                  onClick={() => stFileInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
+                    stDragOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/30'
+                  }`}
+                >
+                  <input
+                    ref={stFileInputRef}
+                    type="file"
+                    multiple
+                    accept=".xml"
+                    className="hidden"
+                    onChange={e => {
+                      const files = Array.from(e.target.files || []).filter(f => f.name.toLowerCase().endsWith('.xml'));
+                      setStFiles(prev => [...prev, ...files]);
+                      e.target.value = '';
+                    }}
+                  />
+                  <FileText size={24} className="mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
+                    {stFiles.length > 0
+                      ? `${stFiles.length} arquivo(s) selecionado(s)`
+                      : 'Arraste XMLs de NF-e ou clique para selecionar'}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Apenas arquivos .xml</p>
+                </div>
+
+                {/* Lista de arquivos */}
+                {stFiles.length > 0 && (
+                  <div className="space-y-1 max-h-32 overflow-y-auto scrollbar-thin">
+                    {stFiles.map((f, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs px-2 py-1.5 bg-muted/30 rounded-lg">
+                        <span className="truncate text-foreground">{f.name}</span>
+                        <button onClick={() => setStFiles(prev => prev.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-red-400 ml-2 shrink-0">
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Botões */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={runCalcularST}
+                    disabled={stLoading || stFiles.length === 0}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                  >
+                    {stLoading ? <Loader2 size={16} className="animate-spin" /> : <Calculator size={16} />} Calcular ST
+                  </button>
+                  {stFiles.length > 0 && (
+                    <button
+                      onClick={() => { setStFiles([]); setStResultado(null); }}
+                      className="px-3 py-2.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Info legislação */}
+                <div className="rounded-lg bg-amber-500/5 border border-amber-500/20 p-3 text-xs text-muted-foreground space-y-0.5">
+                  <div className="flex items-center gap-1.5 font-medium text-amber-400"><Info size={13} /> Legislação aplicada:</div>
+                  <div>Decreto 90.309/2023 — Alagoas</div>
+                  <div>MVAs ajustadas em 01/05/2026</div>
+                  <div>1.527 NCMs indexados</div>
+                </div>
+              </div>
+
+              {/* Painel direito */}
+              {stResultado ? (
+                <div className="space-y-4">
+                  {/* Totais */}
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { label: 'NF-e(s) processadas', value: stResultado.total_nfes, fmt: false, color: 'text-blue-400' },
+                      { label: 'BC ST Total', value: stResultado.total_bc_st, fmt: true, color: 'text-violet-400' },
+                      { label: 'ICMS ST a Recolher', value: stResultado.total_st, fmt: true, color: 'text-emerald-400' },
+                    ].map((s, i) => (
+                      <div key={i} className="bg-card border border-border rounded-xl p-4">
+                        <div className={`text-lg font-bold ${s.color}`}>
+                          {s.fmt ? `R$ ${(s.value as number).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : s.value}
+                        </div>
+                        <div className="text-xs text-muted-foreground">{s.label}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Header da tabela */}
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-foreground">Resultados por NF-e</h3>
+                    <a
+                      href={`${AGENT_API}/api/icms-st/download/${stResultado.arquivo_excel}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition-colors"
+                    >
+                      <Download size={13} /> Baixar Excel
+                    </a>
+                  </div>
+
+                  {/* Tabela de resultados */}
+                  <div className="bg-card border border-border rounded-xl overflow-hidden">
+                    <div className="max-h-[calc(100vh-420px)] overflow-y-auto scrollbar-thin">
+                      <table className="w-full">
+                        <thead className="sticky top-0 bg-card z-10">
+                          <tr className="text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
+                            <th className="px-4 py-3 text-left font-semibold">NF / Arquivo</th>
+                            <th className="px-4 py-3 text-left font-semibold">Emissão</th>
+                            <th className="px-4 py-3 text-left font-semibold">UF Emit.</th>
+                            <th className="px-4 py-3 text-right font-semibold">BC ST (R$)</th>
+                            <th className="px-4 py-3 text-right font-semibold">ICMS ST (R$)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {stResultado.resultados.map((r: any, i: number) => (
+                            <tr key={i} className="border-t border-border/50 hover:bg-muted/30">
+                              <td className="px-4 py-3 text-sm font-medium text-foreground">
+                                {r.erro
+                                  ? <span className="text-red-400 text-xs">{String(r.arquivo || '').split(/[\\/]/).pop()}</span>
+                                  : `NF ${r.numero_nf}/${r.serie}`}
+                              </td>
+                              <td className="px-4 py-3 text-xs text-muted-foreground">{r.emissao || '—'}</td>
+                              <td className="px-4 py-3 text-xs text-muted-foreground">{r.uf_emitente || '—'}</td>
+                              <td className="px-4 py-3 text-sm text-right font-mono text-foreground">
+                                {r.erro ? '—' : `${(r.total_bc_st || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-right font-mono font-bold">
+                                {r.erro
+                                  ? <span className="text-red-400 text-xs">{r.erro}</span>
+                                  : <span className="text-emerald-400">{(r.total_icms_st || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center min-h-[300px]">
+                  <div className="text-center space-y-3">
+                    <div className="w-16 h-16 rounded-2xl bg-primary/5 flex items-center justify-center mx-auto">
+                      <Calculator size={32} className="text-primary/30" />
+                    </div>
+                    <p className="text-sm text-muted-foreground">Selecione XMLs de NF-e e clique em Calcular ST</p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

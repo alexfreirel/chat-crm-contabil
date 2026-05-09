@@ -702,6 +702,96 @@ def apagar_periodo(mes):
     return jsonify({"ok": True, "mes": mes, "arquivos_removidos": total})
 
 
+# ── API: Cálculo ICMS ST ───────────────────────────────────────────────────────
+
+_IDX_NCM_ST = None
+
+def _get_idx_ncm_st():
+    global _IDX_NCM_ST
+    if _IDX_NCM_ST is None:
+        sys.path.insert(0, str(BASE_DIR))
+        from calcular_icms_st import carregar_base_ncm
+        _IDX_NCM_ST = carregar_base_ncm()
+    return _IDX_NCM_ST
+
+
+@app.route("/api/icms-st/calcular", methods=["POST", "OPTIONS"])
+def calcular_icms_st_endpoint():
+    if request.method == "OPTIONS":
+        return "", 204
+
+    import tempfile as _tmp
+    import uuid as _uuid
+    from datetime import datetime as _dt
+
+    arquivos = request.files.getlist("xmls")
+    if not arquivos or all(f.filename == "" for f in arquivos):
+        return jsonify({"erro": "Nenhum arquivo enviado."}), 400
+
+    sessao = _uuid.uuid4().hex[:8]
+    tmp_dir = Path(_tmp.mkdtemp())
+
+    salvos = []
+    for f in arquivos:
+        if not f.filename.lower().endswith(".xml"):
+            continue
+        dest = tmp_dir / Path(f.filename).name
+        f.save(str(dest))
+        salvos.append(str(dest))
+
+    if not salvos:
+        return jsonify({"erro": "Envie arquivos .xml válidos."}), 400
+
+    sys.path.insert(0, str(BASE_DIR))
+    from calcular_icms_st import processar_nfe, exportar_excel
+
+    idx_ncm = _get_idx_ncm_st()
+    resultados_raw = [processar_nfe(xml, idx_ncm) for xml in salvos]
+
+    def _serial(res):
+        out = {}
+        for k, v in res.items():
+            if k == "itens":
+                continue
+            if isinstance(v, float):
+                out[k] = round(v, 2)
+            else:
+                out[k] = v
+        return out
+
+    resultados = [_serial(r) for r in resultados_raw]
+
+    relat_dir = BASE_DIR / "relatorios-st"
+    relat_dir.mkdir(exist_ok=True)
+    ts = _dt.now().strftime("%Y%m%d_%H%M%S")
+    nome_xlsx = f"ICMS_ST_AL_{ts}_{sessao}.xlsx"
+    exportar_excel(resultados_raw, str(relat_dir / nome_xlsx))
+
+    return jsonify({
+        "resultados": resultados,
+        "sessao": sessao,
+        "arquivo_excel": nome_xlsx,
+        "total_nfes": len(resultados),
+        "total_st": round(sum(r.get("total_icms_st", 0) for r in resultados), 2),
+        "total_bc_st": round(sum(r.get("total_bc_st", 0) for r in resultados), 2),
+        "total_icms_proprio": round(sum(r.get("total_icms_proprio", 0) for r in resultados), 2),
+    })
+
+
+@app.route("/api/icms-st/download/<nome_arquivo>")
+def download_icms_st(nome_arquivo):
+    from flask import send_file as _sf
+    caminho = BASE_DIR / "relatorios-st" / nome_arquivo
+    if not caminho.exists() or not caminho.name.endswith(".xlsx"):
+        return jsonify({"error": "Arquivo não encontrado"}), 404
+    return _sf(
+        str(caminho),
+        as_attachment=True,
+        download_name=nome_arquivo,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
 # ── Entrada ────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
