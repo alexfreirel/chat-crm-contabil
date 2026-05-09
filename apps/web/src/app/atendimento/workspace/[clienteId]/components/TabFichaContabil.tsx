@@ -686,7 +686,7 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
                 <label className="label py-0"><span className="label-text text-xs">CNPJ</span></label>
                 <input
                   className="input input-bordered input-sm bg-base-200 cursor-default"
-                  value={form.cnpj}
+                  value={form.cnpj.replace(/\D/g, '')}
                   readOnly
                   tabIndex={-1}
                 />
@@ -696,7 +696,7 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
                 <input
                   className="input input-bordered input-sm"
                   value={form.cpf_responsavel_simples}
-                  onChange={e => set('cpf_responsavel_simples', e.target.value)}
+                  onChange={e => set('cpf_responsavel_simples', e.target.value.replace(/\D/g, ''))}
                   placeholder="Sem símbolos"
                   autoComplete="off"
                 />
