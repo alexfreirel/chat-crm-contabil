@@ -344,7 +344,10 @@ export default function AgenteFiscalPage() {
   const [stFormMvaInt, setStFormMvaInt] = useState('');
   const [stFormMva12, setStFormMva12] = useState('');
   const [stFormMva7, setStFormMva7] = useState('');
+  const [stFormMva4, setStFormMva4] = useState('');
   const [stFormSaving, setStFormSaving] = useState(false);
+  const [stNcmInfo, setStNcmInfo] = useState<{ encontrado: boolean; fonte?: string; registro?: any } | null>(null);
+  const [stNcmChecking, setStNcmChecking] = useState(false);
 
   const fetchCustomNCM = useCallback(async () => {
     try {
@@ -355,6 +358,19 @@ export default function AgenteFiscalPage() {
 
   useEffect(() => { if (activeTab === 'icms-st') fetchCustomNCM(); }, [activeTab, fetchCustomNCM]);
 
+  useEffect(() => {
+    if (stFormNcm.length < 8) { setStNcmInfo(null); return; }
+    setStNcmChecking(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`${AGENT_API}/api/icms-st/ncm-info/${stFormNcm}`);
+        if (res.ok) setStNcmInfo(await res.json());
+      } catch { /* silent */ }
+      finally { setStNcmChecking(false); }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [stFormNcm]);
+
   const saveCustomNCM = async () => {
     if (!stFormNcm || !stFormMvaInt) { toast('NCM e MVA Interno são obrigatórios', 'err'); return; }
     setStFormSaving(true);
@@ -362,12 +378,12 @@ export default function AgenteFiscalPage() {
       const res = await fetch(`${AGENT_API}/api/icms-st/ncm-custom`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ncm: stFormNcm, cest: stFormCest, descricao: stFormDesc, mva_interno: stFormMvaInt, mva_ajustada_12: stFormMva12 || null, mva_ajustada_7: stFormMva7 || null }),
+        body: JSON.stringify({ ncm: stFormNcm, cest: stFormCest, descricao: stFormDesc, mva_interno: stFormMvaInt, mva_ajustada_12: stFormMva12 || null, mva_ajustada_7: stFormMva7 || null, mva_ajustada_4: stFormMva4 || null }),
       });
       const data = await res.json();
       if (data.ok) {
         toast(`NCM ${data.ncm} cadastrado`, 'ok');
-        setStFormNcm(''); setStFormCest(''); setStFormDesc(''); setStFormMvaInt(''); setStFormMva12(''); setStFormMva7('');
+        setStFormNcm(''); setStFormCest(''); setStFormDesc(''); setStFormMvaInt(''); setStFormMva12(''); setStFormMva7(''); setStFormMva4('');
         setStShowForm(false);
         fetchCustomNCM();
       } else { toast(data.error || 'Erro ao salvar', 'err'); }
@@ -1213,12 +1229,31 @@ export default function AgenteFiscalPage() {
                     <div>
                       <label className="text-[11px] font-medium text-muted-foreground block mb-1">NCM <span className="text-red-400">*</span></label>
                       <input
-                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono focus:border-primary focus:ring-1 focus:ring-primary"
+                        className={`w-full rounded-lg border bg-background px-3 py-2 text-sm font-mono focus:ring-1 focus:ring-primary ${
+                          stNcmInfo?.encontrado
+                            ? stNcmInfo.fonte === 'custom'
+                              ? 'border-amber-500 focus:border-amber-500'
+                              : 'border-blue-500 focus:border-blue-500'
+                            : 'border-border focus:border-primary'
+                        }`}
                         value={stFormNcm}
-                        onChange={e => setStFormNcm(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                        onChange={e => { setStFormNcm(e.target.value.replace(/\D/g, '').slice(0, 8)); setStNcmInfo(null); }}
                         placeholder="00000000"
                         maxLength={8}
                       />
+                      {stNcmChecking && (
+                        <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
+                          <Loader2 size={10} className="animate-spin" /> Verificando...
+                        </p>
+                      )}
+                      {!stNcmChecking && stNcmInfo?.encontrado && (
+                        <p className={`text-[10px] mt-1 flex items-center gap-1 ${stNcmInfo.fonte === 'custom' ? 'text-amber-400' : 'text-blue-400'}`}>
+                          {stNcmInfo.fonte === 'custom'
+                            ? <><AlertCircle size={10} /> Já cadastrado manualmente — salvar irá sobrescrever.</>
+                            : <><Info size={10} /> Já existe na base AL: {stNcmInfo.registro?.descricao?.slice(0, 50) || ''}. Cadastrar irá ter prioridade.</>
+                          }
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="text-[11px] font-medium text-muted-foreground block mb-1">CEST</label>
@@ -1239,7 +1274,7 @@ export default function AgenteFiscalPage() {
                       />
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                     <div>
                       <label className="text-[11px] font-medium text-muted-foreground block mb-1">MVA Interno (%) <span className="text-red-400">*</span></label>
                       <input
@@ -1273,6 +1308,17 @@ export default function AgenteFiscalPage() {
                         placeholder="Ex: 61.78"
                       />
                     </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-muted-foreground block mb-1">MVA Ajust. 4% <span className="text-muted-foreground/50">(importados)</span></label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono focus:border-primary focus:ring-1 focus:ring-primary"
+                        value={stFormMva4}
+                        onChange={e => setStFormMva4(e.target.value)}
+                        placeholder="Ex: 67.00"
+                      />
+                    </div>
                   </div>
                   <div className="flex justify-end gap-2">
                     <button onClick={() => setStShowForm(false)} className="px-4 py-2 rounded-lg border border-border text-sm font-medium hover:bg-muted/50">Cancelar</button>
@@ -1303,6 +1349,7 @@ export default function AgenteFiscalPage() {
                         <th className="px-4 py-2.5 text-right font-semibold">MVA Interno</th>
                         <th className="px-4 py-2.5 text-right font-semibold">MVA Aj. 12%</th>
                         <th className="px-4 py-2.5 text-right font-semibold">MVA Aj. 7%</th>
+                        <th className="px-4 py-2.5 text-right font-semibold">MVA Aj. 4% <span className="text-[9px] text-muted-foreground/60 font-normal">importados</span></th>
                         <th className="px-4 py-2.5 text-right font-semibold"></th>
                       </tr>
                     </thead>
@@ -1315,6 +1362,7 @@ export default function AgenteFiscalPage() {
                           <td className="px-4 py-2.5 text-sm text-right font-mono text-amber-400">{c.mva_interno?.toFixed(2)}%</td>
                           <td className="px-4 py-2.5 text-xs text-right font-mono text-muted-foreground">{c.mva_ajustada_12 != null ? `${c.mva_ajustada_12.toFixed(2)}%` : '—'}</td>
                           <td className="px-4 py-2.5 text-xs text-right font-mono text-muted-foreground">{c.mva_ajustada_7 != null ? `${c.mva_ajustada_7.toFixed(2)}%` : '—'}</td>
+                          <td className="px-4 py-2.5 text-xs text-right font-mono text-muted-foreground">{c.mva_ajustada_4 != null ? `${c.mva_ajustada_4.toFixed(2)}%` : '—'}</td>
                           <td className="px-4 py-2.5 text-right">
                             <button onClick={() => deleteCustomNCM(c.ncm)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400">
                               <Trash2 size={13} />

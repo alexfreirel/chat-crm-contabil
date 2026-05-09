@@ -776,6 +776,31 @@ def add_ncm_custom():
     return jsonify({"ok": True, "ncm": ncm})
 
 
+@app.route("/api/icms-st/ncm-info/<ncm_param>", methods=["GET"])
+def info_ncm(ncm_param):
+    """Verifica se um NCM existe na base oficial ou no cadastro manual."""
+    ncm = "".join(c for c in ncm_param if c.isdigit())
+    if not ncm:
+        return jsonify({"encontrado": False}), 200
+
+    # Verifica custom primeiro
+    for entry in _carregar_custom():
+        if entry.get("ncm") == ncm:
+            return jsonify({"encontrado": True, "fonte": "custom", "registro": entry})
+
+    # Verifica base oficial (sem merge — busca direta no índice base)
+    global _BASE_IDX_NCM
+    if _BASE_IDX_NCM is None:
+        sys.path.insert(0, str(BASE_DIR))
+        from calcular_icms_st import carregar_base_ncm
+        _BASE_IDX_NCM = carregar_base_ncm()
+
+    if ncm in _BASE_IDX_NCM:
+        return jsonify({"encontrado": True, "fonte": "base", "registro": _BASE_IDX_NCM[ncm][0]})
+
+    return jsonify({"encontrado": False})
+
+
 @app.route("/api/icms-st/ncm-custom/<ncm_param>", methods=["DELETE"])
 def delete_ncm_custom(ncm_param):
     ncm = "".join(c for c in ncm_param if c.isdigit())
