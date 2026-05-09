@@ -335,6 +335,55 @@ export default function AgenteFiscalPage() {
   const [stDragOver, setStDragOver] = useState(false);
   const stFileInputRef = useRef<HTMLInputElement>(null);
 
+  // NCM custom
+  const [stCustomList, setStCustomList] = useState<any[]>([]);
+  const [stShowForm, setStShowForm] = useState(false);
+  const [stFormNcm, setStFormNcm] = useState('');
+  const [stFormCest, setStFormCest] = useState('');
+  const [stFormDesc, setStFormDesc] = useState('');
+  const [stFormMvaInt, setStFormMvaInt] = useState('');
+  const [stFormMva12, setStFormMva12] = useState('');
+  const [stFormMva7, setStFormMva7] = useState('');
+  const [stFormSaving, setStFormSaving] = useState(false);
+
+  const fetchCustomNCM = useCallback(async () => {
+    try {
+      const res = await fetch(`${AGENT_API}/api/icms-st/ncm-custom`);
+      if (res.ok) setStCustomList(await res.json());
+    } catch { /* silent */ }
+  }, []);
+
+  useEffect(() => { if (activeTab === 'icms-st') fetchCustomNCM(); }, [activeTab, fetchCustomNCM]);
+
+  const saveCustomNCM = async () => {
+    if (!stFormNcm || !stFormMvaInt) { toast('NCM e MVA Interno são obrigatórios', 'err'); return; }
+    setStFormSaving(true);
+    try {
+      const res = await fetch(`${AGENT_API}/api/icms-st/ncm-custom`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ncm: stFormNcm, cest: stFormCest, descricao: stFormDesc, mva_interno: stFormMvaInt, mva_ajustada_12: stFormMva12 || null, mva_ajustada_7: stFormMva7 || null }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast(`NCM ${data.ncm} cadastrado`, 'ok');
+        setStFormNcm(''); setStFormCest(''); setStFormDesc(''); setStFormMvaInt(''); setStFormMva12(''); setStFormMva7('');
+        setStShowForm(false);
+        fetchCustomNCM();
+      } else { toast(data.error || 'Erro ao salvar', 'err'); }
+    } catch { toast('Erro ao salvar NCM', 'err'); }
+    finally { setStFormSaving(false); }
+  };
+
+  const deleteCustomNCM = async (ncm: string) => {
+    if (!confirm(`Remover NCM ${ncm} do cadastro manual?`)) return;
+    try {
+      await fetch(`${AGENT_API}/api/icms-st/ncm-custom/${ncm}`, { method: 'DELETE' });
+      toast(`NCM ${ncm} removido`, 'info');
+      fetchCustomNCM();
+    } catch { toast('Erro ao remover', 'err'); }
+  };
+
   const runCalcularST = async () => {
     if (stLoading || stFiles.length === 0) return;
     setStLoading(true);
@@ -1136,6 +1185,145 @@ export default function AgenteFiscalPage() {
                     </div>
                     <p className="text-sm text-muted-foreground">Selecione XMLs de NF-e e clique em Calcular ST</p>
                   </div>
+                </div>
+              )}
+            </div>
+            {/* ── Painel NCM/MVA customizados ─────────────────────── */}
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <FileText size={14} className="text-primary" /> NCMs Cadastrados Manualmente
+                  {stCustomList.length > 0 && (
+                    <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-mono">{stCustomList.length}</span>
+                  )}
+                </h3>
+                <button
+                  onClick={() => setStShowForm(v => !v)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90"
+                >
+                  <Plus size={13} /> {stShowForm ? 'Fechar' : 'Novo NCM'}
+                </button>
+              </div>
+
+              {/* Formulário de cadastro */}
+              {stShowForm && (
+                <div className="p-4 border-b border-border bg-muted/20 space-y-3">
+                  <p className="text-[11px] text-muted-foreground">O MVA Ajustado é calculado automaticamente pela fórmula do Convênio ICMS 13/2006. Informe apenas o MVA Interno (original). Os campos de MVA Ajustado são opcionais — preencha apenas se quiser forçar um valor fixo.</p>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div>
+                      <label className="text-[11px] font-medium text-muted-foreground block mb-1">NCM <span className="text-red-400">*</span></label>
+                      <input
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono focus:border-primary focus:ring-1 focus:ring-primary"
+                        value={stFormNcm}
+                        onChange={e => setStFormNcm(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                        placeholder="00000000"
+                        maxLength={8}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-muted-foreground block mb-1">CEST</label>
+                      <input
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono focus:border-primary focus:ring-1 focus:ring-primary"
+                        value={stFormCest}
+                        onChange={e => setStFormCest(e.target.value)}
+                        placeholder="00.000.00"
+                      />
+                    </div>
+                    <div className="lg:col-span-2">
+                      <label className="text-[11px] font-medium text-muted-foreground block mb-1">Descrição do produto</label>
+                      <input
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
+                        value={stFormDesc}
+                        onChange={e => setStFormDesc(e.target.value)}
+                        placeholder="Ex: Lubrificantes automotivos"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-[11px] font-medium text-muted-foreground block mb-1">MVA Interno (%) <span className="text-red-400">*</span></label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono focus:border-primary focus:ring-1 focus:ring-primary"
+                        value={stFormMvaInt}
+                        onChange={e => setStFormMvaInt(e.target.value)}
+                        placeholder="Ex: 36.56"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-muted-foreground block mb-1">MVA Ajust. 12% <span className="text-muted-foreground/50">(opcional)</span></label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono focus:border-primary focus:ring-1 focus:ring-primary"
+                        value={stFormMva12}
+                        onChange={e => setStFormMva12(e.target.value)}
+                        placeholder="Ex: 53.09"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-muted-foreground block mb-1">MVA Ajust. 7% <span className="text-muted-foreground/50">(opcional)</span></label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono focus:border-primary focus:ring-1 focus:ring-primary"
+                        value={stFormMva7}
+                        onChange={e => setStFormMva7(e.target.value)}
+                        placeholder="Ex: 61.78"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => setStShowForm(false)} className="px-4 py-2 rounded-lg border border-border text-sm font-medium hover:bg-muted/50">Cancelar</button>
+                    <button
+                      onClick={saveCustomNCM}
+                      disabled={stFormSaving}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                    >
+                      {stFormSaving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Salvar NCM
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Lista de NCMs customizados */}
+              {stCustomList.length === 0 ? (
+                <div className="p-4 text-center text-xs text-muted-foreground">
+                  Nenhum NCM cadastrado manualmente. Use o botão acima para adicionar NCMs não encontrados na base AL.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
+                        <th className="px-4 py-2.5 text-left font-semibold">NCM</th>
+                        <th className="px-4 py-2.5 text-left font-semibold">CEST</th>
+                        <th className="px-4 py-2.5 text-left font-semibold">Descrição</th>
+                        <th className="px-4 py-2.5 text-right font-semibold">MVA Interno</th>
+                        <th className="px-4 py-2.5 text-right font-semibold">MVA Aj. 12%</th>
+                        <th className="px-4 py-2.5 text-right font-semibold">MVA Aj. 7%</th>
+                        <th className="px-4 py-2.5 text-right font-semibold"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stCustomList.map((c: any, i: number) => (
+                        <tr key={i} className="border-t border-border/50 hover:bg-muted/30">
+                          <td className="px-4 py-2.5 text-sm font-mono font-medium text-foreground">{c.ncm}</td>
+                          <td className="px-4 py-2.5 text-xs font-mono text-muted-foreground">{c.cest || '—'}</td>
+                          <td className="px-4 py-2.5 text-xs text-foreground max-w-[200px] truncate">{c.descricao || '—'}</td>
+                          <td className="px-4 py-2.5 text-sm text-right font-mono text-amber-400">{c.mva_interno?.toFixed(2)}%</td>
+                          <td className="px-4 py-2.5 text-xs text-right font-mono text-muted-foreground">{c.mva_ajustada_12 != null ? `${c.mva_ajustada_12.toFixed(2)}%` : '—'}</td>
+                          <td className="px-4 py-2.5 text-xs text-right font-mono text-muted-foreground">{c.mva_ajustada_7 != null ? `${c.mva_ajustada_7.toFixed(2)}%` : '—'}</td>
+                          <td className="px-4 py-2.5 text-right">
+                            <button onClick={() => deleteCustomNCM(c.ncm)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400">
+                              <Trash2 size={13} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>

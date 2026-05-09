@@ -704,15 +704,84 @@ def apagar_periodo(mes):
 
 # ── API: Cálculo ICMS ST ───────────────────────────────────────────────────────
 
-_IDX_NCM_ST = None
+CUSTOM_NCM_JSON = BASE_DIR / "ncm_mva_custom.json"
+_BASE_IDX_NCM = None  # índice base carregado uma vez
 
-def _get_idx_ncm_st():
-    global _IDX_NCM_ST
-    if _IDX_NCM_ST is None:
+
+def _carregar_custom() -> list:
+    if CUSTOM_NCM_JSON.exists():
+        return json.loads(CUSTOM_NCM_JSON.read_text(encoding="utf-8"))
+    return []
+
+
+def _salvar_custom(entries: list):
+    CUSTOM_NCM_JSON.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _get_idx_ncm_st() -> dict:
+    global _BASE_IDX_NCM
+    if _BASE_IDX_NCM is None:
         sys.path.insert(0, str(BASE_DIR))
         from calcular_icms_st import carregar_base_ncm
-        _IDX_NCM_ST = carregar_base_ncm()
-    return _IDX_NCM_ST
+        _BASE_IDX_NCM = carregar_base_ncm()
+    # Mescla entradas customizadas (têm prioridade sobre a base)
+    idx = dict(_BASE_IDX_NCM)
+    for entry in _carregar_custom():
+        ncm = entry.get("ncm", "")
+        if ncm:
+            idx[ncm] = [entry]
+    return idx
+
+
+@app.route("/api/icms-st/ncm-custom", methods=["GET"])
+def listar_ncm_custom():
+    return jsonify(_carregar_custom())
+
+
+@app.route("/api/icms-st/ncm-custom", methods=["POST"])
+def add_ncm_custom():
+    d = request.json or {}
+    ncm = "".join(c for c in d.get("ncm", "") if c.isdigit())
+    if not ncm:
+        return jsonify({"error": "NCM é obrigatório"}), 400
+
+    mva_interno = d.get("mva_interno")
+    if mva_interno is None or str(mva_interno).strip() == "":
+        return jsonify({"error": "MVA Interno é obrigatório"}), 400
+
+    def _opt_float(val):
+        try:
+            return float(val) if val not in (None, "", "null") else None
+        except (ValueError, TypeError):
+            return None
+
+    entry = {
+        "ncm": ncm,
+        "cest": d.get("cest", "").strip(),
+        "descricao": d.get("descricao", "Cadastro manual").strip(),
+        "mva_interno": float(mva_interno),
+        "mva_ajustada_12": _opt_float(d.get("mva_ajustada_12")),
+        "mva_ajustada_7": _opt_float(d.get("mva_ajustada_7")),
+        "mva_ajustada_4": _opt_float(d.get("mva_ajustada_4")),
+        "custom": True,
+    }
+
+    entries = _carregar_custom()
+    idx_exist = next((i for i, e in enumerate(entries) if e.get("ncm") == ncm), None)
+    if idx_exist is not None:
+        entries[idx_exist] = entry
+    else:
+        entries.append(entry)
+    _salvar_custom(entries)
+    return jsonify({"ok": True, "ncm": ncm})
+
+
+@app.route("/api/icms-st/ncm-custom/<ncm_param>", methods=["DELETE"])
+def delete_ncm_custom(ncm_param):
+    ncm = "".join(c for c in ncm_param if c.isdigit())
+    entries = [e for e in _carregar_custom() if e.get("ncm") != ncm]
+    _salvar_custom(entries)
+    return jsonify({"ok": True})
 
 
 @app.route("/api/icms-st/calcular", methods=["POST", "OPTIONS"])
