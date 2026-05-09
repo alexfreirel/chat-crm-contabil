@@ -685,11 +685,10 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
               <div className="form-control">
                 <label className="label py-0"><span className="label-text text-xs">CNPJ</span></label>
                 <input
-                  className="input input-bordered input-sm"
+                  className="input input-bordered input-sm bg-base-200 cursor-default"
                   value={form.cnpj}
-                  onChange={e => set('cnpj', e.target.value)}
-                  placeholder="Sem símbolos"
-                  autoComplete="off"
+                  readOnly
+                  tabIndex={-1}
                 />
               </div>
               <div className="form-control">
