@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { RouteGuard } from '@/components/RouteGuard';
+import { useRole } from '@/lib/useRole';
 import {
   Clock, CheckCircle2, AlertTriangle, FileText, User,
   Loader2, ChevronDown, ChevronRight,
@@ -32,6 +33,21 @@ interface ClienteSimples {
   cnpj: string;
   cpf_responsavel: string;
   codigo_acesso: string;
+}
+
+interface AssistanteGroup {
+  user: { id: string; name: string };
+  tasks: {
+    id: string;
+    title: string;
+    type: string;
+    status: string;
+    priority: string;
+    start_at: string | null;
+    overdue: boolean;
+    lead: { id: string; name: string | null; phone: string } | null;
+    created_by: { id: string; name: string } | null;
+  }[];
 }
 
 interface DashboardData {
@@ -225,7 +241,7 @@ function fmtCnpj(cnpj: string) {
   return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8,12)}-${d.slice(12)}`;
 }
 
-function ListView() {
+function ListView({ isAdminOrContador }: { isAdminOrContador: boolean }) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCompleted, setShowCompleted] = useState(false);
@@ -235,6 +251,8 @@ function ListView() {
   const [simplesClientes, setSimplesClientes] = useState<ClienteSimples[]>([]);
   const [simplesModal, setSimplesModal] = useState<ClienteSimples | null>(null);
   const [copiedSimplesField, setCopiedSimplesField] = useState<'cnpj' | 'cpf' | 'codigo' | null>(null);
+  const [gruposAssistentes, setGruposAssistentes] = useState<AssistanteGroup[]>([]);
+  const [expandedGrupos, setExpandedGrupos] = useState<Record<string, boolean>>({});
 
   const pendingRef = useRef<HTMLElement>(null);
   const completedRef = useRef<HTMLElement>(null);
@@ -270,6 +288,18 @@ function ListView() {
     } catch { /* ignora se indisponível */ }
   }, []);
 
+  const fetchAllAssistantTasks = useCallback(async () => {
+    try {
+      const res = await api.get('/intern/all-assistant-tasks');
+      if (Array.isArray(res.data)) {
+        setGruposAssistentes(res.data);
+        const init: Record<string, boolean> = {};
+        res.data.forEach((g: AssistanteGroup) => { init[g.user.id] = true; });
+        setExpandedGrupos(init);
+      }
+    } catch {}
+  }, []);
+
   const copiarCampo = async (campo: 'usuario' | 'senha', valor: string) => {
     try { await navigator.clipboard.writeText(valor); } catch {}
     setCopiedField(campo);
@@ -282,12 +312,22 @@ function ListView() {
     setTimeout(() => setCopiedSimplesField(null), 2000);
   };
 
-  useEffect(() => { fetchData(); fetchEmpresas(); fetchSimplesNacional(); }, [fetchData, fetchEmpresas, fetchSimplesNacional]);
+  useEffect(() => {
+    fetchEmpresas();
+    fetchSimplesNacional();
+    if (isAdminOrContador) {
+      fetchAllAssistantTasks();
+      setLoading(false);
+    } else {
+      fetchData();
+    }
+  }, [fetchData, fetchEmpresas, fetchSimplesNacional, fetchAllAssistantTasks, isAdminOrContador]);
 
   useEffect(() => {
+    if (isAdminOrContador) return;
     const interval = setInterval(() => fetchData(), 60_000);
     return () => clearInterval(interval);
-  }, [fetchData]);
+  }, [fetchData, isAdminOrContador]);
 
   const handleAction = async (eventId: string, action: string) => {
     setData(prev => {
@@ -337,7 +377,7 @@ function ListView() {
     );
   }
 
-  if (!data) {
+  if (!isAdminOrContador && !data) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
         <AlertTriangle size={32} className="text-muted-foreground/30" />
@@ -347,7 +387,7 @@ function ListView() {
     );
   }
 
-  const sortedPending = sortByUrgency(data.pending);
+  const sortedPending = data ? sortByUrgency(data.pending) : [];
 
   const urgentTasks = sortedPending.filter(t => {
     if (!t.start_at) return false;
@@ -355,7 +395,9 @@ function ListView() {
     return due.urgent || t.priority === 'URGENTE';
   });
 
-  const totalTasks = data.stats.completedThisMonthCount + data.stats.pendingCount;
+  const totalTasks = data ? data.stats.completedThisMonthCount + data.stats.pendingCount : 0;
+  const totalAssistantTasks = gruposAssistentes.reduce((s, g) => s + g.tasks.length, 0);
+  const totalOverdue = gruposAssistentes.reduce((s, g) => s + g.tasks.filter(t => t.overdue).length, 0);
 
   return (
     <>
@@ -441,98 +483,145 @@ function ListView() {
           );
         })()}
 
-        {/* Stats */}
-        <div className="flex gap-3 flex-wrap">
-          <StatBadge
-            value={data.stats.pendingCount}
-            label="Pendentes"
-            color="bg-blue-500/10 text-blue-400"
-            onClick={() => scrollTo(pendingRef)}
-          />
-          <StatBadge
-            value={data.stats.completedThisMonthCount}
-            label="Este mês"
-            color="bg-emerald-500/10 text-emerald-400"
-            onClick={data.stats.completedThisMonthCount > 0 ? () => scrollTo(completedRef) : undefined}
-          />
-        </div>
-
-        {/* Progress bar */}
-        {totalTasks > 0 && (
-          <div className="bg-card border border-border rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[12px] font-semibold text-foreground">Progresso do mês</span>
-              <span className="text-[12px] font-bold text-emerald-400">{totalTasks > 0 ? Math.round((data.stats.completedThisMonthCount / totalTasks) * 100) : 0}%</span>
-            </div>
-            <div className="w-full h-2 bg-border rounded-full overflow-hidden">
-              <div
-                className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                style={{ width: `${totalTasks > 0 ? Math.round((data.stats.completedThisMonthCount / totalTasks) * 100) : 0}%` }}
-              />
-            </div>
-            <div className="flex justify-between mt-1.5">
-              <span className="text-[10px] text-muted-foreground">{data.stats.completedThisMonthCount} concluída{data.stats.completedThisMonthCount !== 1 ? 's' : ''}</span>
-              <span className="text-[10px] text-muted-foreground">{data.stats.pendingCount} restante{data.stats.pendingCount !== 1 ? 's' : ''}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Urgent alert */}
-        {urgentTasks.length > 0 && data.stats.pendingCount > 0 && (
-          <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-3 flex items-start gap-2">
-            <Zap size={14} className="text-red-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-[12px] font-bold text-red-400">
-                {urgentTasks.length} tarefa{urgentTasks.length !== 1 ? 's' : ''} urgent{urgentTasks.length !== 1 ? 'es' : 'e'} ou vencendo hoje
-              </p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                {urgentTasks.map(t => t.title).slice(0, 2).join(', ')}
-                {urgentTasks.length > 2 && ` e mais ${urgentTasks.length - 2}`}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Pendentes */}
-        <section ref={pendingRef}>
-          <h2 className="text-[12px] font-bold text-blue-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-            <Clock size={13} /> Pendentes ({data.pending.length})
-          </h2>
-          {sortedPending.length === 0 ? (
-            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4 flex items-center gap-3">
-              <Trophy size={18} className="text-emerald-400 shrink-0" />
-              <div>
-                <p className="text-[13px] font-bold text-emerald-400">Nenhuma tarefa pendente</p>
-                <p className="text-[11px] text-muted-foreground">Bom trabalho! Você está em dia.</p>
+        {/* Tarefas — admin/contador vê todos os assistentes, assistente vê as próprias */}
+        {isAdminOrContador ? (
+          <section>
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/20">
+                <h2 className="text-[12px] font-bold text-foreground uppercase tracking-wider flex items-center gap-2">
+                  <User size={13} className="text-muted-foreground" /> Tarefas dos Assistentes
+                  <span className="text-muted-foreground font-normal normal-case tracking-normal">({totalAssistantTasks} pendentes)</span>
+                </h2>
+                {totalOverdue > 0 && (
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-red-400">
+                    <AlertTriangle size={11} /> {totalOverdue} atrasada{totalOverdue !== 1 ? 's' : ''}
+                  </span>
+                )}
               </div>
+              {gruposAssistentes.length === 0 ? (
+                <div className="p-4 flex items-center gap-3">
+                  <Clock size={16} className="text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">Nenhuma tarefa pendente para assistentes.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-border/50">
+                  {gruposAssistentes.map((grupo) => {
+                    const overdueCount = grupo.tasks.filter(t => t.overdue).length;
+                    const isOpen = expandedGrupos[grupo.user.id] ?? true;
+                    return (
+                      <div key={grupo.user.id}>
+                        <button
+                          onClick={() => setExpandedGrupos(prev => ({ ...prev, [grupo.user.id]: !prev[grupo.user.id] }))}
+                          className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors"
+                        >
+                          <div className="flex items-center gap-2">
+                            {isOpen ? <ChevronDown size={12} className="text-muted-foreground" /> : <ChevronRight size={12} className="text-muted-foreground" />}
+                            <span className="text-[12px] font-semibold text-foreground">{grupo.user.name}</span>
+                            <span className="text-[10px] text-muted-foreground">({grupo.tasks.length} tarefa{grupo.tasks.length !== 1 ? 's' : ''})</span>
+                          </div>
+                          {overdueCount > 0 && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-500/10 text-red-400">{overdueCount} atrasada{overdueCount !== 1 ? 's' : ''}</span>
+                          )}
+                        </button>
+                        {isOpen && (
+                          <div className="pb-1">
+                            {grupo.tasks.map((t) => {
+                              const due = t.start_at ? daysUntil(t.start_at) : null;
+                              const isUrgent = t.priority === 'URGENTE' || due?.urgent;
+                              return (
+                                <div key={t.id} className={`flex items-start gap-3 px-6 py-2 ${t.overdue ? 'bg-red-500/3' : ''}`}>
+                                  <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${t.overdue ? 'bg-red-400' : isUrgent ? 'bg-amber-400' : 'bg-muted-foreground/40'}`} />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[12px] font-medium text-foreground truncate">{t.title}</p>
+                                    <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                                      {due && (
+                                        <span className={`text-[10px] font-semibold ${due.overdue ? 'text-red-400' : due.urgent ? 'text-amber-400' : 'text-muted-foreground'}`}>
+                                          {due.text}
+                                        </span>
+                                      )}
+                                      {t.lead?.name && <span className="text-[10px] text-muted-foreground truncate">· {t.lead.name}</span>}
+                                      {t.priority === 'URGENTE' && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">URGENTE</span>}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="space-y-2">
-              {sortedPending.map(t => (
-                <TaskCard key={t.id} task={t} onAction={handleAction} />
-              ))}
+          </section>
+        ) : data && (
+          <>
+            {/* Stats */}
+            <div className="flex gap-3 flex-wrap">
+              <StatBadge value={data.stats.pendingCount} label="Pendentes" color="bg-blue-500/10 text-blue-400" onClick={() => scrollTo(pendingRef)} />
+              <StatBadge value={data.stats.completedThisMonthCount} label="Este mês" color="bg-emerald-500/10 text-emerald-400" onClick={data.stats.completedThisMonthCount > 0 ? () => scrollTo(completedRef) : undefined} />
             </div>
-          )}
-        </section>
 
-        {/* Concluídas no mês */}
-        {data.completedThisMonth.length > 0 && (
-          <section ref={completedRef}>
-            <button
-              onClick={() => setShowCompleted(!showCompleted)}
-              className="text-[12px] font-bold text-emerald-400 uppercase tracking-wider mb-3 flex items-center gap-2 hover:opacity-80 transition-opacity w-full text-left"
-            >
-              {showCompleted ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-              <CheckCircle2 size={13} /> Concluídas este mês ({data.completedThisMonth.length})
-            </button>
-            {showCompleted && (
-              <div className="space-y-2">
-                {data.completedThisMonth.map(t => (
-                  <TaskCard key={t.id} task={t} onAction={handleAction} dimmed />
-                ))}
+            {/* Progress bar */}
+            {totalTasks > 0 && (
+              <div className="bg-card border border-border rounded-xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[12px] font-semibold text-foreground">Progresso do mês</span>
+                  <span className="text-[12px] font-bold text-emerald-400">{Math.round((data.stats.completedThisMonthCount / totalTasks) * 100)}%</span>
+                </div>
+                <div className="w-full h-2 bg-border rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${Math.round((data.stats.completedThisMonthCount / totalTasks) * 100)}%` }} />
+                </div>
+                <div className="flex justify-between mt-1.5">
+                  <span className="text-[10px] text-muted-foreground">{data.stats.completedThisMonthCount} concluída{data.stats.completedThisMonthCount !== 1 ? 's' : ''}</span>
+                  <span className="text-[10px] text-muted-foreground">{data.stats.pendingCount} restante{data.stats.pendingCount !== 1 ? 's' : ''}</span>
+                </div>
               </div>
             )}
-          </section>
+
+            {/* Urgent alert */}
+            {urgentTasks.length > 0 && data.stats.pendingCount > 0 && (
+              <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-3 flex items-start gap-2">
+                <Zap size={14} className="text-red-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-[12px] font-bold text-red-400">{urgentTasks.length} tarefa{urgentTasks.length !== 1 ? 's' : ''} urgent{urgentTasks.length !== 1 ? 'es' : 'e'} ou vencendo hoje</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{urgentTasks.map(t => t.title).slice(0, 2).join(', ')}{urgentTasks.length > 2 && ` e mais ${urgentTasks.length - 2}`}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Pendentes */}
+            <section ref={pendingRef}>
+              <h2 className="text-[12px] font-bold text-blue-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <Clock size={13} /> Pendentes ({data.pending.length})
+              </h2>
+              {sortedPending.length === 0 ? (
+                <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4 flex items-center gap-3">
+                  <Trophy size={18} className="text-emerald-400 shrink-0" />
+                  <div>
+                    <p className="text-[13px] font-bold text-emerald-400">Nenhuma tarefa pendente</p>
+                    <p className="text-[11px] text-muted-foreground">Bom trabalho! Você está em dia.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">{sortedPending.map(t => <TaskCard key={t.id} task={t} onAction={handleAction} />)}</div>
+              )}
+            </section>
+
+            {/* Concluídas no mês */}
+            {data.completedThisMonth.length > 0 && (
+              <section ref={completedRef}>
+                <button onClick={() => setShowCompleted(!showCompleted)} className="text-[12px] font-bold text-emerald-400 uppercase tracking-wider mb-3 flex items-center gap-2 hover:opacity-80 transition-opacity w-full text-left">
+                  {showCompleted ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                  <CheckCircle2 size={13} /> Concluídas este mês ({data.completedThisMonth.length})
+                </button>
+                {showCompleted && (
+                  <div className="space-y-2">{data.completedThisMonth.map(t => <TaskCard key={t.id} task={t} onAction={handleAction} dimmed />)}</div>
+                )}
+              </section>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -666,6 +755,8 @@ function ListView() {
 // ─── Página Principal ─────────────────────────────────────────────
 
 function InternDashboard() {
+  const { isAdmin, isContador } = useRole();
+  const isAdminOrContador = isAdmin || isContador;
   const [headerData, setHeaderData] = useState<{ internName: string; supervisors: { id: string; name: string }[] } | null>(null);
 
   const fetchHeader = useCallback(async () => {
@@ -675,32 +766,33 @@ function InternDashboard() {
     } catch {}
   }, []);
 
-  useEffect(() => { fetchHeader(); }, [fetchHeader]);
+  useEffect(() => { if (!isAdminOrContador) fetchHeader(); }, [fetchHeader, isAdminOrContador]);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden h-full">
-      {/* Header */}
       <div className="px-6 pt-6 pb-3 shrink-0">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-foreground">Meu Painel</h1>
             <p className="text-[12px] text-muted-foreground mt-0.5">
-              {headerData?.supervisors && headerData.supervisors.length > 0
-                ? `Supervisores: ${headerData.supervisors.map(s => s.name).join(', ')}`
-                : 'Nenhum supervisor vinculado'}
+              {isAdminOrContador
+                ? 'Acessos e tarefas dos assistentes'
+                : headerData?.supervisors && headerData.supervisors.length > 0
+                  ? `Supervisores: ${headerData.supervisors.map(s => s.name).join(', ')}`
+                  : 'Nenhum supervisor vinculado'}
             </p>
           </div>
         </div>
       </div>
 
-      <ListView />
+      <ListView isAdminOrContador={isAdminOrContador} />
     </div>
   );
 }
 
 export default function AssistentePage() {
   return (
-    <RouteGuard allowedRoles={['ADMIN', 'ASSISTENTE']}>
+    <RouteGuard allowedRoles={['ADMIN', 'ASSISTENTE', 'CONTADOR']}>
       <InternDashboard />
     </RouteGuard>
   );

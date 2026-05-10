@@ -248,7 +248,7 @@ export function Sidebar() {
       icon: <ClipboardList size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/assistente'),
       badge: internBadge,
-      show: perms.isAssistente,
+      show: perms.isAssistente || perms.isAdmin || perms.isContador,
     },
     followup: {
       label: 'Follow-up IA',
