@@ -6,7 +6,7 @@ import {
   ShieldCheck, Search, Building2, History, Mail, Download,
   Play, RefreshCw, Plus, Trash2, X, CheckCircle2, AlertTriangle,
   XCircle, ExternalLink, FileText, Loader2,
-  Server, DatabaseZap,
+  Server,
 } from 'lucide-react';
 import { API_BASE_URL } from '@/lib/api';
 
@@ -183,7 +183,7 @@ export default function AgenteCertidoesPage() {
   const [novoCnpj, setNovoCnpj] = useState('');
   const [novoNome, setNovoNome] = useState('');
   const [addMsg, setAddMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [importando, setImportando] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
 
   // ── Histórico ──
   const [historico, setHistorico] = useState<ExecucaoHistorico[]>([]);
@@ -282,11 +282,16 @@ export default function AgenteCertidoesPage() {
   // ─── Init ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     checkAgent();
-    loadConfig();
     loadDashboard();
     const interval = setInterval(checkAgent, 30000);
     return () => clearInterval(interval);
-  }, [checkAgent, loadConfig, loadDashboard]);
+  }, [checkAgent, loadDashboard]);
+
+  // Carrega config e sincroniza CNPJs automaticamente ao montar
+  useEffect(() => {
+    loadConfig().then(() => sincronizarCnpjs());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-scroll log
   useEffect(() => {
@@ -348,54 +353,41 @@ export default function AgenteCertidoesPage() {
     loadConfig();
   };
 
-  const importarDeClientes = async () => {
-    setImportando(true);
-    setAddMsg(null);
+  const sincronizarCnpjs = useCallback(async (jaExistentes?: Set<string>) => {
+    setSincronizando(true);
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE_URL}/clientes-contabil?limit=500`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) { setAddMsg({ ok: false, text: 'Erro ao buscar clientes contábeis.' }); return; }
+      if (!res.ok) return;
       const data = await res.json();
       const clientes: any[] = data?.data || data || [];
 
-      // Filtra apenas PJ com CNPJ válido (14 dígitos)
-      const pjs = clientes.filter(c => {
-        const cnpj = limparCnpj(c.cpf_cnpj || c.lead?.ficha_contabil?.cnpj || '');
-        return cnpj.length === 14;
-      });
-
-      if (!pjs.length) { setAddMsg({ ok: false, text: 'Nenhum cliente PJ com CNPJ encontrado.' }); return; }
-
-      // CNPJs já cadastrados no agente
-      const jaExistentes = new Set((config?.cnpjs || []).map(c => limparCnpj(c.cnpj)));
+      const existentes = jaExistentes ?? new Set((config?.cnpjs || []).map(c => limparCnpj(c.cnpj)));
 
       let adicionados = 0;
-      let ignorados = 0;
-      for (const c of pjs) {
+      for (const c of clientes) {
         const cnpj = limparCnpj(c.cpf_cnpj || c.lead?.ficha_contabil?.cnpj || '');
+        if (cnpj.length !== 14 || existentes.has(cnpj)) continue;
         const nome = c.nome_empresa || c.lead?.ficha_contabil?.razao_social || c.lead?.name || cnpj;
-        if (jaExistentes.has(cnpj)) { ignorados++; continue; }
         try {
           const r = await fetch(`${AGENT_API}/api/config/cnpj`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ cnpj, nome }),
           });
-          if (r.ok) { adicionados++; jaExistentes.add(cnpj); }
+          if (r.ok) { adicionados++; existentes.add(cnpj); }
         } catch { /* continua para o próximo */ }
       }
 
-      await loadConfig();
-      const msg = adicionados > 0
-        ? `${adicionados} empresa(s) importada(s) com sucesso!${ignorados > 0 ? ` (${ignorados} já estavam cadastradas)` : ''}`
-        : `Nenhuma empresa nova — ${ignorados} já estavam cadastradas.`;
-      setAddMsg({ ok: adicionados > 0, text: msg });
-    } catch { setAddMsg({ ok: false, text: 'Erro ao importar. Verifique a conexão.' }); }
-    finally { setImportando(false); }
-    setTimeout(() => setAddMsg(null), 6000);
-  };
+      if (adicionados > 0) {
+        await loadConfig();
+        toast(`${adicionados} empresa(s) sincronizada(s) automaticamente.`);
+      }
+    } catch { /* silencioso — agente pode estar offline */ }
+    finally { setSincronizando(false); }
+  }, [config?.cnpjs, loadConfig]);
 
   // ─── Histórico ────────────────────────────────────────────────────────────
   const loadHistorico = useCallback(async () => {
@@ -456,7 +448,8 @@ export default function AgenteCertidoesPage() {
     if (activeTab === 'historico') loadHistorico();
     if (activeTab === 'certidoes') loadArquivos();
     if (activeTab === 'dashboard') loadDashboard();
-  }, [activeTab, loadHistorico, loadArquivos, loadDashboard]);
+    if (activeTab === 'cnpjs') sincronizarCnpjs();
+  }, [activeTab, loadHistorico, loadArquivos, loadDashboard, sincronizarCnpjs]);
 
   // ─── Formatação CNPJ input ────────────────────────────────────────────────
   const handleCnpjInput = (v: string) => {
@@ -797,23 +790,6 @@ export default function AgenteCertidoesPage() {
                     <Plus size={15} /> Adicionar
                   </button>
 
-                  <div className="relative flex items-center gap-2 my-1">
-                    <div className="flex-1 h-px bg-border" />
-                    <span className="text-[11px] text-muted-foreground">ou</span>
-                    <div className="flex-1 h-px bg-border" />
-                  </div>
-
-                  <button
-                    onClick={importarDeClientes}
-                    disabled={importando}
-                    className="w-full py-2.5 rounded-xl border border-primary/40 bg-primary/5 text-primary font-semibold text-[13px] hover:bg-primary/10 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
-                  >
-                    {importando
-                      ? <><Loader2 size={15} className="animate-spin" /> Importando...</>
-                      : <><DatabaseZap size={15} /> Importar de Clientes Contábeis</>
-                    }
-                  </button>
-
                   {addMsg && (
                     <div className={`text-[12px] px-3 py-2 rounded-lg ${addMsg.ok ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                       {addMsg.text}
@@ -826,8 +802,13 @@ export default function AgenteCertidoesPage() {
             {/* Lista */}
             <div className="lg:col-span-3">
               <div className="rounded-xl border border-border bg-card overflow-hidden">
-                <div className="px-5 py-4 border-b border-border font-semibold">
-                  CNPJs Cadastrados {config?.cnpjs.length ? `(${config.cnpjs.length})` : ''}
+                <div className="px-5 py-4 border-b border-border font-semibold flex items-center justify-between">
+                  <span>CNPJs Cadastrados {config?.cnpjs.length ? `(${config.cnpjs.length})` : ''}</span>
+                  {sincronizando && (
+                    <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-normal">
+                      <Loader2 size={12} className="animate-spin" /> Sincronizando...
+                    </span>
+                  )}
                 </div>
                 {!config?.cnpjs.length ? (
                   <div className="text-center py-12 text-muted-foreground text-[13px]">
