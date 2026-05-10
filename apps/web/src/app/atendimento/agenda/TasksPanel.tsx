@@ -309,7 +309,7 @@ export function TasksPanel() {
       const tag = (e.target as HTMLElement).tagName;
       const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable;
       if (isEditable) return;
-      if (e.key === 'n' || e.key === 'N') { e.preventDefault(); setShowNew(v => !v); }
+      if ((e.key === 'n' || e.key === 'N') && canViewAll) { e.preventDefault(); setShowNew(v => !v); }
       if (e.key === 'k' || e.key === 'K') { e.preventDefault(); setViewMode(v => v === 'kanban' ? 'list' : 'kanban'); }
       if (e.key === 'Escape') {
         if (drawerTaskId) setDrawerTaskId(null);
@@ -420,13 +420,15 @@ export function TasksPanel() {
               <Printer size={15} />
             </button>
 
-            <button
-              onClick={() => setShowNew(v => !v)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm"
-            >
-              <Plus size={15} />
-              Nova tarefa
-            </button>
+            {canViewAll && (
+              <button
+                onClick={() => setShowNew(v => !v)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm"
+              >
+                <Plus size={15} />
+                Nova tarefa
+              </button>
+            )}
           </div>
         </div>
 
@@ -806,7 +808,7 @@ export function TasksPanel() {
                 Limpar filtros
               </button>
             )}
-            {!hasFilters && (
+            {!hasFilters && canViewAll && (
               <button onClick={() => setShowNew(true)} className="text-xs text-primary hover:underline">
                 + Criar primeira tarefa
               </button>
