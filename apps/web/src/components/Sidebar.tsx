@@ -228,7 +228,7 @@ export function Sidebar() {
       show: true,
     },
     agenda: {
-      label: 'Agenda & Tarefas',
+      label: 'Tarefas',
       href: '/atendimento/agenda',
       icon: <Calendar size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/agenda') || p.startsWith('/atendimento/tasks'),
