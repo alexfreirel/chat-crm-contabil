@@ -4,17 +4,17 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ShieldCheck, Search, Building2, History, Mail, Download,
-  Play, RefreshCw, Plus, Trash2, X, CheckCircle2, AlertTriangle,
+  Play, RefreshCw, X, CheckCircle2, AlertTriangle,
   XCircle, ExternalLink, FileText, Loader2,
-  Server, DatabaseZap,
+  Server, DatabaseZap, Users, ArrowRight,
 } from 'lucide-react';
 import { API_BASE_URL } from '@/lib/api';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-interface CnpjEntry { cnpj: string; nome: string; }
+interface CnpjEntry { cnpj: string; nome: string; clienteId?: string; }
 interface Config {
-  cnpjs: CnpjEntry[];
+  cnpjs?: CnpjEntry[];
   email: {
     remetente?: string; senha_app?: string;
     destinatarios?: string[];
@@ -64,10 +64,12 @@ function fmtCnpj(c: string) {
 function limparCnpj(c: string) { return c.replace(/\D/g, ''); }
 
 const AGENT_API = (() => {
-  if (typeof window === 'undefined') return 'http://localhost:5000';
+  // Backend Python do Agente Certidões — apps/agente-fiscal/app_certidoes.py
+  // Porta padrão 5001 (a 5000 é do app.py do agente fiscal SEFAZ).
+  if (typeof window === 'undefined') return 'http://localhost:5001';
   const env = process.env.NEXT_PUBLIC_AGENT_CERTIDOES_URL;
   if (env) return env;
-  return 'http://localhost:5000';
+  return 'http://localhost:5001';
 })();
 
 // ─── Sub-componentes ──────────────────────────────────────────────────────────
@@ -167,7 +169,7 @@ export default function AgenteCertidoesPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
   const [agentOnline, setAgentOnline] = useState<boolean | null>(null);
-  const [config, setConfig] = useState<Config | null>(null);
+  const [, setConfig] = useState<Config | null>(null);
   const [loading, setLoading] = useState(true);
 
   // ── Consulta ──
@@ -179,11 +181,11 @@ export default function AgenteCertidoesPage() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logBoxRef = useRef<HTMLDivElement>(null);
 
-  // ── CNPJs ──
-  const [novoCnpj, setNovoCnpj] = useState('');
-  const [novoNome, setNovoNome] = useState('');
-  const [addMsg, setAddMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [importando, setImportando] = useState(false);
+  // ── CNPJs (fonte: Clientes Contábeis) ──
+  const [cnpjs, setCnpjs] = useState<CnpjEntry[]>([]);
+  const [carregandoCnpjs, setCarregandoCnpjs] = useState(false);
+  const [totalClientes, setTotalClientes] = useState(0);
+  const [clientesSemCnpj, setClientesSemCnpj] = useState(0);
 
   // ── Histórico ──
   const [historico, setHistorico] = useState<ExecucaoHistorico[]>([]);
@@ -231,17 +233,13 @@ export default function AgenteCertidoesPage() {
     } catch { setAgentOnline(false); }
   }, []);
 
-  // ─── Carrega config ───────────────────────────────────────────────────────
+  // ─── Carrega config (apenas e-mail/alertas — CNPJs vêm de Clientes Contábeis) ───
   const loadConfig = useCallback(async () => {
     try {
       const res = await fetch(`${AGENT_API}/api/config`);
       if (!res.ok) return;
       const data: Config = await res.json();
       setConfig(data);
-      if (data.cnpjs.length) {
-        setSelectedCnpjs(new Set(data.cnpjs.map(c => limparCnpj(c.cnpj))));
-      }
-      setDlCnpj(data.cnpjs[0]?.cnpj || '');
       // preenche e-mail
       const em = data.email || {};
       const al = data.alertas || {};
@@ -255,6 +253,48 @@ export default function AgenteCertidoesPage() {
         horario: al.horario_verificacao || '08:00',
       });
     } catch { /* agente offline */ }
+  }, []);
+
+  // ─── Carrega CNPJs direto dos Clientes Contábeis (fonte única) ────────────
+  const carregarCnpjs = useCallback(async () => {
+    setCarregandoCnpjs(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/clientes-contabil?limit=500`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      type ClienteRaw = {
+        id?: string;
+        cpf_cnpj?: string;
+        nome_empresa?: string;
+        lead?: { name?: string; ficha_contabil?: { cnpj?: string; razao_social?: string } };
+      };
+      const clientes: ClienteRaw[] = data?.data || data || [];
+
+      const seen = new Set<string>();
+      const lista: CnpjEntry[] = [];
+      let semCnpj = 0;
+      for (const c of clientes) {
+        const cnpj = limparCnpj(c.cpf_cnpj || c.lead?.ficha_contabil?.cnpj || '');
+        if (cnpj.length !== 14) { semCnpj++; continue; }
+        if (seen.has(cnpj)) continue;
+        seen.add(cnpj);
+        const nome = c.nome_empresa || c.lead?.ficha_contabil?.razao_social || c.lead?.name || cnpj;
+        lista.push({ cnpj, nome, clienteId: c.id });
+      }
+      // Ordena alfabeticamente pelo nome
+      lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
+      setCnpjs(lista);
+      setTotalClientes(clientes.length);
+      setClientesSemCnpj(semCnpj);
+      // Por padrão, todos selecionados para consulta
+      setSelectedCnpjs(prev => prev.size ? prev : new Set(lista.map(l => l.cnpj)));
+      setDlCnpj(prev => prev || lista[0]?.cnpj || '');
+    } catch { /* offline */ }
+    finally { setCarregandoCnpjs(false); }
   }, []);
 
   // ─── Carrega dashboard ────────────────────────────────────────────────────
@@ -284,9 +324,10 @@ export default function AgenteCertidoesPage() {
     checkAgent();
     loadConfig();
     loadDashboard();
+    carregarCnpjs();
     const interval = setInterval(checkAgent, 30000);
     return () => clearInterval(interval);
-  }, [checkAgent, loadConfig, loadDashboard]);
+  }, [checkAgent, loadConfig, loadDashboard, carregarCnpjs]);
 
   // Auto-scroll log
   useEffect(() => {
@@ -300,8 +341,18 @@ export default function AgenteCertidoesPage() {
     setConsultaFinished(false);
     setConsultaLogs([]);
     setConsultaResults([]);
+    // Envia a lista vinda dos Clientes Contábeis — fonte única de verdade.
+    const payload = {
+      cnpjs: cnpjs
+        .filter(c => selectedCnpjs.has(c.cnpj))
+        .map(c => ({ cnpj: c.cnpj, nome: c.nome })),
+    };
     try {
-      const res = await fetch(`${AGENT_API}/api/consultar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const res = await fetch(`${AGENT_API}/api/consultar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
       if (!res.ok) { const d = await res.json(); toast(d.error || 'Erro ao iniciar consulta', 'err'); setConsultaRunning(false); return; }
       pollRef.current = setInterval(pollConsulta, 1200);
     } catch { toast('Agente offline ou inacessível.', 'err'); setConsultaRunning(false); }
@@ -323,79 +374,7 @@ export default function AgenteCertidoesPage() {
 
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
-  // ─── Gerenciar CNPJs ──────────────────────────────────────────────────────
-  const addCnpj = async () => {
-    const cnpj = limparCnpj(novoCnpj);
-    if (cnpj.length !== 14) { setAddMsg({ ok: false, text: 'CNPJ inválido — deve ter 14 dígitos.' }); return; }
-    try {
-      const res = await fetch(`${AGENT_API}/api/config/cnpj`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cnpj, nome: novoNome }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setAddMsg({ ok: true, text: 'CNPJ adicionado com sucesso!' });
-        setNovoCnpj(''); setNovoNome('');
-        loadConfig();
-      } else { setAddMsg({ ok: false, text: data.error || 'Erro ao adicionar.' }); }
-    } catch { setAddMsg({ ok: false, text: 'Agente inacessível.' }); }
-    setTimeout(() => setAddMsg(null), 4000);
-  };
-
-  const removeCnpj = async (cnpj: string) => {
-    if (!confirm('Remover este CNPJ do monitoramento?')) return;
-    await fetch(`${AGENT_API}/api/config/cnpj/${limparCnpj(cnpj)}`, { method: 'DELETE' });
-    loadConfig();
-  };
-
-  const importarDeClientes = async () => {
-    setImportando(true);
-    setAddMsg(null);
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${API_BASE_URL}/clientes-contabil?limit=500`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) { setAddMsg({ ok: false, text: 'Erro ao buscar clientes contábeis.' }); return; }
-      const data = await res.json();
-      const clientes: any[] = data?.data || data || [];
-
-      // Filtra apenas PJ com CNPJ válido (14 dígitos)
-      const pjs = clientes.filter(c => {
-        const cnpj = limparCnpj(c.cpf_cnpj || c.lead?.ficha_contabil?.cnpj || '');
-        return cnpj.length === 14;
-      });
-
-      if (!pjs.length) { setAddMsg({ ok: false, text: 'Nenhum cliente PJ com CNPJ encontrado.' }); return; }
-
-      // CNPJs já cadastrados no agente
-      const jaExistentes = new Set((config?.cnpjs || []).map(c => limparCnpj(c.cnpj)));
-
-      let adicionados = 0;
-      let ignorados = 0;
-      for (const c of pjs) {
-        const cnpj = limparCnpj(c.cpf_cnpj || c.lead?.ficha_contabil?.cnpj || '');
-        const nome = c.nome_empresa || c.lead?.ficha_contabil?.razao_social || c.lead?.name || cnpj;
-        if (jaExistentes.has(cnpj)) { ignorados++; continue; }
-        try {
-          const r = await fetch(`${AGENT_API}/api/config/cnpj`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cnpj, nome }),
-          });
-          if (r.ok) { adicionados++; jaExistentes.add(cnpj); }
-        } catch { /* continua para o próximo */ }
-      }
-
-      await loadConfig();
-      const msg = adicionados > 0
-        ? `${adicionados} empresa(s) importada(s) com sucesso!${ignorados > 0 ? ` (${ignorados} já estavam cadastradas)` : ''}`
-        : `Nenhuma empresa nova — ${ignorados} já estavam cadastradas.`;
-      setAddMsg({ ok: adicionados > 0, text: msg });
-    } catch { setAddMsg({ ok: false, text: 'Erro ao importar. Verifique a conexão.' }); }
-    finally { setImportando(false); }
-    setTimeout(() => setAddMsg(null), 6000);
-  };
+  // CNPJs são gerenciados em "Clientes Contábeis" — sem cadastro paralelo aqui.
 
   // ─── Histórico ────────────────────────────────────────────────────────────
   const loadHistorico = useCallback(async () => {
@@ -456,20 +435,14 @@ export default function AgenteCertidoesPage() {
     if (activeTab === 'historico') loadHistorico();
     if (activeTab === 'certidoes') loadArquivos();
     if (activeTab === 'dashboard') loadDashboard();
-  }, [activeTab, loadHistorico, loadArquivos, loadDashboard]);
-
-  // ─── Formatação CNPJ input ────────────────────────────────────────────────
-  const handleCnpjInput = (v: string) => {
-    let d = v.replace(/\D/g, '').slice(0, 14);
-    if (d.length > 12) d = d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2}).*/, '$1.$2.$3/$4-$5');
-    else if (d.length > 8) d = d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4}).*/, '$1.$2.$3/$4');
-    else if (d.length > 5) d = d.replace(/^(\d{2})(\d{3})(\d{3}).*/, '$1.$2.$3');
-    else if (d.length > 2) d = d.replace(/^(\d{2})(\d{3}).*/, '$1.$2');
-    setNovoCnpj(d);
-  };
+    // Recarrega CNPJs ao entrar nas abas que dependem deles — capta novos clientes
+    if (activeTab === 'cnpjs' || activeTab === 'consultar' || activeTab === 'certidoes') {
+      carregarCnpjs();
+    }
+  }, [activeTab, loadHistorico, loadArquivos, loadDashboard, carregarCnpjs]);
 
   // ─── Stat calculados (dashboard) ─────────────────────────────────────────
-  const totalCnpjs = config?.cnpjs.length ?? 0;
+  const totalCnpjs = cnpjs.length;
   const statsOk = dashResults.filter(r => r.status_geral === 'OK').length;
   const statsAlerta = dashResults.filter(r => r.status_geral === 'ALERTA').length;
   const statsCritico = dashResults.filter(r => r.status_geral === 'CRITICO').length;
@@ -655,16 +628,21 @@ export default function AgenteCertidoesPage() {
             {/* Seleção */}
             <div className="lg:col-span-2">
               <div className="rounded-xl border border-border bg-card p-5">
-                <h2 className="font-semibold mb-4">Selecionar CNPJs</h2>
-                {!config?.cnpjs.length ? (
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-semibold">Selecionar CNPJs</h2>
+                  {carregandoCnpjs && <Loader2 size={14} className="animate-spin text-muted-foreground" />}
+                </div>
+                {!cnpjs.length ? (
                   <p className="text-[13px] text-muted-foreground">
-                    Nenhum CNPJ cadastrado.{' '}
-                    <button onClick={() => setActiveTab('cnpjs')} className="text-primary underline">Adicionar</button>
+                    Nenhum cliente PJ com CNPJ encontrado.{' '}
+                    <button onClick={() => router.push('/atendimento/clientes-contabil')} className="text-primary underline">
+                      Cadastrar cliente
+                    </button>
                   </p>
                 ) : (
-                  <div className="space-y-2 mb-4">
-                    {config.cnpjs.map(c => {
-                      const id = limparCnpj(c.cnpj);
+                  <div className="space-y-2 mb-4 max-h-[420px] overflow-y-auto">
+                    {cnpjs.map(c => {
+                      const id = c.cnpj;
                       const checked = selectedCnpjs.has(id);
                       return (
                         <label key={id} className="flex items-center gap-3 cursor-pointer rounded-lg px-3 py-2 hover:bg-muted/40 transition-colors">
@@ -688,7 +666,7 @@ export default function AgenteCertidoesPage() {
                 <div className="flex flex-col gap-2">
                   <button
                     onClick={iniciarConsulta}
-                    disabled={consultaRunning || !config?.cnpjs.length}
+                    disabled={consultaRunning || !cnpjs.length}
                     className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-[13px] hover:opacity-90 disabled:opacity-50 transition-opacity"
                   >
                     {consultaRunning
@@ -696,7 +674,7 @@ export default function AgenteCertidoesPage() {
                       : <><Play size={14} /> Consultar Selecionados</>
                     }
                   </button>
-                  <button onClick={() => setSelectedCnpjs(new Set(config?.cnpjs.map(c => limparCnpj(c.cnpj)) || []))}
+                  <button onClick={() => setSelectedCnpjs(new Set(cnpjs.map(c => c.cnpj)))}
                     className="w-full text-[12px] py-2 rounded-xl border border-border hover:bg-accent text-muted-foreground transition-colors">
                     Selecionar todos
                   </button>
@@ -768,89 +746,94 @@ export default function AgenteCertidoesPage() {
 
         {/* ── CNPJs ── */}
         {activeTab === 'cnpjs' && (
-          <div className="max-w-4xl grid lg:grid-cols-5 gap-6">
-            {/* Adicionar */}
-            <div className="lg:col-span-2">
-              <div className="rounded-xl border border-border bg-card p-5">
-                <h2 className="font-semibold mb-4 flex items-center gap-2">
-                  <Plus size={16} className="text-primary" /> Adicionar CNPJ
-                </h2>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-[12px] font-semibold block mb-1">CNPJ</label>
-                    <input
-                      type="text" value={novoCnpj} onChange={e => handleCnpjInput(e.target.value)}
-                      placeholder="00.000.000/0000-00" maxLength={18}
-                      className="w-full px-3 py-2 text-[13px] rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[12px] font-semibold block mb-1">Nome da Empresa (opcional)</label>
-                    <input
-                      type="text" value={novoNome} onChange={e => setNovoNome(e.target.value)}
-                      placeholder="Ex.: Empresa ABC Ltda"
-                      className="w-full px-3 py-2 text-[13px] rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    />
-                  </div>
-                  <button onClick={addCnpj}
-                    className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-[13px] hover:opacity-90 flex items-center justify-center gap-2">
-                    <Plus size={15} /> Adicionar
-                  </button>
+          <div className="max-w-5xl space-y-4">
+            {/* Banner explicativo */}
+            <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 flex items-start gap-3">
+              <DatabaseZap size={20} className="text-primary mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <p className="text-[13px] font-semibold">Lista sincronizada automaticamente</p>
+                <p className="text-[12px] text-muted-foreground mt-0.5">
+                  Os CNPJs vêm direto da tela <strong>Clientes Contábeis</strong> (apenas pessoas jurídicas com CNPJ válido).
+                  Para adicionar, remover ou editar, gerencie no cadastro de clientes — qualquer alteração aparece aqui em seguida.
+                </p>
+                <button
+                  onClick={() => router.push('/atendimento/clientes-contabil')}
+                  className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-semibold text-primary hover:underline"
+                >
+                  <Users size={13} /> Abrir Clientes Contábeis <ArrowRight size={12} />
+                </button>
+              </div>
+              <button
+                onClick={carregarCnpjs}
+                disabled={carregandoCnpjs}
+                className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-border hover:bg-accent text-muted-foreground transition-colors disabled:opacity-50"
+                title="Atualizar lista a partir de Clientes Contábeis"
+              >
+                {carregandoCnpjs
+                  ? <><Loader2 size={12} className="animate-spin" /> Atualizando…</>
+                  : <><RefreshCw size={12} /> Atualizar</>
+                }
+              </button>
+            </div>
 
-                  <div className="relative flex items-center gap-2 my-1">
-                    <div className="flex-1 h-px bg-border" />
-                    <span className="text-[11px] text-muted-foreground">ou</span>
-                    <div className="flex-1 h-px bg-border" />
-                  </div>
-
-                  <button
-                    onClick={importarDeClientes}
-                    disabled={importando}
-                    className="w-full py-2.5 rounded-xl border border-primary/40 bg-primary/5 text-primary font-semibold text-[13px] hover:bg-primary/10 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
-                  >
-                    {importando
-                      ? <><Loader2 size={15} className="animate-spin" /> Importando...</>
-                      : <><DatabaseZap size={15} /> Importar de Clientes Contábeis</>
-                    }
-                  </button>
-
-                  {addMsg && (
-                    <div className={`text-[12px] px-3 py-2 rounded-lg ${addMsg.ok ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                      {addMsg.text}
-                    </div>
-                  )}
-                </div>
+            {/* Resumo numérico */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-xl border border-border bg-card px-4 py-3">
+                <div className="text-[11px] text-muted-foreground">Clientes contábeis</div>
+                <div className="text-2xl font-bold mt-0.5">{totalClientes || '—'}</div>
+              </div>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 px-4 py-3">
+                <div className="text-[11px] text-emerald-700/80">PJ monitorados (CNPJ válido)</div>
+                <div className="text-2xl font-bold mt-0.5 text-emerald-700">{cnpjs.length}</div>
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 px-4 py-3">
+                <div className="text-[11px] text-amber-700/80">Sem CNPJ (PF ou pendente)</div>
+                <div className="text-2xl font-bold mt-0.5 text-amber-700">{clientesSemCnpj}</div>
               </div>
             </div>
 
             {/* Lista */}
-            <div className="lg:col-span-3">
-              <div className="rounded-xl border border-border bg-card overflow-hidden">
-                <div className="px-5 py-4 border-b border-border font-semibold">
-                  CNPJs Cadastrados {config?.cnpjs.length ? `(${config.cnpjs.length})` : ''}
-                </div>
-                {!config?.cnpjs.length ? (
-                  <div className="text-center py-12 text-muted-foreground text-[13px]">
-                    <Building2 size={32} className="mx-auto mb-2 opacity-30" />
-                    Nenhum CNPJ cadastrado.
-                  </div>
-                ) : (
-                  <div className="divide-y divide-border/50">
-                    {config.cnpjs.map((c, i) => (
-                      <div key={i} className="flex items-center justify-between px-5 py-3">
-                        <div>
-                          <div className="text-[13px] font-medium">{c.nome || '—'}</div>
-                          <div className="text-[11px] text-muted-foreground font-mono">{fmtCnpj(c.cnpj)}</div>
-                        </div>
-                        <button onClick={() => removeCnpj(c.cnpj)}
-                          className="p-2 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors">
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+            <div className="rounded-xl border border-border bg-card overflow-hidden">
+              <div className="px-5 py-4 border-b border-border font-semibold flex items-center justify-between">
+                <span>CNPJs em Monitoramento {cnpjs.length ? `(${cnpjs.length})` : ''}</span>
+                {carregandoCnpjs && (
+                  <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-normal">
+                    <Loader2 size={12} className="animate-spin" /> Sincronizando…
+                  </span>
                 )}
               </div>
+              {!cnpjs.length ? (
+                <div className="text-center py-14 text-muted-foreground text-[13px]">
+                  <Building2 size={32} className="mx-auto mb-2 opacity-30" />
+                  <p>Nenhum cliente contábil PJ com CNPJ encontrado.</p>
+                  <button
+                    onClick={() => router.push('/atendimento/clientes-contabil')}
+                    className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-semibold text-primary hover:underline"
+                  >
+                    <Users size={13} /> Cadastrar cliente <ArrowRight size={12} />
+                  </button>
+                </div>
+              ) : (
+                <div className="divide-y divide-border/50 max-h-[520px] overflow-y-auto">
+                  {cnpjs.map((c) => (
+                    <div key={c.cnpj} className="flex items-center justify-between px-5 py-3 hover:bg-muted/20 transition-colors">
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-medium truncate">{c.nome || '—'}</div>
+                        <div className="text-[11px] text-muted-foreground font-mono">{fmtCnpj(c.cnpj)}</div>
+                      </div>
+                      {c.clienteId && (
+                        <button
+                          onClick={() => router.push(`/atendimento/workspace/${c.clienteId}`)}
+                          className="text-[12px] px-3 py-1.5 rounded-lg border border-border hover:bg-accent text-muted-foreground transition-colors flex items-center gap-1.5 shrink-0"
+                          title="Abrir cadastro do cliente"
+                        >
+                          <ExternalLink size={12} /> Abrir
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -999,9 +982,12 @@ export default function AgenteCertidoesPage() {
                   <label className="text-[12px] font-semibold block mb-1">CNPJ</label>
                   <select value={dlCnpj} onChange={e => setDlCnpj(e.target.value)}
                     className="w-full px-3 py-2 text-[13px] rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/30">
-                    {config?.cnpjs.map(c => (
-                      <option key={c.cnpj} value={c.cnpj}>{c.nome || c.cnpj} — {fmtCnpj(c.cnpj)}</option>
-                    )) || <option value="">Nenhum CNPJ cadastrado</option>}
+                    {cnpjs.length
+                      ? cnpjs.map(c => (
+                        <option key={c.cnpj} value={c.cnpj}>{c.nome || c.cnpj} — {fmtCnpj(c.cnpj)}</option>
+                      ))
+                      : <option value="">Nenhum cliente PJ encontrado</option>
+                    }
                   </select>
                 </div>
                 <button onClick={baixarCND} disabled={dlStatus?.running}
@@ -1052,7 +1038,7 @@ export default function AgenteCertidoesPage() {
                     </thead>
                     <tbody>
                       {arquivos.map((f, i) => {
-                        const nomeEmpresa = config?.cnpjs.find(c => limparCnpj(c.cnpj) === f.cnpj)?.nome;
+                        const nomeEmpresa = cnpjs.find(c => c.cnpj === f.cnpj)?.nome;
                         return (
                           <tr key={i} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
                             <td className="px-5 py-3">
