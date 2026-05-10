@@ -362,77 +362,84 @@ function ListView() {
     <div className="flex-1 overflow-y-auto custom-scrollbar">
       <div className="max-w-4xl mx-auto px-6 py-4 space-y-6">
 
-        {/* Acesso Rápido — Portal do Contribuinte SEFAZ */}
-        {empresas.length > 0 && (
-          <section>
-            <h2 className="text-[12px] font-bold text-emerald-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Building2 size={13} /> Portal do Contribuinte ({empresas.length} empresas)
-            </h2>
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
-              <table className="w-full">
-                <thead>
-                  <tr className="text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border bg-muted/30">
-                    <th className="px-4 py-2.5 text-left font-semibold">Empresa</th>
-                    <th className="px-4 py-2.5 text-left font-semibold hidden sm:table-cell">CNPJ</th>
-                    <th className="px-4 py-2.5 text-right font-semibold">Portal do Contribuinte</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {empresas.map((e) => (
-                    <tr key={e.cnpj} className="border-t border-border/50 hover:bg-muted/20 transition-colors">
-                      <td className="px-4 py-2.5 text-[12px] font-medium text-foreground">{e.nome}</td>
-                      <td className="px-4 py-2.5 text-[11px] text-muted-foreground font-mono hidden sm:table-cell">{fmtCnpj(e.cnpj)}</td>
-                      <td className="px-4 py-2.5 text-right">
-                        <button
-                          onClick={() => { setPortalModal(e); setCopiedField(null); }}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 text-[10px] font-medium hover:bg-emerald-500/20 transition-colors"
-                        >
-                          <ExternalLink size={11} /> Abrir
-                        </button>
-                      </td>
+        {/* Painel Unificado de Acessos */}
+        {(empresas.length > 0 || simplesClientes.length > 0) && (() => {
+          const normCnpj = (c: string) => c.replace(/\D/g, '');
+          const map = new Map<string, { cnpj: string; nome: string; empresa?: Empresa; simples?: ClienteSimples }>();
+          for (const e of empresas) {
+            map.set(normCnpj(e.cnpj), { cnpj: e.cnpj, nome: e.nome, empresa: e });
+          }
+          for (const c of simplesClientes) {
+            const key = normCnpj(c.cnpj);
+            if (map.has(key)) { map.get(key)!.simples = c; }
+            else { map.set(key, { cnpj: c.cnpj, nome: c.nome, simples: c }); }
+          }
+          const linhas = Array.from(map.values()).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+          return (
+            <section>
+              <h2 className="text-[12px] font-bold text-foreground uppercase tracking-wider mb-3 flex items-center gap-2 flex-wrap">
+                <Building2 size={13} className="text-muted-foreground" />
+                {empresas.length > 0 && (
+                  <span className="text-emerald-400">Portal do Contribuinte ({empresas.length} empresas)</span>
+                )}
+                {empresas.length > 0 && simplesClientes.length > 0 && (
+                  <span className="text-muted-foreground/40">·</span>
+                )}
+                {simplesClientes.length > 0 && (
+                  <span className="text-blue-400">Simples Nacional ({simplesClientes.length} empresas)</span>
+                )}
+              </h2>
+              <div className="bg-card border border-border rounded-xl overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border bg-muted/30">
+                      <th className="px-4 py-2.5 text-left font-semibold">Empresa</th>
+                      <th className="px-4 py-2.5 text-left font-semibold hidden sm:table-cell">CNPJ</th>
+                      {simplesClientes.length > 0 && (
+                        <th className="px-3 py-2.5 text-center font-semibold text-blue-400/80">Simples Nacional</th>
+                      )}
+                      {empresas.length > 0 && (
+                        <th className="px-3 py-2.5 text-center font-semibold text-emerald-400/80">Portal Contribuinte</th>
+                      )}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
-
-        {/* Acesso Rápido — Simples Nacional */}
-        {simplesClientes.length > 0 && (
-          <section>
-            <h2 className="text-[12px] font-bold text-blue-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Building2 size={13} /> Simples Nacional ({simplesClientes.length} empresas)
-            </h2>
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
-              <table className="w-full">
-                <thead>
-                  <tr className="text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border bg-muted/30">
-                    <th className="px-4 py-2.5 text-left font-semibold">Empresa</th>
-                    <th className="px-4 py-2.5 text-left font-semibold hidden sm:table-cell">CNPJ</th>
-                    <th className="px-4 py-2.5 text-right font-semibold">Simples Nacional</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {simplesClientes.map((c) => (
-                    <tr key={c.id} className="border-t border-border/50 hover:bg-muted/20 transition-colors">
-                      <td className="px-4 py-2.5 text-[12px] font-medium text-foreground">{c.nome}</td>
-                      <td className="px-4 py-2.5 text-[11px] text-muted-foreground font-mono hidden sm:table-cell">{fmtCnpj(c.cnpj)}</td>
-                      <td className="px-4 py-2.5 text-right">
-                        <button
-                          onClick={() => { setSimplesModal(c); setCopiedSimplesField(null); }}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-500/10 text-blue-400 text-[10px] font-medium hover:bg-blue-500/20 transition-colors"
-                        >
-                          <ExternalLink size={11} /> Abrir
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
+                  </thead>
+                  <tbody>
+                    {linhas.map((row) => (
+                      <tr key={row.cnpj} className="border-t border-border/50 hover:bg-muted/20 transition-colors">
+                        <td className="px-4 py-2.5 text-[12px] font-medium text-foreground">{row.nome}</td>
+                        <td className="px-4 py-2.5 text-[11px] text-muted-foreground font-mono hidden sm:table-cell">{fmtCnpj(row.cnpj)}</td>
+                        {simplesClientes.length > 0 && (
+                          <td className="px-3 py-2.5 text-center">
+                            {row.simples ? (
+                              <button
+                                onClick={() => { setSimplesModal(row.simples!); setCopiedSimplesField(null); }}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-500/10 text-blue-400 text-[10px] font-medium hover:bg-blue-500/20 transition-colors"
+                              >
+                                <ExternalLink size={11} /> Abrir
+                              </button>
+                            ) : <span className="text-muted-foreground/30 text-[10px]">—</span>}
+                          </td>
+                        )}
+                        {empresas.length > 0 && (
+                          <td className="px-3 py-2.5 text-center">
+                            {row.empresa ? (
+                              <button
+                                onClick={() => { setPortalModal(row.empresa!); setCopiedField(null); }}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 text-[10px] font-medium hover:bg-emerald-500/20 transition-colors"
+                              >
+                                <ExternalLink size={11} /> Abrir
+                              </button>
+                            ) : <span className="text-muted-foreground/30 text-[10px]">—</span>}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          );
+        })()}
 
         {/* Stats */}
         <div className="flex gap-3 flex-wrap">
