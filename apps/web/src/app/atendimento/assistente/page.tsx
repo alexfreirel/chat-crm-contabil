@@ -234,7 +234,7 @@ function ListView() {
   const [copiedField, setCopiedField] = useState<'usuario' | 'senha' | null>(null);
   const [simplesClientes, setSimplesClientes] = useState<ClienteSimples[]>([]);
   const [simplesModal, setSimplesModal] = useState<ClienteSimples | null>(null);
-  const [copiedSimplesField, setCopiedSimplesField] = useState<'cpf' | 'codigo' | null>(null);
+  const [copiedSimplesField, setCopiedSimplesField] = useState<'cnpj' | 'cpf' | 'codigo' | null>(null);
 
   const pendingRef = useRef<HTMLElement>(null);
   const completedRef = useRef<HTMLElement>(null);
@@ -276,7 +276,7 @@ function ListView() {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const copiarSimplesCampo = async (campo: 'cpf' | 'codigo', valor: string) => {
+  const copiarSimplesCampo = async (campo: 'cnpj' | 'cpf' | 'codigo', valor: string) => {
     try { await navigator.clipboard.writeText(valor); } catch {}
     setCopiedSimplesField(campo);
     setTimeout(() => setCopiedSimplesField(null), 2000);
@@ -608,14 +608,21 @@ function ListView() {
               <span className="text-xs text-muted-foreground w-20 shrink-0">Empresa</span>
               <span className="text-sm font-medium text-foreground truncate flex-1 text-right">{simplesModal.nome}</span>
             </div>
-            <div className="flex items-center justify-between bg-muted/40 rounded-lg px-3 py-2">
+            <div className="flex items-center gap-2 bg-muted/40 rounded-lg px-3 py-2">
               <span className="text-xs text-muted-foreground w-20 shrink-0">CNPJ</span>
-              <span className="text-sm font-mono text-foreground flex-1 text-right">{fmtCnpj(simplesModal.cnpj)}</span>
+              <span className="text-sm font-mono text-foreground flex-1 text-right">{simplesModal.cnpj.replace(/\D/g, '')}</span>
+              <button
+                onClick={() => copiarSimplesCampo('cnpj', simplesModal.cnpj.replace(/\D/g, ''))}
+                className={`ml-1 p-1 rounded transition-colors shrink-0 ${copiedSimplesField === 'cnpj' ? 'text-blue-400' : 'text-muted-foreground hover:text-foreground'}`}
+                title="Copiar CNPJ"
+              >
+                {copiedSimplesField === 'cnpj' ? <Check size={13} /> : <Copy size={13} />}
+              </button>
             </div>
             {simplesModal.cpf_responsavel && (
               <div className="flex items-center gap-2 bg-muted/40 rounded-lg px-3 py-2">
                 <span className="text-xs text-muted-foreground w-20 shrink-0">CPF Resp.</span>
-                <span className="text-sm font-mono font-semibold text-foreground flex-1 text-right">{simplesModal.cpf_responsavel}</span>
+                <span className="text-sm font-mono font-semibold text-foreground flex-1 text-right">{simplesModal.cpf_responsavel.replace(/\D/g, '')}</span>
                 <button
                   onClick={() => copiarSimplesCampo('cpf', simplesModal.cpf_responsavel)}
                   className={`ml-1 p-1 rounded transition-colors shrink-0 ${copiedSimplesField === 'cpf' ? 'text-blue-400' : 'text-muted-foreground hover:text-foreground'}`}
