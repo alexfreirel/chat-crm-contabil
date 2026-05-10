@@ -22,6 +22,11 @@ export class InternController {
     return this.internService.getSimplesNacionalAccess(req.user?.tenant_id);
   }
 
+  @Get('all-assistant-tasks')
+  getAllAssistantTasks(@Request() req: any) {
+    return this.internService.getAllAssistantTasks(req.user?.tenant_id);
+  }
+
   /** GET /intern/badge-count — count de petições pendentes (para badge na sidebar) */
   @Get('badge-count')
   getBadgeCount(@Request() req: any) {

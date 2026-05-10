@@ -37,6 +37,7 @@ import { RegimeTributarioChart } from './components/charts/RegimeTributarioChart
 import { ContabilKPIs } from './components/ContabilKPIs';
 import { ProdutividadeWidget } from './components/ProdutividadeWidget';
 import { InadimplenciaWidget } from './components/InadimplenciaWidget';
+import { AssistentePainelWidget } from './components/AssistentePainelWidget';
 
 /* ═══════════════════════════════════════════════════════════════
    Dashboard — Composicao principal
@@ -257,7 +258,14 @@ export default function DashboardPage() {
           <QuickActions roleInfo={roleInfo} />
         </MotionWidget>
 
-        {/* Row 16: Equipe Online (ADMIN only) */}
+        {/* Row 16: Painel Assistentes — Acessos + Tarefas (ADMIN + CONTADOR) */}
+        {(isAdmin || isContador) && (
+          <MotionWidget delay={0.48}>
+            <AssistentePainelWidget />
+          </MotionWidget>
+        )}
+
+        {/* Row 17: Equipe Online (ADMIN only) */}
         {isAdmin && (
           <MotionWidget delay={0.5}>
             <TeamOnline />

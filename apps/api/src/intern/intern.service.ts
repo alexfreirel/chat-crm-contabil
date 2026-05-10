@@ -254,6 +254,55 @@ export class InternService {
   }
 
   /**
+   * Retorna todas as tarefas pendentes atribuídas a usuários ASSISTENTE.
+   * Usado pelo painel do admin/contador.
+   */
+  async getAllAssistantTasks(tenantId?: string) {
+    const now = new Date();
+    const where: any = {
+      type: { in: ['TAREFA', 'PRAZO'] },
+      status: { in: ['AGENDADO', 'CONFIRMADO'] },
+      assigned_user: { role: 'ASSISTENTE' },
+    };
+    if (tenantId) {
+      where.OR = [{ tenant_id: tenantId }, { tenant_id: null }];
+    }
+
+    const tasks = await this.prisma.calendarEvent.findMany({
+      where,
+      include: {
+        assigned_user: { select: { id: true, name: true } },
+        lead: { select: { id: true, name: true, phone: true } },
+        created_by: { select: { id: true, name: true } },
+      },
+      orderBy: [{ start_at: 'asc' }],
+      take: 500,
+    });
+
+    const grouped: Record<string, { user: { id: string; name: string }; tasks: any[] }> = {};
+    for (const t of tasks) {
+      const uid = t.assigned_user?.id ?? 'sem_usuario';
+      if (!grouped[uid]) {
+        grouped[uid] = { user: t.assigned_user ?? { id: uid, name: 'Sem usuário' }, tasks: [] };
+      }
+      const due = t.start_at ? Math.ceil((t.start_at.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
+      grouped[uid].tasks.push({
+        id: t.id,
+        title: t.title,
+        type: t.type,
+        status: t.status,
+        priority: t.priority,
+        start_at: t.start_at,
+        overdue: due !== null && due < 0,
+        lead: t.lead ? { id: t.lead.id, name: t.lead.name, phone: t.lead.phone } : null,
+        created_by: t.created_by ? { id: t.created_by.id, name: t.created_by.name } : null,
+      });
+    }
+
+    return Object.values(grouped).sort((a, b) => a.user.name.localeCompare(b.user.name, 'pt-BR'));
+  }
+
+  /**
    * Contagem leve para badge na sidebar:
    * petições devolvidas para correção (RASCUNHO com versions > 0)
    */
