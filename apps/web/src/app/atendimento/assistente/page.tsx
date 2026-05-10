@@ -379,14 +379,14 @@ function ListView() {
             <section>
               <h2 className="text-[12px] font-bold text-foreground uppercase tracking-wider mb-3 flex items-center gap-2 flex-wrap">
                 <Building2 size={13} className="text-muted-foreground" />
-                {empresas.length > 0 && (
-                  <span className="text-emerald-400">Portal do Contribuinte ({empresas.length} empresas)</span>
+                {simplesClientes.length > 0 && (
+                  <span className="text-blue-400">Simples Nacional ({simplesClientes.length} empresas)</span>
                 )}
                 {empresas.length > 0 && simplesClientes.length > 0 && (
                   <span className="text-muted-foreground/40">·</span>
                 )}
-                {simplesClientes.length > 0 && (
-                  <span className="text-blue-400">Simples Nacional ({simplesClientes.length} empresas)</span>
+                {empresas.length > 0 && (
+                  <span className="text-emerald-400">Portal do Contribuinte ({empresas.length} empresas)</span>
                 )}
               </h2>
               <div className="bg-card border border-border rounded-xl overflow-hidden">
