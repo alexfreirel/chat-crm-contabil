@@ -331,7 +331,7 @@ export function Sidebar() {
     {
       id: 'contabil',
       label: 'Contábil',
-      items: [allItems.clientes, allItems.agenda, allItems.agenteFiscal, allItems.assistente].filter(i => i.show),
+      items: [allItems.clientes, allItems.assistente, allItems.agenteFiscal, allItems.agenda].filter(i => i.show),
     },
     {
       id: 'gestao',
