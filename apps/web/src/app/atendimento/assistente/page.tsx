@@ -26,6 +26,14 @@ interface Empresa {
   senha: string;
 }
 
+interface ClienteSimples {
+  id: string;
+  nome: string;
+  cnpj: string;
+  cpf_responsavel: string;
+  codigo_acesso: string;
+}
+
 interface DashboardData {
   internName: string;
   supervisors: { id: string; name: string }[];
@@ -224,6 +232,9 @@ function ListView() {
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [portalModal, setPortalModal] = useState<Empresa | null>(null);
   const [copiedField, setCopiedField] = useState<'usuario' | 'senha' | null>(null);
+  const [simplesClientes, setSimplesClientes] = useState<ClienteSimples[]>([]);
+  const [simplesModal, setSimplesModal] = useState<ClienteSimples | null>(null);
+  const [copiedSimplesField, setCopiedSimplesField] = useState<'cpf' | 'codigo' | null>(null);
 
   const pendingRef = useRef<HTMLElement>(null);
   const completedRef = useRef<HTMLElement>(null);
@@ -250,13 +261,28 @@ function ListView() {
     } catch { /* agente offline, ignora */ }
   }, []);
 
+  const fetchSimplesNacional = useCallback(async () => {
+    try {
+      const res = await api.get('/intern/simples-nacional');
+      if (Array.isArray(res.data)) {
+        setSimplesClientes(res.data.sort((a: ClienteSimples, b: ClienteSimples) => a.nome.localeCompare(b.nome, 'pt-BR')));
+      }
+    } catch { /* ignora se indisponível */ }
+  }, []);
+
   const copiarCampo = async (campo: 'usuario' | 'senha', valor: string) => {
     try { await navigator.clipboard.writeText(valor); } catch {}
     setCopiedField(campo);
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  useEffect(() => { fetchData(); fetchEmpresas(); }, [fetchData, fetchEmpresas]);
+  const copiarSimplesCampo = async (campo: 'cpf' | 'codigo', valor: string) => {
+    try { await navigator.clipboard.writeText(valor); } catch {}
+    setCopiedSimplesField(campo);
+    setTimeout(() => setCopiedSimplesField(null), 2000);
+  };
+
+  useEffect(() => { fetchData(); fetchEmpresas(); fetchSimplesNacional(); }, [fetchData, fetchEmpresas, fetchSimplesNacional]);
 
   useEffect(() => {
     const interval = setInterval(() => fetchData(), 60_000);
@@ -335,6 +361,78 @@ function ListView() {
     <>
     <div className="flex-1 overflow-y-auto custom-scrollbar">
       <div className="max-w-4xl mx-auto px-6 py-4 space-y-6">
+
+        {/* Acesso Rápido — Portal do Contribuinte SEFAZ */}
+        {empresas.length > 0 && (
+          <section>
+            <h2 className="text-[12px] font-bold text-emerald-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <Building2 size={13} /> Portal do Contribuinte ({empresas.length} empresas)
+            </h2>
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border bg-muted/30">
+                    <th className="px-4 py-2.5 text-left font-semibold">Empresa</th>
+                    <th className="px-4 py-2.5 text-left font-semibold hidden sm:table-cell">CNPJ</th>
+                    <th className="px-4 py-2.5 text-right font-semibold">Portal do Contribuinte</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {empresas.map((e) => (
+                    <tr key={e.cnpj} className="border-t border-border/50 hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-2.5 text-[12px] font-medium text-foreground">{e.nome}</td>
+                      <td className="px-4 py-2.5 text-[11px] text-muted-foreground font-mono hidden sm:table-cell">{fmtCnpj(e.cnpj)}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <button
+                          onClick={() => { setPortalModal(e); setCopiedField(null); }}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 text-[10px] font-medium hover:bg-emerald-500/20 transition-colors"
+                        >
+                          <ExternalLink size={11} /> Abrir
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {/* Acesso Rápido — Simples Nacional */}
+        {simplesClientes.length > 0 && (
+          <section>
+            <h2 className="text-[12px] font-bold text-blue-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <Building2 size={13} /> Simples Nacional ({simplesClientes.length} empresas)
+            </h2>
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border bg-muted/30">
+                    <th className="px-4 py-2.5 text-left font-semibold">Empresa</th>
+                    <th className="px-4 py-2.5 text-left font-semibold hidden sm:table-cell">CNPJ</th>
+                    <th className="px-4 py-2.5 text-right font-semibold">Simples Nacional</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {simplesClientes.map((c) => (
+                    <tr key={c.id} className="border-t border-border/50 hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-2.5 text-[12px] font-medium text-foreground">{c.nome}</td>
+                      <td className="px-4 py-2.5 text-[11px] text-muted-foreground font-mono hidden sm:table-cell">{fmtCnpj(c.cnpj)}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <button
+                          onClick={() => { setSimplesModal(c); setCopiedSimplesField(null); }}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-500/10 text-blue-400 text-[10px] font-medium hover:bg-blue-500/20 transition-colors"
+                        >
+                          <ExternalLink size={11} /> Abrir
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         {/* Stats */}
         <div className="flex gap-3 flex-wrap">
@@ -429,54 +527,16 @@ function ListView() {
             )}
           </section>
         )}
-
-        {/* Acesso Rápido — Portal SEFAZ */}
-        {empresas.length > 0 && (
-          <section>
-            <h2 className="text-[12px] font-bold text-emerald-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Building2 size={13} /> Portal SEFAZ ({empresas.length} empresas)
-            </h2>
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
-              <table className="w-full">
-                <thead>
-                  <tr className="text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border bg-muted/30">
-                    <th className="px-4 py-2.5 text-left font-semibold">Empresa</th>
-                    <th className="px-4 py-2.5 text-left font-semibold hidden sm:table-cell">CNPJ</th>
-                    <th className="px-4 py-2.5 text-left font-semibold hidden sm:table-cell">Usuário</th>
-                    <th className="px-4 py-2.5 text-right font-semibold">Portal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {empresas.map((e) => (
-                    <tr key={e.cnpj} className="border-t border-border/50 hover:bg-muted/20 transition-colors">
-                      <td className="px-4 py-2.5 text-[12px] font-medium text-foreground">{e.nome}</td>
-                      <td className="px-4 py-2.5 text-[11px] text-muted-foreground font-mono hidden sm:table-cell">{fmtCnpj(e.cnpj)}</td>
-                      <td className="px-4 py-2.5 text-[11px] text-muted-foreground hidden sm:table-cell">{e.usuario}</td>
-                      <td className="px-4 py-2.5 text-right">
-                        <button
-                          onClick={() => { setPortalModal(e); setCopiedField(null); }}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 text-[10px] font-medium hover:bg-emerald-500/20 transition-colors"
-                        >
-                          <ExternalLink size={11} /> Abrir
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
       </div>
     </div>
 
-    {/* Modal Portal SEFAZ */}
+    {/* Modal Portal do Contribuinte */}
     {portalModal && (
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
         <div className="bg-card border border-border rounded-2xl w-[420px] max-w-[94vw] p-6 shadow-2xl">
           <div className="flex items-center justify-between mb-1">
             <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-              <ExternalLink size={16} className="text-emerald-400" /> Portal SEFAZ
+              <ExternalLink size={16} className="text-emerald-400" /> Portal do Contribuinte
             </h3>
             <button onClick={() => setPortalModal(null)} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
           </div>
@@ -517,7 +577,69 @@ function ListView() {
               onClick={() => window.open('https://contribuinte.sefaz.al.gov.br', '_blank')}
               className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors"
             >
-              <ExternalLink size={14} /> Abrir Portal SEFAZ
+              <ExternalLink size={14} /> Abrir Portal do Contribuinte
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Modal Simples Nacional */}
+    {simplesModal && (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="bg-card border border-border rounded-2xl w-[420px] max-w-[94vw] p-6 shadow-2xl">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+              <ExternalLink size={16} className="text-blue-400" /> Simples Nacional
+            </h3>
+            <button onClick={() => setSimplesModal(null)} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
+          </div>
+          <p className="text-xs text-muted-foreground mb-4">{simplesModal.nome}</p>
+
+          <div className="space-y-2 mb-5">
+            <div className="flex items-center justify-between bg-muted/40 rounded-lg px-3 py-2">
+              <span className="text-xs text-muted-foreground w-20 shrink-0">Empresa</span>
+              <span className="text-sm font-medium text-foreground truncate flex-1 text-right">{simplesModal.nome}</span>
+            </div>
+            <div className="flex items-center justify-between bg-muted/40 rounded-lg px-3 py-2">
+              <span className="text-xs text-muted-foreground w-20 shrink-0">CNPJ</span>
+              <span className="text-sm font-mono text-foreground flex-1 text-right">{fmtCnpj(simplesModal.cnpj)}</span>
+            </div>
+            {simplesModal.cpf_responsavel && (
+              <div className="flex items-center gap-2 bg-muted/40 rounded-lg px-3 py-2">
+                <span className="text-xs text-muted-foreground w-20 shrink-0">CPF Resp.</span>
+                <span className="text-sm font-mono font-semibold text-foreground flex-1 text-right">{simplesModal.cpf_responsavel}</span>
+                <button
+                  onClick={() => copiarSimplesCampo('cpf', simplesModal.cpf_responsavel)}
+                  className={`ml-1 p-1 rounded transition-colors shrink-0 ${copiedSimplesField === 'cpf' ? 'text-blue-400' : 'text-muted-foreground hover:text-foreground'}`}
+                  title="Copiar CPF do responsável"
+                >
+                  {copiedSimplesField === 'cpf' ? <Check size={13} /> : <Copy size={13} />}
+                </button>
+              </div>
+            )}
+            {simplesModal.codigo_acesso && (
+              <div className="flex items-center gap-2 bg-muted/40 rounded-lg px-3 py-2">
+                <span className="text-xs text-muted-foreground w-20 shrink-0">Cód. Acesso</span>
+                <span className="text-sm font-mono font-semibold text-foreground flex-1 text-right">{simplesModal.codigo_acesso}</span>
+                <button
+                  onClick={() => copiarSimplesCampo('codigo', simplesModal.codigo_acesso)}
+                  className={`ml-1 p-1 rounded transition-colors shrink-0 ${copiedSimplesField === 'codigo' ? 'text-blue-400' : 'text-muted-foreground hover:text-foreground'}`}
+                  title="Copiar código de acesso"
+                >
+                  {copiedSimplesField === 'codigo' ? <Check size={13} /> : <Copy size={13} />}
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <p className="text-[11px] text-muted-foreground text-center">Copie os dados antes de abrir o Simples Nacional</p>
+            <button
+              onClick={() => window.open('https://www8.receita.fazenda.gov.br/SimplesNacional/Servicos/Grupo.aspx?grp=t&area=1', '_blank')}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors"
+            >
+              <ExternalLink size={14} /> Abrir Simples Nacional
             </button>
           </div>
         </div>

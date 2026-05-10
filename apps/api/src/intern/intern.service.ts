@@ -211,6 +211,49 @@ export class InternService {
   }
 
   /**
+   * Retorna clientes contábeis com credenciais do Simples Nacional cadastradas.
+   */
+  async getSimplesNacionalAccess(tenantId?: string) {
+    const where: any = { archived: false };
+    if (tenantId) {
+      where.OR = [{ tenant_id: tenantId }, { tenant_id: null }];
+    }
+
+    const clientes = await this.prisma.clienteContabil.findMany({
+      where,
+      select: {
+        id: true,
+        nome_empresa: true,
+        cpf_cnpj: true,
+        lead: {
+          select: {
+            name: true,
+            ficha_contabil: {
+              select: {
+                razao_social: true,
+                cnpj: true,
+                cpf_responsavel_simples: true,
+                codigo_acesso_simples: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { lead: { name: 'asc' } },
+    });
+
+    return clientes
+      .filter(c => c.lead?.ficha_contabil?.cpf_responsavel_simples || c.lead?.ficha_contabil?.codigo_acesso_simples)
+      .map(c => ({
+        id: c.id,
+        nome: c.nome_empresa || c.lead?.ficha_contabil?.razao_social || c.lead?.name || '',
+        cnpj: c.cpf_cnpj || c.lead?.ficha_contabil?.cnpj || '',
+        cpf_responsavel: c.lead?.ficha_contabil?.cpf_responsavel_simples || '',
+        codigo_acesso: c.lead?.ficha_contabil?.codigo_acesso_simples || '',
+      }));
+  }
+
+  /**
    * Contagem leve para badge na sidebar:
    * petições devolvidas para correção (RASCUNHO com versions > 0)
    */
