@@ -52,6 +52,12 @@ interface Arquivo {
 
 type TabId = 'dashboard' | 'consultar' | 'cnpjs' | 'historico' | 'email' | 'certidoes';
 type StatusGeral = 'OK' | 'ALERTA' | 'CRITICO' | 'ERRO';
+type PortalTipo = 'cnd' | 'fgts';
+
+const PORTAL_INSTRUCAO: Record<PortalTipo, { campo: string; acao: string }> = {
+  cnd: { campo: 'Informe o CNPJ', acao: 'Emitir Certidão' },
+  fgts: { campo: 'Inscrição (CNPJ)', acao: 'Consultar' },
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -200,7 +206,7 @@ export default function AgenteCertidoesPage() {
   // ── Certidões baixadas ──
   const [arquivos, setArquivos] = useState<Arquivo[]>([]);
   const [dlCnpj, setDlCnpj] = useState('');
-  const [dlStatus, setDlStatus] = useState<{ running: boolean; resultado?: { ok: boolean; mensagem: string; nome?: string; cnpj_fmt?: string; url?: string } } | null>(null);
+  const [dlStatus, setDlStatus] = useState<{ tipo: PortalTipo; running: boolean; resultado?: { ok: boolean; mensagem: string; nome?: string; cnpj_fmt?: string; url?: string } } | null>(null);
 
   // ── Dashboard ──
   const [dashResults, setDashResults] = useState<ResultadoCnpj[]>([]);
@@ -408,34 +414,36 @@ export default function AgenteCertidoesPage() {
     } catch { /* offline */ }
   }, []);
 
-  const baixarCND = async () => {
+  const abrirPortal = async (tipo: PortalTipo) => {
     if (!dlCnpj) { toast('Selecione um CNPJ.', 'err'); return; }
     const cnpjLimpo = limparCnpj(dlCnpj);
     // Copia o CNPJ pra área de transferência ANTES do await — clipboard só
-    // funciona dentro do gesto do usuário em alguns browsers. O portal novo
-    // da Receita é SPA com hash routing, não aceita CNPJ via querystring.
+    // funciona dentro do gesto do usuário em alguns browsers. Os portais da
+    // Receita Federal e da Caixa não aceitam CNPJ via querystring.
     let copiado = false;
     try {
       await navigator.clipboard.writeText(cnpjLimpo);
       copiado = true;
     } catch { /* clipboard bloqueado — segue sem copiar */ }
-    setDlStatus({ running: true });
+    setDlStatus({ tipo, running: true });
     try {
-      const res = await fetch(`${AGENT_API}/api/baixar/cnd/${cnpjLimpo}`, { method: 'POST' });
+      const res = await fetch(`${AGENT_API}/api/baixar/${tipo}/${cnpjLimpo}`, { method: 'POST' });
       const data = await res.json();
       const url = data?.resultado?.url;
       if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      const inst = PORTAL_INSTRUCAO[tipo];
       setDlStatus({
+        tipo,
         ...data,
         resultado: data?.resultado ? {
           ...data.resultado,
           mensagem: copiado
-            ? 'CNPJ copiado! No portal, clique no campo "Informe o CNPJ" e cole (Ctrl+V). Depois resolva o captcha e clique em "Emitir Certidão".'
+            ? `CNPJ copiado! No portal, clique no campo "${inst.campo}" e cole (Ctrl+V). Depois resolva o captcha e clique em "${inst.acao}".`
             : data.resultado.mensagem,
         } : data?.resultado,
       });
     } catch {
-      setDlStatus({ running: false, resultado: { ok: false, mensagem: 'Agente inacessível.' } });
+      setDlStatus({ tipo, running: false, resultado: { ok: false, mensagem: 'Agente inacessível.' } });
     }
   };
 
@@ -974,44 +982,54 @@ export default function AgenteCertidoesPage() {
         {/* ── CERTIDÕES BAIXADAS ── */}
         {activeTab === 'certidoes' && (
           <div className="max-w-4xl space-y-6">
-            {/* Baixar nova */}
+            {/* CNPJ comum aos cards de emissão */}
             <div className="rounded-xl border border-border bg-card p-5">
-              <h2 className="font-semibold mb-4 flex items-center gap-2">
-                <Download size={15} className="text-primary" /> Baixar CND Federal
-              </h2>
-              <div className="flex flex-wrap gap-3 items-end">
-                <div className="flex-1 min-w-[200px]">
-                  <label className="text-[12px] font-semibold block mb-1">CNPJ</label>
-                  <select value={dlCnpj} onChange={e => setDlCnpj(e.target.value)}
-                    className="w-full px-3 py-2 text-[13px] rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/30">
-                    {cnpjs.length
-                      ? cnpjs.map(c => (
-                        <option key={c.cnpj} value={c.cnpj}>{c.nome || c.cnpj} — {fmtCnpj(c.cnpj)}</option>
-                      ))
-                      : <option value="">Nenhum cliente PJ encontrado</option>
-                    }
-                  </select>
-                </div>
-                <button onClick={baixarCND} disabled={dlStatus?.running}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-[13px] hover:opacity-90 disabled:opacity-50">
-                  {dlStatus?.running ? <><Loader2 size={14} className="animate-spin" /> Abrindo...</> : <><ExternalLink size={14} /> Abrir Portal da Receita</>}
-                </button>
-              </div>
-              {dlStatus?.running && (
-                <div className="mt-3 bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300 text-[12px] rounded-lg px-4 py-3 border border-blue-200 dark:border-blue-800">
-                  <Loader2 size={12} className="inline animate-spin mr-2" />
-                  Abrindo portal da Receita Federal numa nova aba…
-                </div>
-              )}
-              {dlStatus && !dlStatus.running && dlStatus.resultado && (
-                <div className={`mt-3 text-[12px] rounded-lg px-4 py-3 border ${dlStatus.resultado.ok ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 border-emerald-200' : 'bg-red-50 dark:bg-red-950/20 text-red-700 border-red-200'}`}>
-                  {dlStatus.resultado.ok
-                    ? <><CheckCircle2 size={12} className="inline mr-1" /> <strong>{dlStatus.resultado.mensagem}</strong> — {dlStatus.resultado.cnpj_fmt}</>
-                    : <><XCircle size={12} className="inline mr-1" /> <strong>Erro:</strong> {dlStatus.resultado.mensagem}</>
-                  }
-                </div>
-              )}
+              <label className="text-[12px] font-semibold block mb-1">CNPJ</label>
+              <select value={dlCnpj} onChange={e => setDlCnpj(e.target.value)}
+                className="w-full px-3 py-2 text-[13px] rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/30">
+                {cnpjs.length
+                  ? cnpjs.map(c => (
+                    <option key={c.cnpj} value={c.cnpj}>{c.nome || c.cnpj} — {fmtCnpj(c.cnpj)}</option>
+                  ))
+                  : <option value="">Nenhum cliente PJ encontrado</option>
+                }
+              </select>
             </div>
+
+            {/* Cards de emissão (CND Federal + CRF FGTS) */}
+            {([
+              { tipo: 'cnd' as const, titulo: 'Baixar CND Federal', botao: 'Abrir Portal da Receita', loading: 'Abrindo portal da Receita Federal numa nova aba…' },
+              { tipo: 'fgts' as const, titulo: 'Baixar CRF FGTS', botao: 'Abrir Portal da Caixa', loading: 'Abrindo portal da Caixa (CRF/FGTS) numa nova aba…' },
+            ]).map(card => {
+              const ativo = dlStatus?.tipo === card.tipo;
+              const running = ativo && dlStatus?.running;
+              const resultado = ativo && !dlStatus?.running ? dlStatus?.resultado : null;
+              return (
+                <div key={card.tipo} className="rounded-xl border border-border bg-card p-5">
+                  <h2 className="font-semibold mb-4 flex items-center gap-2">
+                    <Download size={15} className="text-primary" /> {card.titulo}
+                  </h2>
+                  <button onClick={() => abrirPortal(card.tipo)} disabled={running}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-[13px] hover:opacity-90 disabled:opacity-50">
+                    {running ? <><Loader2 size={14} className="animate-spin" /> Abrindo...</> : <><ExternalLink size={14} /> {card.botao}</>}
+                  </button>
+                  {running && (
+                    <div className="mt-3 bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300 text-[12px] rounded-lg px-4 py-3 border border-blue-200 dark:border-blue-800">
+                      <Loader2 size={12} className="inline animate-spin mr-2" />
+                      {card.loading}
+                    </div>
+                  )}
+                  {resultado && (
+                    <div className={`mt-3 text-[12px] rounded-lg px-4 py-3 border ${resultado.ok ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 border-emerald-200' : 'bg-red-50 dark:bg-red-950/20 text-red-700 border-red-200'}`}>
+                      {resultado.ok
+                        ? <><CheckCircle2 size={12} className="inline mr-1" /> <strong>{resultado.mensagem}</strong> — {resultado.cnpj_fmt}</>
+                        : <><XCircle size={12} className="inline mr-1" /> <strong>Erro:</strong> {resultado.mensagem}</>
+                      }
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
             {/* Lista de arquivos */}
             <div className="rounded-xl border border-border bg-card overflow-hidden">

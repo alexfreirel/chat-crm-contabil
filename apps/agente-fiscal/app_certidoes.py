@@ -145,6 +145,9 @@ def _salvar_historico(hist: list[dict]) -> None:
 # no formulário do portal.
 URL_CND_FEDERAL_PORTAL = "https://servicos.receitafederal.gov.br/servico/certidoes/#/home/cnpj"
 
+# Portal CRF/FGTS da Caixa — página JSF, também não aceita CNPJ via URL.
+URL_CRF_FGTS_PORTAL = "https://consulta-crf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf"
+
 
 def _links_uteis(cnpj: str) -> dict:
     return {
@@ -371,6 +374,25 @@ def api_baixar_arquivo(nome: str):
     return send_from_directory(CERTIDOES_DIR, nome, as_attachment=True)
 
 
+def _resposta_portal(cnpj_limpo: str, url: str, mensagem: str) -> dict:
+    """Devolve payload estado/resultado para o frontend abrir o portal.
+    O backend roda em container Linux sem GUI — quem abre a aba é o
+    window.open() no navegador do usuário, usando o campo `url`.
+    """
+    payload = {
+        "running": False,
+        "resultado": {
+            "ok": True,
+            "mensagem": mensagem,
+            "cnpj_fmt": _fmt_cnpj(cnpj_limpo),
+            "url": url,
+        },
+    }
+    with _dl_lock:
+        _dl_state[cnpj_limpo] = payload
+    return payload
+
+
 @app.route("/api/baixar/cnd/<cnpj>", methods=["POST", "OPTIONS"])
 def api_baixar_cnd(cnpj: str):
     if request.method == "OPTIONS":
@@ -378,26 +400,29 @@ def api_baixar_cnd(cnpj: str):
     cnpj_limpo = _limpar_cnpj(cnpj)
     if len(cnpj_limpo) != 14:
         return jsonify({"error": "CNPJ inválido"}), 400
+    return jsonify(_resposta_portal(
+        cnpj_limpo,
+        URL_CND_FEDERAL_PORTAL,
+        "Portal aberto numa nova aba. Digite o CNPJ no formulário "
+        "(o portal novo da Receita não aceita CNPJ via URL) e emita "
+        "a Certidão Conjunta.",
+    ))
 
-    # Em produção o backend roda em container Linux sem GUI — webbrowser.open()
-    # não tem efeito. Devolvemos a URL para o frontend abrir via window.open()
-    # no navegador do usuário. Resposta síncrona basta — não há trabalho async.
-    payload = {
-        "running": False,
-        "resultado": {
-            "ok": True,
-            "mensagem": (
-                "Portal aberto numa nova aba. Digite o CNPJ no formulário "
-                "(o portal novo da Receita não aceita CNPJ via URL) e emita "
-                "a Certidão Conjunta."
-            ),
-            "cnpj_fmt": _fmt_cnpj(cnpj_limpo),
-            "url": URL_CND_FEDERAL_PORTAL,
-        },
-    }
-    with _dl_lock:
-        _dl_state[cnpj_limpo] = payload
-    return jsonify(payload)
+
+@app.route("/api/baixar/fgts/<cnpj>", methods=["POST", "OPTIONS"])
+def api_baixar_fgts(cnpj: str):
+    if request.method == "OPTIONS":
+        return ("", 204)
+    cnpj_limpo = _limpar_cnpj(cnpj)
+    if len(cnpj_limpo) != 14:
+        return jsonify({"error": "CNPJ inválido"}), 400
+    return jsonify(_resposta_portal(
+        cnpj_limpo,
+        URL_CRF_FGTS_PORTAL,
+        "Portal aberto numa nova aba. Cole o CNPJ no campo do "
+        "empregador, resolva o captcha e clique em Consultar para "
+        "emitir o CRF.",
+    ))
 
 
 @app.route("/api/baixar/status/<cnpj>", methods=["GET", "OPTIONS"])
