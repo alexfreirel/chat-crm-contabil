@@ -5,6 +5,9 @@ Expõe os endpoints consumidos pela página /atendimento/agente-certidoes do
 frontend. A lista de CNPJs vem do frontend (fonte: tabela ClienteContabil),
 NÃO é mais persistida aqui.
 
+Monitoramento automático cobre apenas Receita Federal (situação cadastral)
+e FGTS/CRF — Simples Nacional foi removido do fluxo automático.
+
 Endpoints:
   GET  /api/status                          → estado da última consulta + logs
   GET  /api/config                          → email/alertas (sem CNPJs)
@@ -29,10 +32,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
 
-from certidoes_agent import (
-    consultar_cnpj_receita,
-    consultar_simples_nacional,
-)
+from certidoes_agent import consultar_cnpj_receita
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
@@ -150,18 +150,16 @@ def _links_uteis(cnpj: str) -> dict:
             "CNDConjuntaInter/InformaNICertidao.asp?Tipo=2"
         ),
         "crf_fgts": "https://consulta-crf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf",
-        "simples_nacional": (
-            "https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/"
-            f"ATBHE/consultaSituacao.app.aspx?cnpj={cnpj}"
-        ),
     }
 
 
 def _consultar_um_cnpj(cnpj: str, nome: str) -> dict:
-    """Consulta as certidões públicas de UM CNPJ (sem autenticação eCAC)."""
+    """Consulta as certidões públicas de UM CNPJ (sem autenticação eCAC).
+
+    Monitora apenas Receita Federal (situação cadastral) e FGTS/CRF.
+    """
     cnpj_limpo = _limpar_cnpj(cnpj)
     cadastral: dict | None = None
-    sn: dict | None = None
     alertas: list[str] = []
     status_geral = "OK"
 
@@ -196,20 +194,6 @@ def _consultar_um_cnpj(cnpj: str, nome: str) -> dict:
         if status_geral == "OK":
             status_geral = "ALERTA"
 
-    # ── Simples Nacional (consulta pública)
-    try:
-        s = consultar_simples_nacional(cnpj_limpo)
-        if s.get("ok"):
-            sn = {
-                "ok": True,
-                "optante": bool(s.get("optante")),
-                "status": s.get("situacao") or ("Optante" if s.get("optante") else "Não optante"),
-                "desde": s.get("data_opcao"),
-                "fonte": s.get("fonte"),
-            }
-    except Exception as e:
-        log.warning(f"Erro consultando Simples Nacional: {e}")
-
     # ── CND Federal e FGTS — só link (consulta direta requer autenticação/captcha)
     cnd_federal = {
         "ok": True,
@@ -232,7 +216,6 @@ def _consultar_um_cnpj(cnpj: str, nome: str) -> dict:
             "cadastral": cadastral,
             "cnd_federal": cnd_federal,
             "fgts_crf": fgts_crf,
-            "simples_nacional": sn,
         },
         "links_uteis": _links_uteis(cnpj_limpo),
         "alertas": alertas,

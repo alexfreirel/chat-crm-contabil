@@ -25,7 +25,6 @@ interface Config {
 
 interface Certidao {
   ok?: boolean; status?: string; descricao?: string; fonte?: string;
-  optante?: boolean; desde?: string;
 }
 
 interface ResultadoCnpj {
@@ -33,7 +32,7 @@ interface ResultadoCnpj {
   nome_empresa?: string; nome_config?: string;
   certidoes?: {
     cadastral?: Certidao; cnd_federal?: Certidao;
-    fgts_crf?: Certidao; simples_nacional?: Certidao;
+    fgts_crf?: Certidao;
   };
   links_uteis?: Record<string, string>;
   alertas?: string[];
@@ -118,24 +117,16 @@ function CertCard({ titulo, cert, icon: Icon, url }: {
   let borderCls = 'border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20';
   let icon = <CheckCircle2 size={14} className="text-emerald-600" />;
   let statusText = cert.status || 'OK';
-  let desc = cert.descricao && cert.descricao !== cert.status ? cert.descricao : '';
+  const desc = cert.descricao && cert.descricao !== cert.status ? cert.descricao : '';
 
-  if ('optante' in cert) {
-    statusText = cert.optante ? 'Optante pelo Simples Nacional' : 'Não optante';
-    desc = cert.desde ? `Desde: ${cert.desde}` : '';
-    icon = cert.optante
-      ? <CheckCircle2 size={14} className="text-emerald-600" />
-      : <AlertTriangle size={14} className="text-amber-600" />;
-  } else {
-    const st = (cert.status || '').toUpperCase();
-    if (!cert.ok || st === 'POSITIVA' || st === 'IRREGULAR' || st === 'INAPTA') {
-      borderCls = 'border-red-200 bg-red-50 dark:bg-red-950/20';
-      icon = <XCircle size={14} className="text-red-600" />;
-    } else if (st === 'CONSULTAR_MANUALMENTE' || st === 'VERIFICAR') {
-      borderCls = 'border-amber-200 bg-amber-50 dark:bg-amber-950/20';
-      icon = <AlertTriangle size={14} className="text-amber-600" />;
-      statusText = 'Consultar portal';
-    }
+  const st = (cert.status || '').toUpperCase();
+  if (!cert.ok || st === 'POSITIVA' || st === 'IRREGULAR' || st === 'INAPTA') {
+    borderCls = 'border-red-200 bg-red-50 dark:bg-red-950/20';
+    icon = <XCircle size={14} className="text-red-600" />;
+  } else if (st === 'CONSULTAR_MANUALMENTE' || st === 'VERIFICAR') {
+    borderCls = 'border-amber-200 bg-amber-50 dark:bg-amber-950/20';
+    icon = <AlertTriangle size={14} className="text-amber-600" />;
+    statusText = 'Consultar portal';
   }
 
   return (
@@ -475,7 +466,7 @@ export default function AgenteCertidoesPage() {
               <h1 className="text-2xl font-bold">Agente Certidões</h1>
             </div>
             <p className="text-[13px] text-muted-foreground mt-0.5">
-              Monitor automático de certidões PJ — Receita Federal, FGTS/CRF, Simples Nacional
+              Monitor automático de certidões PJ — Receita Federal e FGTS/CRF
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -568,7 +559,7 @@ export default function AgenteCertidoesPage() {
                         <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Empresa</th>
                         <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Situação Cadastral</th>
                         <th className="text-left px-4 py-3 font-semibold text-muted-foreground">CND Federal</th>
-                        <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Simples Nacional</th>
+                        <th className="text-left px-4 py-3 font-semibold text-muted-foreground">FGTS / CRF</th>
                         <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Alertas</th>
                         <th className="px-4 py-3" />
                       </tr>
@@ -578,7 +569,7 @@ export default function AgenteCertidoesPage() {
                         const nome = r.nome_empresa || r.nome_config || r.cnpj;
                         const cad = r.certidoes?.cadastral;
                         const cnd = r.certidoes?.cnd_federal;
-                        const sn = r.certidoes?.simples_nacional;
+                        const fgts = r.certidoes?.fgts_crf;
                         return (
                           <tr key={i} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
                             <td className="px-4 py-3"><StatusDot status={r.status_geral} /></td>
@@ -593,7 +584,9 @@ export default function AgenteCertidoesPage() {
                                   : '🔗 Portal'}
                             </td>
                             <td className="px-4 py-3 text-[12px]">
-                              {sn ? (sn.optante ? '✅ Optante' : 'Não optante') : '—'}
+                              {fgts?.status === 'REGULAR' ? '✅ Regular'
+                                : fgts?.status === 'IRREGULAR' ? '🚨 Irregular'
+                                  : '🔗 Portal'}
                             </td>
                             <td className="px-4 py-3">
                               {(r.alertas || []).length === 0
@@ -728,11 +721,10 @@ export default function AgenteCertidoesPage() {
                               <FileText size={12} /> Ver detalhes
                             </button>
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                             <CertCard titulo="Situação Cadastral" cert={r.certidoes?.cadastral} icon={Building2} url={r.links_uteis?.qsa_receita} />
                             <CertCard titulo="CND Federal" cert={r.certidoes?.cnd_federal} icon={ShieldCheck} url={r.links_uteis?.cnd_federal} />
                             <CertCard titulo="FGTS / CRF" cert={r.certidoes?.fgts_crf} icon={ShieldCheck} url={r.links_uteis?.crf_fgts} />
-                            <CertCard titulo="Simples Nacional" cert={r.certidoes?.simples_nacional} icon={FileText} url={r.links_uteis?.simples_nacional} />
                           </div>
                         </div>
                       );
@@ -1101,9 +1093,7 @@ export default function AgenteCertidoesPage() {
               <CertCard titulo="Situação Cadastral (Receita Federal)" cert={modalData.certidoes?.cadastral} icon={Building2} url={modalData.links_uteis?.qsa_receita} />
               <CertCard titulo="CND Federal — PGFN + Receita Federal" cert={modalData.certidoes?.cnd_federal} icon={ShieldCheck} url={modalData.links_uteis?.cnd_federal} />
               <CertCard titulo="FGTS / CRF — Caixa Econômica Federal" cert={modalData.certidoes?.fgts_crf} icon={ShieldCheck} url={modalData.links_uteis?.crf_fgts} />
-              {modalData.certidoes?.simples_nacional && (
-                <CertCard titulo="Simples Nacional" cert={modalData.certidoes?.simples_nacional} icon={FileText} url={modalData.links_uteis?.simples_nacional} />
-              )}
+
 
               {/* Links rápidos */}
               <div>

@@ -7,7 +7,6 @@ Certidões suportadas:
   - CND Federal (Receita Federal + PGFN — Certidão Conjunta)
   - Certidão FGTS (Caixa Econômica Federal)
   - CADIN (Cadastro Informações dos Inadimplentes)
-  - Situação no Simples Nacional
 
 Fluxo:
   1. Recebe session requests já autenticada (via autenticar_ecac() do ecac_agent)
@@ -52,14 +51,6 @@ CERTIDOES = {
             "https://consulta-crf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf",
         ],
         "arquivo": "certidao-fgts",
-    },
-    "SIMPLES_NACIONAL": {
-        "nome": "Situação no Simples Nacional",
-        "urls": [
-            "https://www8.receita.fazenda.gov.br/SimplesNacional/Servicos/PGDAS-D/Arquivos/ConsultaSituacaoCompleto.aspx?cnpj={cnpj}",
-            "https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/ATBHE/consultaSituacao.app.aspx",
-        ],
-        "arquivo": "situacao-simples-nacional",
     },
 }
 
@@ -171,6 +162,8 @@ def baixar_certidoes_todas(
 
 
 # ── Consulta Simples Nacional (pública, sem autenticação) ─────────────────────
+# Mantida para uso do Agente Fiscal SEFAZ (app.py, das_agent.py).
+# O Agente Certidões (app_certidoes.py) NÃO consome mais esta função.
 
 def consultar_simples_nacional(cnpj: str) -> dict:
     """
@@ -202,7 +195,6 @@ def consultar_simples_nacional(cnpj: str) -> dict:
                         "fonte": url,
                     }
                 elif "html" in ct and r.text:
-                    # Parse básico do HTML para extrair informação
                     texto = r.text.lower()
                     optante = "optante" in texto and "não optante" not in texto
                     return {
