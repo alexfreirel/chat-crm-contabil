@@ -139,16 +139,22 @@ def _salvar_historico(hist: list[dict]) -> None:
     )
 
 
+# Portal da Receita Federal — domínio antigo (solucoes.receita.fazenda.gov.br)
+# foi descontinuado. O novo portal de certidões é uma SPA Angular com hash
+# routing, então não aceita CNPJ via querystring — o usuário precisa digitar
+# no formulário do portal.
+URL_CND_FEDERAL_PORTAL = "https://servicos.receitafederal.gov.br/servico/certidoes/#/home/cnpj"
+
+
 def _links_uteis(cnpj: str) -> dict:
     return {
+        # QSA: o domínio antigo segue ativo (testado em 2026-05).
         "qsa_receita": (
             "https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/"
             f"Cnpjreva_Solicitacao.asp?cnpj={cnpj}"
         ),
-        "cnd_federal": (
-            "https://solucoes.receita.fazenda.gov.br/servicos/certidao/"
-            "CNDConjuntaInter/InformaNICertidao.asp?Tipo=2"
-        ),
+        # Certidões: portal migrou para servicos.receitafederal.gov.br (SPA).
+        "cnd_federal": URL_CND_FEDERAL_PORTAL,
         "crf_fgts": "https://consulta-crf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf",
     }
 
@@ -377,37 +383,25 @@ def api_baixar_cnd(cnpj: str):
     if len(cnpj_limpo) != 14:
         return jsonify({"error": "CNPJ inválido"}), 400
 
+    # Em produção o backend roda em container Linux sem GUI — webbrowser.open()
+    # não tem efeito. Devolvemos a URL para o frontend abrir via window.open()
+    # no navegador do usuário. Resposta síncrona basta — não há trabalho async.
+    payload = {
+        "running": False,
+        "resultado": {
+            "ok": True,
+            "mensagem": (
+                "Portal aberto numa nova aba. Digite o CNPJ no formulário "
+                "(o portal novo da Receita não aceita CNPJ via URL) e emita "
+                "a Certidão Conjunta."
+            ),
+            "cnpj_fmt": _fmt_cnpj(cnpj_limpo),
+            "url": URL_CND_FEDERAL_PORTAL,
+        },
+    }
     with _dl_lock:
-        _dl_state[cnpj_limpo] = {"running": True, "resultado": None}
-
-    def _abrir_portal():
-        # Abre o portal da Receita Federal para o usuário emitir a certidão.
-        # (A consulta direta exige captcha/autenticação — abrir o portal é o caminho seguro.)
-        import webbrowser
-        url = (
-            "https://solucoes.receita.fazenda.gov.br/servicos/certidao/"
-            f"CNDConjuntaInter/consultarCertidao.asp?cpfcnpj={cnpj_limpo}"
-        )
-        try:
-            webbrowser.open(url)
-            with _dl_lock:
-                _dl_state[cnpj_limpo] = {
-                    "running": False,
-                    "resultado": {
-                        "ok": True,
-                        "mensagem": "Portal aberto no navegador. Emita a certidão e salve o PDF.",
-                        "cnpj_fmt": _fmt_cnpj(cnpj_limpo),
-                    },
-                }
-        except Exception as e:
-            with _dl_lock:
-                _dl_state[cnpj_limpo] = {
-                    "running": False,
-                    "resultado": {"ok": False, "mensagem": str(e)},
-                }
-
-    threading.Thread(target=_abrir_portal, daemon=True).start()
-    return jsonify({"ok": True})
+        _dl_state[cnpj_limpo] = payload
+    return jsonify(payload)
 
 
 @app.route("/api/baixar/status/<cnpj>", methods=["GET", "OPTIONS"])

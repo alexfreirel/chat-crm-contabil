@@ -193,8 +193,7 @@ export default function AgenteCertidoesPage() {
   // ── Certidões baixadas ──
   const [arquivos, setArquivos] = useState<Arquivo[]>([]);
   const [dlCnpj, setDlCnpj] = useState('');
-  const [dlStatus, setDlStatus] = useState<{ running: boolean; resultado?: { ok: boolean; mensagem: string; nome?: string; cnpj_fmt?: string } } | null>(null);
-  const dlPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [dlStatus, setDlStatus] = useState<{ running: boolean; resultado?: { ok: boolean; mensagem: string; nome?: string; cnpj_fmt?: string; url?: string } } | null>(null);
 
   // ── Dashboard ──
   const [dashResults, setDashResults] = useState<ResultadoCnpj[]>([]);
@@ -405,22 +404,18 @@ export default function AgenteCertidoesPage() {
   const baixarCND = async () => {
     if (!dlCnpj) { toast('Selecione um CNPJ.', 'err'); return; }
     setDlStatus({ running: true });
-    await fetch(`${AGENT_API}/api/baixar/cnd/${limparCnpj(dlCnpj)}`, { method: 'POST' });
-    dlPollRef.current = setInterval(pollDownload, 2000);
-  };
-
-  const pollDownload = async () => {
     try {
-      const data = await fetch(`${AGENT_API}/api/baixar/status/${limparCnpj(dlCnpj)}`).then(r => r.json());
-      if (!data.running && data.resultado !== null) {
-        if (dlPollRef.current) clearInterval(dlPollRef.current);
-        setDlStatus(data);
-        if (data.resultado?.ok) loadArquivos();
-      }
-    } catch { /* offline */ }
+      const res = await fetch(`${AGENT_API}/api/baixar/cnd/${limparCnpj(dlCnpj)}`, { method: 'POST' });
+      const data = await res.json();
+      // O backend devolve a URL — abrimos no navegador do usuário (window.open),
+      // pois em produção o servidor roda em container Linux sem GUI.
+      const url = data?.resultado?.url;
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      setDlStatus(data);
+    } catch {
+      setDlStatus({ running: false, resultado: { ok: false, mensagem: 'Agente inacessível.' } });
+    }
   };
-
-  useEffect(() => () => { if (dlPollRef.current) clearInterval(dlPollRef.current); }, []);
 
   // ─── Tab change ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -985,13 +980,13 @@ export default function AgenteCertidoesPage() {
                 </div>
                 <button onClick={baixarCND} disabled={dlStatus?.running}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-[13px] hover:opacity-90 disabled:opacity-50">
-                  {dlStatus?.running ? <><Loader2 size={14} className="animate-spin" /> Abrindo...</> : <><ExternalLink size={14} /> Abrir Portal + Preencher CNPJ</>}
+                  {dlStatus?.running ? <><Loader2 size={14} className="animate-spin" /> Abrindo...</> : <><ExternalLink size={14} /> Abrir Portal da Receita</>}
                 </button>
               </div>
               {dlStatus?.running && (
                 <div className="mt-3 bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300 text-[12px] rounded-lg px-4 py-3 border border-blue-200 dark:border-blue-800">
                   <Loader2 size={12} className="inline animate-spin mr-2" />
-                  <strong>Portal aberto no Chrome!</strong> O CNPJ já está preenchido. Clique em "Emitir Certidão" no Chrome. O PDF será salvo automaticamente aqui.
+                  Abrindo portal da Receita Federal numa nova aba…
                 </div>
               )}
               {dlStatus && !dlStatus.running && dlStatus.resultado && (
