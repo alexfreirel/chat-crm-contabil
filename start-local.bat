@@ -35,12 +35,17 @@ start "LexCRM - Worker" cmd /c "title LexCRM - Worker && node apps/worker/dist/m
 :: Aguarda um pouco para o worker subir
 timeout /t 3 /nobreak >nul
 
+:: Inicia o Agente Certidoes (Flask, porta 5001) — backend da pagina /atendimento/agente-certidoes
+echo [5/5] Iniciando Agente Certidoes (porta 5001)...
+start "LexCRM - Agente Certidoes" cmd /c "title LexCRM - Agente Certidoes && cd /d %~dp0apps\agente-fiscal && set PORT=5001 && py app_certidoes.py || pause"
+
 :: Inicia o Web no terminal atual
 echo.
 echo =========================================================
-echo  Painel CRM: http://localhost:3000
-echo  API:        http://localhost:3001
-echo  Worker:     (rodando em background)
+echo  Painel CRM:        http://localhost:3000
+echo  API:               http://localhost:3001
+echo  Agente Certidoes:  http://localhost:5001
+echo  Worker:            (rodando em background)
 echo =========================================================
 echo.
 

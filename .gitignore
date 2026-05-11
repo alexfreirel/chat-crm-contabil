@@ -101,3 +101,8 @@ dist/
 # Seaweedfs local data (infra)
 infra/seaweed_master_data/
 infra/seaweed_volume_data/
+
+# Python (apps/agente-fiscal)
+__pycache__/
+*.py[cod]
+apps/agente-fiscal/data_certidoes/
