@@ -182,6 +182,50 @@ services:
         - "traefik.http.routers.lexcon-agente.entrypoints=websecure"
         - "traefik.http.routers.lexcon-agente.tls.certresolver=letsencryptresolver"
 
+  # ------ Agente Certidões (Flask, mesma imagem do agente-fiscal) ------
+  # Reutiliza a imagem chat-crm-contabil-agente-fiscal — ela já contém o
+  # módulo app_certidoes.py. Apenas sobrescreve o command para escutar em
+  # 5001 e expõe via Traefik em /agente-certidoes-api.
+  agente-certidoes:
+    image: lexconassessoria/chat-crm-contabil-agente-fiscal:latest
+    command:
+      - "gunicorn"
+      - "--bind"
+      - "0.0.0.0:5001"
+      - "--workers"
+      - "2"
+      - "--threads"
+      - "4"
+      - "--timeout"
+      - "300"
+      - "app_certidoes:app"
+    networks:
+      - default
+      - OrionNet
+    ports:
+      - "${AGENT_CERTIDOES_PORT:-44051}:5001"
+    environment:
+      - TZ=America/Sao_Paulo
+      - PORT=5001
+      - ALLOWED_ORIGINS=https://lexconassessoriacontabil.com.br
+      - CERTIDOES_DATA_DIR=/app/data_certidoes
+    volumes:
+      - agente_certidoes_data:/app/data_certidoes
+    deploy:
+      restart_policy:
+        condition: any
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=OrionNet"
+        - "traefik.http.routers.lexcon-certidoes.rule=Host(`lexconassessoriacontabil.com.br`) && PathPrefix(`/agente-certidoes-api`)"
+        - "traefik.http.routers.lexcon-certidoes.service=lexcon-certidoes"
+        - "traefik.http.routers.lexcon-certidoes.priority=110"
+        - "traefik.http.middlewares.lexcon-strip-certidoes.stripprefix.prefixes=/agente-certidoes-api"
+        - "traefik.http.routers.lexcon-certidoes.middlewares=lexcon-strip-certidoes"
+        - "traefik.http.services.lexcon-certidoes.loadbalancer.server.port=5001"
+        - "traefik.http.routers.lexcon-certidoes.entrypoints=websecure"
+        - "traefik.http.routers.lexcon-certidoes.tls.certresolver=letsencryptresolver"
+
   # ------ Next.js Frontend ------
   crm-web:
     image: lexconassessoria/chat-crm-contabil-web:latest
@@ -217,3 +261,4 @@ volumes:
   minio_data_lexcon:
   agente_fiscal_downloads:
   agente_fiscal_empresas:
+  agente_certidoes_data:

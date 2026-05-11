@@ -62,14 +62,15 @@ function fmtCnpj(c: string) {
 
 function limparCnpj(c: string) { return c.replace(/\D/g, ''); }
 
-const AGENT_API = (() => {
-  // Backend Python do Agente Certidões — apps/agente-fiscal/app_certidoes.py
-  // Porta padrão 5001 (a 5000 é do app.py do agente fiscal SEFAZ).
-  if (typeof window === 'undefined') return 'http://localhost:5001';
-  const env = process.env.NEXT_PUBLIC_AGENT_CERTIDOES_URL;
-  if (env) return env;
-  return 'http://localhost:5001';
-})();
+/* ────────────────────────────────────────────────────────────────────────────
+   Backend Python do Agente Certidões — apps/agente-fiscal/app_certidoes.py
+   Em produção usa /agente-certidoes-api (proxy via Traefik na VPS).
+   Em dev local usa http://localhost:5001.
+   ──────────────────────────────────────────────────────────────────────────── */
+const AGENT_API = process.env.NEXT_PUBLIC_AGENT_CERTIDOES_URL
+  || (typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+    ? `${window.location.origin}/agente-certidoes-api`
+    : 'http://localhost:5001');
 
 // ─── Sub-componentes ──────────────────────────────────────────────────────────
 
