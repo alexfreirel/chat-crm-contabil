@@ -31,7 +31,7 @@ interface ResultadoCnpj {
   cnpj: string;
   nome_empresa?: string; nome_config?: string;
   certidoes?: {
-    cadastral?: Certidao; cnd_federal?: Certidao;
+    cadastral?: Certidao;
     fgts_crf?: Certidao;
   };
   links_uteis?: Record<string, string>;
@@ -569,7 +569,6 @@ export default function AgenteCertidoesPage() {
                         <th className="w-6 px-4 py-3" />
                         <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Empresa</th>
                         <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Situação Cadastral</th>
-                        <th className="text-left px-4 py-3 font-semibold text-muted-foreground">CND Federal</th>
                         <th className="text-left px-4 py-3 font-semibold text-muted-foreground">FGTS / CRF</th>
                         <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Alertas</th>
                         <th className="px-4 py-3" />
@@ -579,7 +578,6 @@ export default function AgenteCertidoesPage() {
                       {dashResults.map((r, i) => {
                         const nome = r.nome_empresa || r.nome_config || r.cnpj;
                         const cad = r.certidoes?.cadastral;
-                        const cnd = r.certidoes?.cnd_federal;
                         const fgts = r.certidoes?.fgts_crf;
                         return (
                           <tr key={i} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
@@ -589,11 +587,6 @@ export default function AgenteCertidoesPage() {
                               <div className="text-muted-foreground font-mono text-[11px]">{fmtCnpj(r.cnpj)}</div>
                             </td>
                             <td className="px-4 py-3 text-[12px]">{cad?.status || '—'}</td>
-                            <td className="px-4 py-3 text-[12px]">
-                              {cnd?.status === 'NEGATIVA' ? '✅ Negativa'
-                                : cnd?.status === 'POSITIVA' ? '🚨 Positiva'
-                                  : '🔗 Portal'}
-                            </td>
                             <td className="px-4 py-3 text-[12px]">
                               {fgts?.status === 'REGULAR' ? '✅ Regular'
                                 : fgts?.status === 'IRREGULAR' ? '🚨 Irregular'
@@ -732,9 +725,8 @@ export default function AgenteCertidoesPage() {
                               <FileText size={12} /> Ver detalhes
                             </button>
                           </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <CertCard titulo="Situação Cadastral" cert={r.certidoes?.cadastral} icon={Building2} url={r.links_uteis?.qsa_receita} />
-                            <CertCard titulo="CND Federal" cert={r.certidoes?.cnd_federal} icon={ShieldCheck} url={r.links_uteis?.cnd_federal} />
                             <CertCard titulo="FGTS / CRF" cert={r.certidoes?.fgts_crf} icon={ShieldCheck} url={r.links_uteis?.crf_fgts} />
                           </div>
                         </div>
@@ -1102,7 +1094,6 @@ export default function AgenteCertidoesPage() {
               <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Detalhes das Certidões</p>
 
               <CertCard titulo="Situação Cadastral (Receita Federal)" cert={modalData.certidoes?.cadastral} icon={Building2} url={modalData.links_uteis?.qsa_receita} />
-              <CertCard titulo="CND Federal — PGFN + Receita Federal" cert={modalData.certidoes?.cnd_federal} icon={ShieldCheck} url={modalData.links_uteis?.cnd_federal} />
               <CertCard titulo="FGTS / CRF — Caixa Econômica Federal" cert={modalData.certidoes?.fgts_crf} icon={ShieldCheck} url={modalData.links_uteis?.crf_fgts} />
 
 

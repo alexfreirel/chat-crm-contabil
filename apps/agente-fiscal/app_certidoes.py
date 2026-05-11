@@ -200,13 +200,10 @@ def _consultar_um_cnpj(cnpj: str, nome: str) -> dict:
         if status_geral == "OK":
             status_geral = "ALERTA"
 
-    # ── CND Federal e FGTS — só link (consulta direta requer autenticação/captcha)
-    cnd_federal = {
-        "ok": True,
-        "status": "CONSULTAR_MANUALMENTE",
-        "descricao": "Acesse o portal da RFB/PGFN para emitir a Certidão Conjunta.",
-        "fonte": "Receita Federal / PGFN",
-    }
+    # ── FGTS — só link (consulta direta requer autenticação/captcha).
+    # CND Federal foi unificada com a Situação Cadastral (mesma fonte: Receita
+    # Federal). O link de emissão fica em links_uteis.cnd_federal e na aba
+    # "Certidões" → "Baixar CND Federal".
     fgts_crf = {
         "ok": True,
         "status": "CONSULTAR_MANUALMENTE",
@@ -220,7 +217,6 @@ def _consultar_um_cnpj(cnpj: str, nome: str) -> dict:
         "nome_config": nome,
         "certidoes": {
             "cadastral": cadastral,
-            "cnd_federal": cnd_federal,
             "fgts_crf": fgts_crf,
         },
         "links_uteis": _links_uteis(cnpj_limpo),
