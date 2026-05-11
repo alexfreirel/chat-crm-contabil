@@ -403,15 +403,30 @@ export default function AgenteCertidoesPage() {
 
   const baixarCND = async () => {
     if (!dlCnpj) { toast('Selecione um CNPJ.', 'err'); return; }
+    const cnpjLimpo = limparCnpj(dlCnpj);
+    // Copia o CNPJ pra área de transferência ANTES do await — clipboard só
+    // funciona dentro do gesto do usuário em alguns browsers. O portal novo
+    // da Receita é SPA com hash routing, não aceita CNPJ via querystring.
+    let copiado = false;
+    try {
+      await navigator.clipboard.writeText(cnpjLimpo);
+      copiado = true;
+    } catch { /* clipboard bloqueado — segue sem copiar */ }
     setDlStatus({ running: true });
     try {
-      const res = await fetch(`${AGENT_API}/api/baixar/cnd/${limparCnpj(dlCnpj)}`, { method: 'POST' });
+      const res = await fetch(`${AGENT_API}/api/baixar/cnd/${cnpjLimpo}`, { method: 'POST' });
       const data = await res.json();
-      // O backend devolve a URL — abrimos no navegador do usuário (window.open),
-      // pois em produção o servidor roda em container Linux sem GUI.
       const url = data?.resultado?.url;
       if (url) window.open(url, '_blank', 'noopener,noreferrer');
-      setDlStatus(data);
+      setDlStatus({
+        ...data,
+        resultado: data?.resultado ? {
+          ...data.resultado,
+          mensagem: copiado
+            ? 'CNPJ copiado! No portal, clique no campo "Informe o CNPJ" e cole (Ctrl+V). Depois resolva o captcha e clique em "Emitir Certidão".'
+            : data.resultado.mensagem,
+        } : data?.resultado,
+      });
     } catch {
       setDlStatus({ running: false, resultado: { ok: false, mensagem: 'Agente inacessível.' } });
     }
