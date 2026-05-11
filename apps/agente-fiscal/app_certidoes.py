@@ -148,6 +148,12 @@ URL_CND_FEDERAL_PORTAL = "https://servicos.receitafederal.gov.br/servico/certido
 # Portal CRF/FGTS da Caixa — página JSF, também não aceita CNPJ via URL.
 URL_CRF_FGTS_PORTAL = "https://consulta-crf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf"
 
+# Portal CND Trabalhista do TST.
+URL_CND_TRABALHISTA_PORTAL = "https://cndt-certidao.tst.jus.br/inicio.faces"
+
+# Portal CND Falência/Concordata do TJAL.
+URL_CND_FALENCIA_PORTAL = "https://www2.tjal.jus.br/sco/abrirCadastro.do?servico=810101"
+
 
 def _links_uteis(cnpj: str) -> dict:
     return {
@@ -158,7 +164,9 @@ def _links_uteis(cnpj: str) -> dict:
         ),
         # Certidões: portal migrou para servicos.receitafederal.gov.br (SPA).
         "cnd_federal": URL_CND_FEDERAL_PORTAL,
-        "crf_fgts": "https://consulta-crf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf",
+        "crf_fgts": URL_CRF_FGTS_PORTAL,
+        "cnd_trabalhista": URL_CND_TRABALHISTA_PORTAL,
+        "cnd_falencia": URL_CND_FALENCIA_PORTAL,
     }
 
 
@@ -422,6 +430,37 @@ def api_baixar_fgts(cnpj: str):
         "Portal aberto numa nova aba. Cole o CNPJ no campo do "
         "empregador, resolva o captcha e clique em Consultar para "
         "emitir o CRF.",
+    ))
+
+
+@app.route("/api/baixar/trabalhista/<cnpj>", methods=["POST", "OPTIONS"])
+def api_baixar_trabalhista(cnpj: str):
+    if request.method == "OPTIONS":
+        return ("", 204)
+    cnpj_limpo = _limpar_cnpj(cnpj)
+    if len(cnpj_limpo) != 14:
+        return jsonify({"error": "CNPJ inválido"}), 400
+    return jsonify(_resposta_portal(
+        cnpj_limpo,
+        URL_CND_TRABALHISTA_PORTAL,
+        "Portal aberto numa nova aba. Informe o CNPJ no campo de "
+        "pesquisa, resolva o captcha e emita a Certidão Negativa "
+        "de Débitos Trabalhistas.",
+    ))
+
+
+@app.route("/api/baixar/falencia/<cnpj>", methods=["POST", "OPTIONS"])
+def api_baixar_falencia(cnpj: str):
+    if request.method == "OPTIONS":
+        return ("", 204)
+    cnpj_limpo = _limpar_cnpj(cnpj)
+    if len(cnpj_limpo) != 14:
+        return jsonify({"error": "CNPJ inválido"}), 400
+    return jsonify(_resposta_portal(
+        cnpj_limpo,
+        URL_CND_FALENCIA_PORTAL,
+        "Portal aberto numa nova aba. Preencha o CNPJ no formulário "
+        "e solicite a Certidão Negativa de Falência/Concordata.",
     ))
 
 

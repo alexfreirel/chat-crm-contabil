@@ -52,11 +52,13 @@ interface Arquivo {
 
 type TabId = 'dashboard' | 'consultar' | 'cnpjs' | 'historico' | 'email' | 'certidoes';
 type StatusGeral = 'OK' | 'ALERTA' | 'CRITICO' | 'ERRO';
-type PortalTipo = 'cnd' | 'fgts';
+type PortalTipo = 'cnd' | 'fgts' | 'trabalhista' | 'falencia';
 
 const PORTAL_INSTRUCAO: Record<PortalTipo, { campo: string; acao: string }> = {
   cnd: { campo: 'Informe o CNPJ', acao: 'Emitir Certidão' },
   fgts: { campo: 'Inscrição (CNPJ)', acao: 'Consultar' },
+  trabalhista: { campo: 'CNPJ', acao: 'Emitir Certidão' },
+  falencia: { campo: 'CNPJ', acao: 'Solicitar Certidão' },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -996,10 +998,12 @@ export default function AgenteCertidoesPage() {
               </select>
             </div>
 
-            {/* Cards de emissão (CND Federal + CRF FGTS) */}
+            {/* Cards de emissão (CND Federal + CRF FGTS + CND Trabalhista + CND Falência) */}
             {([
               { tipo: 'cnd' as const, titulo: 'Baixar CND Federal', botao: 'Abrir Portal da Receita', loading: 'Abrindo portal da Receita Federal numa nova aba…' },
               { tipo: 'fgts' as const, titulo: 'Baixar CRF FGTS', botao: 'Abrir Portal da Caixa', loading: 'Abrindo portal da Caixa (CRF/FGTS) numa nova aba…' },
+              { tipo: 'trabalhista' as const, titulo: 'Baixar CND Trabalhista', botao: 'Abrir Portal do TST', loading: 'Abrindo portal do TST numa nova aba…' },
+              { tipo: 'falencia' as const, titulo: 'Baixar CND Falência', botao: 'Abrir Portal do TJAL', loading: 'Abrindo portal do TJAL numa nova aba…' },
             ]).map(card => {
               const ativo = dlStatus?.tipo === card.tipo;
               const running = ativo && dlStatus?.running;
