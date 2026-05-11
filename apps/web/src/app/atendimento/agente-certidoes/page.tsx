@@ -72,6 +72,13 @@ const AGENT_API = process.env.NEXT_PUBLIC_AGENT_CERTIDOES_URL
     ? `${window.location.origin}/agente-certidoes-api`
     : 'http://localhost:5001');
 
+// Labels customizadas para os links_uteis (override do auto-format por chave).
+const LINK_LABELS: Record<string, string> = {
+  qsa_receita: 'CNPJ / QSA Receita',
+  cnd_federal: 'CND Federal',
+  crf_fgts: 'CRF FGTS',
+};
+
 // ─── Sub-componentes ──────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status?: StatusGeral }) {
@@ -1105,7 +1112,7 @@ export default function AgenteCertidoesPage() {
                     <a key={key} href={url} target="_blank" rel="noopener noreferrer"
                       className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 border border-border rounded-lg hover:bg-accent text-muted-foreground transition-colors">
                       <ExternalLink size={11} />
-                      {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                      {LINK_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                     </a>
                   ))}
                 </div>
