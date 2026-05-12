@@ -139,6 +139,24 @@ def _salvar_historico(hist: list[dict]) -> None:
     )
 
 
+# Dados das empresas SEFAZ-AL (mesmo volume do agente-fiscal)
+_EMPRESAS_DATA_DIR = Path(os.environ.get("EMPRESAS_DATA_DIR", str(BASE_DIR / "empresas_data")))
+
+
+def _carregar_empresa_por_cnpj(cnpj_limpo: str) -> dict | None:
+    json_path = _EMPRESAS_DATA_DIR / "empresas.json"
+    if not json_path.exists():
+        return None
+    try:
+        for e in json.loads(json_path.read_text(encoding="utf-8")):
+            c = _limpar_cnpj(e.get("cnpj") or "")
+            if c == cnpj_limpo:
+                return e
+    except Exception as ex:
+        log.warning(f"Erro lendo empresas.json: {ex}")
+    return None
+
+
 # Portal da Receita Federal — domínio antigo (solucoes.receita.fazenda.gov.br)
 # foi descontinuado. O novo portal de certidões é uma SPA Angular com hash
 # routing, então não aceita CNPJ via querystring — o usuário precisa digitar
@@ -153,6 +171,9 @@ URL_CND_TRABALHISTA_PORTAL = "https://cndt-certidao.tst.jus.br/inicio.faces"
 
 # Portal CND Falência/Concordata do TJAL.
 URL_CND_FALENCIA_PORTAL = "https://www2.tjal.jus.br/sco/abrirCadastro.do?servico=810101"
+
+# Portal Certidão Estadual SEFAZ-AL (Portal do Contribuinte).
+URL_CND_ESTADUAL_PORTAL = "https://contribuinte.sefaz.al.gov.br/certidao/#/emitir-certidao-positiva"
 
 
 def _links_uteis(cnpj: str) -> dict:
@@ -462,6 +483,31 @@ def api_baixar_falencia(cnpj: str):
         "Portal aberto numa nova aba. Preencha o CNPJ no formulário "
         "e solicite a Certidão Negativa de Falência/Concordata.",
     ))
+
+
+@app.route("/api/baixar/estadual/<cnpj>", methods=["POST", "OPTIONS"])
+def api_baixar_estadual(cnpj: str):
+    if request.method == "OPTIONS":
+        return ("", 204)
+    cnpj_limpo = _limpar_cnpj(cnpj)
+    if len(cnpj_limpo) != 14:
+        return jsonify({"error": "CNPJ inválido"}), 400
+    empresa = _carregar_empresa_por_cnpj(cnpj_limpo)
+    caceal = (empresa or {}).get("usuario", "")
+    if caceal:
+        mensagem = (
+            f"Portal SEFAZ-AL aberto. CACEAL {caceal} copiado — "
+            "cole no campo Usuário, informe a senha e clique em Entrar."
+        )
+    else:
+        mensagem = (
+            "Portal SEFAZ-AL aberto. Entre com o CACEAL e senha da empresa "
+            "para emitir a Certidão Estadual."
+        )
+    payload = _resposta_portal(cnpj_limpo, URL_CND_ESTADUAL_PORTAL, mensagem)
+    if caceal:
+        payload["resultado"]["caceal"] = caceal
+    return jsonify(payload)
 
 
 @app.route("/api/baixar/status/<cnpj>", methods=["GET", "OPTIONS"])

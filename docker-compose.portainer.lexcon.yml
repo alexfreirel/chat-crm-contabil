@@ -209,8 +209,10 @@ services:
       - PORT=5001
       - ALLOWED_ORIGINS=https://lexconassessoriacontabil.com.br
       - CERTIDOES_DATA_DIR=/app/data_certidoes
+      - EMPRESAS_DATA_DIR=/app/empresas_data
     volumes:
       - agente_certidoes_data:/app/data_certidoes
+      - agente_fiscal_empresas:/app/empresas_data:ro
     deploy:
       restart_policy:
         condition: any

@@ -20,13 +20,14 @@ interface Arquivo {
 }
 
 type TabId = 'cnpjs' | 'certidoes';
-type PortalTipo = 'cnd' | 'fgts' | 'trabalhista' | 'falencia';
+type PortalTipo = 'cnd' | 'fgts' | 'trabalhista' | 'falencia' | 'estadual';
 
 const PORTAL_INSTRUCAO: Record<PortalTipo, { campo: string; acao: string }> = {
   cnd: { campo: 'Informe o CNPJ', acao: 'Emitir Certidão' },
   fgts: { campo: 'Inscrição (CNPJ)', acao: 'Consultar' },
   trabalhista: { campo: 'CNPJ', acao: 'Emitir Certidão' },
   falencia: { campo: 'CNPJ', acao: 'Solicitar Certidão' },
+  estadual: { campo: 'Usuário (CACEAL)', acao: 'Entrar' },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -141,24 +142,29 @@ export default function AgenteCertidoesPage() {
   const abrirPortal = async (tipo: PortalTipo) => {
     if (!dlCnpj) { toast('Selecione um CNPJ.', 'err'); return; }
     const cnpjLimpo = limparCnpj(dlCnpj);
-    let copiado = false;
-    try {
-      await navigator.clipboard.writeText(cnpjLimpo);
-      copiado = true;
-    } catch { /* clipboard bloqueado */ }
+    // Para portais não-estadual, copia CNPJ antes de abrir (clipboard é síncrono)
+    let copiadoCnpj = false;
+    if (tipo !== 'estadual') {
+      try { await navigator.clipboard.writeText(cnpjLimpo); copiadoCnpj = true; } catch { /* ok */ }
+    }
     setDlStatus({ tipo, running: true });
     try {
       const res = await fetch(`${AGENT_API}/api/baixar/${tipo}/${cnpjLimpo}`, { method: 'POST' });
       const data = await res.json();
       const url = data?.resultado?.url;
+      const caceal = data?.resultado?.caceal;
       if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      // Para estadual: copia CACEAL retornado pelo backend
+      if (tipo === 'estadual' && caceal) {
+        try { await navigator.clipboard.writeText(caceal); } catch { /* ok */ }
+      }
       const inst = PORTAL_INSTRUCAO[tipo];
       setDlStatus({
         tipo,
-        ...data,
+        running: false,
         resultado: data?.resultado ? {
           ...data.resultado,
-          mensagem: copiado
+          mensagem: copiadoCnpj
             ? `CNPJ copiado! No portal, clique no campo "${inst.campo}" e cole (Ctrl+V). Depois resolva o captcha e clique em "${inst.acao}".`
             : data.resultado.mensagem,
         } : data?.resultado,
@@ -366,6 +372,7 @@ export default function AgenteCertidoesPage() {
               { tipo: 'fgts' as const, titulo: 'Baixar CRF FGTS', botao: 'Abrir Portal da Caixa', loading: 'Abrindo portal da Caixa (CRF/FGTS) numa nova aba…' },
               { tipo: 'trabalhista' as const, titulo: 'Baixar CND Trabalhista', botao: 'Abrir Portal do TST', loading: 'Abrindo portal do TST numa nova aba…' },
               { tipo: 'falencia' as const, titulo: 'Baixar CND Falência', botao: 'Abrir Portal do TJAL', loading: 'Abrindo portal do TJAL numa nova aba…' },
+              { tipo: 'estadual' as const, titulo: 'Baixar CND Estadual (SEFAZ-AL)', botao: 'Abrir Portal SEFAZ-AL', loading: 'Abrindo portal do Contribuinte SEFAZ-AL numa nova aba…' },
             ]).map(card => {
               const ativo = dlStatus?.tipo === card.tipo;
               const running = ativo && dlStatus?.running;
