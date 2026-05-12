@@ -285,6 +285,29 @@ def baixar_certidoes_task():
     return jsonify({"task_id": _iniciar_tarefa(cmd)})
 
 
+@app.route("/api/certidao-estadual", methods=["POST"])
+def certidao_estadual():
+    """
+    Baixa certidão estadual do Portal do Contribuinte SEFAZ-AL.
+    Se a certidão for POSITIVA, baixa também o extrato de pendência de débitos.
+    Body: { cnpj }
+    """
+    d = request.json or {}
+    cnpj = d.get("cnpj", "").strip().replace(".", "").replace("/", "").replace("-", "")
+
+    if not cnpj:
+        return jsonify({"error": "CNPJ é obrigatório"}), 400
+
+    empresas = carregar()
+    empresa = next((e for e in empresas if e["cnpj"].replace(".", "").replace("/", "").replace("-", "") == cnpj), None)
+
+    if not empresa:
+        return jsonify({"error": "Empresa não encontrada no cadastro"}), 404
+
+    cmd = [sys.executable, str(BASE_DIR / "certidao_sefaz.py"), "--cnpj", cnpj]
+    return jsonify({"task_id": _iniciar_tarefa(cmd), "nome": empresa["nome"]})
+
+
 @app.route("/api/das", methods=["POST"])
 def baixar_das():
     """

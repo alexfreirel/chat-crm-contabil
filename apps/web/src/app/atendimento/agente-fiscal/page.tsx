@@ -6,7 +6,7 @@ import {
   Building2, Download, BarChart3, Receipt, DollarSign, Plus,
   Play, Printer, Trash2, Pencil, X, ChevronDown, Loader2,
   Search, FileText, AlertCircle, CheckCircle2, Info,
-  Sparkles, Terminal, HardDrive, ExternalLink, Copy, Check, Calculator,
+  Sparkles, Terminal, HardDrive, ExternalLink, Copy, Check, Calculator, ShieldCheck,
 } from 'lucide-react';
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ interface Empresa {
   inscricao_estadual?: string;
 }
 
-type TabId = 'dashboard' | 'sefaz' | 'analitico' | 'impostos' | 'parcela' | 'empresas' | 'icms-st';
+type TabId = 'dashboard' | 'sefaz' | 'analitico' | 'impostos' | 'parcela' | 'empresas' | 'icms-st' | 'certidao';
 
 function getTokenPayload(): any {
   try {
@@ -275,6 +275,20 @@ export default function AgenteFiscalPage() {
     } catch { toast('Agente offline', 'err'); }
   };
 
+  const runCertidaoEstadual = async () => {
+    if (running || !selectedCnpj) return;
+    try {
+      const res = await fetch(`${AGENT_API}/api/certidao-estadual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cnpj: selectedCnpj }),
+      });
+      const data = await res.json();
+      if (data.task_id) streamTask(data.task_id, true);
+      else toast(data.error || 'Erro ao iniciar', 'err');
+    } catch { toast('Agente offline', 'err'); }
+  };
+
   const imprimirAnalitico = () => {
     window.open(`${AGENT_API}/api/analitico/imprimir`, '_blank');
   };
@@ -481,6 +495,7 @@ export default function AgenteFiscalPage() {
     { id: 'parcela', label: 'Parcelamento', icon: <Receipt size={16} /> },
     { id: 'empresas', label: 'Empresas', icon: <Building2 size={16} /> },
     { id: 'icms-st', label: 'Cálculo ST', icon: <Calculator size={16} /> },
+    { id: 'certidao', label: 'Certidão', icon: <ShieldCheck size={16} /> },
   ];
 
   // ── Select empresa dropdown ─────────────────────────────────────────
@@ -1375,6 +1390,118 @@ export default function AgenteFiscalPage() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* ── Certidão ────────────────────────────────────────────────── */}
+        {activeTab === 'certidao' && (
+          <div className="space-y-6">
+            <div className="grid lg:grid-cols-[360px_1fr] gap-6">
+              {/* Painel esquerdo */}
+              <div className="bg-card border border-border rounded-xl p-5 space-y-4 h-fit">
+                <h3 className="text-sm font-semibold flex items-center gap-2">
+                  <ShieldCheck size={15} className="text-primary" /> Certidão Estadual — SEFAZ AL
+                </h3>
+
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground block mb-1.5">Empresa</label>
+                  <select
+                    className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"
+                    value={selectedCnpj}
+                    onChange={e => setSelectedCnpj(e.target.value)}
+                  >
+                    <option value="">Selecione uma empresa</option>
+                    {empresas.map(e => (
+                      <option key={e.cnpj} value={e.cnpj}>{e.nome} — {fmtCnpj(e.cnpj)}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 text-xs text-muted-foreground space-y-1">
+                  <div className="flex items-center gap-1.5 font-medium text-primary"><Info size={13} /> O agente irá:</div>
+                  <div>• Acessar o Portal do Contribuinte SEFAZ-AL</div>
+                  <div>• Baixar a certidão de regularidade estadual</div>
+                  <div>• Se POSITIVA: baixar o extrato de pendências</div>
+                </div>
+
+                <button
+                  onClick={runCertidaoEstadual}
+                  disabled={running || !selectedCnpj}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                >
+                  {running ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />} Baixar Certidão Estadual
+                </button>
+
+                {!selectedCnpj && (
+                  <p className="text-xs text-muted-foreground text-center">Selecione uma empresa para continuar</p>
+                )}
+              </div>
+
+              {/* Terminal */}
+              <TerminalOutput title="certidao_sefaz.py" />
+            </div>
+
+            {/* Certidões e extratos baixados */}
+            {(() => {
+              const certArquivos = arquivos.filter(a =>
+                a.nome.startsWith('certidao-') || a.nome.startsWith('extrato-')
+              );
+              if (certArquivos.length === 0) return null;
+              return (
+                <div className="bg-card border border-border rounded-xl overflow-hidden">
+                  <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
+                    <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                      <FileText size={15} className="text-primary" /> Arquivos Baixados ({certArquivos.length})
+                    </h3>
+                  </div>
+                  <div className="max-h-[300px] overflow-y-auto scrollbar-thin">
+                    <table className="w-full">
+                      <thead className="sticky top-0 bg-card z-10">
+                        <tr className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                          <th className="px-5 py-3 text-left font-semibold">Empresa</th>
+                          <th className="px-5 py-3 text-left font-semibold">Arquivo</th>
+                          <th className="px-5 py-3 text-right font-semibold">Tamanho</th>
+                          <th className="px-5 py-3 text-right font-semibold">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {certArquivos.map((a, i) => {
+                          const isExtrato = a.nome.startsWith('extrato-');
+                          return (
+                            <tr key={i} className="border-t border-border/50 hover:bg-muted/30">
+                              <td className="px-5 py-2.5 text-xs text-muted-foreground">{a.empresa}</td>
+                              <td className="px-5 py-2.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm text-foreground font-medium">{a.nome}</span>
+                                  {isExtrato && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20 font-medium">
+                                      POSITIVA
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-5 py-2.5 text-xs text-muted-foreground text-right font-mono">
+                                {(a.tamanho / 1024).toFixed(0)} KB
+                              </td>
+                              <td className="px-5 py-2.5 text-right">
+                                <a
+                                  href={`${AGENT_API}/api/arquivos/${selectedMes}/download?path=${encodeURIComponent(a.caminho)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20"
+                                >
+                                  <Download size={12} /> Baixar
+                                </a>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
