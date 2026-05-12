@@ -75,11 +75,11 @@ function formatTaskDate(dateStr: string): string {
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
-function statusBadge(status: string) {
+function statusBadge(status: string, agentName?: string | null) {
   const map: Record<string, { class: string; label: string }> = {
     BOT: { class: 'bg-slate-500/15 text-slate-400 border border-slate-500/20', label: '🤖 Miguel' },
     WAITING: { class: 'bg-amber-500/15 text-amber-500 border border-amber-500/20 shadow-[0_0_10px_rgba(251,191,36,0.15)]', label: '⏳ Aguardando' },
-    ACTIVE: { class: 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/20', label: '🟢 Atribuído' },
+    ACTIVE: { class: 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/20', label: agentName ? `🟢 ${agentName}` : '🟢 Atribuído' },
     CLOSED: { class: 'bg-gray-500/15 text-gray-400 border border-gray-500/20', label: '⬛ Fechado' },
     ADIADO: { class: 'bg-amber-500/15 text-amber-400 border border-amber-500/20', label: '⏰ Adiado' },
   };
@@ -361,26 +361,6 @@ export function InboxSidebar({
           </div>
         )}
 
-        {/* Seletor de Setores (Inboxes) — so mostra quando ha 2+ setores */}
-        {userInboxes.length > 1 && (
-          <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar no-scrollbar">
-            <button
-              onClick={() => onSetSelectedInboxId(null)}
-              className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${!selectedInboxId ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground border-transparent hover:bg-muted/80'}`}
-            >
-              Todos Setores
-            </button>
-            {userInboxes.map((inbox) => (
-              <button
-                key={inbox.id}
-                onClick={() => onSetSelectedInboxId(inbox.id)}
-                className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${selectedInboxId === inbox.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground border-transparent hover:bg-muted/80'}`}
-              >
-                {inbox.name}
-              </button>
-            ))}
-          </div>
-        )}
 
         <div className="flex items-center gap-2">
           <div className="flex bg-muted rounded-xl p-1 flex-1 relative">
@@ -563,7 +543,7 @@ export function InboxSidebar({
                         <p className="text-[11px] text-muted-foreground truncate pl-0.5 mb-0.5">{conv.contactPhone}</p>
                       )}
                       <div className="mb-1 flex items-center gap-2 flex-wrap">
-                        {statusBadge(conv.status)}
+                        {statusBadge(conv.status, conv.assignedAgentName)}
                         {/* Badge SLA: aguardando resposta há mais de 15min */}
                         {(() => {
                           const unread = unreadCounts[conv.id] || 0;
