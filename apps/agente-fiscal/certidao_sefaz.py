@@ -19,6 +19,10 @@ from pathlib import Path
 BASE_DIR = Path(__file__).parent
 PORTAL_URL = "https://contribuinte.sefaz.al.gov.br"
 
+# Respeita EMPRESAS_DATA_DIR igual ao app.py (volume Docker)
+_DATA_DIR = Path(os.environ.get("EMPRESAS_DATA_DIR", str(BASE_DIR)))
+EMPRESAS_JSON = _DATA_DIR / "empresas.json"
+
 
 def _build_chrome_options(destino: Path):
     from selenium.webdriver.chrome.options import Options
@@ -49,7 +53,7 @@ def _build_chrome_options(destino: Path):
 
 def _carregar_empresa(cnpj: str) -> dict | None:
     cnpj_limpo = cnpj.replace(".", "").replace("/", "").replace("-", "")
-    json_path = BASE_DIR / "empresas.json"
+    json_path = EMPRESAS_JSON
     if not json_path.exists():
         return None
     dados = json.loads(json_path.read_text(encoding="utf-8"))
