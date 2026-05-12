@@ -165,6 +165,28 @@ def _get_pdf(sess: requests.Session, url: str, params: dict, label: str, max_t: 
     return None
 
 
+def _detectar_status_pdf(pdf_bytes: bytes) -> str:
+    """
+    Lê o texto do PDF para detectar status real.
+    O portal SEFAZ-AL pode retornar o endpoint POSITIVA mesmo para empresas sem débitos;
+    a leitura do conteúdo é o único jeito confiável de saber o status.
+    """
+    try:
+        import io
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            texto = " ".join((p.extract_text() or "") for p in pdf.pages).upper()
+        if "CERTIDÃO NEGATIVA" in texto:
+            return "negativa"
+        if "CERTIDÃO POSITIVA COM EFEITO DE NEGATIVA" in texto:
+            return "negativa"  # positiva-com-efeito = situação regular
+        if "CERTIDÃO POSITIVA" in texto:
+            return "positiva"
+    except Exception as e:
+        print(f"  [status-pdf] Não foi possível ler o PDF: {e}")
+    return "desconhecido"
+
+
 # ── Principal ──────────────────────────────────────────────────────────────────
 
 def baixar_certidao(cnpj: str, destino: Path | None = None) -> int:
@@ -225,33 +247,29 @@ def baixar_certidao(cnpj: str, destino: Path | None = None) -> int:
 
     if destino_certidao.exists():
         print(f"→ Já existe: {nome_certidao}")
-        # Tenta inferir status pelo nome do arquivo já salvo
-        if "positiva" in destino_certidao.stem.lower():
-            status_certidao = "positiva"
-        else:
-            status_certidao = "negativa"
+        status_certidao = _detectar_status_pdf(destino_certidao.read_bytes())
     else:
-        # Tenta POSITIVA primeiro; se não retornar PDF, tenta NEGATIVA
+        # O portal pode retornar POSITIVA mesmo para empresas sem débitos; tenta ambos
         pdf_bytes = None
 
-        print(f"  Tentando emitirCertidaoPositiva.pdf...")
-        pdf_bytes = _get_pdf(sess, API_CERT_POSITIVA, params_cert, "positiva")
-        if pdf_bytes:
-            status_certidao = "positiva"
-            nome_certidao   = f"certidao-estadual-positiva-{cnpj_limpo[:8]}-{mes_str}.pdf"
+        print(f"  Tentando emitirCertidaoNegativa.pdf...")
+        pdf_bytes = _get_pdf(sess, API_CERT_NEGATIVA, params_cert, "negativa")
 
         if not pdf_bytes:
-            print(f"  Tentando emitirCertidaoNegativa.pdf...")
-            pdf_bytes = _get_pdf(sess, API_CERT_NEGATIVA, params_cert, "negativa")
-            if pdf_bytes:
-                status_certidao = "negativa"
-                nome_certidao   = f"certidao-estadual-negativa-{cnpj_limpo[:8]}-{mes_str}.pdf"
+            print(f"  Tentando emitirCertidaoPositiva.pdf...")
+            pdf_bytes = _get_pdf(sess, API_CERT_POSITIVA, params_cert, "positiva")
 
         if not pdf_bytes:
             print()
             print("ERRO: Nenhum endpoint retornou a certidão em PDF.")
             return 1
 
+        # Detecta status real lendo o conteúdo do PDF (não confia no endpoint)
+        print("  Detectando status pelo conteúdo do PDF...")
+        status_certidao = _detectar_status_pdf(pdf_bytes)
+        print(f"  Status detectado: {status_certidao.upper()}")
+
+        nome_certidao    = f"certidao-estadual-{status_certidao}-{cnpj_limpo[:8]}-{mes_str}.pdf"
         destino_certidao = destino / nome_certidao
         destino_certidao.write_bytes(pdf_bytes)
         print(f"✔  Certidão salva: {nome_certidao} ({len(pdf_bytes):,} bytes)")
