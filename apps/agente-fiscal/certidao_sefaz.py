@@ -37,11 +37,11 @@ API_PESSOA        = f"{BASE_CERT}/sfz-pessoa-api/api/pessoa"
 API_CERT_POSITIVA = f"{BASE_CERT}/sfz-certidao-api/api/private/emitirCertidaoPositiva.pdf"
 API_CERT_NEGATIVA = f"{BASE_CERT}/sfz-certidao-api/api/private/emitirCertidaoNegativa.pdf"
 
-# Candidatos para extrato de pendências (ainda a confirmar via DevTools)
+# Endpoint do extrato confirmado via DevTools (debitosFiscais funciona)
 _EXTRATO_CANDIDATOS = [
+    f"{BASE}/debitosFiscais/sfz-debito-relatorio-api/api/relatorio/extratoDebitoContribuinteLogado/",
     f"{BASE_CERT}/sfz-certidao-api/api/private/emitirExtratoPendencias.pdf",
     f"{BASE_CERT}/sfz-certidao-api/api/private/extratoPendencias.pdf",
-    f"{BASE}/debitosFiscais/sfz-debito-relatorio-api/api/relatorio/extratoDebitoContribuinteLogado/",
 ]
 
 _UA = (
