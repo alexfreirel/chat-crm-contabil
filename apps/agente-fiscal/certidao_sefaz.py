@@ -10,6 +10,7 @@ Uso: python certidao_sefaz.py --cnpj <CNPJ> [--destino <pasta>]
 
 import argparse
 import json
+import os
 import sys
 import time
 from datetime import date
@@ -17,6 +18,33 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
 PORTAL_URL = "https://contribuinte.sefaz.al.gov.br"
+
+
+def _build_chrome_options(destino: Path):
+    from selenium.webdriver.chrome.options import Options
+    options = Options()
+
+    # Headless obrigatório em servidor/Docker
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option("prefs", {
+        "download.default_directory": str(destino),
+        "download.prompt_for_download": False,
+        "download.directory_upgrade": True,
+        "plugins.always_open_pdf_externally": True,
+    })
+
+    # Binário do Chromium (configurado via ENV no Docker)
+    chrome_bin = os.environ.get("CHROME_BIN", "")
+    if chrome_bin and Path(chrome_bin).exists():
+        options.binary_location = chrome_bin
+
+    return options
 
 
 def _carregar_empresa(cnpj: str) -> dict | None:
@@ -38,7 +66,7 @@ def baixar_certidao(cnpj: str, destino: Path | None = None) -> int:
         from selenium.webdriver.common.by import By
         from selenium.webdriver.support.ui import WebDriverWait
         from selenium.webdriver.support import expected_conditions as EC
-        from selenium.webdriver.chrome.options import Options
+        from selenium.webdriver.chrome.service import Service
     except ImportError:
         print("ERRO: Selenium não instalado. Execute: pip install selenium")
         return 1
@@ -64,18 +92,16 @@ def baixar_certidao(cnpj: str, destino: Path | None = None) -> int:
     print(f"→ Destino  : {destino}")
     print()
 
-    options = Options()
-    options.add_argument("--start-maximized")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option("prefs", {
-        "download.default_directory": str(destino),
-        "download.prompt_for_download": False,
-        "download.directory_upgrade": True,
-        "plugins.always_open_pdf_externally": True,
-    })
+    options = _build_chrome_options(destino)
 
-    driver = webdriver.Chrome(options=options)
+    # Usa chromedriver do sistema (Docker) ou deixa o Selenium encontrar
+    chromedriver_path = os.environ.get("CHROMEDRIVER_PATH", "")
+    if chromedriver_path and Path(chromedriver_path).exists():
+        service = Service(executable_path=chromedriver_path)
+        driver = webdriver.Chrome(service=service, options=options)
+    else:
+        driver = webdriver.Chrome(options=options)
+
     wait = WebDriverWait(driver, 30)
 
     try:

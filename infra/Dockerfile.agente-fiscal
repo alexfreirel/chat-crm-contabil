@@ -3,7 +3,10 @@ FROM python:3.12-slim
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl && rm -rf /var/lib/apt/lists/*
+    curl \
+    chromium \
+    chromium-driver \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY apps/agente-fiscal/requirements.txt .
 RUN pip install --no-cache-dir flask gunicorn -r requirements.txt
@@ -16,6 +19,8 @@ ENV FLASK_APP=app.py
 ENV PYTHONUNBUFFERED=1
 ENV TZ=America/Sao_Paulo
 ENV EMPRESAS_DATA_DIR=/app/empresas_data
+ENV CHROME_BIN=/usr/bin/chromium
+ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
 
 EXPOSE 5000
 
