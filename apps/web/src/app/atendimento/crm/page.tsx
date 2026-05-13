@@ -1569,7 +1569,8 @@ export default function CrmPage() {
     const currentStage = normalizeStage(lead.stage);
     // Mesma stage, só muda is_client (entre Inicial Leads ↔ Inicial Clientes)
     if (currentStage === col.stageId && col.isClient !== null) {
-      setLeads(cur => cur.map(l => l.id === leadId ? { ...l, is_client: col.isClient } : l));
+      const newIsClient = col.isClient;
+      setLeads(cur => cur.map(l => l.id === leadId ? { ...l, is_client: newIsClient } : l));
       try {
         await api.patch(`/leads/${leadId}`, { is_client: col.isClient });
       } catch {
