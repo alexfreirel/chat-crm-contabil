@@ -202,7 +202,7 @@ export class LeadsService {
     return { exists: true, lead: found };
   }
 
-  async update(id: string, data: { name?: string; phone?: string; email?: string; cpf_cnpj?: string; tags?: string[] }, tenantId?: string): Promise<Lead> {
+  async update(id: string, data: { name?: string; phone?: string; email?: string; cpf_cnpj?: string; tags?: string[]; is_client?: boolean }, tenantId?: string): Promise<Lead> {
     if (tenantId) {
       const existing = await this.prisma.lead.findUnique({ where: { id }, select: { tenant_id: true } });
       if (existing?.tenant_id && existing.tenant_id !== tenantId) {

@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEmail, IsArray, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsEmail, IsArray, IsIn, IsBoolean } from 'class-validator';
 
 const VALID_STAGES = [
   // Stages atuais do funil CRM
@@ -55,6 +55,10 @@ export class UpdateLeadDto {
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  is_client?: boolean;
 }
 
 export class UpdateLeadStageDto {

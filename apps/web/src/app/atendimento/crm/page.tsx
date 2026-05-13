@@ -23,6 +23,7 @@ interface CrmLead {
   loss_reason: string | null;
   profile_picture_url: string | null;
   tags: string[];
+  is_client: boolean;
   created_at: string;
   conversations: Array<{
     id: string;
@@ -1530,23 +1531,56 @@ export default function CrmPage() {
     return true;
   });
 
+  const sortLeads = (list: typeof filteredLeads) =>
+    [...list].sort((a, b) => {
+      if (sortBy === 'score') return computeLeadScore(b) - computeLeadScore(a);
+      const now = Date.now();
+      const aEvent = a.calendar_events?.find(e => new Date(e.start_at).getTime() >= now - 3600000);
+      const bEvent = b.calendar_events?.find(e => new Date(e.start_at).getTime() >= now - 3600000);
+      if (aEvent && bEvent) return new Date(aEvent.start_at).getTime() - new Date(bEvent.start_at).getTime();
+      if (aEvent) return -1;
+      if (bEvent) return 1;
+      const ta = a.stage_entered_at ? new Date(a.stage_entered_at).getTime() : now;
+      const tb = b.stage_entered_at ? new Date(b.stage_entered_at).getTime() : now;
+      return ta - tb;
+    });
+
+  // Colunas virtuais do kanban
+  const KANBAN_COLUMNS = [
+    { id: 'INICIAL_LEAD',    label: 'Inicial Leads',        color: '#6b7280', emoji: '👋', stageId: 'INICIAL',        isClient: false as boolean | null },
+    { id: 'INICIAL_CLIENTE', label: 'Inicial Clientes',     color: '#8b5cf6', emoji: '🏢', stageId: 'INICIAL',        isClient: true  as boolean | null },
+    { id: 'QUALIFICANDO',    label: 'Qualificando Leads',   color: '#3b82f6', emoji: '🔍', stageId: 'QUALIFICANDO',   isClient: null  as boolean | null },
+    { id: 'EM_ATENDIMENTO',  label: 'Atendimento Clientes', color: '#10b981', emoji: '💬', stageId: 'EM_ATENDIMENTO', isClient: null  as boolean | null },
+  ];
+
   const getStageLeads = (stageId: string) =>
-    filteredLeads
-      .filter(l => normalizeStage(l.stage) === stageId)
-      .sort((a, b) => {
-        if (sortBy === 'score') return computeLeadScore(b) - computeLeadScore(a);
-        // Ordenação por evento: evento mais próximo primeiro, depois mais antigo na etapa
-        const now = Date.now();
-        const aEvent = a.calendar_events?.find(e => new Date(e.start_at).getTime() >= now - 3600000);
-        const bEvent = b.calendar_events?.find(e => new Date(e.start_at).getTime() >= now - 3600000);
-        if (aEvent && bEvent) return new Date(aEvent.start_at).getTime() - new Date(bEvent.start_at).getTime();
-        if (aEvent) return -1;
-        if (bEvent) return 1;
-        // Sem eventos: mais antigo na etapa primeiro
-        const ta = a.stage_entered_at ? new Date(a.stage_entered_at).getTime() : now;
-        const tb = b.stage_entered_at ? new Date(b.stage_entered_at).getTime() : now;
-        return ta - tb;
-      });
+    sortLeads(filteredLeads.filter(l => normalizeStage(l.stage) === stageId));
+
+  const getColumnLeads = (col: typeof KANBAN_COLUMNS[number]) =>
+    sortLeads(filteredLeads.filter(l => {
+      if (normalizeStage(l.stage) !== col.stageId) return false;
+      if (col.isClient !== null) return !!l.is_client === col.isClient;
+      return true;
+    }));
+
+  const moveLeadToColumn = async (leadId: string, col: typeof KANBAN_COLUMNS[number]) => {
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead) return;
+    const currentStage = normalizeStage(lead.stage);
+    // Mesma stage, só muda is_client (entre Inicial Leads ↔ Inicial Clientes)
+    if (currentStage === col.stageId && col.isClient !== null) {
+      setLeads(cur => cur.map(l => l.id === leadId ? { ...l, is_client: col.isClient } : l));
+      try {
+        await api.patch(`/leads/${leadId}`, { is_client: col.isClient });
+      } catch {
+        setLeads(cur => cur.map(l => l.id === leadId ? { ...l, is_client: lead.is_client } : l));
+        showError('Erro ao mover lead. Tente novamente.');
+      }
+      return;
+    }
+    // Stage diferente: usa fluxo normal
+    await moveLeadToStage(leadId, col.stageId);
+  };
 
   return (
     <div className="flex h-screen bg-background font-sans antialiased text-foreground overflow-hidden">
@@ -1762,25 +1796,22 @@ export default function CrmPage() {
             onMouseUp={handleBoardMouseUp}
             onMouseLeave={handleBoardMouseUp}
           >
-            <div className="flex h-full gap-4" style={{ minWidth: `${(CRM_STAGES.filter(s => s.id !== 'PERDIDO' && s.id !== 'FINALIZADO').length) * 272}px` }}>
-              {CRM_STAGES.filter(s => s.id !== 'PERDIDO' && s.id !== 'FINALIZADO').map(stage => {
-                const stageLeads = getStageLeads(stage.id);
-                const isTerminal = false;
-                const isDragTarget = dragOverStage === stage.id;
-                const agingCount = stageLeads.filter(l => daysInStage(l.stage_entered_at) > 5).length;
+            <div className="flex h-full gap-4" style={{ minWidth: `${KANBAN_COLUMNS.length * 272}px` }}>
+              {KANBAN_COLUMNS.map(col => {
+                const colLeads = getColumnLeads(col);
+                const isDragTarget = dragOverStage === col.id;
+                const agingCount = colLeads.filter(l => daysInStage(l.stage_entered_at) > 5).length;
 
                 return (
                   <div
-                    key={stage.id}
+                    key={col.id}
                     className={`flex flex-col w-[260px] min-w-[260px] rounded-xl border transition-all duration-150 ${
-                      isTerminal ? 'opacity-75' : ''
-                    } ${
                       isDragTarget
                         ? 'border-2 bg-accent/30 scale-[1.01]'
                         : 'border-border bg-card/50'
                     }`}
-                    style={isDragTarget ? { borderColor: stage.color } : undefined}
-                    onDragOver={e => { e.preventDefault(); setDragOverStage(stage.id); }}
+                    style={isDragTarget ? { borderColor: col.color } : undefined}
+                    onDragOver={e => { e.preventDefault(); setDragOverStage(col.id); }}
                     onDragLeave={e => {
                       if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverStage(null);
                     }}
@@ -1789,22 +1820,21 @@ export default function CrmPage() {
                       const id = draggingId;
                       setDragOverStage(null);
                       setDraggingId(null);
-                      if (id) moveLeadToStage(id, stage.id);
+                      if (id) moveLeadToColumn(id, col);
                     }}
                   >
                     {/* Header da coluna */}
                     <div
                       className="flex items-center justify-between px-3.5 py-3 border-b border-border shrink-0 rounded-t-xl"
-                      style={{ borderTopColor: stage.color, borderTopWidth: 3 }}
+                      style={{ borderTopColor: col.color, borderTopWidth: 3 }}
                     >
                       <div className="flex items-center gap-2">
-                        <span className="text-base leading-none">{stage.emoji}</span>
-                        <h3 className="text-[11px] font-bold uppercase tracking-wider" style={{ color: stage.color }}>
-                          {stage.label}
+                        <span className="text-base leading-none">{col.emoji}</span>
+                        <h3 className="text-[11px] font-bold uppercase tracking-wider" style={{ color: col.color }}>
+                          {col.label}
                         </h3>
                       </div>
                       <div className="flex items-center gap-1">
-                        {/* Aging alert counter */}
                         {agingCount > 0 && (
                           <span
                             className="w-[22px] h-[22px] rounded-full flex items-center justify-center text-[10px] font-bold bg-red-500/20 text-red-400"
@@ -1813,19 +1843,18 @@ export default function CrmPage() {
                             {agingCount}
                           </span>
                         )}
-                        {/* Total counter */}
                         <span
                           className="w-[22px] h-[22px] rounded-full flex items-center justify-center text-[10px] font-bold"
-                          style={{ backgroundColor: `${stage.color}20`, color: stage.color }}
+                          style={{ backgroundColor: `${col.color}20`, color: col.color }}
                         >
-                          {stageLeads.length}
+                          {colLeads.length}
                         </span>
                       </div>
                     </div>
 
                     {/* Cards */}
                     <div className="flex-1 overflow-y-auto p-2.5 space-y-2 custom-scrollbar">
-                      {stageLeads.map(lead => (
+                      {colLeads.map(lead => (
                         <LeadCard
                           key={lead.id}
                           lead={lead}
@@ -1841,12 +1870,12 @@ export default function CrmPage() {
                         />
                       ))}
 
-                      {stageLeads.length === 0 && (
+                      {colLeads.length === 0 && (
                         <div
                           className={`text-center p-5 border-2 border-dashed rounded-xl text-muted-foreground/50 transition-all ${
                             isDragTarget ? 'border-current opacity-100' : 'border-border/40 opacity-60'
                           }`}
-                          style={isDragTarget ? { borderColor: stage.color, color: stage.color } : undefined}
+                          style={isDragTarget ? { borderColor: col.color, color: col.color } : undefined}
                         >
                           {isDragTarget ? (
                             <p className="text-[12px] font-semibold">Soltar aqui</p>
