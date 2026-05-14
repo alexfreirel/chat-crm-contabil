@@ -77,11 +77,6 @@ function formatDateLabel(dateStr: string): string {
   return date.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
-const LEGAL_AREAS = [
-  'Trabalhista', 'Consumidor', 'Família', 'Previdenciário',
-  'Penal', 'Civil', 'Empresarial', 'Imobiliário', 'Outro',
-];
-
 const LOSS_REASONS = [
   'Sem interesse',
   'Sem condições financeiras',
@@ -218,8 +213,6 @@ export default function Dashboard() {
   const [taskReminderToast, setTaskReminderToast] = useState<{ eventId: string; title: string; type: string; start_at: string; minutesBefore: number } | null>(null);
   // Contact presence (online/composing/unavailable) — ephemeral
   const [contactPresence, setContactPresence] = useState<string>('unavailable');
-  const [showLegalAreaDropdown, setShowLegalAreaDropdown] = useState(false);
-  const legalAreaDropdownRef = useRef<HTMLDivElement>(null);
   const touchStartXRef = useRef<number>(0);
   const touchStartYRef = useRef<number>(0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -519,7 +512,6 @@ export default function Dashboard() {
   // Fechar dropdowns ao trocar de conversa
   useEffect(() => {
     setShowLawyerDropdown(false);
-    setShowLegalAreaDropdown(false);
     setShowDetailsPanel(false);
     setMsgSearchOpen(false);
     setMsgSearchQuery('');
@@ -530,18 +522,6 @@ export default function Dashboard() {
   useEffect(() => {
     if (msgSearchOpen) requestAnimationFrame(() => msgSearchInputRef.current?.focus());
   }, [msgSearchOpen]);
-
-  // Fechar dropdown de área ao clicar fora
-  useEffect(() => {
-    if (!showLegalAreaDropdown) return;
-    const handler = (e: MouseEvent) => {
-      if (legalAreaDropdownRef.current && !legalAreaDropdownRef.current.contains(e.target as Node)) {
-        setShowLegalAreaDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showLegalAreaDropdown]);
 
   // Fechar dropdown de especialista ao clicar fora
   // Checa ambos os refs (ChatHeader + sidebar) para evitar fechar prematuramente
@@ -1753,23 +1733,6 @@ export default function Dashboard() {
     }
   };
 
-  const handleChangeLegalArea = async (area: string | null) => {
-    if (!selectedId) return;
-    const prevArea = selected?.legalArea ?? null;
-    setShowLegalAreaDropdown(false);
-    // Optimistic update — atualizar ambos os arrays (ABERTO + ADIADO)
-    setConversations(prev => prev.map(c => c.id === selectedId ? { ...c, legalArea: area } : c));
-    setAdiadoConversations(prev => prev.map(c => c.id === selectedId ? { ...c, legalArea: area } : c));
-    try {
-      await api.patch(`/conversations/${selectedId}/legal-area`, { legalArea: area });
-    } catch (e: any) {
-      // Rollback — ambos os arrays
-      setConversations(prev => prev.map(c => c.id === selectedId ? { ...c, legalArea: prevArea } : c));
-      setAdiadoConversations(prev => prev.map(c => c.id === selectedId ? { ...c, legalArea: prevArea } : c));
-      alert('Erro ao atualizar área: ' + (e?.response?.data?.message || e?.message || 'Tente novamente'));
-    }
-  };
-
   const handleAcceptTransfer = async () => {
     if (!incomingTransfer) return;
     const convId = incomingTransfer.conversationId;
@@ -2313,15 +2276,11 @@ export default function Dashboard() {
 
               allSpecialists={allSpecialists}
               currentUserId={currentUserId}
-              showLegalAreaDropdown={showLegalAreaDropdown}
               showLawyerDropdown={showLawyerDropdown}
               showStageDropdown={showStageDropdown}
-              legalAreaDropdownRef={legalAreaDropdownRef}
               lawyerDropdownRef={lawyerDropdownRef}
               stageDropdownRef={stageDropdownRef}
               onBack={() => { setSelectedId(null); setMobileMoreOpen(false); }}
-              onToggleLegalArea={() => setShowLegalAreaDropdown(v => !v)}
-              onChangeLegalArea={handleChangeLegalArea}
               onToggleLawyer={() => setShowLawyerDropdown(v => !v)}
               onAssignLawyer={handleAssignLawyerInbox}
               onToggleAiMode={handleToggleAiMode}
@@ -2332,7 +2291,6 @@ export default function Dashboard() {
               onKeepInInbox={handleKeepInInbox}
               onToggleStage={() => setShowStageDropdown(v => !v)}
               onChangeStage={handleChangeLeadStage}
-              sectors={userInboxes.map((i: any) => i.name)}
               onSendFormLink={handleSendFormLink}
 
               onShowDetails={() => setShowDetailsPanel(true)}
@@ -2696,41 +2654,6 @@ export default function Dashboard() {
                       <div className="flex justify-between items-center text-sm">
                         <span className="text-muted-foreground">Telefone</span>
                         <span className="font-medium">{selected.contactPhone}</span>
-                      </div>
-                      {/* Área — sempre visível, editável via dropdown */}
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-muted-foreground">Área</span>
-                        <div className="relative">
-                          <button
-                            onClick={() => setShowLegalAreaDropdown(v => !v)}
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border transition-colors hover:opacity-80 active:scale-95 ${selected.legalArea ? 'bg-violet-500/15 text-violet-400 border-violet-500/20' : 'bg-muted/40 text-muted-foreground border-border'}`}
-                          >
-                            ⚖️ {selected.legalArea || 'Definir área'}
-                            <ChevronDown size={10} className="opacity-70" />
-                          </button>
-                          {showLegalAreaDropdown && (
-                            <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-xl shadow-xl w-44 py-1 text-[12px] z-[100]">
-                              <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Área de Atendimento</p>
-                              {LEGAL_AREAS.map(area => (
-                                <button
-                                  key={area}
-                                  onClick={() => handleChangeLegalArea(area)}
-                                  className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2 ${selected.legalArea === area ? 'text-violet-400 font-semibold' : 'text-foreground'}`}
-                                >
-                                  ⚖️ {area}
-                                </button>
-                              ))}
-                              {selected.legalArea && (
-                                <button
-                                  onClick={() => handleChangeLegalArea(null)}
-                                  className="w-full text-left px-3 py-2 text-muted-foreground hover:bg-accent hover:text-destructive transition-colors text-[11px] border-t border-border mt-1"
-                                >
-                                  Remover área
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
                       </div>
                       {selected.assignedAgentName && (
                         <div className="flex justify-between items-center text-sm">

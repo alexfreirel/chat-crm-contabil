@@ -7,8 +7,6 @@ import { useRole } from '@/lib/useRole';
 import type { ConversationSummary, ActiveTask } from '../types';
 import { ContactAvatar } from './ContactAvatar';
 
-const DEFAULT_AREAS = ['Fiscal', 'Pessoal', 'Contábil', 'Formalização', 'Outro'];
-
 function getInitial(name?: string) {
   return (name || 'V')[0].toUpperCase();
 }
@@ -37,17 +35,13 @@ export interface ChatHeaderProps {
   allSpecialists: { id: string; name: string; specialties: string[] }[];
   currentUserId: string | null;
   // Dropdowns
-  showLegalAreaDropdown: boolean;
   showLawyerDropdown: boolean;
   showStageDropdown: boolean;
   // Refs
-  legalAreaDropdownRef: React.RefObject<HTMLDivElement | null>;
   lawyerDropdownRef: React.RefObject<HTMLDivElement | null>;
   stageDropdownRef: React.RefObject<HTMLDivElement | null>;
   // Callbacks
   onBack: () => void;
-  onToggleLegalArea: () => void;
-  onChangeLegalArea: (area: string | null) => void;
   onToggleLawyer: () => void;
   onAssignLawyer: (id: string | null) => void;
   onToggleAiMode: () => void;
@@ -65,7 +59,6 @@ export interface ChatHeaderProps {
   onCreateTask: () => void;
   onSyncHistory?: () => void;
   contactPresence?: string;
-  sectors?: string[];
   // Task management
   activeTask?: ActiveTask | null;
   onCompleteTask?: (note: string) => void;
@@ -85,15 +78,11 @@ export function ChatHeader({
   leadStage,
   allSpecialists,
   currentUserId,
-  showLegalAreaDropdown,
   showLawyerDropdown,
   showStageDropdown,
-  legalAreaDropdownRef,
   lawyerDropdownRef,
   stageDropdownRef,
   onBack,
-  onToggleLegalArea,
-  onChangeLegalArea,
   onToggleLawyer,
   onAssignLawyer,
   onToggleAiMode,
@@ -110,7 +99,6 @@ export function ChatHeader({
   onCreateTask,
   onSyncHistory,
   contactPresence,
-  sectors,
   activeTask,
   onCompleteTask,
   onPostponeTask,
@@ -244,43 +232,9 @@ export function ChatHeader({
               )}
             </div>
           )}
-          {/* Área jurídica + especialista pré-atribuído — hidden on mobile */}
+          {/* Especialista atribuído — hidden on mobile */}
           <div className="hidden md:flex items-center gap-2 flex-wrap mt-1.5">
-            {/* Badge de área — clicável para editar */}
-            <div className="relative" ref={legalAreaDropdownRef}>
-              <button
-                onClick={(e) => { e.stopPropagation(); onToggleLegalArea(); }}
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors hover:opacity-80 ${selected.legalArea ? 'bg-amber-500/15 text-amber-400 border-amber-500/20 hover:bg-amber-500/25' : 'bg-muted/50 text-muted-foreground border-border hover:bg-muted'}`}
-                title="Clique para definir ou alterar a área de atendimento"
-              >
-                🏢 {selected.legalArea || 'Definir área'}
-                <ChevronDown size={9} className="ml-0.5 opacity-70" />
-              </button>
-              {showLegalAreaDropdown && (
-                <div className="absolute left-0 top-full mt-1 bg-card border border-border rounded-xl shadow-xl w-44 py-1 text-[12px] z-[200]">
-                  <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Área de Atendimento</p>
-                  {(sectors?.length ? sectors : DEFAULT_AREAS).map(area => (
-                    <button
-                      key={area}
-                      onClick={(e) => { e.stopPropagation(); onChangeLegalArea(area); }}
-                      className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2 ${selected.legalArea === area ? 'text-amber-400 font-semibold' : 'text-foreground'}`}
-                    >
-                      🏢 {area}
-                    </button>
-                  ))}
-                  {selected.legalArea && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onChangeLegalArea(null); }}
-                      className="w-full text-left px-3 py-2 text-muted-foreground hover:bg-accent hover:text-destructive transition-colors text-[11px] border-t border-border mt-1"
-                    >
-                      Remover área
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-            {selected.legalArea && (
-              <div className="relative" ref={lawyerDropdownRef}>
+            <div className="relative" ref={lawyerDropdownRef}>
                 <button
                   onClick={(e) => { e.stopPropagation(); onToggleLawyer(); }}
                   className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${selected.assignedLawyerName ? 'bg-primary/10 text-primary border-primary/20 hover:bg-primary/20' : 'bg-muted/50 text-muted-foreground border-border hover:bg-muted'}`}
@@ -323,7 +277,6 @@ export function ChatHeader({
                   </div>
                 )}
               </div>
-            )}
           </div>
         </div>
       </div>
@@ -333,11 +286,6 @@ export function ChatHeader({
           <div className="flex items-center gap-1.5">
             {isRealConvo && (
               <span className={`w-2 h-2 rounded-full shrink-0 ${aiMode ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]' : 'bg-muted-foreground/40'}`} title={aiMode ? 'IA Ativa' : 'IA Inativa'} />
-            )}
-            {selected?.legalArea && (
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-400 text-[9px] font-bold border border-violet-500/20">
-                ⚖️ {selected.legalArea}
-              </span>
             )}
           </div>
         )}

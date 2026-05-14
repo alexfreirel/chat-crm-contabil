@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { User, Search, RefreshCw, MessageSquare, MoreVertical, ChevronDown, Calendar, Scale, UserCheck, Download, CheckSquare, Square, X as XIcon, LayoutList, Columns, Phone, Mail, Tag, Clock, ChevronRight, Copy, Send, BarChart2, TrendingUp, AlertCircle, Briefcase } from 'lucide-react';
+import { User, Search, RefreshCw, MessageSquare, MoreVertical, ChevronDown, Calendar, UserCheck, Download, CheckSquare, Square, X as XIcon, LayoutList, Columns, Phone, Mail, Tag, Clock, ChevronRight, Copy, Send, BarChart2, TrendingUp, AlertCircle, Briefcase } from 'lucide-react';
 import { io } from 'socket.io-client';
 
 function getWsUrl() { return typeof window !== 'undefined' ? window.location.origin : ''; }
@@ -197,7 +197,6 @@ function LeadCard({
   const menuRef = useRef<HTMLDivElement>(null);
   const conv = lead.conversations?.[0];
   const lastMsg = conv?.messages?.[0];
-  const legalArea = conv?.legal_area;
   const lawyerName = conv?.assigned_lawyer?.name;
   const nextStep = conv?.next_step ? NEXT_STEP_MAP[conv.next_step] : null;
   const normalizedStage = normalizeStage(lead.stage);
@@ -205,7 +204,6 @@ function LeadCard({
   const score = computeLeadScore(lead);
   const isNew = (Date.now() - new Date(lead.created_at).getTime()) < 3_600_000;
   const agingBorder = agingBorderClass(days, normalizedStage);
-  const inboxName = conv?.inbox?.name ?? null;
   const upcomingEvent = lead.calendar_events?.find(e => new Date(e.start_at).getTime() >= Date.now() - 3600000);
   const upcomingDays = upcomingEvent ? eventDaysUntil(upcomingEvent.start_at) : null;
 
@@ -321,21 +319,6 @@ function LeadCard({
               : 'bg-blue-500/15 text-blue-400 border-blue-500/30'
           }`}>
             {conv.ai_mode ? '🤖 IA' : '👤 Humano'}
-          </span>
-        )}
-        {/* Badge de setor — mostra qual setor atende este lead */}
-        {inboxName ? (
-          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-500/12 text-amber-400 text-[9px] font-bold border border-amber-500/20">
-            🏢 {inboxName}
-          </span>
-        ) : (normalizedStage === 'QUALIFICANDO' && (
-          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gray-500/12 text-gray-400 text-[9px] font-bold border border-gray-500/20">
-            ❓ A qualificar
-          </span>
-        ))}
-        {legalArea && (
-          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-violet-500/12 text-violet-400 text-[9px] font-bold border border-violet-500/20">
-            📊 {legalArea}
           </span>
         )}
         {lawyerName && (
@@ -574,12 +557,6 @@ function LeadDetailPanel({
               <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
                 <Mail size={12} className="shrink-0" />
                 <span className="truncate">{lead.email}</span>
-              </div>
-            )}
-            {conv?.legal_area && (
-              <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
-                <Scale size={12} className="shrink-0" />
-                <span>{conv.legal_area}</span>
               </div>
             )}
             {conv?.assigned_lawyer && (
@@ -831,7 +808,6 @@ function LeadListView({
             <th className="pb-2 pr-4">Etapa</th>
             <th className="pb-2 pr-4">Score</th>
             <th className="pb-2 pr-4">Tempo</th>
-            <th className="pb-2 pr-4">Área</th>
             <th className="pb-2 pr-4">Responsável</th>
             <th className="pb-2 pr-4">Última msg</th>
             <th className="pb-2" />
@@ -885,7 +861,6 @@ function LeadListView({
                 <td className={`py-2.5 pr-4 font-bold text-[11px] ${agingColor(days)}`}>
                   {days > 0 ? `${days}d` : '—'}
                 </td>
-                <td className="py-2.5 pr-4 text-muted-foreground">{conv?.legal_area || '—'}</td>
                 <td className="py-2.5 pr-4 text-muted-foreground truncate max-w-[120px]">
                   {conv?.assigned_lawyer?.name?.replace(/^(Dra?\.?)\s+/i, '').split(' ')[0] || '—'}
                 </td>
@@ -1079,7 +1054,6 @@ export default function CrmPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [areaFilter, setAreaFilter] = useState('');
   const [lawyerFilter, setLawyerFilter] = useState('');
   const [tagFilter, setTagFilter] = useState('');
   const [agingFilter, setAgingFilter] = useState(''); // '', 'ok', 'warning', 'critical'
@@ -1495,10 +1469,6 @@ export default function CrmPage() {
   };
 
   // Coletar valores únicos para filtros
-  const allAreas = [...new Set(
-    leads.flatMap(l => l.conversations?.map(c => c.legal_area).filter(Boolean) ?? [])
-  )].sort() as string[];
-
   const allLawyers = [...new Map(
     leads.flatMap(l => l.conversations?.map(c => c.assigned_lawyer).filter(Boolean) ?? [])
       .map(lawyer => [lawyer!.id, lawyer!])
@@ -1508,7 +1478,7 @@ export default function CrmPage() {
     leads.flatMap(l => l.tags ?? [])
   )].sort();
 
-  const activeFilterCount = [areaFilter, lawyerFilter, tagFilter, agingFilter].filter(Boolean).length;
+  const activeFilterCount = [lawyerFilter, tagFilter, agingFilter].filter(Boolean).length;
 
   // Filtrar leads
   const filteredLeads = leads.filter(lead => {
@@ -1524,10 +1494,6 @@ export default function CrmPage() {
       const name = (lead.name || '').toLowerCase();
       const phone = (lead.phone || '').toLowerCase();
       if (!name.includes(q) && !phone.includes(q)) return false;
-    }
-    if (areaFilter) {
-      const hasArea = lead.conversations?.some(c => c.legal_area === areaFilter);
-      if (!hasArea) return false;
     }
     if (lawyerFilter) {
       const hasLawyer = lead.conversations?.some(c => c.assigned_lawyer?.id === lawyerFilter);
@@ -1628,7 +1594,7 @@ export default function CrmPage() {
               {filteredLeads.filter(l => normalizeStage(l.stage) !== 'PERDIDO' && normalizeStage(l.stage) !== 'FINALIZADO').length} lead{filteredLeads.filter(l => normalizeStage(l.stage) !== 'PERDIDO' && normalizeStage(l.stage) !== 'FINALIZADO').length !== 1 ? 's' : ''} {searchQuery || activeFilterCount > 0 ? 'filtrados' : 'no total'}
               {activeFilterCount > 0 && (
                 <button
-                  onClick={() => { setAreaFilter(''); setLawyerFilter(''); setTagFilter(''); setAgingFilter(''); }}
+                  onClick={() => { setLawyerFilter(''); setTagFilter(''); setAgingFilter(''); }}
                   className="ml-2 text-primary hover:underline"
                 >
                   Limpar filtros ({activeFilterCount})
@@ -1639,21 +1605,6 @@ export default function CrmPage() {
 
           {/* Filtros */}
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Filtro por área */}
-            {allAreas.length > 0 && (
-              <div className="relative">
-                <select
-                  value={areaFilter}
-                  onChange={e => setAreaFilter(e.target.value)}
-                  className="appearance-none pl-3 pr-7 py-1.5 text-[12px] bg-accent/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/40 cursor-pointer"
-                >
-                  <option value="">Todas as áreas</option>
-                  {allAreas.map(a => <option key={a} value={a}>{a}</option>)}
-                </select>
-                <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-              </div>
-            )}
-
             {/* Filtro por responsável */}
             {allLawyers.length > 0 && (
               <div className="relative">
