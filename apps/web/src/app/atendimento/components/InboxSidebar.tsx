@@ -366,7 +366,7 @@ export function InboxSidebar({
           <div className="flex bg-muted rounded-xl p-1 flex-1 relative">
             {[
               { value: '', label: 'Tudo', count: [...conversations, ...adiadoConversations].filter(c => normalizeStage(c.leadStage) !== 'PERDIDO' && c.status !== 'CLOSED').length },
-              { value: 'MINE', label: 'Minhas', count: conversations.filter(c => c.assignedAgentId === currentUserId && !c.aiMode && c.status !== 'CLOSED' && normalizeStage(c.leadStage) !== 'PERDIDO').length },
+              { value: 'HUMAN', label: 'Humano', count: conversations.filter(c => !c.aiMode && c.status !== 'CLOSED' && normalizeStage(c.leadStage) !== 'PERDIDO').length },
               { value: 'BOT', label: 'Miguel', count: conversations.filter(c => c.aiMode && normalizeStage(c.leadStage) !== 'PERDIDO').length },
             ].map((tab) => (
               <button

@@ -2081,8 +2081,11 @@ export default function Dashboard() {
       ...adiadoConversations.filter(a => !conversations.some(c => c.id === a.id)),
     ];
     let result: ConversationSummary[];
-    if (leadFilter === 'MINE') {
-      // Minhas conversas: atribuídas ao usuário atual como operador, SEM IA ativa
+    if (leadFilter === 'HUMAN') {
+      // Atendimento humano: todas conversas sem IA ativa (equivale a Qualificando + Atendimento do CRM)
+      result = allConversations.filter(c => !c.aiMode && c.status !== 'CLOSED');
+    } else if (leadFilter === 'MINE') {
+      // Legado — mantido para filtros salvos existentes
       result = allConversations.filter(c =>
         c.assignedAgentId === currentUserId &&
         !c.aiMode && c.status !== 'CLOSED'
