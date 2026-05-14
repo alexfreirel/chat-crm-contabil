@@ -2083,11 +2083,13 @@ export default function Dashboard() {
     let result: ConversationSummary[];
     if (leadFilter === 'MINE') {
       // Todas conversas sem IA ativa (equivale a Qualificando + Atendimento do CRM)
-      result = allConversations.filter(c => !c.aiMode && c.status !== 'CLOSED');
+      // Conversas FINALIZADO só aparecem em "Tudo"
+      result = allConversations.filter(c => !c.aiMode && c.status !== 'CLOSED' && normalizeStage(c.leadStage) !== 'FINALIZADO');
     } else if (leadFilter === 'ACTIVE') {
       result = allConversations.filter(myActiveConvs);
     } else if (leadFilter === 'BOT') {
-      result = allConversations.filter(c => c.aiMode);
+      // Conversas FINALIZADO só aparecem em "Tudo"
+      result = allConversations.filter(c => c.aiMode && normalizeStage(c.leadStage) !== 'FINALIZADO');
     } else if (leadFilter) {
       result = allConversations.filter(c => c.status === leadFilter);
     } else {

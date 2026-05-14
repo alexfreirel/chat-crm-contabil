@@ -75,7 +75,15 @@ function formatTaskDate(dateStr: string): string {
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
-function statusBadge(status: string, agentName?: string | null) {
+function statusBadge(status: string, agentName?: string | null, leadStage?: string | null) {
+  // Quando o lead está finalizado, o badge "Finalizado" tem precedência
+  if (leadStage && normalizeStage(leadStage) === 'FINALIZADO') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-500 border border-emerald-500/20">
+        ✅ Finalizado
+      </span>
+    );
+  }
   const map: Record<string, { class: string; label: string }> = {
     BOT: { class: 'bg-slate-500/15 text-slate-400 border border-slate-500/20', label: '🤖 Miguel' },
     WAITING: { class: 'bg-amber-500/15 text-amber-500 border border-amber-500/20 shadow-[0_0_10px_rgba(251,191,36,0.15)]', label: '⏳ Aguardando' },
@@ -366,8 +374,8 @@ export function InboxSidebar({
           <div className="flex bg-muted rounded-xl p-1 flex-1 relative">
             {[
               { value: '', label: 'Tudo', count: [...conversations, ...adiadoConversations].filter(c => normalizeStage(c.leadStage) !== 'PERDIDO' && c.status !== 'CLOSED').length },
-              { value: 'MINE', label: 'Minhas', count: conversations.filter(c => !c.aiMode && c.status !== 'CLOSED' && normalizeStage(c.leadStage) !== 'PERDIDO').length },
-              { value: 'BOT', label: 'Miguel', count: conversations.filter(c => c.aiMode && normalizeStage(c.leadStage) !== 'PERDIDO').length },
+              { value: 'MINE', label: 'Minhas', count: conversations.filter(c => !c.aiMode && c.status !== 'CLOSED' && normalizeStage(c.leadStage) !== 'PERDIDO' && normalizeStage(c.leadStage) !== 'FINALIZADO').length },
+              { value: 'BOT', label: 'Miguel', count: conversations.filter(c => c.aiMode && normalizeStage(c.leadStage) !== 'PERDIDO' && normalizeStage(c.leadStage) !== 'FINALIZADO').length },
             ].map((tab) => (
               <button
                 key={tab.value}
@@ -541,7 +549,7 @@ export function InboxSidebar({
                         <p className="text-[11px] text-muted-foreground truncate pl-0.5 mb-0.5">{conv.contactPhone}</p>
                       )}
                       <div className="mb-1 flex items-center gap-2 flex-wrap">
-                        {statusBadge(conv.status, conv.assignedAgentName)}
+                        {statusBadge(conv.status, conv.assignedAgentName, conv.leadStage)}
                         {/* Badge SLA: aguardando resposta há mais de 15min */}
                         {(() => {
                           const unread = unreadCounts[conv.id] || 0;
