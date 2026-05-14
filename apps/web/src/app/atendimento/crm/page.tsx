@@ -32,6 +32,7 @@ interface CrmLead {
     next_step: string | null;
     last_message_at: string;
     status?: string;
+    ai_mode: boolean;
     messages: Array<{ text: string | null; direction: string; created_at: string }>;
     assigned_user: { id: string; name: string } | null;
     assigned_lawyer: { id: string; name: string } | null;
@@ -310,6 +311,16 @@ function LeadCard({
         {isNew && (
           <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[9px] font-bold border border-emerald-500/30 animate-pulse">
             NOVO
+          </span>
+        )}
+        {/* Badge IA ou Humano */}
+        {conv && (
+          <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold border ${
+            conv.ai_mode
+              ? 'bg-violet-500/15 text-violet-400 border-violet-500/30'
+              : 'bg-blue-500/15 text-blue-400 border-blue-500/30'
+          }`}>
+            {conv.ai_mode ? '🤖 IA' : '👤 Humano'}
           </span>
         )}
         {/* Badge de setor — mostra qual setor atende este lead */}
@@ -1545,13 +1556,16 @@ export default function CrmPage() {
       return ta - tb;
     });
 
-  // "Inicial Clientes" captura clientes em INICIAL ou QUALIFICANDO (clientes não passam por QUALIFICANDO no funil)
-  // "Qualificando Leads" só mostra leads (is_client=false)
+  // Colunas baseadas em ai_mode (IA ativa) + is_client:
+  // Inicial Leads      → IA atendendo leads       (ai_mode=true,  is_client=false)
+  // Inicial Clientes   → IA atendendo clientes    (ai_mode=true,  is_client=true)
+  // Qualificando Leads → IA qualificou, humano    (ai_mode=false, is_client=false)
+  // Atendimento Clientes → humano atendendo cliente (ai_mode=false, is_client=true)
   const KANBAN_COLUMNS = [
-    { id: 'INICIAL_LEAD',    label: 'Inicial Leads',        color: '#6b7280', emoji: '👋', dropStageId: 'INICIAL',        dropIsClient: false as boolean | null },
-    { id: 'INICIAL_CLIENTE', label: 'Inicial Clientes',     color: '#8b5cf6', emoji: '🏢', dropStageId: 'INICIAL',        dropIsClient: true  as boolean | null },
-    { id: 'QUALIFICANDO',    label: 'Qualificando Leads',   color: '#3b82f6', emoji: '🔍', dropStageId: 'QUALIFICANDO',   dropIsClient: false as boolean | null },
-    { id: 'EM_ATENDIMENTO',  label: 'Atendimento Clientes', color: '#10b981', emoji: '💬', dropStageId: 'EM_ATENDIMENTO', dropIsClient: null  as boolean | null },
+    { id: 'INICIAL_LEAD',    label: 'Inicial Leads',        color: '#6b7280', emoji: '🤖' },
+    { id: 'INICIAL_CLIENTE', label: 'Inicial Clientes',     color: '#8b5cf6', emoji: '🤖' },
+    { id: 'QUALIFICANDO',    label: 'Qualificando Leads',   color: '#3b82f6', emoji: '👤' },
+    { id: 'EM_ATENDIMENTO',  label: 'Atendimento Clientes', color: '#10b981', emoji: '👤' },
   ];
 
   const getStageLeads = (stageId: string) =>
@@ -1559,33 +1573,44 @@ export default function CrmPage() {
 
   const getColumnLeads = (col: typeof KANBAN_COLUMNS[number]) =>
     sortLeads(filteredLeads.filter(l => {
-      const stage = normalizeStage(l.stage);
-      const isClient = !!(l as any).is_client;
-      if (col.id === 'INICIAL_LEAD')    return stage === 'INICIAL' && !isClient;
-      if (col.id === 'INICIAL_CLIENTE') return isClient && (stage === 'INICIAL' || stage === 'QUALIFICANDO');
-      if (col.id === 'QUALIFICANDO')    return stage === 'QUALIFICANDO' && !isClient;
-      if (col.id === 'EM_ATENDIMENTO')  return stage === 'EM_ATENDIMENTO';
+      const conv = l.conversations?.[0];
+      const aiMode = conv?.ai_mode ?? true; // sem conversa: IA vai atender
+      const isClient = !!l.is_client;
+      if (col.id === 'INICIAL_LEAD')    return !isClient && aiMode;
+      if (col.id === 'INICIAL_CLIENTE') return isClient && aiMode;
+      if (col.id === 'QUALIFICANDO')    return !isClient && !aiMode;
+      if (col.id === 'EM_ATENDIMENTO')  return isClient && !aiMode;
       return false;
     }));
 
   const moveLeadToColumn = async (leadId: string, col: typeof KANBAN_COLUMNS[number]) => {
     const lead = leads.find(l => l.id === leadId);
     if (!lead) return;
-    const currentStage = normalizeStage(lead.stage);
-    // Mesma stage, só muda is_client (entre Inicial Leads ↔ Inicial Clientes)
-    if (currentStage === col.dropStageId && col.dropIsClient !== null) {
-      const newIsClient = col.dropIsClient;
-      setLeads(cur => cur.map(l => l.id === leadId ? { ...l, is_client: newIsClient } : l));
-      try {
-        await api.patch(`/leads/${leadId}`, { is_client: col.dropIsClient });
-      } catch {
-        setLeads(cur => cur.map(l => l.id === leadId ? { ...l, is_client: lead.is_client } : l));
-        showError('Erro ao mover lead. Tente novamente.');
+    const conv = lead.conversations?.[0];
+    const newAiMode = col.id === 'INICIAL_LEAD' || col.id === 'INICIAL_CLIENTE';
+    const newIsClient = col.id === 'INICIAL_CLIENTE' || col.id === 'EM_ATENDIMENTO';
+
+    // Atualização otimista imediata
+    setLeads(cur => cur.map(l => l.id === leadId ? {
+      ...l,
+      is_client: newIsClient,
+      conversations: l.conversations?.map((c, i) => i === 0 ? { ...c, ai_mode: newAiMode } : c),
+    } : l));
+
+    try {
+      const reqs: Promise<any>[] = [];
+      if (conv?.id && conv.ai_mode !== newAiMode) {
+        reqs.push(api.patch(`/conversations/${conv.id}/ai-mode`, { ai_mode: newAiMode }));
       }
-      return;
+      if (!!lead.is_client !== newIsClient) {
+        reqs.push(api.patch(`/leads/${leadId}`, { is_client: newIsClient }));
+      }
+      await Promise.all(reqs);
+    } catch {
+      // Rollback
+      setLeads(cur => cur.map(l => l.id === leadId ? lead : l));
+      showError('Erro ao mover lead. Tente novamente.');
     }
-    // Stage diferente: usa fluxo normal
-    await moveLeadToStage(leadId, col.dropStageId);
   };
 
   return (
