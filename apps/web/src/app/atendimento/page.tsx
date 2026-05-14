@@ -2081,15 +2081,9 @@ export default function Dashboard() {
       ...adiadoConversations.filter(a => !conversations.some(c => c.id === a.id)),
     ];
     let result: ConversationSummary[];
-    if (leadFilter === 'HUMAN') {
-      // Atendimento humano: todas conversas sem IA ativa (equivale a Qualificando + Atendimento do CRM)
+    if (leadFilter === 'MINE') {
+      // Todas conversas sem IA ativa (equivale a Qualificando + Atendimento do CRM)
       result = allConversations.filter(c => !c.aiMode && c.status !== 'CLOSED');
-    } else if (leadFilter === 'MINE') {
-      // Legado — mantido para filtros salvos existentes
-      result = allConversations.filter(c =>
-        c.assignedAgentId === currentUserId &&
-        !c.aiMode && c.status !== 'CLOSED'
-      );
     } else if (leadFilter === 'ACTIVE') {
       result = allConversations.filter(myActiveConvs);
     } else if (leadFilter === 'BOT') {
