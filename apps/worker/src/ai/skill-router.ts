@@ -29,11 +29,12 @@ export class SkillRouter {
     lastMessages: string[];
     legalArea: string | null;
     nextStep: string | null;
+    isClient?: boolean;
     routerModel: string;
     routerProvider: LLMProvider;
     apiKey: string;
   }): Promise<RouterResult> {
-    const { skills, lastMessages, legalArea, nextStep, routerModel, routerProvider, apiKey } = params;
+    const { skills, lastMessages, legalArea, nextStep, isClient, routerModel, routerProvider, apiKey } = params;
 
     if (!skills.length) {
       return { skillId: '', reason: 'nenhuma skill disponível', tokensUsed: 0 };
@@ -61,7 +62,8 @@ ${catalog}
 Retorne APENAS um JSON válido: { "skill_id": "<id>", "reason": "<motivo curto>" }`;
 
     const contextLines = [
-      legalArea ? `Área jurídica atual: ${legalArea}` : null,
+      isClient !== undefined ? `Tipo de contato: ${isClient ? 'CLIENTE (já cadastrado no escritório)' : 'LEAD (novo contato)'}` : null,
+      legalArea ? `Área contábil atual: ${legalArea}` : null,
       nextStep ? `Próximo passo: ${nextStep}` : null,
       'Últimas mensagens:',
       ...lastMessages.slice(-5).map((m) => `- ${m}`),

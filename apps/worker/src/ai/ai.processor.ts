@@ -1063,12 +1063,29 @@ export class AiProcessor extends WorkerHost {
       // 9. Selecionar skill — via Router inteligente ou fallback area-matching
       const legalArea = (convo as any).legal_area || null;
       const nextStep = (convo as any).next_step || null;
+      const isClientLead = !!(convo as any).lead?.is_client;
       const routerConfig = await this.settings.getRouterConfig();
       let skill: any = null;
       let routerReason = '';
       let routerTokens = 0;
 
-      if (routerConfig.enabled && activeSkills.length > 1) {
+      // Pré-seleção por tipo de contato: clientes vão para skill de triagem de clientes;
+      // leads vão para skill de triagem de leads. Só aplica quando ainda está em triagem
+      // (sem legalArea definida ou next_step=duvidas), evitando sobrepor skills especialistas.
+      const isStillInTriage = !legalArea || nextStep === 'duvidas' || !nextStep;
+      if (isStillInTriage) {
+        const triageArea = isClientLead ? 'triagem clientes' : 'triagem';
+        const triageSkill = activeSkills.find(
+          (s: any) => s.area?.toLowerCase() === triageArea,
+        );
+        if (triageSkill) {
+          skill = triageSkill;
+          routerReason = `pré-seleção por tipo: ${isClientLead ? 'cliente' : 'lead'}`;
+          this.logger.log(`[AI] Skill pré-selecionada: "${triageSkill.name}" (${routerReason})`);
+        }
+      }
+
+      if (!skill && routerConfig.enabled && activeSkills.length > 1) {
         try {
           const routerApiKey = routerConfig.provider === 'anthropic'
             ? await this.settings.getAnthropicKey()
@@ -1086,6 +1103,7 @@ export class AiProcessor extends WorkerHost {
               lastMessages: lastMsgs,
               legalArea,
               nextStep,
+              isClient: isClientLead,
               routerModel: routerConfig.model,
               routerProvider: routerConfig.provider as LLMProvider,
               apiKey: routerApiKey,

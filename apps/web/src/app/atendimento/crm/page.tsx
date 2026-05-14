@@ -1545,12 +1545,13 @@ export default function CrmPage() {
       return ta - tb;
     });
 
-  // Colunas virtuais do kanban
+  // "Inicial Clientes" captura clientes em INICIAL ou QUALIFICANDO (clientes não passam por QUALIFICANDO no funil)
+  // "Qualificando Leads" só mostra leads (is_client=false)
   const KANBAN_COLUMNS = [
-    { id: 'INICIAL_LEAD',    label: 'Inicial Leads',        color: '#6b7280', emoji: '👋', stageId: 'INICIAL',        isClient: false as boolean | null },
-    { id: 'INICIAL_CLIENTE', label: 'Inicial Clientes',     color: '#8b5cf6', emoji: '🏢', stageId: 'INICIAL',        isClient: true  as boolean | null },
-    { id: 'QUALIFICANDO',    label: 'Qualificando Leads',   color: '#3b82f6', emoji: '🔍', stageId: 'QUALIFICANDO',   isClient: null  as boolean | null },
-    { id: 'EM_ATENDIMENTO',  label: 'Atendimento Clientes', color: '#10b981', emoji: '💬', stageId: 'EM_ATENDIMENTO', isClient: null  as boolean | null },
+    { id: 'INICIAL_LEAD',    label: 'Inicial Leads',        color: '#6b7280', emoji: '👋', dropStageId: 'INICIAL',        dropIsClient: false as boolean | null },
+    { id: 'INICIAL_CLIENTE', label: 'Inicial Clientes',     color: '#8b5cf6', emoji: '🏢', dropStageId: 'INICIAL',        dropIsClient: true  as boolean | null },
+    { id: 'QUALIFICANDO',    label: 'Qualificando Leads',   color: '#3b82f6', emoji: '🔍', dropStageId: 'QUALIFICANDO',   dropIsClient: false as boolean | null },
+    { id: 'EM_ATENDIMENTO',  label: 'Atendimento Clientes', color: '#10b981', emoji: '💬', dropStageId: 'EM_ATENDIMENTO', dropIsClient: null  as boolean | null },
   ];
 
   const getStageLeads = (stageId: string) =>
@@ -1558,9 +1559,13 @@ export default function CrmPage() {
 
   const getColumnLeads = (col: typeof KANBAN_COLUMNS[number]) =>
     sortLeads(filteredLeads.filter(l => {
-      if (normalizeStage(l.stage) !== col.stageId) return false;
-      if (col.isClient !== null) return !!l.is_client === col.isClient;
-      return true;
+      const stage = normalizeStage(l.stage);
+      const isClient = !!(l as any).is_client;
+      if (col.id === 'INICIAL_LEAD')    return stage === 'INICIAL' && !isClient;
+      if (col.id === 'INICIAL_CLIENTE') return isClient && (stage === 'INICIAL' || stage === 'QUALIFICANDO');
+      if (col.id === 'QUALIFICANDO')    return stage === 'QUALIFICANDO' && !isClient;
+      if (col.id === 'EM_ATENDIMENTO')  return stage === 'EM_ATENDIMENTO';
+      return false;
     }));
 
   const moveLeadToColumn = async (leadId: string, col: typeof KANBAN_COLUMNS[number]) => {
@@ -1568,11 +1573,11 @@ export default function CrmPage() {
     if (!lead) return;
     const currentStage = normalizeStage(lead.stage);
     // Mesma stage, só muda is_client (entre Inicial Leads ↔ Inicial Clientes)
-    if (currentStage === col.stageId && col.isClient !== null) {
-      const newIsClient = col.isClient;
+    if (currentStage === col.dropStageId && col.dropIsClient !== null) {
+      const newIsClient = col.dropIsClient;
       setLeads(cur => cur.map(l => l.id === leadId ? { ...l, is_client: newIsClient } : l));
       try {
-        await api.patch(`/leads/${leadId}`, { is_client: col.isClient });
+        await api.patch(`/leads/${leadId}`, { is_client: col.dropIsClient });
       } catch {
         setLeads(cur => cur.map(l => l.id === leadId ? { ...l, is_client: lead.is_client } : l));
         showError('Erro ao mover lead. Tente novamente.');
@@ -1580,7 +1585,7 @@ export default function CrmPage() {
       return;
     }
     // Stage diferente: usa fluxo normal
-    await moveLeadToStage(leadId, col.stageId);
+    await moveLeadToStage(leadId, col.dropStageId);
   };
 
   return (

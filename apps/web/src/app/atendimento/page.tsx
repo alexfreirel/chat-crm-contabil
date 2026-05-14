@@ -2076,30 +2076,25 @@ export default function Dashboard() {
     (c.status === 'ACTIVE' || c.status === 'MONITORING') && c.assignedAgentId === currentUserId;
 
   const filteredConversations = useMemo(() => {
-    if (leadFilter === 'ADIADO') {
-      return adiadoConversations
-        .filter(c => normalizeStage(c.leadStage) !== 'PERDIDO')
-        .sort((a, b) => {
-          const ta = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
-          const tb = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
-          return tb - ta;
-        });
-    }
+    const allConversations = [
+      ...conversations,
+      ...adiadoConversations.filter(a => !conversations.some(c => c.id === a.id)),
+    ];
     let result: ConversationSummary[];
     if (leadFilter === 'MINE') {
       // Minhas conversas: atribuídas ao usuário atual como operador, SEM IA ativa
-      result = conversations.filter(c =>
+      result = allConversations.filter(c =>
         c.assignedAgentId === currentUserId &&
         !c.aiMode && c.status !== 'CLOSED'
       );
     } else if (leadFilter === 'ACTIVE') {
-      result = conversations.filter(myActiveConvs);
+      result = allConversations.filter(myActiveConvs);
     } else if (leadFilter === 'BOT') {
-      result = conversations.filter(c => c.aiMode);
+      result = allConversations.filter(c => c.aiMode);
     } else if (leadFilter) {
-      result = conversations.filter(c => c.status === leadFilter);
+      result = allConversations.filter(c => c.status === leadFilter);
     } else {
-      result = conversations;
+      result = allConversations;
     }
     result = result.filter(c => normalizeStage(c.leadStage) !== 'PERDIDO');
     if (debouncedSearch.trim()) {
