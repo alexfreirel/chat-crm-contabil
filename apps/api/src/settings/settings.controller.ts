@@ -1,7 +1,10 @@
 import { Controller, Get, Post, Patch, Delete, Body, UseGuards, Request, Param, Put, Logger, UseInterceptors, UploadedFile, Res, NotFoundException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import type { Response } from 'express';
 import { SettingsService } from './settings.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
@@ -24,6 +27,8 @@ export class SettingsController {
     private readonly settingsService: SettingsService,
     private readonly whatsappService: WhatsappService,
     private readonly s3Service: S3Service,
+    private readonly prisma: PrismaService,
+    @InjectQueue('ai-jobs') private readonly aiQueue: Queue,
   ) {}
 
   // ─── Generic Settings ─────────────────────────────────
@@ -238,6 +243,169 @@ export class SettingsController {
   @Roles('ADMIN')
   async getAiCosts() {
     return this.settingsService.getAiCosts();
+  }
+
+  // ─── AI Health (diagnostico consolidado da IA do Inbox) ───────
+  // Retorna em uma unica chamada: chaves mascaradas, defaults,
+  // skills ativas, fila ai-jobs, Redis, instancias Evolution e
+  // atividade recente. Util para diagnosticar problemas no Miguel.
+  @Get('ai-health')
+  @Roles('ADMIN')
+  async getAiHealth() {
+    const checks: Array<{ name: string; status: 'ok' | 'warn' | 'error'; detail?: string }> = [];
+
+    // ─── 1. Configs da IA ─────────────────────────────────
+    const aiConfig = await this.settingsService.getAiConfig().catch(() => null);
+    const openaiOk = !!aiConfig?.isConfigured;
+    const anthropicOk = !!aiConfig?.isAnthropicKeyConfigured;
+    checks.push({
+      name: 'OPENAI_API_KEY',
+      status: openaiOk ? 'ok' : 'error',
+      detail: openaiOk ? undefined : 'Sem chave OpenAI — IA nao respondera (worker aborta job)',
+    });
+    checks.push({
+      name: 'ANTHROPIC_API_KEY',
+      status: anthropicOk ? 'ok' : 'warn',
+      detail: anthropicOk ? undefined : 'Sem chave Anthropic — apenas OpenAI disponivel',
+    });
+
+    // ─── 2. Fila ai-jobs (BullMQ → Redis) ─────────────────
+    let queueStats: any = null;
+    let redisOk = false;
+    try {
+      const counts = await this.aiQueue.getJobCounts(
+        'waiting', 'active', 'delayed', 'failed', 'completed', 'paused',
+      );
+      queueStats = counts;
+      redisOk = true;
+      checks.push({ name: 'Redis/BullMQ', status: 'ok' });
+      if (counts.failed > 0) {
+        checks.push({
+          name: 'Jobs falhados',
+          status: 'warn',
+          detail: `${counts.failed} jobs falharam — verificar logs do worker`,
+        });
+      }
+      if (counts.waiting > 50) {
+        checks.push({
+          name: 'Fila acumulada',
+          status: 'warn',
+          detail: `${counts.waiting} jobs aguardando — worker pode estar lento ou parado`,
+        });
+      }
+    } catch (e: any) {
+      checks.push({
+        name: 'Redis/BullMQ',
+        status: 'error',
+        detail: `Falha ao acessar fila: ${e.message}`,
+      });
+    }
+
+    // ─── 3. Skills ativas ─────────────────────────────────
+    let activeSkills: { id: string; name: string; area: string; tools: number }[] = [];
+    try {
+      const skills = await (this.prisma as any).promptSkill.findMany({
+        where: { active: true },
+        orderBy: [{ order: 'asc' }, { id: 'asc' }],
+        include: { tools: { where: { active: true } } },
+      });
+      activeSkills = skills.map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        area: s.area,
+        tools: s.tools.length,
+      }));
+      checks.push({
+        name: 'Skills ativas',
+        status: skills.length > 0 ? 'ok' : 'warn',
+        detail: skills.length === 0 ? 'Nenhuma skill ativa — IA usara prompt generico' : undefined,
+      });
+    } catch (e: any) {
+      checks.push({ name: 'Skills ativas', status: 'error', detail: e.message });
+    }
+
+    // ─── 4. Instancias Evolution ──────────────────────────
+    let evolutionInstances: { name: string; status: string }[] = [];
+    let onlineCount = 0;
+    try {
+      const list = await this.whatsappService.listInstances();
+      if (Array.isArray(list)) {
+        evolutionInstances = list.map((i: any) => ({
+          name: i.instanceName,
+          status: i.status,
+        }));
+        onlineCount = evolutionInstances.filter(i => i.status === 'open').length;
+      }
+      checks.push({
+        name: 'WhatsApp (Evolution)',
+        status: onlineCount > 0 ? 'ok' : 'error',
+        detail: onlineCount === 0
+          ? 'Nenhuma instancia online — IA nao consegue enviar mensagens'
+          : `${onlineCount}/${evolutionInstances.length} instancia(s) online`,
+      });
+    } catch (e: any) {
+      checks.push({
+        name: 'WhatsApp (Evolution)',
+        status: 'error',
+        detail: `Falha ao listar instancias: ${e.message}`,
+      });
+    }
+
+    // ─── 5. Conversas por ai_mode ─────────────────────────
+    const [aiOn, aiOff] = await Promise.all([
+      this.prisma.conversation.count({ where: { ai_mode: true } }),
+      this.prisma.conversation.count({ where: { ai_mode: false } }),
+    ]);
+
+    // ─── 6. Atividade recente da IA ───────────────────────
+    let lastUsage: { created_at: Date; model: string; total_tokens: number } | null = null;
+    try {
+      lastUsage = await (this.prisma as any).aiUsage.findFirst({
+        orderBy: { created_at: 'desc' },
+        select: { created_at: true, model: true, total_tokens: true },
+      });
+      if (lastUsage) {
+        const minsAgo = Math.floor((Date.now() - new Date(lastUsage.created_at).getTime()) / 60000);
+        checks.push({
+          name: 'Ultima resposta da IA',
+          status: minsAgo < 60 * 24 ? 'ok' : 'warn',
+          detail: `${minsAgo} min atras (${lastUsage.model})`,
+        });
+      } else {
+        checks.push({
+          name: 'Ultima resposta da IA',
+          status: 'warn',
+          detail: 'Nenhum registro de uso — IA nunca foi chamada',
+        });
+      }
+    } catch { /* tabela vazia ou inexistente */ }
+
+    // ─── 7. Status geral ──────────────────────────────────
+    const hasError = checks.some(c => c.status === 'error');
+    const hasWarn = checks.some(c => c.status === 'warn');
+    const overall: 'ok' | 'warn' | 'error' = hasError ? 'error' : hasWarn ? 'warn' : 'ok';
+
+    return {
+      overall,
+      checks,
+      config: {
+        openaiConfigured: openaiOk,
+        anthropicConfigured: anthropicOk,
+        defaultModel: aiConfig?.defaultModel ?? null,
+        cooldownSeconds: aiConfig?.cooldownSeconds ?? null,
+        adminBotEnabled: aiConfig?.adminBotEnabled ?? null,
+      },
+      queue: queueStats ? { name: 'ai-jobs', redisOk, ...queueStats } : { name: 'ai-jobs', redisOk: false },
+      skills: { active: activeSkills.length, list: activeSkills },
+      whatsapp: { online: onlineCount, total: evolutionInstances.length, instances: evolutionInstances },
+      conversations: { aiMode: aiOn, humanMode: aiOff },
+      lastUsage: lastUsage ? {
+        at: lastUsage.created_at,
+        model: lastUsage.model,
+        totalTokens: lastUsage.total_tokens,
+      } : null,
+      checkedAt: new Date().toISOString(),
+    };
   }
 
   // ─── Clicksign ────────────────────────────────────────
