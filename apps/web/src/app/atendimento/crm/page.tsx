@@ -1516,6 +1516,9 @@ export default function CrmPage() {
     const latestConv = lead.conversations?.[0];
     if (latestConv && latestConv.status === 'FECHADO') return false;
 
+    // Oculta leads FINALIZADO — atendimentos concluídos somem do funil
+    if (normalizeStage(lead.stage) === 'FINALIZADO') return false;
+
     const q = searchQuery.toLowerCase().trim();
     if (q) {
       const name = (lead.name || '').toLowerCase();
