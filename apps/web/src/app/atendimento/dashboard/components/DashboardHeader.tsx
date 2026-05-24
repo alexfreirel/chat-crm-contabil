@@ -14,7 +14,8 @@ export function DashboardHeader({ data, isAdmin }: Props) {
     <div className="flex items-start justify-between gap-4">
       <div>
         <h1 className="text-xl md:text-2xl font-bold text-foreground">
-          {getGreeting()}, {firstName(data.user.name)}
+          {getGreeting()},{' '}
+          <span className="text-holographic">{firstName(data.user.name)}</span>
         </h1>
         <p className="text-sm text-muted-foreground capitalize">{formatDateFull()}</p>
       </div>

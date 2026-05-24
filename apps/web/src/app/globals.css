@@ -391,3 +391,268 @@
   from { opacity: 0; transform: scale(0.96) translateY(-4px); }
   to   { opacity: 1; transform: scale(1)    translateY(0); }
 }
+
+/* ============================================================
+   GAMIFIED DESIGN SYSTEM — XP / ACHIEVEMENTS / NEON
+   ============================================================ */
+
+@theme {
+  /* Rarity palette (universal — used across themes) */
+  --color-rarity-common: #9ca3af;
+  --color-rarity-rare: #38bdf8;
+  --color-rarity-epic: #a855f7;
+  --color-rarity-legendary: #f59e0b;
+  --color-rarity-mythic: #ec4899;
+
+  /* XP / progress (neon) */
+  --color-xp-start: #06b6d4;
+  --color-xp-end: #a855f7;
+  --color-xp-glow: rgba(168, 85, 247, 0.55);
+
+  /* Streak (fire gradient) */
+  --color-streak-start: #f59e0b;
+  --color-streak-end: #ef4444;
+  --color-streak-glow: rgba(245, 158, 11, 0.55);
+
+  /* Success / quest complete */
+  --color-quest: #10b981;
+  --color-quest-glow: rgba(16, 185, 129, 0.55);
+}
+
+/* Per-theme glow intensity & accent overrides */
+:root,
+[data-theme="escuro"],
+.dark {
+  --glow-strength: 0.6;
+  --neon-cyan: #22d3ee;
+  --neon-magenta: #d946ef;
+  --neon-amber: #fbbf24;
+  --grid-color: rgba(161, 119, 61, 0.06);
+}
+
+[data-theme="claro"],
+.light {
+  --glow-strength: 0.25;
+  --neon-cyan: #0891b2;
+  --neon-magenta: #a21caf;
+  --neon-amber: #d97706;
+  --grid-color: rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="rose"] {
+  --glow-strength: 0.3;
+  --neon-cyan: #db2777;
+  --neon-magenta: #be185d;
+  --neon-amber: #f59e0b;
+  --grid-color: rgba(196, 37, 74, 0.05);
+}
+
+[data-theme="azul"] {
+  --glow-strength: 0.35;
+  --neon-cyan: #0284c7;
+  --neon-magenta: #6366f1;
+  --neon-amber: #f59e0b;
+  --grid-color: rgba(41, 82, 163, 0.05);
+}
+
+[data-theme="verde"] {
+  --glow-strength: 0.35;
+  --neon-cyan: #059669;
+  --neon-magenta: #14b8a6;
+  --neon-amber: #f59e0b;
+  --grid-color: rgba(26, 122, 74, 0.05);
+}
+
+/* ─── Glow / Neon utilities ─────────────────────────────── */
+.glow-cyan {
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--neon-cyan) calc(var(--glow-strength) * 100%), transparent),
+    0 0 24px color-mix(in srgb, var(--neon-cyan) calc(var(--glow-strength) * 60%), transparent);
+}
+.glow-magenta {
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--neon-magenta) calc(var(--glow-strength) * 100%), transparent),
+    0 0 24px color-mix(in srgb, var(--neon-magenta) calc(var(--glow-strength) * 60%), transparent);
+}
+.glow-amber {
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--neon-amber) calc(var(--glow-strength) * 100%), transparent),
+    0 0 24px color-mix(in srgb, var(--neon-amber) calc(var(--glow-strength) * 60%), transparent);
+}
+.glow-quest {
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--color-quest) calc(var(--glow-strength) * 100%), transparent),
+    0 0 24px color-mix(in srgb, var(--color-quest) calc(var(--glow-strength) * 60%), transparent);
+}
+
+.text-glow-cyan { text-shadow: 0 0 8px color-mix(in srgb, var(--neon-cyan) 70%, transparent); }
+.text-glow-magenta { text-shadow: 0 0 8px color-mix(in srgb, var(--neon-magenta) 70%, transparent); }
+.text-glow-amber { text-shadow: 0 0 8px color-mix(in srgb, var(--neon-amber) 70%, transparent); }
+
+/* Holographic gradient text */
+.text-holographic {
+  background: linear-gradient(110deg,
+    var(--neon-cyan) 0%,
+    var(--neon-magenta) 40%,
+    var(--neon-amber) 70%,
+    var(--neon-cyan) 100%);
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: holographic-slide 6s linear infinite;
+}
+
+@keyframes holographic-slide {
+  0%   { background-position: 0% center; }
+  100% { background-position: 200% center; }
+}
+
+/* Cyberpunk grid backdrop (very subtle) */
+.bg-grid {
+  background-image:
+    linear-gradient(var(--grid-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Holographic shimmer card */
+.card-holographic {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.card-holographic::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg,
+    var(--neon-cyan) 0%,
+    transparent 30%,
+    transparent 70%,
+    var(--neon-magenta) 100%);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  opacity: calc(var(--glow-strength) + 0.2);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ─── XP Bar ─────────────────────────────────────────────── */
+.xp-bar-track {
+  background: color-mix(in srgb, var(--bg-tertiary) 70%, transparent);
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.xp-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-xp-start), var(--color-xp-end));
+  border-radius: inherit;
+  position: relative;
+  box-shadow: 0 0 12px var(--color-xp-glow);
+  transition: width 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.xp-bar-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
+  animation: xp-shine 2.4s linear infinite;
+}
+@keyframes xp-shine {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* ─── Streak (fire) ──────────────────────────────────────── */
+.streak-flame {
+  background: linear-gradient(135deg, var(--color-streak-start), var(--color-streak-end));
+  box-shadow: 0 0 14px var(--color-streak-glow);
+  border-radius: 14px;
+}
+
+@keyframes flame-flicker {
+  0%, 100% { transform: scale(1) rotate(-2deg); filter: brightness(1); }
+  25% { transform: scale(1.05) rotate(2deg); filter: brightness(1.15); }
+  50% { transform: scale(0.98) rotate(-1deg); filter: brightness(0.95); }
+  75% { transform: scale(1.03) rotate(1deg); filter: brightness(1.1); }
+}
+.animate-flame { animation: flame-flicker 1.6s ease-in-out infinite; }
+
+/* ─── Achievement pop ───────────────────────────────────── */
+@keyframes achievement-pop {
+  0%   { opacity: 0; transform: translateY(20px) scale(0.85); }
+  60%  { opacity: 1; transform: translateY(-4px) scale(1.04); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-achievement-pop { animation: achievement-pop 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+@keyframes level-up-burst {
+  0%   { transform: scale(0.4); opacity: 0; filter: blur(8px); }
+  40%  { transform: scale(1.15); opacity: 1; filter: blur(0); }
+  100% { transform: scale(1); opacity: 1; filter: blur(0); }
+}
+.animate-level-up { animation: level-up-burst 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+@keyframes xp-pulse {
+  0%   { opacity: 0; transform: translateY(0) scale(0.8); }
+  20%  { opacity: 1; transform: translateY(-8px) scale(1.1); }
+  100% { opacity: 0; transform: translateY(-40px) scale(1); }
+}
+.animate-xp-pulse { animation: xp-pulse 1.2s ease-out forwards; }
+
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 var(--color-quest-glow); }
+  70%  { box-shadow: 0 0 0 14px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.animate-pulse-ring { animation: pulse-ring 1.8s ease-out infinite; }
+
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+.animate-float { animation: float-y 3.5s ease-in-out infinite; }
+
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+.animate-spin-slow { animation: spin-slow 8s linear infinite; }
+
+/* ─── Rarity ring (for badges) ──────────────────────────── */
+.rarity-common    { --rarity-c: var(--color-rarity-common); }
+.rarity-rare      { --rarity-c: var(--color-rarity-rare); }
+.rarity-epic      { --rarity-c: var(--color-rarity-epic); }
+.rarity-legendary { --rarity-c: var(--color-rarity-legendary); }
+.rarity-mythic    { --rarity-c: var(--color-rarity-mythic); }
+
+.rarity-ring {
+  border: 2px solid var(--rarity-c, var(--color-rarity-common));
+  box-shadow:
+    0 0 10px color-mix(in srgb, var(--rarity-c, var(--color-rarity-common)) calc(var(--glow-strength) * 100%), transparent),
+    inset 0 0 10px color-mix(in srgb, var(--rarity-c, var(--color-rarity-common)) calc(var(--glow-strength) * 50%), transparent);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .animate-flame,
+  .animate-achievement-pop,
+  .animate-level-up,
+  .animate-xp-pulse,
+  .animate-pulse-ring,
+  .animate-float,
+  .animate-spin-slow,
+  .text-holographic,
+  .xp-bar-fill::after {
+    animation: none !important;
+  }
+}

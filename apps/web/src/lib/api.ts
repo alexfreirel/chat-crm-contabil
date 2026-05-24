@@ -1,8 +1,46 @@
 import axios from 'axios';
+import { awardXp, incrementMessageCount, unlockAchievement } from './gamification';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005',
 });
+
+// ─── Gamification hooks ──────────────────────────────────────────────────────
+// Mapeia endpoints de "ação" para recompensas de XP. Ficar no interceptor
+// evita ter que sprinkle awardXp em todos os call sites.
+const XP_RULES: { match: (url: string) => boolean; xp: number; reason: string; onSuccess?: () => void }[] = [
+  {
+    match: (u) => /\/messages\/send(\/.*)?$/.test(u) || u.includes('/messages/send-file'),
+    xp: 10,
+    reason: 'message_sent',
+    onSuccess: () => {
+      incrementMessageCount(1);
+      unlockAchievement('first_message');
+    },
+  },
+  {
+    match: (u) => /\/tasks\/.+\/complete$/.test(u) || /\/tasks\/.+\b(status)\b/.test(u),
+    xp: 20,
+    reason: 'task_completed',
+  },
+  {
+    match: (u) => /\/leads\/.+\/(won|closed)/.test(u) || /\/conversations\/.+\/won/.test(u),
+    xp: 100,
+    reason: 'lead_won',
+    onSuccess: () => unlockAchievement('closer'),
+  },
+];
+
+function maybeAwardXp(method: string | undefined, url: string | undefined): void {
+  if (!url || (method ?? '').toLowerCase() !== 'post') return;
+  for (const rule of XP_RULES) {
+    if (rule.match(url)) {
+      awardXp(rule.xp, rule.reason);
+      rule.onSuccess?.();
+      return;
+    }
+  }
+}
 
 // ─── Helpers de token ────────────────────────────────────────────────────────
 
@@ -79,6 +117,10 @@ api.interceptors.response.use(
   (response) => {
     // Reset contador de 401 em caso de sucesso
     _consecutive401Count = 0;
+    // Recompensa XP por ações relevantes
+    try {
+      maybeAwardXp(response.config?.method, response.config?.url);
+    } catch { /* gamificação nunca deve quebrar a UI */ }
     return response;
   },
   (error) => {

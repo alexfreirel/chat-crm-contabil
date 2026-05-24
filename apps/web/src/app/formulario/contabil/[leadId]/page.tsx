@@ -226,10 +226,19 @@ export default function FormularioContabilPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-background bg-grid">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
-          <p className="text-gray-500">Carregando formulário...</p>
+          <div
+            className="rounded-full h-14 w-14 border-2 border-transparent mx-auto mb-4 animate-spin-slow"
+            style={{
+              borderTopColor: 'var(--neon-cyan)',
+              borderRightColor: 'var(--neon-magenta)',
+              boxShadow: '0 0 24px var(--color-xp-glow)',
+            }}
+          />
+          <p className="text-muted-foreground text-sm font-semibold uppercase tracking-widest">
+            Carregando formulário…
+          </p>
         </div>
       </div>
     );
@@ -237,14 +246,30 @@ export default function FormularioContabilPage() {
 
   if (submitted) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="max-w-md w-full text-center bg-white rounded-2xl shadow-lg p-8">
-          <div className="text-6xl mb-4">✅</div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Ficha enviada!</h1>
-          <p className="text-gray-500 text-sm leading-relaxed">
+      <div className="min-h-screen flex items-center justify-center bg-background bg-grid px-4 relative overflow-hidden">
+        {/* radial glow */}
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: 'radial-gradient(circle at center, var(--color-quest-glow) 0%, transparent 60%)' }}
+        />
+        <div className="max-w-md w-full text-center bg-card border border-border card-holographic rounded-2xl shadow-2xl p-10 relative z-10 animate-level-up">
+          <div
+            className="w-20 h-20 mx-auto rounded-2xl flex items-center justify-center mb-5 glow-quest"
+            style={{ background: 'linear-gradient(135deg, var(--color-quest) 0%, var(--neon-cyan) 100%)' }}
+          >
+            <span className="text-4xl">✓</span>
+          </div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground mb-2">
+            Missão concluída
+          </div>
+          <h1 className="text-3xl font-black text-foreground mb-3 text-holographic inline-block">
+            Ficha enviada!
+          </h1>
+          <p className="text-text-secondary text-sm leading-relaxed">
             Obrigado pelas informações. Nossa equipe vai analisar os dados e entrar em contato em breve.
           </p>
-          <p className="text-gray-400 text-xs mt-4">
+          <p className="text-muted-foreground text-xs mt-5">
             Você pode fechar esta janela.
           </p>
         </div>
@@ -256,40 +281,64 @@ export default function FormularioContabilPage() {
   const pctBar = ((step - 1) / (totalSteps - 1)) * 100;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background bg-grid">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-4">
+      <div className="bg-card/95 backdrop-blur-md border-b border-border px-4 py-4 sticky top-0 z-20">
         <div className="max-w-xl mx-auto">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white text-sm font-bold">C</span>
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center glow-cyan card-holographic"
+              style={{ background: 'linear-gradient(135deg, var(--color-xp-start), var(--color-xp-end))' }}
+            >
+              <span className="text-white text-sm font-black">C</span>
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900">Ficha Contábil</p>
-              <p className="text-xs text-gray-500">Preencha com os dados da sua empresa</p>
+              <p className="text-sm font-bold text-foreground">
+                Ficha <span className="text-holographic">Contábil</span>
+              </p>
+              <p className="text-[11px] text-muted-foreground uppercase tracking-widest font-semibold">
+                Etapa {step} de {totalSteps} • {STEP_LABELS[step]}
+              </p>
             </div>
           </div>
 
-          {/* Barra de progresso */}
+          {/* Barra de progresso gamificada */}
           <div className="relative">
             <div className="flex justify-between mb-1">
-              {([1, 2, 3, 4] as Step[]).map(s => (
-                <div key={s} className="flex flex-col items-center">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
-                    s < step ? 'bg-blue-600 text-white' :
-                    s === step ? 'bg-blue-600 text-white ring-2 ring-blue-200' :
-                    'bg-gray-200 text-gray-500'
-                  }`}>
-                    {s < step ? '✓' : s}
+              {([1, 2, 3, 4] as Step[]).map(s => {
+                const done = s < step;
+                const current = s === step;
+                return (
+                  <div key={s} className="flex flex-col items-center">
+                    <div
+                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition-all ${
+                        done
+                          ? 'text-white glow-quest'
+                          : current
+                          ? 'text-white glow-cyan scale-110'
+                          : 'bg-bg-tertiary text-muted-foreground border border-border'
+                      }`}
+                      style={
+                        done
+                          ? { background: 'var(--color-quest)' }
+                          : current
+                          ? { background: 'linear-gradient(135deg, var(--color-xp-start), var(--color-xp-end))' }
+                          : undefined
+                      }
+                    >
+                      {done ? '✓' : s}
+                    </div>
+                    <span className={`text-[9px] mt-1 font-bold uppercase tracking-wider ${
+                      current ? 'text-foreground' : 'text-muted-foreground'
+                    }`}>
+                      {STEP_LABELS[s]}
+                    </span>
                   </div>
-                  <span className={`text-[9px] mt-1 font-medium ${s === step ? 'text-blue-600' : 'text-gray-400'}`}>
-                    {STEP_LABELS[s]}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
-            <div className="h-1 bg-gray-200 rounded-full mt-2">
-              <div className="h-1 bg-blue-600 rounded-full transition-all" style={{ width: `${pctBar}%` }} />
+            <div className="xp-bar-track h-1.5 mt-2">
+              <div className="xp-bar-fill" style={{ width: `${pctBar}%` }} />
             </div>
           </div>
         </div>

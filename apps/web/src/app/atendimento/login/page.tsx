@@ -92,9 +92,11 @@ export default function LoginPage() {
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#0A0A0A]">
       {/* Background effects */}
+      <div className="absolute inset-0 bg-grid opacity-50 pointer-events-none" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(168,144,72,0.07)_0%,transparent_70%)]" />
       <div className="absolute -left-40 -top-40 h-[500px] w-[500px] rounded-full bg-[#A89048]/5 blur-[120px] animate-pulse" />
       <div className="absolute -bottom-40 -right-40 h-[500px] w-[500px] rounded-full bg-[#A89048]/5 blur-[120px] animate-pulse" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[300px] w-[300px] rounded-full bg-cyan-500/3 blur-[150px] pointer-events-none" />
 
       <div className="relative flex min-h-screen items-center justify-center p-4">
         <div className="w-full max-w-[1100px]">
@@ -114,7 +116,7 @@ export default function LoginPage() {
 
               <h1 className="mb-6 text-5xl font-black leading-tight text-white uppercase tracking-tight">
                 Excelência em <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#e3c788] via-[#d4b568] to-[#c8aa62]">
+                <span className="text-holographic">
                   Contabilidade Digital
                 </span>
               </h1>

@@ -181,18 +181,18 @@ export function InboxSidebar({
   const unreadClientsCount = conversations.filter(c => c.isClient && (unreadCounts[c.id] ?? 0) > 0).reduce((sum, c) => sum + (unreadCounts[c.id] ?? 0), 0);
 
   // ─── Saved Filters ────────────────────────────────────────────
-  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
+  // Lazy init evita setState dentro de useEffect (anti-pattern flagged
+  // pelo react-hooks/set-state-in-effect no React 19).
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem('inbox_saved_filters');
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  });
   const [showSaveInput, setShowSaveInput] = useState(false);
   const [saveInputValue, setSaveInputValue] = useState('');
   const saveInputRef = useRef<HTMLInputElement>(null);
-
-  // Load from localStorage on mount
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('inbox_saved_filters');
-      if (raw) setSavedFilters(JSON.parse(raw));
-    } catch { /* ignore */ }
-  }, []);
 
   const persistSavedFilters = (filters: SavedFilter[]) => {
     setSavedFilters(filters);

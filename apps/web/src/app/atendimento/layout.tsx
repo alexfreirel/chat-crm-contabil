@@ -15,6 +15,8 @@ import { useTheme } from 'next-themes';
 import { useRole } from '@/lib/useRole';
 import { playNotificationSound, unlockAudioContext } from '@/lib/notificationSounds';
 import toast from 'react-hot-toast';
+import { GameHud } from '@/components/gamified';
+import { awardXp, registerActivity, unlockAchievement } from '@/lib/gamification';
 
 import { THEMES } from '@/components/ThemeSwitcher';
 
@@ -87,10 +89,23 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
   }, []);
 
   // ─── Token reativo (cobre login → dashboard, pois o layout persiste) ───
-  const [authToken, setAuthToken] = useState<string | null>(null);
+  // Inicializa a partir do localStorage no client; o useEffect só atualiza
+  // quando o pathname muda E o valor diferiu — evita setState redundante no
+  // effect (era flagged pelo react-hooks/set-state-in-effect).
+  const [authToken, setAuthToken] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('token');
+  });
   useEffect(() => {
-    setAuthToken(localStorage.getItem('token'));
-  }, [pathname]); // re-lê token a cada navegação (captura momento pós-login)
+    const current = localStorage.getItem('token');
+    setAuthToken(prev => (prev === current ? prev : current));
+  }, [pathname]);
+
+  // ─── Registra atividade do dia (alimenta streak + achievements horários) ──
+  useEffect(() => {
+    if (!authToken) return;
+    registerActivity();
+  }, [authToken]);
 
   // ─── Fetch unread counts do servidor na montagem (fonte de verdade) ──────
   useEffect(() => {
@@ -142,6 +157,11 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
     // (ou tenant se sem atribuição). Se chegou, é para mim.
     // Na tela de chat, page.tsx já cuida → evita som duplo.
     socket.on('incoming_message_notification', (data: { conversationId?: string; contactName?: string }) => {
+      // XP por engajamento — independe da rota
+      awardXp(5, 'message_received');
+      // Achievement: primeira mensagem do dia (no-op se já desbloqueada)
+      unlockAchievement('first_message');
+
       const onChatPage = pathnameRef.current === '/atendimento' ||
         pathnameRef.current.startsWith('/atendimento/chat');
       if (onChatPage) return;
@@ -307,6 +327,12 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
 
       {/* ─── Global Command Palette (Ctrl+K) ────────────────── */}
       <GlobalCommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />
+
+      {/* ─── HUD gamificado (XP, streak, conquistas, level up) ── */}
+      {/* Aparece em desktop apenas — em mobile o bottom-nav já ocupa espaço */}
+      <div className="hidden md:block">
+        <GameHud position="bottom-right" />
+      </div>
 
       {/* ─── Mobile Bottom Nav (fixed) ──────────────────────── */}
       {showBottomNav && (
