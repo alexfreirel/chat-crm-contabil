@@ -13,7 +13,6 @@ import {
 import { useContabilDashboard } from './hooks/useContabilDashboard';
 
 import { DashboardHeader } from './components/DashboardHeader';
-import { JourneyStrip } from './components/JourneyStrip';
 import { PeriodSelector } from './components/PeriodSelector';
 import { StatsGrid } from './components/StatsGrid';
 import { InboxStats } from './components/InboxStats';
@@ -119,11 +118,6 @@ export default function DashboardPage() {
             <DashboardHeader data={data} isAdmin={isAdmin} />
             <PeriodSelector active={period.key} onSelect={setPeriod} onCustomRange={setCustomRange} />
           </div>
-        </MotionWidget>
-
-        {/* Row 1.5: Journey Strip (XP + Streak + Badges) */}
-        <MotionWidget delay={0.03}>
-          <JourneyStrip />
         </MotionWidget>
 
         {/* Row 2: Stats Grid — agressivo (8 cards) para ADMIN/CONTADOR, padrao para demais */}

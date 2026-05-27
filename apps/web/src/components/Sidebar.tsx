@@ -16,9 +16,6 @@ import { API_BASE_URL } from '@/lib/api';
 import { NotificationCenter } from '@/app/atendimento/components/NotificationCenter';
 import { useRole } from '@/lib/useRole';
 import { THEMES } from '@/components/ThemeSwitcher';
-import { useGamification } from '@/lib/gamification';
-import { XPBar } from '@/components/gamified/XPBar';
-import { StreakCounter } from '@/components/gamified/StreakCounter';
 
 // ─── Tooltip Styles (shared) ──────────────────────────────────────
 const TOOLTIP_CLS =
@@ -44,7 +41,6 @@ export function Sidebar() {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const perms = useRole();
-  const game = useGamification();
 
   const [expanded, setExpanded] = useState(false);
   const [showThemeMenu, setShowThemeMenu] = useState(false);
@@ -457,44 +453,6 @@ export function Sidebar() {
           <Plus size={16} strokeWidth={2.5} className="shrink-0" />
           {expanded && <span>Criar novo</span>}
         </button>
-      </div>
-
-      {/* ─── XP / Streak Panel ──────────────────────────────────────── */}
-      <div className="w-full px-3 mb-3">
-        {expanded ? (
-          <div
-            className="card-holographic rounded-xl bg-bg-tertiary/60 border border-border p-2.5 flex flex-col gap-2"
-            onMouseEnter={(e) => showTooltip(e, `Nível ${game.level} • ${game.xpTotal.toLocaleString('pt-BR')} XP totais`)}
-            onMouseLeave={hideTooltip}
-          >
-            <XPBar
-              level={game.level}
-              xp={game.xpInLevel}
-              xpForNextLevel={game.xpForNextLevel}
-              compact
-            />
-            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              <span>Sequência</span>
-              <StreakCounter days={game.streakDays} compact />
-            </div>
-          </div>
-        ) : (
-          <div
-            className="flex flex-col items-center gap-1.5"
-            onMouseEnter={(e) => showTooltip(e, `Nível ${game.level} • ${game.streakDays}d sequência`)}
-            onMouseLeave={hideTooltip}
-          >
-            <div
-              className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-black text-white bg-gradient-to-br from-[var(--color-xp-start)] to-[var(--color-xp-end)] glow-cyan tabular-nums"
-              aria-label={`Nível ${game.level}`}
-            >
-              {game.level}
-            </div>
-            {game.streakDays > 0 && (
-              <StreakCounter days={game.streakDays} compact animate={false} />
-            )}
-          </div>
-        )}
       </div>
 
       {/* ─── Navigation Groups ─────────────────────────────────────── */}

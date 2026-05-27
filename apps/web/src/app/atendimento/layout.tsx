@@ -15,7 +15,6 @@ import { useTheme } from 'next-themes';
 import { useRole } from '@/lib/useRole';
 import { playNotificationSound, unlockAudioContext } from '@/lib/notificationSounds';
 import toast from 'react-hot-toast';
-import { GameHud } from '@/components/gamified';
 import { awardXp, registerActivity, unlockAchievement } from '@/lib/gamification';
 
 import { THEMES } from '@/components/ThemeSwitcher';
@@ -327,12 +326,6 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
 
       {/* ─── Global Command Palette (Ctrl+K) ────────────────── */}
       <GlobalCommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />
-
-      {/* ─── HUD gamificado (XP, streak, conquistas, level up) ── */}
-      {/* Aparece em desktop apenas — em mobile o bottom-nav já ocupa espaço */}
-      <div className="hidden md:block">
-        <GameHud position="bottom-right" />
-      </div>
 
       {/* ─── Mobile Bottom Nav (fixed) ──────────────────────── */}
       {showBottomNav && (
