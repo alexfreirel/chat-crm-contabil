@@ -415,13 +415,13 @@ model Inbox {
 
 model Instance {
   id         String   @id @default(uuid())
-  tenant_id  String?
+  tenant_id  String
   name       String   @unique
   type       String   @default("whatsapp")
   connection String   @default("evolution")
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
-  tenant     Tenant?  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  tenant     Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
   inboxes    Inbox[]  @relation("InboxInstances")
 
   @@index([tenant_id])

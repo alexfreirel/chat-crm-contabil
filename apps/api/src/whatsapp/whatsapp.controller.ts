@@ -1,7 +1,9 @@
-import { Controller, Get, Post, Delete, Body, Param, UseGuards, Request, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, UseGuards, Request, Logger, BadRequestException } from '@nestjs/common';
 import { WhatsappService } from './whatsapp.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SettingsService } from '../settings/settings.service';
+import { PrismaService } from '../prisma/prisma.service';
+import * as crypto from 'crypto';
 
 @Controller('whatsapp')
 @UseGuards(JwtAuthGuard)
@@ -11,6 +13,7 @@ export class WhatsappController {
   constructor(
     private readonly whatsappService: WhatsappService,
     private readonly settingsService: SettingsService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Get('instances')
@@ -18,22 +21,34 @@ export class WhatsappController {
     return this.whatsappService.listInstances();
   }
 
+  // Nome da instância é SEMPRE gerado no servidor com prefixo do deployment.
+  // Garante isolamento entre deployments que compartilham o mesmo servidor
+  // Evolution (lustosa/lexcon) — sem chance de colisão de nome "cru".
   @Post('instances')
-  async createInstance(@Body('name') name: string) {
-    const instance = await this.whatsappService.createInstance(name);
-    
-    // Autoconfigura o webhook assim que a instância é criada
+  async createInstance(@Request() req: any) {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) throw new BadRequestException('Usuário sem tenant_id');
+
+    const rand = crypto.randomBytes(4).toString('hex');
+    const namespacedName = `lex_${tenantId.replace(/-/g, '')}_${rand}`;
+
+    await (this.prisma as any).instance.create({
+      data: { name: namespacedName, tenant_id: tenantId, type: 'whatsapp' },
+    });
+
+    const instance = await this.whatsappService.createInstance(namespacedName);
+
     try {
       const config = await this.settingsService.getWhatsAppConfig();
       if (config.webhookUrl) {
-        await this.whatsappService.setWebhook(name, config.webhookUrl);
-        this.logger.log(`Webhook configurado automaticamente para instância: ${name}`);
+        await this.whatsappService.setWebhook(namespacedName, config.webhookUrl);
+        this.logger.log(`Webhook configurado automaticamente para instância: ${namespacedName}`);
       }
     } catch (e) {
-      this.logger.error(`Falha ao configurar webhook automático para ${name}:`, e);
+      this.logger.error(`Falha ao configurar webhook automático para ${namespacedName}:`, e);
     }
 
-    return instance;
+    return { ...instance, name: namespacedName };
   }
 
   @Delete('instances/:name')

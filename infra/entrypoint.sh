@@ -3,8 +3,24 @@ set -e
 
 # Auto-migrar o banco na API (apenas no container da API, nao no worker)
 if [ "$RUN_MIGRATIONS" = "true" ]; then
-  echo "[entrypoint] Aplicando schema do banco (prisma db push)..."
   cd /app/packages/shared
+
+  # Pre-check: aborta deploy se Instance.tenant_id contiver NULL.
+  # O backfill deve ser feito ANTES via migrate-tenant-null.ts; sem isso o
+  # db push --accept-data-loss descarta rows ao aplicar o NOT NULL.
+  # Stdout = COUNT (string) | vazio = primeiro deploy ou erro (não bloqueia).
+  echo "[entrypoint] Pre-check: Instance.tenant_id NOT NULL..."
+  NULL_COUNT=$(node -e "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();p.\$queryRawUnsafe('SELECT COUNT(*)::int AS c FROM \"Instance\" WHERE tenant_id IS NULL').then(r=>{process.stdout.write(String(r[0].c));process.exit(0)}).catch(()=>process.exit(2)).finally(()=>p.\$disconnect())" 2>/dev/null || true)
+  if [ -z "$NULL_COUNT" ]; then
+    echo "[entrypoint] Pre-check inconclusivo (tabela Instance pode não existir ainda — primeiro deploy). Prosseguindo."
+  elif [ "$NULL_COUNT" != "0" ]; then
+    echo "[entrypoint] ABORT: Instance.tenant_id contém $NULL_COUNT row(s) com NULL. Rode migrate-tenant-null.ts antes do deploy."
+    exit 1
+  else
+    echo "[entrypoint] Pre-check OK (0 NULL)."
+  fi
+
+  echo "[entrypoint] Aplicando schema do banco (prisma db push)..."
 
   # Tenta ate 15 vezes com intervalo de 3s
   # Isso aguarda o postgres ficar disponivel sem precisar de nc/netcat

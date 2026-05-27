@@ -89,19 +89,50 @@ export class EvolutionService {
     private mediaDownloadService: MediaDownloadService,
   ) {}
 
+  /**
+   * Resolve a instância pelo nome do payload e valida que ela pertence a este
+   * deployment. Retorna null para qualquer evento que deve ser descartado —
+   * caller faz return imediato.
+   *
+   * Esta é a única barreira contra ingestão de mensagens de outro deployment
+   * compartilhando o mesmo servidor Evolution (lustosa/lexcon). É chamado pelo
+   * controller como pre-flight e pelos handlers como defense-in-depth.
+   */
+  async resolveInstanceOrReject(payload: EvolutionWebhookPayload): Promise<{
+    instance: { id: string; name: string; tenant_id: string };
+    inboxIds: string[];
+  } | null> {
+    const name = payload?.instance || payload?.instanceId;
+    if (!name) {
+      this.logger.warn(`[WEBHOOK-REJECT] payload sem instance: ${payload?.event}`);
+      return null;
+    }
+    const instance = await this.inboxesService.findByInstanceName(name);
+    if (!instance) {
+      this.logger.warn(`[WEBHOOK-REJECT] instância desconhecida: "${name}" (event=${payload?.event})`);
+      return null;
+    }
+    if (!instance.tenant_id) {
+      this.logger.warn(`[WEBHOOK-REJECT] instância "${name}" sem tenant_id (event=${payload?.event})`);
+      return null;
+    }
+    return {
+      instance: { id: instance.id, name: instance.name, tenant_id: instance.tenant_id },
+      inboxIds: (instance.inboxes ?? []).map((i: any) => i.id),
+    };
+  }
+
   async handleMessagesUpsert(payload: EvolutionWebhookPayload) {
-    const instanceName = payload?.instance || payload?.instanceId;
-    this.logger.log(`[WEBHOOK] messages.upsert received from ${instanceName ?? 'unknown'}`);
+    const ctx = await this.resolveInstanceOrReject(payload);
+    if (!ctx) return;
+    const instanceName = ctx.instance.name;
+    const tenantId = ctx.instance.tenant_id;
+    this.logger.log(`[WEBHOOK] messages.upsert received from ${instanceName}`);
     this.logger.debug(`Payload: ${summarizePayload(payload)}`);
     const dataPayload = payload?.data as any;
-    const instance = instanceName ? await this.inboxesService.findByInstanceName(instanceName) : null;
-
-    if (!instance || !instance.inboxes?.length) {
-      this.logger.warn(`[WEBHOOK] No inbox found for instanceName: ${instanceName}. Message might be lost or assigned to no tenant.`);
-    }
 
     // Usa o primeiro setor vinculado como padrão; o roteamento por IA determinará o setor correto
-    const inboxId = instance?.inboxes?.[0]?.id || null;
+    const inboxId = ctx.inboxIds[0] || null;
 
     const messages = Array.isArray(dataPayload?.messages)
       ? (dataPayload.messages as any[])
@@ -276,7 +307,7 @@ export class EvolutionService {
               external_id: `${phone}@s.whatsapp.net`,
               inbox_id: inboxId,
               instance_name: instanceName,
-              tenant_id: instance?.tenant_id || lead.tenant_id,
+              tenant_id: tenantId,
             },
           });
         }
@@ -680,11 +711,13 @@ export class EvolutionService {
   }
 
   async handleChatsUpsert(payload: EvolutionWebhookPayload) {
+    const ctx = await this.resolveInstanceOrReject(payload);
+    if (!ctx) return;
+    const instanceName = ctx.instance.name;
+    const tenantId = ctx.instance.tenant_id;
     this.logger.debug(`Recebendo webhook de chats: ${summarizePayload(payload)}`);
     const dataPayload = payload?.data as any;
-    const instanceName = payload?.instance || payload?.instanceId;
-    const instance = instanceName ? await this.inboxesService.findByInstanceName(instanceName) : null;
-    const inboxId = instance?.inboxes?.[0]?.id || null;
+    const inboxId = ctx.inboxIds[0] || null;
 
     const chats = Array.isArray(dataPayload)
       ? (dataPayload as any[])
@@ -718,23 +751,24 @@ export class EvolutionService {
         name: nameToSet,
         ...(profilePicUrl ? { profile_picture_url: profilePicUrl } : {}),
         origin: 'whatsapp',
-        tenant: instance?.tenant_id ? { connect: { id: instance.tenant_id } } : undefined,
+        tenant: { connect: { id: tenantId } },
       });
 
-      // 2. Find or Create Conversation
+      // 2. Find or Create Conversation — escopado pelo tenant da instância
       let conv = await this.prisma.conversation.findFirst({
         where: {
           lead_id: lead.id,
           channel: 'whatsapp',
           status: 'ABERTO',
-          instance_name: instanceName
+          instance_name: instanceName,
+          tenant_id: tenantId,
         },
       });
 
       if (!conv) {
         // 1) Tentar reabrir conversa FECHADO
         const closedConv = await this.prisma.conversation.findFirst({
-          where: { lead_id: lead.id, channel: 'whatsapp', status: 'FECHADO', instance_name: instanceName },
+          where: { lead_id: lead.id, channel: 'whatsapp', status: 'FECHADO', instance_name: instanceName, tenant_id: tenantId },
           orderBy: { last_message_at: 'desc' },
         });
         if (closedConv) {
@@ -745,7 +779,7 @@ export class EvolutionService {
               last_message_at: new Date(),
               inbox_id: inboxId || closedConv.inbox_id,
               instance_name: instanceName,
-              tenant_id: instance?.tenant_id || closedConv.tenant_id || lead.tenant_id,
+              tenant_id: tenantId,
             },
           });
           this.logger.log(`[REOPEN] Conversa ${conv.id} reaberta via chat webhook: ${phone}`);
@@ -753,7 +787,7 @@ export class EvolutionService {
         // 2) Se não achou FECHADO, checar ADIADO — mantém status, só atualiza timestamp
         if (!conv) {
           const adiadoConv = await this.prisma.conversation.findFirst({
-            where: { lead_id: lead.id, channel: 'whatsapp', status: 'ADIADO', instance_name: instanceName },
+            where: { lead_id: lead.id, channel: 'whatsapp', status: 'ADIADO', instance_name: instanceName, tenant_id: tenantId },
             orderBy: { last_message_at: 'desc' },
           });
           if (adiadoConv) {
@@ -774,10 +808,10 @@ export class EvolutionService {
               external_id: remoteJid,
               inbox_id: inboxId,
               instance_name: instanceName,
-              tenant_id: instance?.tenant_id || lead.tenant_id,
+              tenant_id: tenantId,
             },
           });
-          this.logger.log(`Nova conversa criada via chat webhook: ${phone} no setor ${instance?.inboxes?.[0]?.name || 'Nenhum'}`);
+          this.logger.log(`Nova conversa criada via chat webhook: ${phone} no setor ${ctx.inboxIds[0] ?? 'Nenhum'}`);
         }
       } else {
         // Só atualiza inbox_id se tiver valor — evita apagar o setor da conversa
@@ -786,7 +820,7 @@ export class EvolutionService {
           data: {
             ...(inboxId ? { inbox_id: inboxId } : {}),
             instance_name: instanceName,
-            tenant_id: instance?.tenant_id || conv.tenant_id || lead.tenant_id
+            tenant_id: tenantId,
           }
         });
       }
@@ -830,6 +864,9 @@ export class EvolutionService {
   // Quando o contato deleta o chat no WhatsApp, arquivamos a conversa no CRM
   // (status FECHADO) para não poluir o inbox. As mensagens são preservadas.
   async handleChatsDelete(payload: EvolutionWebhookPayload) {
+    const ctx = await this.resolveInstanceOrReject(payload);
+    if (!ctx) return;
+    const tenantId = ctx.instance.tenant_id;
     this.logger.log(`[WEBHOOK] chats.delete received`);
     const data = payload?.data;
     const chats = Array.isArray(data) ? data : [data];
@@ -842,23 +879,26 @@ export class EvolutionService {
       const phone = extractPhone(remoteJid, chat.remoteJidAlt);
       if (!phone || phone.length > 13) continue;
 
-      const lead = await this.prisma.lead.findFirst({ where: { phone } });
+      const lead = await this.prisma.lead.findFirst({ where: { phone, tenant_id: tenantId } });
       if (!lead) continue;
 
       // Fechar apenas conversas abertas — não alterar conversas já fechadas/adiadas
       const updated = await this.prisma.conversation.updateMany({
-        where: { lead_id: lead.id, channel: 'whatsapp', status: 'ABERTO' },
+        where: { lead_id: lead.id, channel: 'whatsapp', status: 'ABERTO', tenant_id: tenantId },
         data: { status: 'FECHADO' },
       });
 
       if (updated.count > 0) {
-        this.chatGateway.emitConversationsUpdate(lead.tenant_id ?? null);
+        this.chatGateway.emitConversationsUpdate(tenantId);
         this.logger.log(`[WEBHOOK] chats.delete: ${updated.count} conversa(s) de ${phone} arquivadas`);
       }
     }
   }
 
   async handleMessagesUpdate(payload: EvolutionWebhookPayload) {
+    const ctx = await this.resolveInstanceOrReject(payload);
+    if (!ctx) return;
+    const tenantId = ctx.instance.tenant_id;
     this.logger.log(`[WEBHOOK] messages.update received`);
     const updates = Array.isArray(payload?.data) ? payload.data : [payload?.data];
 
@@ -878,8 +918,11 @@ export class EvolutionService {
       if (!newStatus) continue;
 
       try {
-        const msg = await this.prisma.message.findUnique({
-          where: { external_message_id: externalMessageId },
+        // Escopa por tenant via conversation — Message não tem tenant_id próprio.
+        // Mensagem de outro deployment vivia em outra Conversation; o JOIN garante
+        // que não atualizamos status alheio mesmo se externalMessageId colidisse.
+        const msg = await this.prisma.message.findFirst({
+          where: { external_message_id: externalMessageId, conversation: { tenant_id: tenantId } },
         });
         if (!msg) continue;
 
@@ -898,8 +941,11 @@ export class EvolutionService {
   }
 
   async handleContactsUpsert(payload: EvolutionWebhookPayload) {
+    const ctx = await this.resolveInstanceOrReject(payload);
+    if (!ctx) return;
+    const instanceName = ctx.instance.name;
+    const tenantId = ctx.instance.tenant_id;
     this.logger.debug(`Recebendo webhook de contatos: ${summarizePayload(payload)}`);
-    const instanceName = payload?.instance || payload?.instanceId;
     const contacts = Array.isArray(payload?.data)
       ? (payload.data as any[])
       : [payload?.data as any];
@@ -927,7 +973,7 @@ export class EvolutionService {
 
       // contacts.upsert não envia profilePicUrl no payload — buscar separadamente se o lead não tiver foto
       let contactPhoto: string | null = null;
-      if (instanceName && (!existingContact || !existingContact.profile_picture_url)) {
+      if (!existingContact || !existingContact.profile_picture_url) {
         contactPhoto = await this.whatsappService.fetchProfilePicture(instanceName, phone).catch(() => null);
       }
 
@@ -936,6 +982,7 @@ export class EvolutionService {
         name: contactNameToSet,
         ...(contactPhoto ? { profile_picture_url: contactPhoto } : {}),
         origin: 'whatsapp',
+        tenant: { connect: { id: tenantId } },
       });
 
       this.logger.log(`Contato sincronizado via webhook: ${phone} (${contactNameToSet ?? 'nome preservado'})${contactPhoto ? ' + foto' : ''}`);
@@ -945,6 +992,9 @@ export class EvolutionService {
   // ─── messages.delete ──────────────────────────────────────────
 
   async handleMessagesDelete(payload: EvolutionWebhookPayload) {
+    const ctx = await this.resolveInstanceOrReject(payload);
+    if (!ctx) return;
+    const tenantId = ctx.instance.tenant_id;
     this.logger.log(`[WEBHOOK] messages.delete received`);
     const data = payload?.data;
     // Evolution v2: { key: { remoteJid, fromMe, id }, ... } or data directly
@@ -952,8 +1002,9 @@ export class EvolutionService {
     const externalId = messageKey?.id;
     if (!externalId) return;
 
-    const msg = await this.prisma.message.findUnique({
-      where: { external_message_id: externalId },
+    // Escopa via conversation.tenant_id — Message não tem coluna tenant_id.
+    const msg = await this.prisma.message.findFirst({
+      where: { external_message_id: externalId, conversation: { tenant_id: tenantId } },
     });
     if (!msg) return;
 
@@ -974,9 +1025,12 @@ export class EvolutionService {
   // ─── contacts.update ──────────────────────────────────────────
 
   async handleContactsUpdate(payload: EvolutionWebhookPayload) {
+    const ctx = await this.resolveInstanceOrReject(payload);
+    if (!ctx) return;
+    const instanceName = ctx.instance.name;
+    const tenantId = ctx.instance.tenant_id;
     this.logger.log(`[WEBHOOK] contacts.update received`);
     const data = payload?.data;
-    const instanceName = payload?.instance || payload?.instanceId;
     const contacts = Array.isArray(data) ? data : [data];
 
     for (const contact of contacts) {
@@ -988,7 +1042,7 @@ export class EvolutionService {
       if (!phone || phone.includes('-')) continue; // Ignorar grupos
       if (phone.length > 13) continue; // LID, não é telefone real
 
-      const lead = await this.prisma.lead.findFirst({ where: { phone } });
+      const lead = await this.prisma.lead.findFirst({ where: { phone, tenant_id: tenantId } });
       if (!lead) continue;
 
       const updates: Record<string, string> = {};
@@ -1005,15 +1059,13 @@ export class EvolutionService {
       }
 
       // Buscar nova foto de perfil — URLs do WhatsApp expiram, sempre atualizar com URL fresca
-      if (instanceName) {
-        try {
-          const newPic = await this.whatsappService.fetchProfilePicture(instanceName, phone);
-          if (newPic) {
-            updates.profile_picture_url = newPic;
-          }
-        } catch {
-          // Best-effort — ignorar falha ao buscar foto
+      try {
+        const newPic = await this.whatsappService.fetchProfilePicture(instanceName, phone);
+        if (newPic) {
+          updates.profile_picture_url = newPic;
         }
+      } catch {
+        // Best-effort — ignorar falha ao buscar foto
       }
 
       if (Object.keys(updates).length === 0) continue;
@@ -1023,7 +1075,7 @@ export class EvolutionService {
         data: updates,
       });
 
-      this.chatGateway.emitConversationsUpdate(lead.tenant_id ?? null);
+      this.chatGateway.emitConversationsUpdate(tenantId);
       this.logger.log(`[WEBHOOK] Lead ${lead.id} updated: ${JSON.stringify(updates)}`);
     }
   }
@@ -1031,13 +1083,16 @@ export class EvolutionService {
   // ─── connection.update ──────────────────────────────────────────
 
   async handleConnectionUpdate(payload: EvolutionWebhookPayload) {
+    const ctx = await this.resolveInstanceOrReject(payload);
+    if (!ctx) return;
+    const instanceName = ctx.instance.name;
+    const tenantId = ctx.instance.tenant_id;
     this.logger.log(`[WEBHOOK] connection.update received`);
     const data = payload?.data;
-    const instanceName = payload?.instance || payload?.instanceId;
     const state = data?.state || data?.status || 'unknown';
 
     this.chatGateway.emitConnectionStatusUpdate({
-      instanceName: instanceName || 'unknown',
+      instanceName,
       state,
       statusReason: data?.statusReason,
     });
@@ -1046,20 +1101,20 @@ export class EvolutionService {
 
     // Quando a instância reconecta, agenda resync das mensagens perdidas durante a queda.
     // Limitamos às 50 conversas mais recentes para não sobrecarregar.
-    if (state === 'open' && instanceName) {
+    if (state === 'open') {
       this.logger.log(`[RESYNC] Instância ${instanceName} reconectou — agendando resync de mensagens`);
-      this.scheduleResyncAfterReconnect(instanceName).catch(e =>
+      this.scheduleResyncAfterReconnect(instanceName, tenantId).catch(e =>
         this.logger.warn(`[RESYNC] Erro ao agendar resync: ${e.message}`),
       );
     }
   }
 
-  private async scheduleResyncAfterReconnect(instanceName: string): Promise<void> {
+  private async scheduleResyncAfterReconnect(instanceName: string, tenantId: string): Promise<void> {
     // Aguarda 5 segundos para a instância estabilizar antes de buscar mensagens
     const STABILIZE_DELAY = 5000;
 
     const conversations = await this.prisma.conversation.findMany({
-      where: { instance_name: instanceName, status: 'ABERTO' },
+      where: { instance_name: instanceName, status: 'ABERTO', tenant_id: tenantId },
       include: { lead: { select: { phone: true } } },
       orderBy: { last_message_at: 'desc' },
       take: 50,
@@ -1080,6 +1135,9 @@ export class EvolutionService {
   // ─── presence.update ──────────────────────────────────────────
 
   async handlePresenceUpdate(payload: EvolutionWebhookPayload) {
+    const ctx = await this.resolveInstanceOrReject(payload);
+    if (!ctx) return;
+    const tenantId = ctx.instance.tenant_id;
     this.logger.log(`[WEBHOOK] presence.update received`);
     const data = payload?.data;
     const jid = data?.id || data?.remoteJid;
@@ -1088,11 +1146,11 @@ export class EvolutionService {
     const phone = jid.replace(/@.*$/, '');
     if (!phone || phone.includes('-')) return; // Ignorar grupos
 
-    const lead = await this.prisma.lead.findFirst({ where: { phone } });
+    const lead = await this.prisma.lead.findFirst({ where: { phone, tenant_id: tenantId } });
     if (!lead) return;
 
     const conversation = await this.prisma.conversation.findFirst({
-      where: { lead_id: lead.id, status: { in: ['ABERTO', 'ADIADO'] } },
+      where: { lead_id: lead.id, status: { in: ['ABERTO', 'ADIADO'] }, tenant_id: tenantId },
       orderBy: { last_message_at: 'desc' },
     });
     if (!conversation) return;
