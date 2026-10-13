@@ -56,7 +56,7 @@ export class ConversationsController {
       external_id: dto.external_id,
       inbox: dto.inbox_id ? { connect: { id: dto.inbox_id } } : undefined,
       instance_name: dto.instance_name,
-      ai_mode: dto.ai_mode ?? true,
+      ai_mode: dto.ai_mode ?? false, // Agente de IA (Miguel) desativado — conversas nascem em modo humano
       tenant: req.user?.tenant_id ? { connect: { id: req.user.tenant_id } } : undefined,
     });
   }

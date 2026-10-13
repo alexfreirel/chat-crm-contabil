@@ -14,6 +14,9 @@ import { PrismaService } from '../prisma/prisma.service';
  *
  * Roda a cada hora, todos os dias.
  */
+// Agente de IA (Miguel) desativado — reativação automática do ai_mode suspensa.
+const AI_AGENT_ENABLED = false;
+
 @Injectable()
 export class AiReactivationCronService {
   private readonly logger = new Logger(AiReactivationCronService.name);
@@ -22,6 +25,7 @@ export class AiReactivationCronService {
 
   @Cron('17 * * * *', { timeZone: 'America/Maceio' }) // Minuto 17 de cada hora (evita :00)
   async reactivateStaleConversations() {
+    if (!AI_AGENT_ENABLED) return;
     this.logger.log('[AI-REACTIVATION] Verificando conversas com IA desligada há 24h+...');
 
     try {

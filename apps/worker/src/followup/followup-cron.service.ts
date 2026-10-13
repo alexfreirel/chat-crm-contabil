@@ -10,6 +10,9 @@ interface StaleConfig {
   stage: string; days: number; msg: string;
 }
 
+// Agente de IA (Miguel) desativado — follow-ups automáticos não são mais enviados.
+const AI_AGENT_ENABLED = false;
+
 @Injectable()
 export class FollowupCronService {
   private readonly logger = new Logger(FollowupCronService.name);
@@ -25,6 +28,7 @@ export class FollowupCronService {
    */
   @Cron('0 9 * * 1-5', { timeZone: 'America/Maceio' })
   async checkStaleLeads() {
+    if (!AI_AGENT_ENABLED) return;
     this.logger.log('[FOLLOWUP] Iniciando verificação...');
     await Promise.all([
       this.processEnrollments(),
@@ -37,6 +41,7 @@ export class FollowupCronService {
    */
   @Cron('0 * * * *', { timeZone: 'America/Maceio' })
   async processEnrollments() {
+    if (!AI_AGENT_ENABLED) return;
     const now = new Date();
     const enrollments = await this.prisma.followupEnrollment.findMany({
       where: { status: 'ATIVO', next_send_at: { lte: now } },

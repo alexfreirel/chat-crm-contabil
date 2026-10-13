@@ -11,6 +11,11 @@ import { FollowupService } from '../followup/followup.service';
 import { AdminBotService } from '../admin-bot/admin-bot.service';
 import { MediaDownloadService } from '../media/media-download.service';
 
+// Agente de IA (Miguel) desativado — CRM usado apenas como inbox de WhatsApp.
+// Mensagens recebidas deixam de gerar respostas automáticas, independente do
+// ai_mode salvo em cada conversa; apenas a Long Memory continua sendo extraída.
+const AI_AGENT_ENABLED = false;
+
 interface EvolutionWebhookPayload {
   event: string;
   instanceId?: string;
@@ -308,6 +313,7 @@ export class EvolutionService {
               inbox_id: inboxId,
               instance_name: instanceName,
               tenant_id: tenantId,
+              ai_mode: AI_AGENT_ENABLED,
             },
           });
         }
@@ -553,8 +559,8 @@ export class EvolutionService {
       // 5. Se AI_Mode ativo e mensagem recebida (não enviada), agenda job para a IA responder
       // Debounce: cancela job pendente e cria novo com timer resetado, acumulando mensagens
       // rápidas. Quando o lead para de digitar, o job dispara e a IA responde tudo de uma vez.
-      this.logger.debug(`[AI-CHECK] conv=${conv.id} ai_mode=${conv.ai_mode} isOutgoing=${isOutgoing}`);
-      if (!isOutgoing && conv.ai_mode) {
+      this.logger.debug(`[AI-CHECK] conv=${conv.id} ai_mode=${conv.ai_mode} isOutgoing=${isOutgoing} agentEnabled=${AI_AGENT_ENABLED}`);
+      if (!isOutgoing && AI_AGENT_ENABLED && conv.ai_mode) {
         try {
           const cooldownRaw = await this.prisma.globalSetting.findUnique({
             where: { key: 'AI_COOLDOWN_SECONDS' },
@@ -601,7 +607,7 @@ export class EvolutionService {
       // 5b. Conversa do operador humano (ai_mode=false): enfileira job apenas para
       // atualizar a Long Memory. O worker detecta ai_mode=false e só extrai fatos,
       // sem gerar resposta IA. Debounce de 15s para acumular mensagens rápidas.
-      if (!isOutgoing && !conv.ai_mode) {
+      if (!isOutgoing && (!AI_AGENT_ENABLED || !conv.ai_mode)) {
         const memJobId = `memory-debounce-${conv.id}`;
         const existing = await this.aiQueue.getJob(memJobId);
         if (existing) {
@@ -809,6 +815,7 @@ export class EvolutionService {
               inbox_id: inboxId,
               instance_name: instanceName,
               tenant_id: tenantId,
+              ai_mode: AI_AGENT_ENABLED,
             },
           });
           this.logger.log(`Nova conversa criada via chat webhook: ${phone} no setor ${ctx.inboxIds[0] ?? 'Nenhum'}`);
