@@ -375,7 +375,6 @@ export function InboxSidebar({
             {[
               { value: '', label: 'Tudo', count: [...conversations, ...adiadoConversations].filter(c => normalizeStage(c.leadStage) !== 'PERDIDO' && c.status !== 'CLOSED').length },
               { value: 'MINE', label: 'Minhas', count: conversations.filter(c => !c.aiMode && c.status !== 'CLOSED' && normalizeStage(c.leadStage) !== 'PERDIDO' && normalizeStage(c.leadStage) !== 'FINALIZADO').length },
-              { value: 'BOT', label: 'Miguel', count: conversations.filter(c => c.aiMode && normalizeStage(c.leadStage) !== 'PERDIDO' && normalizeStage(c.leadStage) !== 'FINALIZADO').length },
             ].map((tab) => (
               <button
                 key={tab.value}
