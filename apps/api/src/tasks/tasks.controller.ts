@@ -65,13 +65,16 @@ export class TasksController {
     const userId = req?.user?.id;
 
     let effectiveAssignedUserId = assignedUserId;
+    let includeUnassignedFor: string | undefined;
     if (!effectiveAssignedUserId && !roles.some((r: string) => ['ADMIN', 'CONTADOR'].includes(r)) && viewAll !== 'true') {
-      effectiveAssignedUserId = userId;
+      // Minhas tarefas = atribuídas a mim + sem responsável (qualquer assistente pode assumir)
+      includeUnassignedFor = userId;
     }
 
     return this.tasksService.findAll(req?.user?.tenant_id, p, l, {
       status,
       assignedUserId: effectiveAssignedUserId,
+      includeUnassignedFor,
       dueFilter,
       search,
       clienteContabilId,
@@ -96,8 +99,11 @@ export class TasksController {
     if (!userRoles.some(r => TASK_CREATOR_ROLES.includes(r))) {
       throw new ForbiddenException('Apenas administradores, contadores e assistentes podem criar tarefas.');
     }
+    const isManager = userRoles.some(r => TASK_MANAGER_ROLES.includes(r));
     return this.tasksService.create({
       ...data,
+      // Assistente que não indica responsável assume a própria tarefa
+      assigned_user_id: data.assigned_user_id || (!isManager ? req.user?.id : undefined),
       tenant_id: req.user?.tenant_id,
       created_by_id: req.user?.id,
     });

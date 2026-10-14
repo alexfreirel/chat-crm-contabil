@@ -34,6 +34,7 @@ export class TasksService {
     filters?: {
       status?: string;
       assignedUserId?: string;
+      includeUnassignedFor?: string; // atribuídas a este usuário OU sem responsável
       dueFilter?: string; // 'today' | 'week' | 'overdue'
       search?: string;
       clienteContabilId?: string;
@@ -49,6 +50,11 @@ export class TasksService {
     }
     if (filters?.assignedUserId) {
       andClauses.push({ assigned_user_id: filters.assignedUserId });
+    }
+    if (filters?.includeUnassignedFor) {
+      andClauses.push({
+        OR: [{ assigned_user_id: filters.includeUnassignedFor }, { assigned_user_id: null }],
+      });
     }
     if (filters?.clienteContabilId) {
       andClauses.push({ cliente_contabil_id: filters.clienteContabilId });
