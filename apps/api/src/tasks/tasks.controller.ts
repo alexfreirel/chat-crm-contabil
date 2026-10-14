@@ -4,6 +4,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateTaskDto, UpdateTaskDto } from './dto/tasks.dto';
 
 const TASK_MANAGER_ROLES = ['ADMIN', 'CONTADOR'];
+// Quem pode cadastrar tarefas (excluir continua só para TASK_MANAGER_ROLES)
+const TASK_CREATOR_ROLES = ['ADMIN', 'CONTADOR', 'ASSISTENTE'];
 
 @UseGuards(JwtAuthGuard)
 @Controller('tasks')
@@ -91,8 +93,8 @@ export class TasksController {
   @Post()
   create(@Body() data: CreateTaskDto, @Request() req: any) {
     const userRoles: string[] = Array.isArray(req.user?.roles) ? req.user.roles : (req.user?.role ? [req.user.role] : []);
-    if (!userRoles.some(r => TASK_MANAGER_ROLES.includes(r))) {
-      throw new ForbiddenException('Apenas administradores e contadores podem criar tarefas.');
+    if (!userRoles.some(r => TASK_CREATOR_ROLES.includes(r))) {
+      throw new ForbiddenException('Apenas administradores, contadores e assistentes podem criar tarefas.');
     }
     return this.tasksService.create({
       ...data,

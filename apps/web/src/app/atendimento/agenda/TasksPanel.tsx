@@ -98,8 +98,10 @@ function formatDue(due: string | null) {
 // viewAllTasks: lista as tarefas de toda a equipe (Meu Painel), para que qualquer
 // assistente possa iniciar uma tarefa e ficar como responsável por ela.
 export function TasksPanel({ viewAllTasks = false }: { viewAllTasks?: boolean } = {}) {
-  const { role, isAdmin, isContador } = useRole();
+  const { role, isAdmin, isContador, isAssistente } = useRole();
   const canViewAll = isAdmin || isContador;
+  // Assistentes também podem cadastrar tarefas (exclusão segue restrita a admin/contador)
+  const canCreate = canViewAll || isAssistente;
 
   // ── Dados
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -378,7 +380,7 @@ export function TasksPanel({ viewAllTasks = false }: { viewAllTasks?: boolean } 
       const tag = (e.target as HTMLElement).tagName;
       const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable;
       if (isEditable) return;
-      if ((e.key === 'n' || e.key === 'N') && canViewAll) { e.preventDefault(); setShowNew(v => !v); }
+      if ((e.key === 'n' || e.key === 'N') && canCreate) { e.preventDefault(); setShowNew(v => !v); }
       if (e.key === 'k' || e.key === 'K') { e.preventDefault(); setViewMode(v => v === 'kanban' ? 'list' : 'kanban'); }
       if (e.key === 'Escape') {
         if (drawerTaskId) setDrawerTaskId(null);
@@ -508,7 +510,7 @@ export function TasksPanel({ viewAllTasks = false }: { viewAllTasks?: boolean } 
               <Printer size={15} />
             </button>
 
-            {canViewAll && (
+            {canCreate && (
               <button
                 onClick={() => setShowNew(v => !v)}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm"
@@ -958,7 +960,7 @@ export function TasksPanel({ viewAllTasks = false }: { viewAllTasks?: boolean } 
                 Limpar filtros
               </button>
             )}
-            {!hasFilters && canViewAll && (
+            {!hasFilters && canCreate && (
               <button onClick={() => setShowNew(true)} className="text-xs text-primary hover:underline">
                 + Criar primeira tarefa
               </button>
