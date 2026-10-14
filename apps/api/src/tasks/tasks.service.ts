@@ -250,6 +250,8 @@ export class TasksService {
       include: { assigned_user: { select: { id: true, name: true } } },
     });
 
+    await this.syncTimeEntry(task, status);
+
     // Sync calendar event status
     if (task.calendar_event_id) {
       try {
@@ -271,6 +273,221 @@ export class TasksService {
     return task;
   }
 
+  // ─── Controle de tempo (execução x ociosidade) ────────────────
+
+  /**
+   * Mantém os intervalos de execução: ao entrar em EM_PROGRESSO abre um intervalo
+   * para o responsável (fechando o que ele tinha aberto em outra tarefa); em
+   * qualquer outro status fecha os intervalos abertos da tarefa. Nunca interrompe
+   * a mudança de status em caso de erro.
+   */
+  private async syncTimeEntry(
+    task: { id: string; tenant_id: string | null; assigned_user_id: string | null },
+    status: string,
+  ) {
+    try {
+      const now = new Date();
+      if (status === 'EM_PROGRESSO' && task.assigned_user_id) {
+        await this.prisma.taskTimeEntry.updateMany({
+          where: { user_id: task.assigned_user_id, ended_at: null, NOT: { task_id: task.id } },
+          data: { ended_at: now },
+        });
+        const open = await this.prisma.taskTimeEntry.findFirst({
+          where: { task_id: task.id, ended_at: null },
+        });
+        if (open && open.user_id !== task.assigned_user_id) {
+          await this.prisma.taskTimeEntry.update({ where: { id: open.id }, data: { ended_at: now } });
+        }
+        if (!open || open.user_id !== task.assigned_user_id) {
+          await this.prisma.taskTimeEntry.create({
+            data: { task_id: task.id, user_id: task.assigned_user_id, tenant_id: task.tenant_id, started_at: now },
+          });
+        }
+      } else {
+        await this.prisma.taskTimeEntry.updateMany({
+          where: { task_id: task.id, ended_at: null },
+          data: { ended_at: now },
+        });
+      }
+    } catch (e: any) {
+      this.logger.warn(`Erro ao registrar tempo da tarefa ${task.id}: ${e.message}`);
+    }
+  }
+
+  // Expediente: seg–sex, 08:00–12:00 e 14:00–18:00 (America/Maceio, UTC-3 fixo)
+  private static readonly TZ_OFFSET_H = -3;
+  private static readonly WORK_WINDOWS: [number, number][] = [[8, 12], [14, 18]];
+
+  /** Intervalos [ini, fim] (ms UTC) de expediente dentro de [from, to]. */
+  private workIntervals(from: number, to: number): [number, number][] {
+    const off = TasksService.TZ_OFFSET_H * 3600000;
+    const out: [number, number][] = [];
+    if (to <= from) return out;
+    const first = new Date(from + off);
+    let dayStartLocal = Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), first.getUTCDate());
+    while (dayStartLocal - off < to) {
+      const wd = new Date(dayStartLocal).getUTCDay(); // dia da semana local (0=dom)
+      if (wd >= 1 && wd <= 5) {
+        for (const [h0, h1] of TasksService.WORK_WINDOWS) {
+          const s = Math.max(dayStartLocal + h0 * 3600000 - off, from);
+          const e = Math.min(dayStartLocal + h1 * 3600000 - off, to);
+          if (e > s) out.push([s, e]);
+        }
+      }
+      dayStartLocal += 86400000;
+    }
+    return out;
+  }
+
+  private overlapMs(s: number, e: number, intervals: [number, number][]): number {
+    let total = 0;
+    for (const [a, b] of intervals) {
+      const lo = Math.max(s, a);
+      const hi = Math.min(e, b);
+      if (hi > lo) total += hi - lo;
+    }
+    return total;
+  }
+
+  /** Limites [from, to) do período (dia/semana/mês) que contém `date`, no fuso local. */
+  private periodRange(period: string, date?: string): { from: number; to: number } {
+    const off = TasksService.TZ_OFFSET_H * 3600000;
+    const base = date && /^\d{4}-\d{2}-\d{2}$/.test(date)
+      ? new Date(`${date}T12:00:00Z`)
+      : new Date(Date.now() + off);
+    const y = base.getUTCFullYear();
+    const m = base.getUTCMonth();
+    const d = base.getUTCDate();
+    let startLocal: number;
+    let endLocal: number;
+    if (period === 'month') {
+      startLocal = Date.UTC(y, m, 1);
+      endLocal = Date.UTC(y, m + 1, 1);
+    } else if (period === 'week') {
+      const dow = new Date(Date.UTC(y, m, d)).getUTCDay();
+      const back = dow === 0 ? 6 : dow - 1; // semana começa na segunda
+      startLocal = Date.UTC(y, m, d - back);
+      endLocal = startLocal + 7 * 86400000;
+    } else {
+      startLocal = Date.UTC(y, m, d);
+      endLocal = startLocal + 86400000;
+    }
+    return { from: startLocal - off, to: endLocal - off };
+  }
+
+  /**
+   * Relatório de tempo por assistente: tempo em execução (só dentro do expediente),
+   * tempo ocioso (expediente decorrido sem tarefa em execução) e detalhe por tarefa.
+   * Admin/contador veem todos os assistentes; os demais veem apenas a si mesmos.
+   */
+  async getTimeReport(
+    tenantId: string | undefined,
+    requester: { id: string; isManager: boolean },
+    period = 'day',
+    date?: string,
+  ) {
+    const { from, to } = this.periodRange(period, date);
+    const now = Date.now();
+    const upTo = Math.min(to, now);
+    const intervals = upTo > from ? this.workIntervals(from, upTo) : [];
+    const available = intervals.reduce((t, [a, b]) => t + (b - a), 0);
+
+    const users = await this.prisma.user.findMany({
+      where: {
+        role: 'ASSISTENTE',
+        ...(tenantId ? { OR: [{ tenant_id: tenantId }, { tenant_id: null }] } : {}),
+        ...(requester.isManager ? {} : { id: requester.id }),
+      },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+    const userIds = users.map(u => u.id);
+
+    const entries = userIds.length
+      ? await this.prisma.taskTimeEntry.findMany({
+          where: {
+            user_id: { in: userIds },
+            started_at: { lt: new Date(to) },
+            OR: [{ ended_at: null }, { ended_at: { gte: new Date(from) } }],
+          },
+          orderBy: { started_at: 'asc' },
+        })
+      : [];
+
+    const taskIds = [...new Set(entries.map(e => e.task_id))];
+    const tasks = taskIds.length
+      ? await this.prisma.task.findMany({
+          where: { id: { in: taskIds } },
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            cliente_contabil: { select: { nome_empresa: true } },
+          },
+        })
+      : [];
+    const taskMap = new Map(tasks.map(t => [t.id, t]));
+
+    const assistants = users.map(u => {
+      const mine = entries.filter(e => e.user_id === u.id);
+      const perTask = new Map<string, { workedMs: number; sessions: number }>();
+      let workedMs = 0;
+      let current: { taskId: string; title: string; cliente: string | null; since: string } | null = null;
+
+      for (const e of mine) {
+        const s = Math.max(e.started_at.getTime(), from);
+        const en = Math.min(e.ended_at ? e.ended_at.getTime() : now, upTo);
+        const ms = en > s ? this.overlapMs(s, en, intervals) : 0;
+        workedMs += ms;
+        const acc = perTask.get(e.task_id) ?? { workedMs: 0, sessions: 0 };
+        acc.workedMs += ms;
+        acc.sessions += 1;
+        perTask.set(e.task_id, acc);
+        if (!e.ended_at) {
+          const t = taskMap.get(e.task_id);
+          current = {
+            taskId: e.task_id,
+            title: t?.title ?? 'Tarefa',
+            cliente: t?.cliente_contabil?.nome_empresa ?? null,
+            since: e.started_at.toISOString(),
+          };
+        }
+      }
+
+      const idleMs = Math.max(0, available - workedMs);
+      return {
+        user: u,
+        workedMs,
+        idleMs,
+        availableMs: available,
+        occupancyPct: available > 0 ? Math.round((workedMs / available) * 100) : 0,
+        current,
+        tasks: [...perTask.entries()]
+          .map(([taskId, v]) => {
+            const t = taskMap.get(taskId);
+            return {
+              taskId,
+              title: t?.title ?? 'Tarefa',
+              cliente: t?.cliente_contabil?.nome_empresa ?? null,
+              status: t?.status ?? null,
+              workedMs: v.workedMs,
+              sessions: v.sessions,
+            };
+          })
+          .filter(t => t.workedMs > 0)
+          .sort((a, b) => b.workedMs - a.workedMs),
+      };
+    });
+
+    return {
+      period,
+      from: new Date(from).toISOString(),
+      to: new Date(to).toISOString(),
+      expediente: { janelas: ['08:00–12:00', '14:00–18:00'], dias: 'seg–sex', fuso: 'America/Maceio' },
+      assistants,
+    };
+  }
+
   async update(id: string, data: {
     title?: string;
     description?: string;
@@ -290,6 +507,8 @@ export class TasksService {
       where: { id },
       data: updateData,
     });
+
+    if (data.status !== undefined) await this.syncTimeEntry(task, data.status);
 
     // Sync calendar event status if status changed via full update
     if (task.calendar_event_id && data.status !== undefined) {
@@ -363,6 +582,7 @@ export class TasksService {
     }
 
     const [updatedTask] = await this.prisma.$transaction(ops);
+    await this.syncTimeEntry(updatedTask, 'CONCLUIDA');
 
     if (updatedTask.calendar_event_id) {
       try { await this.calendarService.updateStatus(updatedTask.calendar_event_id, 'CONCLUIDO'); } catch {}

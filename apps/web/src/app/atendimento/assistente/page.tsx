@@ -1,6 +1,7 @@
 'use client';
 
 import { TasksPanel } from '../agenda/TasksPanel';
+import { TimeControl } from './TimeControl';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { RouteGuard } from '@/components/RouteGuard';
@@ -395,6 +396,12 @@ function ListView({ isAdminOrContador }: { isAdminOrContador: boolean }) {
     <div className="flex-1 overflow-y-auto custom-scrollbar">
       <div className="max-w-6xl mx-auto px-6 py-4 space-y-6">
 
+        {/* Controle de tempo: execução x ociosidade (admin/contador veem todos os assistentes) */}
+        <TimeControl isManager={isAdminOrContador} />
+
+        {/* Tarefas — mesma tabela da tela Tarefas; qualquer assistente pode iniciar e assumir a tarefa */}
+        <TasksPanel viewAllTasks />
+
         {/* Painel Unificado de Acessos */}
         {(empresas.length > 0 || simplesClientes.length > 0) && (() => {
           const normCnpj = (c: string) => c.replace(/\D/g, '');
@@ -473,9 +480,6 @@ function ListView({ isAdminOrContador }: { isAdminOrContador: boolean }) {
             </section>
           );
         })()}
-
-        {/* Tarefas — mesma tabela da tela Tarefas; qualquer assistente pode iniciar e assumir a tarefa */}
-        <TasksPanel viewAllTasks />
       </div>
     </div>
 

@@ -55,6 +55,7 @@ model User {
   inboxes                  Inbox[]
   sectors                  Sector[]               @relation("SectorUsers")
   tasks                    Task[]
+  task_time_entries        TaskTimeEntry[]
   tenant                   Tenant?                @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
   accountant_clientes      ClienteContabil[]      @relation("AccountantClientes")
   task_comments            TaskComment[]
@@ -257,12 +258,31 @@ model Task {
   comments              TaskComment[]
   checklist_items       TaskChecklistItem[]
   postponements         TaskPostponement[]
+  time_entries          TaskTimeEntry[]
 
   @@index([assigned_user_id, due_at])
   @@index([status])
   @@index([cliente_contabil_id])
   @@index([tenant_id])
   @@index([lead_id])
+}
+
+/// Intervalos de execução de tarefas (controle de tempo / ociosidade dos assistentes).
+/// Aberto (ended_at null) enquanto a tarefa está EM_PROGRESSO para o usuário.
+model TaskTimeEntry {
+  id         String    @id @default(uuid())
+  tenant_id  String?
+  task_id    String
+  user_id    String
+  started_at DateTime  @default(now())
+  ended_at   DateTime?
+  task       Task      @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, started_at])
+  @@index([task_id])
+  @@index([ended_at])
+  @@index([tenant_id])
 }
 
 model TaskPostponement {

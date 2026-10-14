@@ -16,6 +16,19 @@ export class TasksController {
     return this.tasksService.getWorkload(req.user?.tenant_id);
   }
 
+  // Controle de tempo: execução x ociosidade por assistente (deve vir ANTES de :id)
+  @Get('time-report')
+  getTimeReport(
+    @Query('period') period: string | undefined,
+    @Query('date') date: string | undefined,
+    @Request() req: any,
+  ) {
+    const userRoles: string[] = Array.isArray(req.user?.roles) ? req.user.roles : (req.user?.role ? [req.user.role] : []);
+    const isManager = userRoles.some(r => TASK_MANAGER_ROLES.includes(r));
+    const p = period === 'week' || period === 'month' ? period : 'day';
+    return this.tasksService.getTimeReport(req.user?.tenant_id, { id: req.user?.id, isManager }, p, date);
+  }
+
   // Sprint 4: Sugestão de próxima ação por IA
   @Post('next-action')
   @HttpCode(HttpStatus.OK)
