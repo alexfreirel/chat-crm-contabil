@@ -27,8 +27,19 @@ interface Task {
   lead: { id: string; name: string | null; phone: string } | null;
   legal_case_id: string | null;
   conversation_id: string | null;
+  cliente_contabil_id?: string | null;
+  cliente_contabil?: { id: string; nome_empresa: string | null; lead: { name: string | null } | null } | null;
   _count?: { comments: number };
 }
+
+interface ClienteOption {
+  id: string;
+  lead_id: string;
+  nome: string;
+  documento: string | null;
+}
+
+interface ClienteCounts { total: number; pendentes: number; vencidas: number; }
 
 interface UserOption { id: string; name: string; }
 
@@ -103,6 +114,14 @@ export function TasksPanel() {
   const [searchInput, setSearchInput] = useState('');
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Clientes contábeis (as tarefas são organizadas por cliente)
+  const [clientes, setClientes] = useState<ClienteOption[]>([]);
+  const [clientesLoading, setClientesLoading] = useState(true);
+  const [clienteCounts, setClienteCounts] = useState<Record<string, ClienteCounts>>({});
+  const [selectedClienteId, setSelectedClienteId] = useState<string | null>(null);
+  const [clienteSearch, setClienteSearch] = useState('');
+  const [newClienteId, setNewClienteId] = useState('');
+
   // ── Paginação
   const [page, setPage] = useState(1);
   const LIMIT = 25;
@@ -157,6 +176,7 @@ export function TasksPanel() {
       if (assignedFilter) params.assignedUserId = assignedFilter;
       if (dueFilter) params.dueFilter = dueFilter;
       if (search) params.search = search;
+      if (selectedClienteId) params.clienteContabilId = selectedClienteId;
       if (useCompFilter) {
         const firstDay = new Date(compYear, compMonth, 1);
         const lastDay = new Date(compYear, compMonth + 1, 0, 23, 59, 59);
@@ -173,7 +193,7 @@ export function TasksPanel() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, assignedFilter, dueFilter, search, viewMode, useCompFilter, compYear, compMonth]);
+  }, [statusFilter, assignedFilter, dueFilter, search, viewMode, useCompFilter, compYear, compMonth, selectedClienteId]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -184,11 +204,25 @@ export function TasksPanel() {
         dateParams.dateFrom = firstDay.toISOString();
         dateParams.dateTo = lastDay.toISOString();
       }
+      const clienteParams: Record<string, string> = selectedClienteId ? { clienteContabilId: selectedClienteId } : {};
       const [all, overdue] = await Promise.all([
-        api.get('/tasks', { params: { limit: '2000', ...dateParams } }),
-        api.get('/tasks', { params: { limit: '2000', dueFilter: 'overdue', ...dateParams } }),
+        api.get('/tasks', { params: { limit: '2000', ...dateParams, ...clienteParams } }),
+        api.get('/tasks', { params: { limit: '2000', dueFilter: 'overdue', ...dateParams, ...clienteParams } }),
       ]);
       const allTasks: Task[] = all.data?.data || [];
+      if (!selectedClienteId) {
+        const now = Date.now();
+        const counts: Record<string, ClienteCounts> = {};
+        for (const t of allTasks) {
+          if (!t.cliente_contabil_id) continue;
+          const c = counts[t.cliente_contabil_id] ??= { total: 0, pendentes: 0, vencidas: 0 };
+          c.total++;
+          const open = t.status !== 'CONCLUIDA' && t.status !== 'CANCELADA';
+          if (open) c.pendentes++;
+          if (open && t.due_at && new Date(t.due_at).getTime() < now) c.vencidas++;
+        }
+        setClienteCounts(counts);
+      }
       setStats({
         total: all.data?.total ?? allTasks.length,
         a_fazer: allTasks.filter(t => t.status === 'A_FAZER').length,
@@ -197,7 +231,20 @@ export function TasksPanel() {
         vencidas: overdue.data?.total ?? 0,
       });
     } catch {}
-  }, [useCompFilter, compYear, compMonth]);
+  }, [useCompFilter, compYear, compMonth, selectedClienteId]);
+
+  useEffect(() => {
+    api.get('/clientes-contabil', { params: { archived: 'false' } }).then(r => {
+      const list: any[] = Array.isArray(r.data) ? r.data : (r.data?.data || []);
+      setClientes(list.map(c => ({
+        id: c.id,
+        lead_id: c.lead_id,
+        nome: c.nome_empresa || c.lead?.ficha_contabil?.razao_social || c.lead?.name || c.lead?.phone || 'Sem nome',
+        documento: c.cpf_cnpj || c.lead?.cpf_cnpj || c.lead?.ficha_contabil?.cnpj || null,
+      })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')));
+    }).catch(() => showError('Erro ao carregar clientes'))
+      .finally(() => setClientesLoading(false));
+  }, []);
 
   useEffect(() => {
     api.get('/users?limit=100').then(r => {
@@ -268,10 +315,15 @@ export function TasksPanel() {
   ];
 
   const handleCreate = async () => {
+    const clienteId = selectedClienteId || newClienteId;
     if (!newTitle.trim()) return;
+    if (!clienteId) { showError('Selecione o cliente da tarefa'); return; }
+    const cliente = clientes.find(c => c.id === clienteId);
     setCreating(true);
     try {
       await api.post('/tasks', {
+        cliente_contabil_id: clienteId,
+        lead_id: cliente?.lead_id || undefined,
         title: newTitle.trim(),
         description: newDesc.trim() || undefined,
         due_at: newDue ? new Date(`${newDue}T18:00:00`).toISOString() : undefined,
@@ -286,7 +338,7 @@ export function TasksPanel() {
           : `Tarefa criada com ${newRecorrenciaMeses} repetições mensais`
         : 'Tarefa criada';
       showSuccess(msg);
-      setNewTitle(''); setNewDesc(''); setNewDue(''); setNewAssigned(''); setNewSetor('');
+      setNewTitle(''); setNewDesc(''); setNewDue(''); setNewAssigned(''); setNewSetor(''); setNewClienteId('');
       setNewRecorrente(false); setNewRecorrenciaTipo('meses'); setNewRecorrenciaMeses(12);
       setShowNew(false);
       fetchTasks(1);
@@ -374,6 +426,11 @@ export function TasksPanel() {
   };
 
   const hasFilters = statusFilter || dueFilter || assignedFilter || search;
+  const selectedCliente = clientes.find(c => c.id === selectedClienteId) ?? null;
+  const filteredClientes = clientes.filter(c => {
+    const q = clienteSearch.trim().toLowerCase();
+    return !q || c.nome.toLowerCase().includes(q) || (c.documento || '').includes(q);
+  });
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -388,9 +445,23 @@ export function TasksPanel() {
               <CheckSquare size={18} className="text-primary" />
             </div>
             <div>
-              <h1 className="text-base font-bold text-foreground">Tarefas</h1>
-              <p className="text-xs text-muted-foreground">{total} tarefa{total !== 1 ? 's' : ''} {hasFilters ? 'filtradas' : 'no total'}</p>
+              <h1 className="text-base font-bold text-foreground">
+                {selectedCliente ? selectedCliente.nome : 'Tarefas'}
+              </h1>
+              <p className="text-xs text-muted-foreground">
+                {selectedCliente
+                  ? `${total} tarefa${total !== 1 ? 's' : ''} ${hasFilters ? 'filtradas' : 'do cliente'}`
+                  : `${clientes.length} cliente${clientes.length !== 1 ? 's' : ''} · ${stats.total} tarefa${stats.total !== 1 ? 's' : ''}`}
+              </p>
             </div>
+            {selectedCliente && (
+              <button
+                onClick={() => { setSelectedClienteId(null); resetFilters(); }}
+                className="ml-2 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              >
+                <ChevronLeft size={13} /> Clientes
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {/* Vista toggle */}
@@ -530,6 +601,16 @@ export function TasksPanel() {
       {showNew && (
         <div className="shrink-0 px-6 py-4 border-b border-border bg-accent/20">
           <div className="max-w-2xl space-y-2.5">
+            {!selectedClienteId && (
+              <select
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30"
+                value={newClienteId}
+                onChange={e => setNewClienteId(e.target.value)}
+              >
+                <option value="">Cliente *</option>
+                {clientes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+              </select>
+            )}
             <input
               autoFocus
               className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/60 outline-none focus:ring-2 focus:ring-primary/30"
@@ -680,6 +761,59 @@ export function TasksPanel() {
         )}
       </div>
 
+      {/* ── Painel de clientes (tarefas são cadastradas por cliente) ── */}
+      {!selectedClienteId && (
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
+          <div className="px-6 py-3 border-b border-border bg-card/20">
+            <div className="relative max-w-sm">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={clienteSearch}
+                onChange={e => setClienteSearch(e.target.value)}
+                placeholder="Buscar cliente por nome ou CNPJ/CPF..."
+                className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-border bg-background text-xs text-foreground placeholder:text-muted-foreground/60 outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+          </div>
+          {clientesLoading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 size={28} className="animate-spin text-primary/40" />
+            </div>
+          ) : filteredClientes.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-3">
+              <div className="w-14 h-14 rounded-2xl bg-accent/50 flex items-center justify-center">
+                <Briefcase size={24} className="text-muted-foreground/30" />
+              </div>
+              <p className="text-sm text-muted-foreground">Nenhum cliente encontrado</p>
+            </div>
+          ) : (
+            <div className="grid gap-3 p-6 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
+              {filteredClientes.map(c => {
+                const cnt = clienteCounts[c.id] ?? { total: 0, pendentes: 0, vencidas: 0 };
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => { resetFilters(); setSelectedClienteId(c.id); }}
+                    className="text-left p-4 rounded-xl border border-border bg-card/60 hover:bg-accent/40 hover:border-primary/40 transition-all"
+                  >
+                    <p className="text-sm font-semibold text-foreground truncate">{c.nome}</p>
+                    <p className="text-[11px] text-muted-foreground truncate min-h-[16px]">{c.documento || '—'}</p>
+                    <div className="flex items-center gap-3 mt-3 text-[11px] font-semibold">
+                      <span className="text-blue-400">{cnt.pendentes} pendente{cnt.pendentes !== 1 ? 's' : ''}</span>
+                      {cnt.vencidas > 0 && (
+                        <span className="flex items-center gap-1 text-red-400"><AlertTriangle size={10} />{cnt.vencidas} vencida{cnt.vencidas !== 1 ? 's' : ''}</span>
+                      )}
+                      <span className="ml-auto text-muted-foreground">{cnt.total} no mês</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {selectedClienteId && (<>
       {/* ── Filtros ── */}
       <div className="shrink-0 px-6 py-3 border-b border-border bg-card/20 flex flex-wrap items-center gap-2">
         {/* Status tabs */}
@@ -921,6 +1055,7 @@ export function TasksPanel() {
           </div>
         )}
       </div>}
+      </>)}
 
       {/* Sprint 5: Task Detail Drawer */}
       {drawerTaskId && (

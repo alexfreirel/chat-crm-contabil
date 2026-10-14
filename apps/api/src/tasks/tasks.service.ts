@@ -77,6 +77,9 @@ export class TasksService {
     const includeOpts = {
       lead: true,
       assigned_user: true,
+      cliente_contabil: {
+        select: { id: true, nome_empresa: true, lead: { select: { name: true } } },
+      },
       _count: { select: { comments: true } },
     };
 
