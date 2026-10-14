@@ -111,7 +111,11 @@ export class TasksController {
 
   @Patch(':id/status')
   updateStatus(@Param('id') id: string, @Body('status') status: string, @Request() req: any) {
-    return this.tasksService.updateStatus(id, status, req.user?.tenant_id);
+    const userRoles: string[] = Array.isArray(req.user?.roles) ? req.user.roles : (req.user?.role ? [req.user.role] : []);
+    const actor = req.user?.id
+      ? { id: req.user.id as string, isManager: userRoles.some(r => TASK_MANAGER_ROLES.includes(r)) }
+      : undefined;
+    return this.tasksService.updateStatus(id, status, req.user?.tenant_id, actor);
   }
 
   @Patch(':id')

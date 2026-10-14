@@ -226,11 +226,28 @@ export class TasksService {
     return task;
   }
 
-  async updateStatus(id: string, status: string, tenantId?: string) {
+  async updateStatus(
+    id: string,
+    status: string,
+    tenantId?: string,
+    actor?: { id: string; isManager: boolean },
+  ) {
     await this.verifyTenantOwnership(id, tenantId);
+
+    // Quem começa (ou conclui) a execução assume a tarefa. Admin/contador só
+    // assumem quando ela está sem responsável, para não tomar tarefa de assistente.
+    const data: { status: string; assigned_user_id?: string } = { status };
+    if (actor && (status === 'EM_PROGRESSO' || status === 'CONCLUIDA')) {
+      const current = await this.prisma.task.findUnique({ where: { id }, select: { assigned_user_id: true } });
+      if (!current?.assigned_user_id || (!actor.isManager && current.assigned_user_id !== actor.id)) {
+        data.assigned_user_id = actor.id;
+      }
+    }
+
     const task = await this.prisma.task.update({
       where: { id },
-      data: { status },
+      data,
+      include: { assigned_user: { select: { id: true, name: true } } },
     });
 
     // Sync calendar event status

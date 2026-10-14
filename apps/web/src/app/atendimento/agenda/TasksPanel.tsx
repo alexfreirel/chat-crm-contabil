@@ -95,7 +95,9 @@ function formatDue(due: string | null) {
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
-export function TasksPanel() {
+// viewAllTasks: lista as tarefas de toda a equipe (Meu Painel), para que qualquer
+// assistente possa iniciar uma tarefa e ficar como responsável por ela.
+export function TasksPanel({ viewAllTasks = false }: { viewAllTasks?: boolean } = {}) {
   const { role, isAdmin, isContador } = useRole();
   const canViewAll = isAdmin || isContador;
 
@@ -171,6 +173,7 @@ export function TasksPanel() {
         page: String(mode === 'kanban' ? 1 : pg),
         limit: String(mode === 'kanban' ? '500' : String(LIMIT)),
       };
+      if (viewAllTasks) params.viewAll = 'true';
       if (statusFilter) params.status = statusFilter;
       if (assignedFilter) params.assignedUserId = assignedFilter;
       if (dueFilter) params.dueFilter = dueFilter;
@@ -192,7 +195,7 @@ export function TasksPanel() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, assignedFilter, dueFilter, search, viewMode, useCompFilter, compYear, compMonth, selectedClienteId]);
+  }, [statusFilter, assignedFilter, dueFilter, search, viewMode, useCompFilter, compYear, compMonth, selectedClienteId, viewAllTasks]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -204,6 +207,7 @@ export function TasksPanel() {
         dateParams.dateTo = lastDay.toISOString();
       }
       const clienteParams: Record<string, string> = selectedClienteId ? { clienteContabilId: selectedClienteId } : {};
+      if (viewAllTasks) clienteParams.viewAll = 'true';
       const [all, overdue] = await Promise.all([
         api.get('/tasks', { params: { limit: '2000', ...dateParams, ...clienteParams } }),
         api.get('/tasks', { params: { limit: '2000', dueFilter: 'overdue', ...dateParams, ...clienteParams } }),
@@ -230,7 +234,7 @@ export function TasksPanel() {
         vencidas: overdue.data?.total ?? 0,
       });
     } catch {}
-  }, [useCompFilter, compYear, compMonth, selectedClienteId]);
+  }, [useCompFilter, compYear, compMonth, selectedClienteId, viewAllTasks]);
 
   useEffect(() => {
     api.get('/clientes-contabil', { params: { archived: 'false' } }).then(r => {
@@ -295,17 +299,25 @@ export function TasksPanel() {
     searchTimer.current = setTimeout(() => setSearch(v), 350);
   };
 
-  const handleCycleStatus = async (task: Task) => {
-    const newStatus = STATUS_CYCLE[task.status] ?? 'A_FAZER';
+  // Muda o status; ao iniciar/concluir, o servidor atribui a tarefa a quem executou
+  // e devolve o responsável atualizado.
+  const applyStatus = async (task: Task, newStatus: string) => {
     try {
-      await api.patch(`/tasks/${task.id}/status`, { status: newStatus });
-      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: newStatus } : t));
+      const res = await api.patch(`/tasks/${task.id}/status`, { status: newStatus });
+      const updated = res.data;
+      setTasks(prev => prev.map(t => t.id === task.id ? {
+        ...t,
+        status: newStatus,
+        assigned_user: updated?.assigned_user ?? t.assigned_user,
+      } : t));
       fetchStats();
       showSuccess(`Tarefa movida para "${STATUS_CONFIG[newStatus]?.label}"`);
     } catch {
       showError('Erro ao atualizar status');
     }
   };
+
+  const handleCycleStatus = (task: Task) => applyStatus(task, STATUS_CYCLE[task.status] ?? 'A_FAZER');
 
   const SETOR_OPTIONS = [
     { value: 'FISCAL',   label: 'Fiscal',   icon: '📊' },
@@ -1021,6 +1033,17 @@ export function TasksPanel() {
                     </div>
                   </div>
 
+                  {/* Comando Iniciar: quem inicia passa a ser o responsável pela tarefa */}
+                  {task.status === 'A_FAZER' && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); applyStatus(task, 'EM_PROGRESSO'); }}
+                      className="shrink-0 mt-0.5 text-[11px] font-bold px-3 py-1 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                      title="Iniciar a tarefa e assumir a responsabilidade por ela"
+                    >
+                      Iniciar
+                    </button>
+                  )}
+
                   {/* Ações rápidas (hover) */}
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0 mt-0.5">
                     {Object.entries(STATUS_CONFIG)
@@ -1028,10 +1051,7 @@ export function TasksPanel() {
                       .map(([k, v]) => (
                         <button
                           key={k}
-                          onClick={() => api.patch(`/tasks/${task.id}/status`, { status: k }).then(() => {
-                            setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: k } : t));
-                            fetchStats();
-                          })}
+                          onClick={(e) => { e.stopPropagation(); applyStatus(task, k); }}
                           className={`text-[9px] font-bold px-2 py-0.5 rounded-full border border-border hover:bg-accent transition-colors ${v.color}`}
                           title={`Mover para ${v.label}`}
                         >

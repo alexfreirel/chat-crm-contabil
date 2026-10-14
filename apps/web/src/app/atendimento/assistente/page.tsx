@@ -1,5 +1,6 @@
 'use client';
 
+import { TasksPanel } from '../agenda/TasksPanel';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { RouteGuard } from '@/components/RouteGuard';
@@ -377,16 +378,6 @@ function ListView({ isAdminOrContador }: { isAdminOrContador: boolean }) {
     );
   }
 
-  if (!isAdminOrContador && !data) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-3">
-        <AlertTriangle size={32} className="text-muted-foreground/30" />
-        <p className="text-sm text-muted-foreground">Erro ao carregar painel.</p>
-        <button onClick={fetchData} className="text-xs text-primary hover:underline">Tentar novamente</button>
-      </div>
-    );
-  }
-
   const sortedPending = data ? sortByUrgency(data.pending) : [];
 
   const urgentTasks = sortedPending.filter(t => {
@@ -402,7 +393,7 @@ function ListView({ isAdminOrContador }: { isAdminOrContador: boolean }) {
   return (
     <>
     <div className="flex-1 overflow-y-auto custom-scrollbar">
-      <div className="max-w-4xl mx-auto px-6 py-4 space-y-6">
+      <div className="max-w-6xl mx-auto px-6 py-4 space-y-6">
 
         {/* Painel Unificado de Acessos */}
         {(empresas.length > 0 || simplesClientes.length > 0) && (() => {
@@ -483,146 +474,8 @@ function ListView({ isAdminOrContador }: { isAdminOrContador: boolean }) {
           );
         })()}
 
-        {/* Tarefas — admin/contador vê todos os assistentes, assistente vê as próprias */}
-        {isAdminOrContador ? (
-          <section>
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/20">
-                <h2 className="text-[12px] font-bold text-foreground uppercase tracking-wider flex items-center gap-2">
-                  <User size={13} className="text-muted-foreground" /> Tarefas dos Assistentes
-                  <span className="text-muted-foreground font-normal normal-case tracking-normal">({totalAssistantTasks} pendentes)</span>
-                </h2>
-                {totalOverdue > 0 && (
-                  <span className="flex items-center gap-1 text-[10px] font-bold text-red-400">
-                    <AlertTriangle size={11} /> {totalOverdue} atrasada{totalOverdue !== 1 ? 's' : ''}
-                  </span>
-                )}
-              </div>
-              {gruposAssistentes.length === 0 ? (
-                <div className="p-4 flex items-center gap-3">
-                  <Clock size={16} className="text-muted-foreground/40" />
-                  <p className="text-sm text-muted-foreground">Nenhuma tarefa pendente para assistentes.</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-border/50">
-                  {gruposAssistentes.map((grupo) => {
-                    const overdueCount = grupo.tasks.filter(t => t.overdue).length;
-                    const isOpen = expandedGrupos[grupo.user.id] ?? true;
-                    return (
-                      <div key={grupo.user.id}>
-                        <button
-                          onClick={() => setExpandedGrupos(prev => ({ ...prev, [grupo.user.id]: !prev[grupo.user.id] }))}
-                          className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors"
-                        >
-                          <div className="flex items-center gap-2">
-                            {isOpen ? <ChevronDown size={12} className="text-muted-foreground" /> : <ChevronRight size={12} className="text-muted-foreground" />}
-                            <span className="text-[12px] font-semibold text-foreground">{grupo.user.name}</span>
-                            <span className="text-[10px] text-muted-foreground">({grupo.tasks.length} tarefa{grupo.tasks.length !== 1 ? 's' : ''})</span>
-                          </div>
-                          {overdueCount > 0 && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-500/10 text-red-400">{overdueCount} atrasada{overdueCount !== 1 ? 's' : ''}</span>
-                          )}
-                        </button>
-                        {isOpen && (
-                          <div className="pb-1">
-                            {grupo.tasks.map((t) => {
-                              const due = t.start_at ? daysUntil(t.start_at) : null;
-                              const isUrgent = t.priority === 'URGENTE' || due?.urgent;
-                              return (
-                                <div key={t.id} className={`flex items-start gap-3 px-6 py-2 ${t.overdue ? 'bg-red-500/3' : ''}`}>
-                                  <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${t.overdue ? 'bg-red-400' : isUrgent ? 'bg-amber-400' : 'bg-muted-foreground/40'}`} />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-[12px] font-medium text-foreground truncate">{t.title}</p>
-                                    <div className="flex items-center gap-2 flex-wrap mt-0.5">
-                                      {due && (
-                                        <span className={`text-[10px] font-semibold ${due.overdue ? 'text-red-400' : due.urgent ? 'text-amber-400' : 'text-muted-foreground'}`}>
-                                          {due.text}
-                                        </span>
-                                      )}
-                                      {t.lead?.name && <span className="text-[10px] text-muted-foreground truncate">· {t.lead.name}</span>}
-                                      {t.priority === 'URGENTE' && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">URGENTE</span>}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </section>
-        ) : data && (
-          <>
-            {/* Stats */}
-            <div className="flex gap-3 flex-wrap">
-              <StatBadge value={data.stats.pendingCount} label="Pendentes" color="bg-blue-500/10 text-blue-400" onClick={() => scrollTo(pendingRef)} />
-              <StatBadge value={data.stats.completedThisMonthCount} label="Este mês" color="bg-emerald-500/10 text-emerald-400" onClick={data.stats.completedThisMonthCount > 0 ? () => scrollTo(completedRef) : undefined} />
-            </div>
-
-            {/* Progress bar */}
-            {totalTasks > 0 && (
-              <div className="bg-card border border-border rounded-xl p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[12px] font-semibold text-foreground">Progresso do mês</span>
-                  <span className="text-[12px] font-bold text-emerald-400">{Math.round((data.stats.completedThisMonthCount / totalTasks) * 100)}%</span>
-                </div>
-                <div className="w-full h-2 bg-border rounded-full overflow-hidden">
-                  <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${Math.round((data.stats.completedThisMonthCount / totalTasks) * 100)}%` }} />
-                </div>
-                <div className="flex justify-between mt-1.5">
-                  <span className="text-[10px] text-muted-foreground">{data.stats.completedThisMonthCount} concluída{data.stats.completedThisMonthCount !== 1 ? 's' : ''}</span>
-                  <span className="text-[10px] text-muted-foreground">{data.stats.pendingCount} restante{data.stats.pendingCount !== 1 ? 's' : ''}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Urgent alert */}
-            {urgentTasks.length > 0 && data.stats.pendingCount > 0 && (
-              <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-3 flex items-start gap-2">
-                <Zap size={14} className="text-red-400 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-[12px] font-bold text-red-400">{urgentTasks.length} tarefa{urgentTasks.length !== 1 ? 's' : ''} urgent{urgentTasks.length !== 1 ? 'es' : 'e'} ou vencendo hoje</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">{urgentTasks.map(t => t.title).slice(0, 2).join(', ')}{urgentTasks.length > 2 && ` e mais ${urgentTasks.length - 2}`}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Pendentes */}
-            <section ref={pendingRef}>
-              <h2 className="text-[12px] font-bold text-blue-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                <Clock size={13} /> Pendentes ({data.pending.length})
-              </h2>
-              {sortedPending.length === 0 ? (
-                <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4 flex items-center gap-3">
-                  <Trophy size={18} className="text-emerald-400 shrink-0" />
-                  <div>
-                    <p className="text-[13px] font-bold text-emerald-400">Nenhuma tarefa pendente</p>
-                    <p className="text-[11px] text-muted-foreground">Bom trabalho! Você está em dia.</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2">{sortedPending.map(t => <TaskCard key={t.id} task={t} onAction={handleAction} />)}</div>
-              )}
-            </section>
-
-            {/* Concluídas no mês */}
-            {data.completedThisMonth.length > 0 && (
-              <section ref={completedRef}>
-                <button onClick={() => setShowCompleted(!showCompleted)} className="text-[12px] font-bold text-emerald-400 uppercase tracking-wider mb-3 flex items-center gap-2 hover:opacity-80 transition-opacity w-full text-left">
-                  {showCompleted ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                  <CheckCircle2 size={13} /> Concluídas este mês ({data.completedThisMonth.length})
-                </button>
-                {showCompleted && (
-                  <div className="space-y-2">{data.completedThisMonth.map(t => <TaskCard key={t.id} task={t} onAction={handleAction} dimmed />)}</div>
-                )}
-              </section>
-            )}
-          </>
-        )}
+        {/* Tarefas — mesma tabela da tela Tarefas; qualquer assistente pode iniciar e assumir a tarefa */}
+        <TasksPanel viewAllTasks />
       </div>
     </div>
 
