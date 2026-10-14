@@ -232,6 +232,18 @@ export class TasksService {
     return task;
   }
 
+  /**
+   * Cancelar tarefa é restrito ao ADMIN. Exceção: tarefas vinculadas a uma conversa
+   * (adiamento no inbox), que o fluxo substitui automaticamente ao re-adiar.
+   */
+  async assertCanCancel(id: string, status: string | undefined, isAdmin: boolean) {
+    if (status !== 'CANCELADA' || isAdmin) return;
+    const task = await this.prisma.task.findUnique({ where: { id }, select: { conversation_id: true } });
+    if (!task?.conversation_id) {
+      throw new ForbiddenException('Apenas o administrador pode cancelar tarefas.');
+    }
+  }
+
   async updateStatus(
     id: string,
     status: string,

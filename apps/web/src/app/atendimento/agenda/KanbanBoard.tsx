@@ -5,6 +5,7 @@ import {
   CalendarDays, User, MessageSquare, AlertTriangle, CheckSquare,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { useRole } from '@/lib/useRole';
 import { showError, showSuccess } from '@/lib/toast';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -51,6 +52,7 @@ export function KanbanBoard({
   onTaskClick: (id: string) => void;
   onStatusChange: (id: string, status: string) => void;
 }) {
+  const { isAdmin } = useRole();
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
@@ -84,7 +86,7 @@ export function KanbanBoard({
 
   return (
     <div className="flex gap-3 h-full overflow-x-auto px-6 py-4 pb-6">
-      {COLUMNS.map(col => {
+      {COLUMNS.filter(c => c.id !== 'CANCELADA' || isAdmin).map(col => {
         const colTasks = tasksByCol(col.id);
         const isOver = dragOverCol === col.id;
 

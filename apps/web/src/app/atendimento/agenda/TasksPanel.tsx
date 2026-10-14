@@ -836,7 +836,7 @@ export function TasksPanel({ viewAllTasks = false }: { viewAllTasks?: boolean } 
       <div className="shrink-0 px-6 py-3 border-b border-border bg-card/20 flex flex-wrap items-center gap-2">
         {/* Status tabs */}
         <div className="flex gap-1">
-          {(['', 'A_FAZER', 'EM_PROGRESSO', 'CONCLUIDA', 'CANCELADA'] as const).map(s => (
+          {(['', 'A_FAZER', 'EM_PROGRESSO', 'CONCLUIDA', 'CANCELADA'] as const).filter(s => s !== 'CANCELADA' || isAdmin).map(s => (
             <button
               key={s}
               onClick={() => { setStatusFilter(s); setDueFilter(''); }}
@@ -1049,7 +1049,7 @@ export function TasksPanel({ viewAllTasks = false }: { viewAllTasks?: boolean } 
                   {/* Ações rápidas (hover) */}
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0 mt-0.5">
                     {Object.entries(STATUS_CONFIG)
-                      .filter(([k]) => k !== task.status)
+                      .filter(([k]) => k !== task.status && (k !== 'CANCELADA' || isAdmin))
                       .map(([k, v]) => (
                         <button
                           key={k}

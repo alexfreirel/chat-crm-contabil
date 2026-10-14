@@ -601,7 +601,7 @@ export default function TabObrigacoes({
       {/* ── Filtros ── */}
       <div className="shrink-0 px-6 py-3 border-b border-border bg-card/20 flex flex-wrap items-center gap-2">
         <div className="flex gap-1">
-          {(['', 'A_FAZER', 'EM_PROGRESSO', 'CONCLUIDA', 'CANCELADA'] as const).map(s => (
+          {(['', 'A_FAZER', 'EM_PROGRESSO', 'CONCLUIDA', 'CANCELADA'] as const).filter(s => s !== 'CANCELADA' || isAdmin).map(s => (
             <button
               key={s}
               onClick={() => { setStatusFilter(s); setDueFilter(''); }}

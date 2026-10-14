@@ -131,16 +131,19 @@ export class TasksController {
   }
 
   @Patch(':id/status')
-  updateStatus(@Param('id') id: string, @Body('status') status: string, @Request() req: any) {
+  async updateStatus(@Param('id') id: string, @Body('status') status: string, @Request() req: any) {
     const userRoles: string[] = Array.isArray(req.user?.roles) ? req.user.roles : (req.user?.role ? [req.user.role] : []);
     const actor = req.user?.id
       ? { id: req.user.id as string, isManager: userRoles.some(r => TASK_MANAGER_ROLES.includes(r)) }
       : undefined;
+    await this.tasksService.assertCanCancel(id, status, userRoles.includes('ADMIN'));
     return this.tasksService.updateStatus(id, status, req.user?.tenant_id, actor);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() data: UpdateTaskDto, @Request() req: any) {
+  async update(@Param('id') id: string, @Body() data: UpdateTaskDto, @Request() req: any) {
+    const roles: string[] = Array.isArray(req.user?.roles) ? req.user.roles : (req.user?.role ? [req.user.role] : []);
+    await this.tasksService.assertCanCancel(id, data.status, roles.includes('ADMIN'));
     return this.tasksService.update(id, data, req.user?.tenant_id);
   }
 
