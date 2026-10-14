@@ -7,7 +7,7 @@ import { useTeamPerformance } from './hooks/useTeamPerformance';
 import { MotionWidget } from './components/MotionWidget';
 import {
   useRevenueTrend, useLeadFunnel, useTaskCompletion,
-  useFinancialAging, useAiUsage,
+  useFinancialAging,
   useLeadSources, useResponseTime, useConversionVelocity,
 } from './hooks/useAnalyticsData';
 import { useContabilDashboard } from './hooks/useContabilDashboard';
@@ -18,7 +18,8 @@ import { StatsGrid } from './components/StatsGrid';
 import { InboxStats } from './components/InboxStats';
 import { FinancialStats } from './components/FinancialStats';
 import { LeadPipeline } from './components/LeadPipeline';
-import { TeamMetrics } from './components/TeamMetrics';
+import { TimeControl } from '../assistente/TimeControl';
+import { ObrigacoesFiscaisWidget, TeamLoadWidget } from './components/ControlWidgets';
 import { TeamPerformanceBoard } from './components/TeamPerformanceBoard';
 import { UpcomingEvents } from './components/UpcomingEvents';
 import { QuickActions } from './components/QuickActions';
@@ -29,7 +30,6 @@ import { RevenueTrendChart } from './components/charts/RevenueTrendChart';
 import { LeadFunnelChart } from './components/charts/LeadFunnelChart';
 import { TaskCompletionChart } from './components/charts/TaskCompletionChart';
 import { FinancialAgingChart } from './components/charts/FinancialAgingChart';
-import { AiUsageChart } from './components/charts/AiUsageChart';
 import { LeadSourcesChart } from './components/charts/LeadSourcesChart';
 import { ConversionVelocityWidget } from './components/charts/ConversionVelocityWidget';
 import { ResponseTimeWidget } from './components/charts/ResponseTimeWidget';
@@ -53,7 +53,6 @@ export default function DashboardPage() {
   const funnel = useLeadFunnel(period);
   const tasks = useTaskCompletion(period);
   const aging = useFinancialAging();
-  const aiUsage = useAiUsage(6, isAdmin);
   const sources = useLeadSources(period);
   const responseTime = useResponseTime(period);
   const velocity = useConversionVelocity(period);
@@ -74,7 +73,6 @@ export default function DashboardPage() {
   const showVelocity = isAdmin || isContador;
   const showResponse = isAdmin || isContador;
   const showSources = isAdmin || isContador;
-  const showAi = isAdmin;
   const showTeam = isAdmin;
   const showEvents = isAdmin || isContador || isAssistente;
 
@@ -130,6 +128,23 @@ export default function DashboardPage() {
             velocity={aggressive ? velocity.data : undefined}
           />
         </MotionWidget>
+
+        {/* Controle: tempo de execução x ociosidade (gestor vê todos os assistentes; assistente vê o próprio) */}
+        {(aggressive || isAssistente) && (
+          <MotionWidget delay={0.06}>
+            <TimeControl isManager={aggressive} />
+          </MotionWidget>
+        )}
+
+        {/* Controle: carga da equipe + obrigações fiscais a vencer */}
+        {(aggressive || isAssistente) && (
+          <MotionWidget delay={0.07}>
+            <div className={`grid grid-cols-1 gap-4 ${aggressive ? 'md:grid-cols-2' : ''}`}>
+              {aggressive && <TeamLoadWidget members={data.teamMetrics ?? []} />}
+              <ObrigacoesFiscaisWidget items={data.obrigacoesFiscais ?? []} />
+            </div>
+          </MotionWidget>
+        )}
 
         {/* Row 3: Performance Strip (ADMIN + CONTADOR) */}
         {aggressive && (
@@ -228,13 +243,6 @@ export default function DashboardPage() {
         {(isAdmin || isContador || isFinanceiro) && (
           <MotionWidget delay={0.37}>
             <InadimplenciaWidget data={contabil.data?.inadimplenciaPorCliente} loading={contabil.loading} />
-          </MotionWidget>
-        )}
-
-        {/* Row 12: AI Usage (admin) */}
-        {showAi && (
-          <MotionWidget delay={0.36}>
-            <AiUsageChart data={aiUsage.data} loading={aiUsage.loading} />
           </MotionWidget>
         )}
 
