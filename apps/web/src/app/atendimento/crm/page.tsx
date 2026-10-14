@@ -288,7 +288,7 @@ function LeadCard({
               </button>
               <div className="border-t border-border my-1" />
               <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Mover para etapa</p>
-              {CRM_STAGES.map(s => (
+              {CRM_STAGES.filter(s => ['EM_ATENDIMENTO', 'FINALIZADO'].includes(s.id)).map(s => (
                 <button
                   key={s.id}
                   onClick={(e) => { e.stopPropagation(); onStageChange(s.id); setShowMenu(false); }}
@@ -650,7 +650,7 @@ function LeadDetailPanel({
           <div>
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Mover para etapa</p>
             <div className="grid grid-cols-2 gap-1.5">
-              {CRM_STAGES.filter(s => s.id !== normalizedStage).map(s => (
+              {CRM_STAGES.filter(s => ['EM_ATENDIMENTO', 'FINALIZADO'].includes(s.id) && s.id !== normalizedStage).map(s => (
                 <button
                   key={s.id}
                   onClick={() => { onStageChange(s.id); onClose(); }}

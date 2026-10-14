@@ -134,8 +134,7 @@ export function TasksPanel() {
   const [newAssigned, setNewAssigned] = useState('');
   const [newSetor, setNewSetor] = useState('');
   const [newRecorrente, setNewRecorrente] = useState(false);
-  const [newRecorrenciaTipo, setNewRecorrenciaTipo] = useState<'meses' | 'infinito'>('meses');
-  const [newRecorrenciaMeses, setNewRecorrenciaMeses] = useState(12);
+  const [newDia, setNewDia] = useState(10);
   const [creating, setCreating] = useState(false);
 
   // ── Filtro por competência (mês)
@@ -319,6 +318,15 @@ export function TasksPanel() {
     if (!newTitle.trim()) return;
     if (!clienteId) { showError('Selecione o cliente da tarefa'); return; }
     const cliente = clientes.find(c => c.id === clienteId);
+    // Padrão: 1ª ocorrência no dia escolhido do mês atual; Flutuante: data informada (opcional)
+    let dueAt: string | undefined;
+    if (newRecorrente) {
+      const hoje = new Date();
+      const ultimoDia = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate();
+      dueAt = new Date(hoje.getFullYear(), hoje.getMonth(), Math.min(newDia, ultimoDia), 18, 0, 0).toISOString();
+    } else if (newDue) {
+      dueAt = new Date(`${newDue}T18:00:00`).toISOString();
+    }
     setCreating(true);
     try {
       await api.post('/tasks', {
@@ -326,20 +334,17 @@ export function TasksPanel() {
         lead_id: cliente?.lead_id || undefined,
         title: newTitle.trim(),
         description: newDesc.trim() || undefined,
-        due_at: newDue ? new Date(`${newDue}T18:00:00`).toISOString() : undefined,
+        due_at: dueAt,
         assigned_user_id: newAssigned || undefined,
         setor: newSetor || undefined,
+        // Padrão = recorrente todo mês (sem fim); Flutuante = tarefa única
         recorrente: newRecorrente || undefined,
-        recorrencia_meses: newRecorrente && newRecorrenciaTipo === 'meses' ? newRecorrenciaMeses : undefined,
       });
-      const msg = newRecorrente
-        ? newRecorrenciaTipo === 'infinito'
-          ? 'Tarefa recorrente criada (nova cópia todo mês)'
-          : `Tarefa criada com ${newRecorrenciaMeses} repetições mensais`
-        : 'Tarefa criada';
-      showSuccess(msg);
+      showSuccess(newRecorrente
+        ? `Tarefa padrão criada (todo dia ${newDia}, recriada automaticamente todo mês)`
+        : 'Tarefa flutuante criada');
       setNewTitle(''); setNewDesc(''); setNewDue(''); setNewAssigned(''); setNewSetor(''); setNewClienteId('');
-      setNewRecorrente(false); setNewRecorrenciaTipo('meses'); setNewRecorrenciaMeses(12);
+      setNewRecorrente(false); setNewDia(10);
       setShowNew(false);
       fetchTasks(1);
       fetchStats();
@@ -637,45 +642,44 @@ export function TasksPanel() {
                   <option key={s.value} value={s.value}>{s.icon} {s.label}</option>
                 ))}
               </select>
-              <input
-                type="date"
-                className="px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30"
-                value={newDue}
-                onChange={e => setNewDue(e.target.value)}
-              />
-              {/* Repetição inline */}
-              <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-background">
-                <label className="flex items-center gap-1.5 cursor-pointer select-none whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    className="w-3.5 h-3.5 accent-primary"
-                    checked={newRecorrente}
-                    onChange={e => setNewRecorrente(e.target.checked)}
-                  />
-                  <span className="text-xs text-muted-foreground">Repetir</span>
-                </label>
-                {newRecorrente && (
-                  <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-1 cursor-pointer select-none">
-                      <input type="radio" name="recorrencia-panel" className="accent-primary" checked={newRecorrenciaTipo === 'meses'} onChange={() => setNewRecorrenciaTipo('meses')} />
-                      <input
-                        type="number"
-                        min={1} max={120}
-                        className="w-14 px-2 py-0.5 rounded-lg border border-border bg-background text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30"
-                        value={newRecorrenciaMeses}
-                        onChange={e => setNewRecorrenciaMeses(Math.max(1, Math.min(120, Number(e.target.value))))}
-                        disabled={newRecorrenciaTipo !== 'meses'}
-                        onClick={() => setNewRecorrenciaTipo('meses')}
-                      />
-                      <span className="text-xs text-muted-foreground">meses</span>
-                    </label>
-                    <label className="flex items-center gap-1 cursor-pointer select-none">
-                      <input type="radio" name="recorrencia-panel" className="accent-primary" checked={newRecorrenciaTipo === 'infinito'} onChange={() => setNewRecorrenciaTipo('infinito')} />
-                      <span className="text-xs text-muted-foreground">∞</span>
-                    </label>
-                  </div>
-                )}
+              {/* Tipo de tarefa: Padrão (todo mês, no dia indicado) ou Flutuante (única) */}
+              <div className="flex items-center rounded-xl border border-border bg-background p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setNewRecorrente(true)}
+                  title="Cadastrada uma vez; o sistema recria a tarefa automaticamente todo mês no dia indicado"
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${newRecorrente ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'}`}
+                >
+                  Padrão
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewRecorrente(false)}
+                  title="Tarefa única, para execução naquele momento"
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${!newRecorrente ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'}`}
+                >
+                  Flutuante
+                </button>
               </div>
+              {newRecorrente ? (
+                <label className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground whitespace-nowrap">
+                  <span className="text-xs text-muted-foreground">Todo dia</span>
+                  <input
+                    type="number"
+                    min={1} max={31}
+                    className="w-14 px-2 py-0.5 rounded-lg border border-border bg-background text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30"
+                    value={newDia}
+                    onChange={e => setNewDia(Math.max(1, Math.min(31, Number(e.target.value) || 1)))}
+                  />
+                </label>
+              ) : (
+                <input
+                  type="date"
+                  className="px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30"
+                  value={newDue}
+                  onChange={e => setNewDue(e.target.value)}
+                />
+              )}
               <div className="flex-1 relative min-w-[160px]">
                 <select
                   className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30"

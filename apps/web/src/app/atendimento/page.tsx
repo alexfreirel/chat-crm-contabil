@@ -1610,6 +1610,11 @@ export default function Dashboard() {
     setAdiadoConversations(prev => prev.map(c => c.id === selectedId ? { ...c, leadStage: newStage } : c));
     try {
       await api.patch(`/leads/${conv.leadId}/stage`, { stage: newStage });
+      // FINALIZADO sai do funil: fecha o painel e a conversa deixa de ser exibida
+      if (newStage === 'FINALIZADO') {
+        setSelectedId(null);
+        setShowDetailsPanel(false);
+      }
     } catch (e: any) {
       console.error('Failed to change lead stage', e);
       // Rollback otimismo — ambos os arrays
@@ -2744,7 +2749,7 @@ export default function Dashboard() {
                   <section id="panel-stage-section">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Etapa do Funil</p>
                     <div className="flex flex-wrap gap-1.5">
-                      {CRM_STAGES.map(s => (
+                      {CRM_STAGES.filter(s => ['EM_ATENDIMENTO', 'FINALIZADO'].includes(s.id)).map(s => (
                         <button
                           key={s.id}
                           onClick={() => handleChangeLeadStage(s.id)}

@@ -389,7 +389,7 @@ export function ChatHeader({
               {showStageDropdown && (
                 <div className="absolute top-full right-0 mt-1 bg-card border border-border rounded-xl shadow-xl w-56 py-1" style={{ zIndex: 9999 }}>
                   <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Etapa do Funil</p>
-                  {CRM_STAGES.filter(s => !(isAssistente && s.id === 'PERDIDO')).map(s => (
+                  {CRM_STAGES.filter(s => ['EM_ATENDIMENTO', 'FINALIZADO'].includes(s.id)).map(s => (
                     <button
                       key={s.id}
                       onClick={() => onChangeStage(s.id)}

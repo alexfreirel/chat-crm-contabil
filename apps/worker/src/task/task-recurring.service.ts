@@ -12,7 +12,9 @@ export class TaskRecurringService {
    * Todo dia 1 às 2h: gera instâncias mensais das tarefas com recorrência infinita.
    * Tarefas-pai: recorrente=true, recorrencia_meses=null, recorrencia_pai_id=null.
    */
-  @Cron('0 2 1 * *', { timeZone: 'America/Sao_Paulo' })
+  // Roda todo dia às 2h (idempotente): garante a tarefa do mês mesmo se o worker
+  // estiver fora do ar no dia 1.
+  @Cron('0 2 * * *', { timeZone: 'America/Sao_Paulo' })
   async generateRecurringTasks() {
     try {
       const now = new Date();
@@ -38,6 +40,9 @@ export class TaskRecurringService {
         const startOfMonth = new Date(currentYear, currentMonth, 1);
         const endOfMonth = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
 
+        // A própria tarefa-pai é a ocorrência do seu mês: só gera a partir do mês seguinte
+        if (parent.due_at && parent.due_at >= startOfMonth) continue;
+
         // Verifica se já foi gerada neste mês
         const existing = await this.prisma.task.findFirst({
           where: {
@@ -51,7 +56,7 @@ export class TaskRecurringService {
         // Calcula due_at para este mês usando o dia original
         const dia = parent.recorrencia_dia || 1;
         const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
-        const dueAt = new Date(currentYear, currentMonth, Math.min(dia, lastDay));
+        const dueAt = new Date(currentYear, currentMonth, Math.min(dia, lastDay), 18, 0, 0);
 
         await this.prisma.task.create({
           data: {
