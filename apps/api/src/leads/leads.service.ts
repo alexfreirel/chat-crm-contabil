@@ -349,6 +349,52 @@ export class LeadsService {
     return { ok: true };
   }
 
+  /** Leads (não clientes) sem nenhuma mensagem há >= `days` dias. */
+  private staleLeadsWhere(days: number, tenantId?: string) {
+    const cutoff = new Date(Date.now() - days * 86400000);
+    return {
+      ...(tenantId ? { tenant_id: tenantId } : {}),
+      is_client: false,
+      stage: { not: 'FINALIZADO' },
+      clientes_contabil: { none: {} },
+      conversations: { none: { last_message_at: { gte: cutoff } } },
+      created_at: { lt: cutoff },
+    };
+  }
+
+  async previewStaleLeads(days: number, tenantId?: string) {
+    const where = this.staleLeadsWhere(days, tenantId);
+    const [total, amostra] = await Promise.all([
+      this.prisma.lead.count({ where }),
+      this.prisma.lead.findMany({
+        where,
+        select: { id: true, name: true, phone: true, stage: true },
+        orderBy: { created_at: 'desc' },
+        take: 20,
+      }),
+    ]);
+    return { days, total, amostra };
+  }
+
+  async deleteStaleLeads(days: number, tenantId?: string) {
+    const ids = await this.prisma.lead.findMany({
+      where: this.staleLeadsWhere(days, tenantId),
+      select: { id: true },
+    });
+    this.logger.warn(`[deleteStaleLeads] Excluindo ${ids.length} leads sem atividade há ${days}+ dias...`);
+    let deletados = 0;
+    const erros: string[] = [];
+    for (const { id } of ids) {
+      try {
+        await this.deleteContact(id);
+        deletados++;
+      } catch (e: any) {
+        erros.push(`${id}: ${e.message}`);
+      }
+    }
+    return { deletados, erros };
+  }
+
   async deleteContact(id: string): Promise<{ ok: boolean }> {
     const lead = await this.prisma.lead.findUnique({ where: { id }, select: { id: true } });
     if (!lead) throw new NotFoundException('Contato não encontrado');

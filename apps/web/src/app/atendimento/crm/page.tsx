@@ -1462,6 +1462,20 @@ export default function CrmPage() {
     }
   };
 
+  const deleteStaleLeads = async () => {
+    try {
+      const { data: prev } = await api.get('/leads/cleanup/sem-atividade/preview', { params: { days: stagnationDays } });
+      if (!prev?.total) { showSuccess('Nenhum lead sem atividade para excluir.'); return; }
+      if (!window.confirm(`Excluir permanentemente ${prev.total} lead(s) sem atividade há mais de ${stagnationDays} dia(s), com conversas e mensagens? Clientes não são afetados. Esta ação não pode ser desfeita.`)) return;
+      const { data } = await api.delete('/leads/cleanup/sem-atividade', { params: { days: stagnationDays } });
+      showSuccess(`${data?.deletados ?? 0} lead(s) excluído(s).`);
+      if (data?.erros?.length) showError(`${data.erros.length} lead(s) não puderam ser excluídos.`);
+      fetchLeads(true);
+    } catch {
+      showError('Erro ao excluir leads sem atividade (requer perfil ADMIN).');
+    }
+  };
+
   const openInChat = (lead: CrmLead) => {
     const conv = lead.conversations?.[0];
     if (conv?.id) sessionStorage.setItem('crm_open_conv', conv.id);
@@ -1488,6 +1502,11 @@ export default function CrmPage() {
 
     // Oculta leads FINALIZADO — atendimentos concluídos somem do funil
     if (normalizeStage(lead.stage) === 'FINALIZADO') return false;
+
+    // Oculta leads sem atividade recente (sem mensagem há >= stagnationDays)
+    const lastMsg = latestConv?.last_message_at;
+    const daysSinceMsg = lastMsg ? Math.floor((Date.now() - new Date(lastMsg).getTime()) / 86400000) : 999;
+    if (daysSinceMsg >= stagnationDays) return false;
 
     const q = searchQuery.toLowerCase().trim();
     if (q) {
@@ -1531,10 +1550,8 @@ export default function CrmPage() {
   // Qualificando Leads → IA qualificou, humano    (ai_mode=false, is_client=false)
   // Atendimento Clientes → humano atendendo cliente (ai_mode=false, is_client=true)
   const KANBAN_COLUMNS = [
-    { id: 'INICIAL_LEAD',    label: 'Inicial Leads',        color: '#6b7280', emoji: '🤖' },
-    { id: 'INICIAL_CLIENTE', label: 'Inicial Clientes',     color: '#8b5cf6', emoji: '🤖' },
-    { id: 'QUALIFICANDO',    label: 'Qualificando Leads',   color: '#3b82f6', emoji: '👤' },
-    { id: 'EM_ATENDIMENTO',  label: 'Atendimento Clientes', color: '#10b981', emoji: '👤' },
+    { id: 'QUALIFICANDO',    label: 'Leads em Atendimento',    color: '#3b82f6', emoji: '👤' },
+    { id: 'EM_ATENDIMENTO',  label: 'Clientes em Atendimento', color: '#10b981', emoji: '👤' },
   ];
 
   const getStageLeads = (stageId: string) =>
@@ -1545,8 +1562,6 @@ export default function CrmPage() {
       const conv = l.conversations?.[0];
       const aiMode = conv?.ai_mode ?? true; // sem conversa: IA vai atender
       const isClient = !!l.is_client;
-      if (col.id === 'INICIAL_LEAD')    return !isClient && aiMode;
-      if (col.id === 'INICIAL_CLIENTE') return isClient && aiMode;
       if (col.id === 'QUALIFICANDO')    return !isClient && !aiMode;
       if (col.id === 'EM_ATENDIMENTO')  return isClient && !aiMode;
       return false;
@@ -1556,8 +1571,8 @@ export default function CrmPage() {
     const lead = leads.find(l => l.id === leadId);
     if (!lead) return;
     const conv = lead.conversations?.[0];
-    const newAiMode = col.id === 'INICIAL_LEAD' || col.id === 'INICIAL_CLIENTE';
-    const newIsClient = col.id === 'INICIAL_CLIENTE' || col.id === 'EM_ATENDIMENTO';
+    const newAiMode = false;
+    const newIsClient = col.id === 'EM_ATENDIMENTO';
 
     // Atualização otimista imediata
     setLeads(cur => cur.map(l => l.id === leadId ? {
@@ -1743,6 +1758,9 @@ export default function CrmPage() {
                 <span className="font-bold">{stagnant.length} lead{stagnant.length !== 1 ? 's' : ''}</span> sem atividade há mais de {stagnationDays} dia{stagnationDays !== 1 ? 's' : ''}:{' '}
                 <span className="opacity-80">{stagnant.slice(0, 3).map(l => l.name || l.phone).join(', ')}{stagnant.length > 3 ? ` e mais ${stagnant.length - 3}` : ''}</span>
               </p>
+              <button onClick={deleteStaleLeads} className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-red-500/10 text-red-600 hover:bg-red-500/20 transition-colors shrink-0">
+                Excluir parados
+              </button>
               <button onClick={() => setDismissedStagnation(true)} className="p-1 rounded-md text-amber-500/60 dark:text-yellow-400/60 hover:text-amber-600 dark:hover:text-yellow-400 transition-colors shrink-0">
                 <XIcon size={13} />
               </button>

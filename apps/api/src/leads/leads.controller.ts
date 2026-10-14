@@ -101,6 +101,20 @@ export class LeadsController {
     return this.leadsService.deleteContact(id);
   }
 
+  // GET /leads/cleanup/sem-atividade/preview?days=3 — conta leads parados que seriam excluídos
+  @Get('cleanup/sem-atividade/preview')
+  @Roles('ADMIN')
+  previewSemAtividade(@Request() req: any, @Query('days') days?: string) {
+    return this.leadsService.previewStaleLeads(Math.max(1, parseInt(days ?? '3', 10) || 3), req.user?.tenant_id);
+  }
+
+  // DELETE /leads/cleanup/sem-atividade?days=3 — exclui em massa leads sem atividade (ADMIN)
+  @Delete('cleanup/sem-atividade')
+  @Roles('ADMIN')
+  deletarSemAtividade(@Request() req: any, @Query('days') days?: string) {
+    return this.leadsService.deleteStaleLeads(Math.max(1, parseInt(days ?? '3', 10) || 3), req.user?.tenant_id);
+  }
+
   @Post('cleanup/deduplicate')
   @Roles('ADMIN')
   deduplicatePhones() {
