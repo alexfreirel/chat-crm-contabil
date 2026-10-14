@@ -290,6 +290,27 @@ export class WhatsappService {
   }
 
   async setWebhook(instanceName: string, url: string) {
+    const events = [
+      'MESSAGES_UPSERT',
+      'MESSAGES_UPDATE',
+      'MESSAGES_DELETE',
+      'SEND_MESSAGE',
+      'CONNECTION_UPDATE',
+      'PRESENCE_UPDATE',
+      'CHATS_UPSERT',
+      'CHATS_UPDATE',
+      'CHATS_DELETE',
+      'CONTACTS_UPSERT',
+      'CONTACTS_UPDATE',
+      'CONTACTS_SET',
+    ];
+    // Evolution v2 recente exige o corpo dentro de { webhook: {...} } (camelCase);
+    // versões antigas aceitam o formato achatado (snake_case). Tenta o novo e cai no antigo.
+    const wrapped = await this.request('POST', `webhook/set/${instanceName}`, {
+      webhook: { url, enabled: true, webhookByEvents: false, webhookBase64: false, events },
+    });
+    if (!(wrapped as any)?.error) return wrapped;
+
     return this.request('POST', `webhook/set/${instanceName}`, {
       url,
       enabled: true,
@@ -298,20 +319,7 @@ export class WhatsappService {
       // Garante entrega mesmo se o CRM estiver temporariamente indisponível
       retryDelay: 5000,
       maxRetries: 5,
-      events: [
-        'MESSAGES_UPSERT',
-        'MESSAGES_UPDATE',
-        'MESSAGES_DELETE',
-        'SEND_MESSAGE',
-        'CONNECTION_UPDATE',
-        'PRESENCE_UPDATE',
-        'CHATS_UPSERT',
-        'CHATS_UPDATE',
-        'CHATS_DELETE',
-        'CONTACTS_UPSERT',
-        'CONTACTS_UPDATE',
-        'CONTACTS_SET',
-      ],
+      events,
     });
   }
 
