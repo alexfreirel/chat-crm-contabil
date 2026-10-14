@@ -1,4 +1,4 @@
-import { Injectable, Logger, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import OpenAI from 'openai';
 import { PrismaService } from '../prisma/prisma.service';
@@ -306,6 +306,10 @@ export class TasksService {
     try {
       const now = new Date();
       if (status === 'EM_PROGRESSO' && task.assigned_user_id) {
+        await this.prisma.workPause.updateMany({
+          where: { user_id: task.assigned_user_id, ended_at: null },
+          data: { ended_at: now },
+        });
         await this.prisma.taskTimeEntry.updateMany({
           where: { user_id: task.assigned_user_id, ended_at: null, NOT: { task_id: task.id } },
           data: { ended_at: now },
@@ -330,6 +334,56 @@ export class TasksService {
     } catch (e: any) {
       this.logger.warn(`Erro ao registrar tempo da tarefa ${task.id}: ${e.message}`);
     }
+  }
+
+  // ─── Pausas (lanche / banheiro) ───────────────────────────────
+
+  async startPause(userId: string, tenantId: string | undefined, kind: string) {
+    if (kind !== 'LANCHE' && kind !== 'BANHEIRO') {
+      throw new BadRequestException('Tipo de pausa inválido.');
+    }
+    const now = new Date();
+    // fecha pausa aberta (troca de tipo) e o intervalo da tarefa em execução
+    await this.prisma.workPause.updateMany({ where: { user_id: userId, ended_at: null }, data: { ended_at: now } });
+    const running = await this.prisma.taskTimeEntry.findFirst({ where: { user_id: userId, ended_at: null } });
+    if (running) {
+      await this.prisma.taskTimeEntry.update({ where: { id: running.id }, data: { ended_at: now } });
+    }
+    return this.prisma.workPause.create({
+      data: {
+        user_id: userId,
+        tenant_id: tenantId ?? null,
+        kind,
+        task_id: running?.task_id ?? null,
+        started_at: now,
+      },
+    });
+  }
+
+  async endPause(userId: string) {
+    const now = new Date();
+    const open = await this.prisma.workPause.findFirst({ where: { user_id: userId, ended_at: null } });
+    if (!open) return { ok: true, resumedTaskId: null };
+    await this.prisma.workPause.update({ where: { id: open.id }, data: { ended_at: now } });
+
+    // retoma a tarefa que estava em execução, se ainda for dele e em progresso
+    let resumedTaskId: string | null = null;
+    if (open.task_id) {
+      const task = await this.prisma.task.findUnique({
+        where: { id: open.task_id },
+        select: { id: true, status: true, assigned_user_id: true, tenant_id: true },
+      });
+      if (task && task.status === 'EM_PROGRESSO' && task.assigned_user_id === userId) {
+        const already = await this.prisma.taskTimeEntry.findFirst({ where: { user_id: userId, ended_at: null } });
+        if (!already) {
+          await this.prisma.taskTimeEntry.create({
+            data: { task_id: task.id, user_id: userId, tenant_id: task.tenant_id, started_at: now },
+          });
+        }
+        resumedTaskId = task.id;
+      }
+    }
+    return { ok: true, resumedTaskId };
   }
 
   // Expediente: seg–sex, 08:00–12:00 e 14:00–18:00 (America/Maceio, UTC-3 fixo)
@@ -432,6 +486,16 @@ export class TasksService {
         })
       : [];
 
+    const pauses = userIds.length
+      ? await this.prisma.workPause.findMany({
+          where: {
+            user_id: { in: userIds },
+            started_at: { lt: new Date(to) },
+            OR: [{ ended_at: null }, { ended_at: { gte: new Date(from) } }],
+          },
+        })
+      : [];
+
     const taskIds = [...new Set(entries.map(e => e.task_id))];
     const tasks = taskIds.length
       ? await this.prisma.task.findMany({
@@ -472,13 +536,29 @@ export class TasksService {
         }
       }
 
-      const idleMs = Math.max(0, available - workedMs);
+      let lancheMs = 0;
+      let banheiroMs = 0;
+      let currentPause: { kind: string; since: string } | null = null;
+      for (const p of pauses.filter(x => x.user_id === u.id)) {
+        const ps = Math.max(p.started_at.getTime(), from);
+        const pe = Math.min(p.ended_at ? p.ended_at.getTime() : now, upTo);
+        const ms = pe > ps ? this.overlapMs(ps, pe, intervals) : 0;
+        if (p.kind === 'LANCHE') lancheMs += ms;
+        else banheiroMs += ms;
+        if (!p.ended_at) currentPause = { kind: p.kind, since: p.started_at.toISOString() };
+      }
+
+      // ocioso = expediente - executando - pausas
+      const idleMs = Math.max(0, available - workedMs - lancheMs - banheiroMs);
       return {
         user: u,
         workedMs,
         idleMs,
         availableMs: available,
         occupancyPct: available > 0 ? Math.round((workedMs / available) * 100) : 0,
+        lancheMs,
+        banheiroMs,
+        currentPause,
         current,
         tasks: [...perTask.entries()]
           .map(([taskId, v]) => {

@@ -18,6 +18,19 @@ export class TasksController {
     return this.tasksService.getWorkload(req.user?.tenant_id);
   }
 
+  // Pausas do expediente (lanche / banheiro) — devem vir ANTES de :id
+  @Post('time/pause')
+  @HttpCode(HttpStatus.OK)
+  startPause(@Body('kind') kind: string, @Request() req: any) {
+    return this.tasksService.startPause(req.user?.id, req.user?.tenant_id, kind);
+  }
+
+  @Post('time/resume')
+  @HttpCode(HttpStatus.OK)
+  endPause(@Request() req: any) {
+    return this.tasksService.endPause(req.user?.id);
+  }
+
   // Controle de tempo: execução x ociosidade por assistente (deve vir ANTES de :id)
   @Get('time-report')
   getTimeReport(

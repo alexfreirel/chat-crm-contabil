@@ -1,8 +1,10 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, Loader2, Timer } from 'lucide-react';
+import { ChevronDown, ChevronRight, Coffee, Loader2, Play, Timer, Toilet } from 'lucide-react';
 import api from '@/lib/api';
+import { useRole } from '@/lib/useRole';
+import { showError } from '@/lib/toast';
 
 type Period = 'day' | 'week' | 'month';
 
@@ -21,6 +23,9 @@ interface AssistantTime {
   idleMs: number;
   availableMs: number;
   occupancyPct: number;
+  lancheMs: number;
+  banheiroMs: number;
+  currentPause: { kind: string; since: string } | null;
   current: { taskId: string; title: string; cliente: string | null; since: string } | null;
   tasks: TaskTime[];
 }
@@ -59,6 +64,8 @@ export function TimeControl({ isManager }: { isManager: boolean }) {
   const [report, setReport] = useState<TimeReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const { userId } = useRole();
+  const [pausing, setPausing] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -79,6 +86,20 @@ export function TimeControl({ isManager }: { isManager: boolean }) {
   }, [load]);
 
   const assistants = report?.assistants ?? [];
+  const mine = assistants.find(a => a.user.id === userId) ?? null;
+
+  const pauseAction = async (kind: 'LANCHE' | 'BANHEIRO' | null) => {
+    setPausing(true);
+    try {
+      if (kind) await api.post('/tasks/time/pause', { kind });
+      else await api.post('/tasks/time/resume');
+      await load();
+    } catch {
+      showError('Não foi possível registrar a pausa.');
+    } finally {
+      setPausing(false);
+    }
+  };
 
   return (
     <section className="bg-card border border-border rounded-xl overflow-hidden">
@@ -94,6 +115,37 @@ export function TimeControl({ isManager }: { isManager: boolean }) {
             </p>
           )}
         </div>
+        <div className="flex items-center gap-2 flex-wrap">
+        {!isManager && mine && (
+          mine.currentPause ? (
+            <button
+              onClick={() => pauseAction(null)}
+              disabled={pausing}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500 text-white text-[11px] font-bold hover:opacity-90 disabled:opacity-50"
+              title="Encerrar a pausa e voltar ao trabalho"
+            >
+              <Play size={12} />
+              Voltar ({mine.currentPause.kind === 'LANCHE' ? 'lanche' : 'banheiro'} há <Elapsed since={mine.currentPause.since} />)
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => pauseAction('LANCHE')}
+                disabled={pausing}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border text-[11px] font-semibold text-foreground hover:bg-accent disabled:opacity-50"
+              >
+                <Coffee size={12} /> Pausa lanche
+              </button>
+              <button
+                onClick={() => pauseAction('BANHEIRO')}
+                disabled={pausing}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border text-[11px] font-semibold text-foreground hover:bg-accent disabled:opacity-50"
+              >
+                <Toilet size={12} /> Pausa banheiro
+              </button>
+            </>
+          )
+        )}
         <div className="flex items-center bg-accent/60 rounded-xl p-1 gap-0.5">
           {PERIODS.map(p => (
             <button
@@ -106,6 +158,7 @@ export function TimeControl({ isManager }: { isManager: boolean }) {
               {p.label}
             </button>
           ))}
+        </div>
         </div>
       </div>
 
@@ -121,6 +174,8 @@ export function TimeControl({ isManager }: { isManager: boolean }) {
                 <th className="px-4 py-2.5 text-left font-semibold">Assistente</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Agora</th>
                 <th className="px-3 py-2.5 text-right font-semibold">Em execução</th>
+                <th className="px-3 py-2.5 text-right font-semibold">Lanche</th>
+                <th className="px-3 py-2.5 text-right font-semibold">Banheiro</th>
                 <th className="px-3 py-2.5 text-right font-semibold">Ocioso</th>
                 <th className="px-3 py-2.5 text-right font-semibold">Ocupação</th>
               </tr>
@@ -142,7 +197,11 @@ export function TimeControl({ isManager }: { isManager: boolean }) {
                         </span>
                       </td>
                       <td className="px-3 py-2.5 text-[11px]">
-                        {a.current ? (
+                        {a.currentPause ? (
+                          <span className="text-amber-400 font-semibold">
+                            Em pausa ({a.currentPause.kind === 'LANCHE' ? 'lanche' : 'banheiro'}) · <Elapsed since={a.currentPause.since} />
+                          </span>
+                        ) : a.current ? (
                           <span className="text-emerald-400">
                             <span className="font-semibold">{a.current.title}</span>
                             {a.current.cliente ? <span className="text-muted-foreground"> · {a.current.cliente}</span> : null}
@@ -153,12 +212,14 @@ export function TimeControl({ isManager }: { isManager: boolean }) {
                         )}
                       </td>
                       <td className="px-3 py-2.5 text-right text-[12px] font-semibold text-foreground">{fmt(a.workedMs)}</td>
+                      <td className="px-3 py-2.5 text-right text-[12px] text-muted-foreground">{fmt(a.lancheMs)}</td>
+                      <td className="px-3 py-2.5 text-right text-[12px] text-muted-foreground">{fmt(a.banheiroMs)}</td>
                       <td className="px-3 py-2.5 text-right text-[12px] font-semibold text-red-400">{fmt(a.idleMs)}</td>
                       <td className={`px-3 py-2.5 text-right text-[12px] font-bold ${color}`}>{a.occupancyPct}%</td>
                     </tr>
                     {isOpen && (
                       <tr className="bg-muted/10">
-                        <td colSpan={5} className="px-6 py-2">
+                        <td colSpan={7} className="px-6 py-2">
                           {a.tasks.length === 0 ? (
                             <p className="text-[11px] text-muted-foreground">Nenhuma tarefa executada no período.</p>
                           ) : (

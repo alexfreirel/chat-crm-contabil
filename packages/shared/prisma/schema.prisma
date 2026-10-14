@@ -56,6 +56,7 @@ model User {
   sectors                  Sector[]               @relation("SectorUsers")
   tasks                    Task[]
   task_time_entries        TaskTimeEntry[]
+  work_pauses              WorkPause[]
   tenant                   Tenant?                @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
   accountant_clientes      ClienteContabil[]      @relation("AccountantClientes")
   task_comments            TaskComment[]
@@ -281,6 +282,22 @@ model TaskTimeEntry {
 
   @@index([user_id, started_at])
   @@index([task_id])
+  @@index([ended_at])
+  @@index([tenant_id])
+}
+
+/// Pausas do expediente (lanche / banheiro) — descontadas do tempo ocioso.
+model WorkPause {
+  id         String    @id @default(uuid())
+  tenant_id  String?
+  user_id    String
+  kind       String // LANCHE | BANHEIRO
+  task_id    String? // tarefa que estava em execução (retomada ao voltar)
+  started_at DateTime  @default(now())
+  ended_at   DateTime?
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, started_at])
   @@index([ended_at])
   @@index([tenant_id])
 }
