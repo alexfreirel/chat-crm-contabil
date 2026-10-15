@@ -943,7 +943,7 @@ export default function Dashboard() {
     const q = debouncedSearch.trim();
     if (q.length < 2) { setContactResults([]); return; }
     let cancelled = false;
-    api.get('/leads', { params: { search: q, limit: '15' }, _silent401: true } as any)
+    api.get('/leads', { params: { search: q, limit: '15', includeAllStages: 'true' }, _silent401: true } as any)
       .then(r => {
         if (cancelled) return;
         const list = Array.isArray(r.data) ? r.data : (r.data?.data || []);
