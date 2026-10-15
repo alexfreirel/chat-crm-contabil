@@ -6,6 +6,7 @@ import { io } from 'socket.io-client';
 import { Sidebar } from '@/components/Sidebar';
 import { GlobalCommandPalette, useGlobalCommandPalette } from './components/GlobalCommandPalette';
 import { TaskAlertPopup } from './components/TaskAlertPopup';
+import { IdleAlert } from './components/IdleAlert';
 import {
   MessageSquare, Briefcase, Users, Check, FileEdit, BookOpen,
   Megaphone, Settings, Palette, LogOut, MoreHorizontal, X, Calendar,
@@ -323,6 +324,9 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
 
       {/* ─── Popup de alertas de tarefas (tempo real) ──────── */}
       <TaskAlertPopup />
+
+      {/* ─── Alerta de ociosidade (15 min sem tarefa) ───────── */}
+      <IdleAlert />
 
       {/* ─── Global Command Palette (Ctrl+K) ────────────────── */}
       <GlobalCommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />

@@ -31,6 +31,12 @@ export class TasksController {
     return this.tasksService.endPause(req.user?.id);
   }
 
+  // Situação de ociosidade do usuário logado (alerta de 15 min sem tarefa)
+  @Get('time/idle-status')
+  getIdleStatus(@Request() req: any) {
+    return this.tasksService.getIdleStatus(req.user?.id);
+  }
+
   // Controle de tempo: execução x ociosidade por assistente (deve vir ANTES de :id)
   @Get('time-report')
   getTimeReport(

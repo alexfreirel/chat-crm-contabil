@@ -339,7 +339,7 @@ export class TasksService {
   // ─── Pausas (lanche / banheiro) ───────────────────────────────
 
   async startPause(userId: string, tenantId: string | undefined, kind: string) {
-    if (kind !== 'LANCHE' && kind !== 'BANHEIRO') {
+    if (kind !== 'LANCHE' && kind !== 'BANHEIRO' && kind !== 'OCIOSO') {
       throw new BadRequestException('Tipo de pausa inválido.');
     }
     const now = new Date();
@@ -384,6 +384,42 @@ export class TasksService {
       }
     }
     return { ok: true, resumedTaskId };
+  }
+
+  /**
+   * Situação de ociosidade do usuário agora: dentro do expediente, sem tarefa em
+   * execução e sem pausa aberta. `idleSince` = último momento de atividade
+   * (fim da última tarefa/pausa) limitado ao início da janela de expediente atual.
+   */
+  async getIdleStatus(userId: string) {
+    const now = Date.now();
+    const win = this.workIntervals(now - 86400000, now).find(([a, b]) => now >= a && now <= b);
+    if (!win) return { inWorkHours: false, busy: false, idleSince: null as string | null };
+
+    const [openEntry, openPause] = await Promise.all([
+      this.prisma.taskTimeEntry.findFirst({ where: { user_id: userId, ended_at: null } }),
+      this.prisma.workPause.findFirst({ where: { user_id: userId, ended_at: null } }),
+    ]);
+    if (openEntry || openPause) return { inWorkHours: true, busy: true, idleSince: null as string | null };
+
+    const [lastEntry, lastPause] = await Promise.all([
+      this.prisma.taskTimeEntry.findFirst({
+        where: { user_id: userId, ended_at: { not: null } },
+        orderBy: { ended_at: 'desc' },
+        select: { ended_at: true },
+      }),
+      this.prisma.workPause.findFirst({
+        where: { user_id: userId, ended_at: { not: null } },
+        orderBy: { ended_at: 'desc' },
+        select: { ended_at: true },
+      }),
+    ]);
+    const idleSince = Math.max(
+      win[0],
+      lastEntry?.ended_at?.getTime() ?? 0,
+      lastPause?.ended_at?.getTime() ?? 0,
+    );
+    return { inWorkHours: true, busy: false, idleSince: new Date(idleSince).toISOString() };
   }
 
   // Expediente: seg–sex, 08:00–12:00 e 14:00–18:00 (America/Maceio, UTC-3 fixo)
@@ -543,8 +579,9 @@ export class TasksService {
         const ps = Math.max(p.started_at.getTime(), from);
         const pe = Math.min(p.ended_at ? p.ended_at.getTime() : now, upTo);
         const ms = pe > ps ? this.overlapMs(ps, pe, intervals) : 0;
+        // OCIOSO = assistente confirmou que está sem tarefa: continua contando como ocioso
         if (p.kind === 'LANCHE') lancheMs += ms;
-        else banheiroMs += ms;
+        else if (p.kind === 'BANHEIRO') banheiroMs += ms;
         if (!p.ended_at) currentPause = { kind: p.kind, since: p.started_at.toISOString() };
       }
 

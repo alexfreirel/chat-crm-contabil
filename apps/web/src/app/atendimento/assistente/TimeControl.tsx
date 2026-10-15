@@ -41,6 +41,10 @@ const PERIODS: { id: Period; label: string }[] = [
   { id: 'month', label: 'Mês' },
 ];
 
+function pauseLabel(kind: string) {
+  return kind === 'LANCHE' ? 'lanche' : kind === 'OCIOSO' ? 'ocioso, sem tarefa' : 'banheiro';
+}
+
 function fmt(ms: number) {
   const totalMin = Math.max(0, Math.round(ms / 60000));
   const h = Math.floor(totalMin / 60);
@@ -82,7 +86,12 @@ export function TimeControl({ isManager }: { isManager: boolean }) {
     setLoading(true);
     load();
     const t = setInterval(load, 60_000);
-    return () => clearInterval(t);
+    const onRefresh = () => { load(); };
+    window.addEventListener('time-control:refresh', onRefresh);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener('time-control:refresh', onRefresh);
+    };
   }, [load]);
 
   const assistants = report?.assistants ?? [];
@@ -125,7 +134,7 @@ export function TimeControl({ isManager }: { isManager: boolean }) {
               title="Encerrar a pausa e voltar ao trabalho"
             >
               <Play size={12} />
-              Voltar ({mine.currentPause.kind === 'LANCHE' ? 'lanche' : 'banheiro'} há <Elapsed since={mine.currentPause.since} />)
+              Voltar ({pauseLabel(mine.currentPause.kind)} há <Elapsed since={mine.currentPause.since} />)
             </button>
           ) : (
             <>
@@ -199,7 +208,7 @@ export function TimeControl({ isManager }: { isManager: boolean }) {
                       <td className="px-3 py-2.5 text-[11px]">
                         {a.currentPause ? (
                           <span className="text-amber-400 font-semibold">
-                            Em pausa ({a.currentPause.kind === 'LANCHE' ? 'lanche' : 'banheiro'}) · <Elapsed since={a.currentPause.since} />
+                            Em pausa ({pauseLabel(a.currentPause.kind)}) · <Elapsed since={a.currentPause.since} />
                           </span>
                         ) : a.current ? (
                           <span className="text-emerald-400">
