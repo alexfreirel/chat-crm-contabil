@@ -19,7 +19,7 @@ import { InboxStats } from './components/InboxStats';
 import { FinancialStats } from './components/FinancialStats';
 import { LeadPipeline } from './components/LeadPipeline';
 import { TimeControl } from '../assistente/TimeControl';
-import { ObrigacoesFiscaisWidget, TeamLoadWidget } from './components/ControlWidgets';
+import { TeamLoadWidget } from './components/ControlWidgets';
 import { TeamPerformanceBoard } from './components/TeamPerformanceBoard';
 import { UpcomingEvents } from './components/UpcomingEvents';
 import { QuickActions } from './components/QuickActions';
@@ -136,13 +136,10 @@ export default function DashboardPage() {
           </MotionWidget>
         )}
 
-        {/* Controle: carga da equipe + obrigações fiscais a vencer */}
-        {(aggressive || isAssistente) && (
+        {/* Controle: carga da equipe */}
+        {aggressive && (
           <MotionWidget delay={0.07}>
-            <div className={`grid grid-cols-1 gap-4 ${aggressive ? 'md:grid-cols-2' : ''}`}>
-              {aggressive && <TeamLoadWidget members={data.teamMetrics ?? []} />}
-              <ObrigacoesFiscaisWidget items={data.obrigacoesFiscais ?? []} />
-            </div>
+            <TeamLoadWidget members={data.teamMetrics ?? []} />
           </MotionWidget>
         )}
 

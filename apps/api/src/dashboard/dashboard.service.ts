@@ -45,11 +45,14 @@ export class DashboardService {
       ? { pending_transfer_to_id: { not: null }, status: { not: 'FECHADO' }, ...tw }
       : { pending_transfer_to_id: userId, status: { not: 'FECHADO' } };
 
-    // ─── Task filters (CalendarEvent type=TAREFA) ──
-    const calTaskWhere = (statuses: string[]) =>
-      isAdmin
-        ? { type: 'TAREFA', status: { in: statuses }, ...tw }
-        : { type: 'TAREFA', status: { in: statuses }, assigned_user_id: userId, ...tw };
+    // ─── Task filters (modelo Task — o mesmo da tela de tarefas) ──
+    const OPEN_TASK = { notIn: ['CONCLUIDA', 'CANCELADA'] };
+    const taskWhere = (status: any, extra: object = {}) => ({
+      status,
+      ...(isAdmin ? {} : { assigned_user_id: userId }),
+      ...tw,
+      ...extra,
+    });
 
     // ─── Event filters ──
     const eventWhere = {
@@ -129,17 +132,14 @@ export class DashboardService {
         orderBy: { start_at: 'asc' },
         take: 20,
       }),
-      // 8. Tasks pending (CalendarEvent TAREFA com status AGENDADO)
-      this.prisma.calendarEvent.count({ where: calTaskWhere(['AGENDADO']) }),
-      // 9. Tasks in progress (CalendarEvent TAREFA com status CONFIRMADO)
-      this.prisma.calendarEvent.count({ where: calTaskWhere(['CONFIRMADO']) }),
-      // 10. Tasks overdue (TAREFA pendente com start_at no passado)
-      this.prisma.calendarEvent.count({
-        where: {
-          ...calTaskWhere(['AGENDADO', 'CONFIRMADO']),
-          start_at: { lt: now },
-        },
+      // 8. Tasks pending (abertas, ainda não iniciadas)
+      this.prisma.task.count({
+        where: taskWhere({ notIn: ['CONCLUIDA', 'CANCELADA', 'EM_PROGRESSO'] }),
       }),
+      // 9. Tasks in progress
+      this.prisma.task.count({ where: taskWhere('EM_PROGRESSO') }),
+      // 10. Tasks overdue (abertas com prazo vencido)
+      this.prisma.task.count({ where: taskWhere(OPEN_TASK, { due_at: { lt: now } }) }),
       // 11. Total contratado (honoráriosContabil ativos)
       this.prisma.honorarioContabil.aggregate({
         _sum: { valor: true },
@@ -169,6 +169,7 @@ export class DashboardService {
         where: {
           completed: false,
           due_at: { gte: now, lte: new Date(now.getTime() + 7 * 86400000) },
+          ...tw,
         },
         select: {
           id: true,
@@ -224,20 +225,11 @@ export class DashboardService {
             this.prisma.clienteContabil.count({
               where: { accountant_id: member.id, archived: false, ...tw },
             }),
-            this.prisma.calendarEvent.count({
-              where: {
-                type: 'TAREFA',
-                assigned_user_id: member.id,
-                status: { in: ['AGENDADO', 'CONFIRMADO'] },
-              },
+            this.prisma.task.count({
+              where: { assigned_user_id: member.id, status: OPEN_TASK },
             }),
-            this.prisma.calendarEvent.count({
-              where: {
-                type: 'TAREFA',
-                assigned_user_id: member.id,
-                status: { in: ['AGENDADO', 'CONFIRMADO'] },
-                start_at: { lt: now },
-              },
+            this.prisma.task.count({
+              where: { assigned_user_id: member.id, status: OPEN_TASK, due_at: { lt: now } },
             }),
             Promise.resolve({ _sum: { amount: null } }),
             Promise.resolve({ _sum: { amount: null } }),
