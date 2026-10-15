@@ -730,7 +730,26 @@ export class ConversationsService {
     return result;
   }
 
-  async markAsRead(conversationId: string) {
+  async markAsRead(conversationId: string, viewerUserId?: string) {
+    // Quem visualiza primeiro assume o atendimento (especialista) se ainda não houver um
+    if (viewerUserId) {
+      try {
+        const claimed = await this.prisma.conversation.updateMany({
+          where: { id: conversationId, assigned_lawyer_id: null } as any,
+          data: { assigned_lawyer_id: viewerUserId } as any,
+        });
+        if (claimed.count > 0) {
+          const c = await this.prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { tenant_id: true },
+          });
+          if (c?.tenant_id) this.chatGateway.emitConversationsUpdate(c.tenant_id);
+        }
+      } catch (err: any) {
+        this.logger.warn(`[AutoAssign] Falha ao atribuir ao visualizador: ${err.message}`);
+      }
+    }
+
     const convo = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
       include: { lead: true },

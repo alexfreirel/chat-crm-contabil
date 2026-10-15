@@ -651,55 +651,12 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                       ⚖️ {legalArea}
                     </span>
                   )}
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowLawyerDropdown(v => !v)}
-                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${
-                        assignedLawyer
-                          ? 'bg-primary/10 text-primary border-primary/20 hover:bg-primary/20'
-                          : 'bg-muted/30 text-muted-foreground border-border hover:bg-muted/60'
-                      }`}
-                      title={assignedLawyer ? 'Especialista pré-atribuído — clique para trocar' : 'Atribuir especialista'}
-                    >
+                  {assignedLawyer && (
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-primary/10 text-primary border-primary/20">
                       <UserCheck size={10} />
-                      {assignedLawyer ? assignedLawyer.name : 'Atribuir especialista'}
-                    </button>
-                    {showLawyerDropdown && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={() => setShowLawyerDropdown(false)} />
-                        <div className="absolute top-full left-0 mt-1 z-50 bg-card border border-border rounded-xl shadow-xl w-56 py-1 text-[12px]">
-                          <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Trocar especialista</p>
-                          {allSpecialists.length === 0 ? (
-                            <p className="px-3 py-2 text-muted-foreground text-[11px] italic">Nenhum especialista cadastrado</p>
-                          ) : (
-                            allSpecialists.map(u => (
-                              <button
-                                key={u.id}
-                                onClick={() => handleAssignLawyer(u.id)}
-                                className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2 ${u.id === assignedLawyer?.id ? 'text-primary font-semibold' : 'text-foreground'}`}
-                              >
-                                <span className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-bold text-primary shrink-0">
-                                  {u.name.charAt(0)}
-                                </span>
-                                <div className="min-w-0">
-                                  <p className="leading-tight truncate">{u.name}</p>
-                                  <p className="text-[9px] text-muted-foreground truncate">{u.specialties.join(', ')}</p>
-                                </div>
-                              </button>
-                            ))
-                          )}
-                          {assignedLawyer && (
-                            <button
-                              onClick={() => handleAssignLawyer(null)}
-                              className="w-full text-left px-3 py-2 text-muted-foreground hover:bg-accent hover:text-destructive transition-colors text-[11px] border-t border-border mt-1 pt-2"
-                            >
-                              Remover especialista
-                            </button>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
+                      {assignedLawyer.name}
+                    </span>
+                  )}
                 </div>
             </div>
           </div>

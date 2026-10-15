@@ -232,52 +232,6 @@ export function ChatHeader({
               )}
             </div>
           )}
-          {/* Especialista atribuído — hidden on mobile */}
-          <div className="hidden md:flex items-center gap-2 flex-wrap mt-1.5">
-            <div className="relative" ref={lawyerDropdownRef}>
-                <button
-                  onClick={(e) => { e.stopPropagation(); onToggleLawyer(); }}
-                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${selected.assignedLawyerName ? 'bg-primary/10 text-primary border-primary/20 hover:bg-primary/20' : 'bg-muted/50 text-muted-foreground border-border hover:bg-muted'}`}
-                  title="Clique para atribuir ou trocar o especialista"
-                >
-                  <UserCheck size={10} />
-                  {selected.assignedLawyerName || 'Atribuir especialista'}
-                </button>
-                {showLawyerDropdown && (
-                  <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-xl shadow-xl w-56 py-1 text-[12px]" style={{ zIndex: 9999 }}>
-                    <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                      {selected.assignedLawyerName ? 'Trocar especialista' : 'Escolher especialista'}
-                    </p>
-                    {allSpecialists.length === 0 && (
-                      <p className="px-3 py-2 text-[11px] text-muted-foreground">Nenhum especialista cadastrado</p>
-                    )}
-                    {allSpecialists.map(u => (
-                      <button
-                        key={u.id}
-                        onClick={(e) => { e.stopPropagation(); onAssignLawyer(u.id); }}
-                        className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2 ${u.id === selected.assignedLawyerId ? 'text-primary font-semibold' : 'text-foreground'}`}
-                      >
-                        <span className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-bold text-primary shrink-0">
-                          {u.name.charAt(0)}
-                        </span>
-                        <div>
-                          <p className="leading-tight">{u.name}</p>
-                          <p className="text-[9px] text-muted-foreground">{u.specialties.join(', ')}</p>
-                        </div>
-                      </button>
-                    ))}
-                    {selected.assignedLawyerId && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onAssignLawyer(null); }}
-                        className="w-full text-left px-3 py-2 text-muted-foreground hover:bg-accent hover:text-destructive transition-colors text-[11px] border-t border-border mt-1"
-                      >
-                        Remover especialista
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-          </div>
         </div>
       </div>
       <div className="flex flex-col items-end gap-2 shrink-0">

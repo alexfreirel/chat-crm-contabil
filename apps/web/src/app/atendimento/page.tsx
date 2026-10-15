@@ -2654,52 +2654,10 @@ export default function Dashboard() {
                           <span className="font-medium">{selected.assignedAgentName}</span>
                         </div>
                       )}
-                      {selected.legalArea && (
+                      {selected.assignedLawyerName && (
                         <div className="flex justify-between items-center text-sm">
                           <span className="text-muted-foreground">Especialista</span>
-                          <div className="relative" ref={lawyerDropdownRef2}>
-                            <button
-                              onClick={() => setShowLawyerDropdown(v => !v)}
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border transition-colors hover:opacity-80 active:scale-95 ${selected.assignedLawyerName ? 'bg-primary/10 text-primary border-primary/20' : 'bg-muted/40 text-muted-foreground border-border'}`}
-                            >
-                              <UserCheck size={10} />
-                              {selected.assignedLawyerName || 'Atribuir especialista'}
-                              <ChevronDown size={10} className="opacity-70" />
-                            </button>
-                            {showLawyerDropdown && (
-                              <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-xl shadow-xl w-56 py-1 text-[12px] z-[100]">
-                                <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                                  {selected.assignedLawyerName ? 'Trocar especialista' : 'Escolher especialista'}
-                                </p>
-                                {allSpecialists.length === 0 && (
-                                  <p className="px-3 py-2 text-[11px] text-muted-foreground">Nenhum especialista cadastrado</p>
-                                )}
-                                {allSpecialists.map(u => (
-                                  <button
-                                    key={u.id}
-                                    onClick={() => handleAssignLawyerInbox(u.id)}
-                                    className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2 ${u.id === selected.assignedLawyerId ? 'text-primary font-semibold' : 'text-foreground'}`}
-                                  >
-                                    <span className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-bold text-primary shrink-0">
-                                      {u.name.charAt(0)}
-                                    </span>
-                                    <div>
-                                      <p className="leading-tight">{u.name}</p>
-                                      <p className="text-[9px] text-muted-foreground">{u.specialties.join(', ')}</p>
-                                    </div>
-                                  </button>
-                                ))}
-                                {selected.assignedLawyerId && (
-                                  <button
-                                    onClick={() => handleAssignLawyerInbox(null)}
-                                    className="w-full text-left px-3 py-2 text-muted-foreground hover:bg-accent hover:text-destructive transition-colors text-[11px] border-t border-border mt-1"
-                                  >
-                                    Remover especialista
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
+                          <span className="font-medium">{selected.assignedLawyerName}</span>
                         </div>
                       )}
                     </div>
