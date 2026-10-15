@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, Coffee, Loader2, Play, Timer, Toilet } from 'lucide-react';
+import { ChevronDown, ChevronRight, Coffee, Loader2, Moon, Play, Timer, Toilet } from 'lucide-react';
 import api from '@/lib/api';
 import { useRole } from '@/lib/useRole';
 import { showError } from '@/lib/toast';
@@ -151,6 +151,14 @@ export function TimeControl({ isManager }: { isManager: boolean }) {
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border text-[11px] font-semibold text-foreground hover:bg-accent disabled:opacity-50"
               >
                 <Toilet size={12} /> Pausa banheiro
+              </button>
+              <button
+                onClick={() => pauseAction('OCIOSO')}
+                disabled={pausing}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border text-[11px] font-semibold text-foreground hover:bg-accent disabled:opacity-50"
+                title="Informar que está sem tarefa e não há o que fazer"
+              >
+                <Moon size={12} /> Pausa ocioso
               </button>
             </>
           )
