@@ -291,20 +291,6 @@ export function ChatHeader({
         )}
         {/* Linha de botões de ação — desktop only */}
         <div className="hidden md:flex gap-2 items-center flex-wrap justify-end">
-          {isRealConvo && (
-            <button
-              onClick={onToggleAiMode}
-              title={aiMode ? 'Desativar IA' : 'Ativar IA'}
-              className={`px-4 py-2 text-sm font-semibold border rounded-xl transition-colors flex items-center gap-2 ${
-                aiMode
-                  ? 'text-primary bg-primary/10 border-primary/20 hover:bg-primary/20'
-                  : 'text-muted-foreground bg-muted/30 border-border hover:bg-muted/60'
-              }`}
-            >
-              {aiMode ? <Bot size={16} /> : <BotOff size={16} />}
-              {aiMode ? 'IA Ativa' : 'IA Inativa'}
-            </button>
-          )}
           {selected.status === 'WAITING' && isRealConvo && (
             <button
               onClick={onAccept}
