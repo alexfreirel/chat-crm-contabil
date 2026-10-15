@@ -97,7 +97,7 @@ export function TimeControl({ isManager }: { isManager: boolean }) {
   const assistants = report?.assistants ?? [];
   const mine = assistants.find(a => a.user.id === userId) ?? null;
 
-  const pauseAction = async (kind: 'LANCHE' | 'BANHEIRO' | null) => {
+  const pauseAction = async (kind: 'LANCHE' | 'BANHEIRO' | 'OCIOSO' | null) => {
     setPausing(true);
     try {
       if (kind) await api.post('/tasks/time/pause', { kind });
