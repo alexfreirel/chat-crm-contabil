@@ -955,12 +955,6 @@ export default function Dashboard() {
     return () => { cancelled = true; };
   }, [debouncedSearch]);
 
-  // Esconde contatos que já aparecem como conversa na lista
-  const extraContacts = useMemo(() => {
-    const ids = new Set(filteredConversations.map(c => c.leadId));
-    return contactResults.filter(c => !ids.has(c.id));
-  }, [contactResults, filteredConversations]);
-
   // Buscar stage do lead + limpar unread ao selecionar conversa
   useEffect(() => {
     if (!selectedId) { setLeadStage(null); setOpenQuestions([]); return; }
@@ -2108,6 +2102,12 @@ export default function Dashboard() {
       return tb - ta;
     });
   }, [conversations, adiadoConversations, leadFilter, debouncedSearch, currentUserId]);
+
+  // Esconde contatos que já aparecem como conversa na lista
+  const extraContacts = useMemo(() => {
+    const ids = new Set(filteredConversations.map(c => c.leadId));
+    return contactResults.filter(c => !ids.has(c.id));
+  }, [contactResults, filteredConversations]);
 
   // Keep ref in sync for keyboard shortcut handler (declared before useMemo)
   const filteredConversationsRef = useRef(filteredConversations);
