@@ -84,8 +84,9 @@ function statusBadge(status: string, agentName?: string | null, leadStage?: stri
       </span>
     );
   }
+  // Agente de IA (Miguel) descontinuado: conversas em modo BOT aparecem como atendimento humano
+  if (status === 'BOT') status = agentName ? 'ACTIVE' : 'WAITING';
   const map: Record<string, { class: string; label: string }> = {
-    BOT: { class: 'bg-slate-500/15 text-slate-400 border border-slate-500/20', label: '🤖 Miguel' },
     WAITING: { class: 'bg-amber-500/15 text-amber-500 border border-amber-500/20 shadow-[0_0_10px_rgba(251,191,36,0.15)]', label: '⏳ Aguardando' },
     ACTIVE: { class: 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/20', label: agentName ? `🟢 ${agentName}` : '🟢 Atribuído' },
     CLOSED: { class: 'bg-gray-500/15 text-gray-400 border border-gray-500/20', label: '⬛ Fechado' },
