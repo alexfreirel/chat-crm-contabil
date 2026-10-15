@@ -899,40 +899,67 @@ export default function Dashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Abre (ou cria) a conversa de um lead/contato
+  const openLeadChat = useCallback(async (leadId: string) => {
+    try {
+      // Buscar conversas existentes do lead
+      const r = await api.get(`/conversations/lead/${leadId}`, { _silent401: true } as any);
+      const convs = r.data as any[];
+      const open = convs.find((c: any) => c.status !== 'FECHADO') ?? convs[0];
+      if (open?.id) {
+        setSelectedId(open.id);
+        fetchConversations(selectedInboxIdRef.current, true);
+        return;
+      }
+    } catch { /* sem conversas — cria nova */ }
+
+    try {
+      const newConv = await api.post('/conversations', {
+        lead_id: leadId,
+        channel: 'whatsapp',
+        instance_name: 'whatsapp',
+      });
+      await api.patch(`/conversations/${newConv.data.id}/assign`).catch(() => {});
+      await fetchConversations(selectedInboxIdRef.current, true);
+      setSelectedId(newConv.data.id);
+    } catch {
+      showError('Não foi possível abrir o chat com esse contato.');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Auto-abrir/criar conversa de lead sem conversa ativa (via sessionStorage 'crm_open_lead')
   useEffect(() => {
     const leadId = sessionStorage.getItem('crm_open_lead');
     if (!leadId) return;
     sessionStorage.removeItem('crm_open_lead');
-
-    (async () => {
-      try {
-        // Buscar conversas existentes do lead
-        const r = await api.get(`/conversations/lead/${leadId}`, { _silent401: true } as any);
-        const convs = r.data as any[];
-        const open = convs.find((c: any) => c.status !== 'FECHADO') ?? convs[0];
-        if (open?.id) {
-          setSelectedId(open.id);
-          fetchConversations(selectedInboxIdRef.current, true);
-          return;
-        }
-      } catch { /* sem conversas — cria nova */ }
-
-      try {
-        const newConv = await api.post('/conversations', {
-          lead_id: leadId,
-          channel: 'whatsapp',
-          instance_name: 'whatsapp',
-        });
-        await api.patch(`/conversations/${newConv.data.id}/assign`).catch(() => {});
-        await fetchConversations(selectedInboxIdRef.current, true);
-        setSelectedId(newConv.data.id);
-      } catch {
-        showError('Não foi possível abrir o chat com esse contato.');
-      }
-    })();
+    openLeadChat(leadId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Busca de contatos (leads) na pesquisa do inbox — encontra quem não está na lista de conversas
+  const [contactResults, setContactResults] = useState<{ id: string; name: string; phone: string; profile_picture_url?: string | null }[]>([]);
+  useEffect(() => {
+    const q = debouncedSearch.trim();
+    if (q.length < 2) { setContactResults([]); return; }
+    let cancelled = false;
+    api.get('/leads', { params: { search: q, limit: '15' }, _silent401: true } as any)
+      .then(r => {
+        if (cancelled) return;
+        const list = Array.isArray(r.data) ? r.data : (r.data?.data || []);
+        setContactResults(list.map((l: any) => ({
+          id: l.id, name: l.name || 'Sem Nome', phone: l.phone || '', profile_picture_url: l.profile_picture_url,
+        })));
+      })
+      .catch(() => { if (!cancelled) setContactResults([]); });
+    return () => { cancelled = true; };
+  }, [debouncedSearch]);
+
+  // Esconde contatos que já aparecem como conversa na lista
+  const extraContacts = useMemo(() => {
+    const ids = new Set(filteredConversations.map(c => c.leadId));
+    return contactResults.filter(c => !ids.has(c.id));
+  }, [contactResults, filteredConversations]);
 
   // Buscar stage do lead + limpar unread ao selecionar conversa
   useEffect(() => {
@@ -2197,6 +2224,8 @@ export default function Dashboard() {
         conversations={conversations}
         adiadoConversations={adiadoConversations}
         filteredConversations={filteredConversations}
+        extraContacts={extraContacts}
+        onOpenContact={(leadId) => { setSearchQuery(''); openLeadChat(leadId); }}
         userInboxes={userInboxes}
         pendingTransfers={pendingTransfers}
         unreadCounts={unreadCounts}

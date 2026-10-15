@@ -102,6 +102,8 @@ export interface InboxSidebarProps {
   conversations: ConversationSummary[];
   adiadoConversations: ConversationSummary[];
   filteredConversations: ConversationSummary[];
+  extraContacts?: { id: string; name: string; phone: string; profile_picture_url?: string | null }[];
+  onOpenContact?: (leadId: string) => void;
   userInboxes: { id: string; name: string }[];
   pendingTransfers: { conversationId: string; contactName: string; fromUserName: string; reason: string | null; audioIds?: string[] }[];
   unreadCounts: Record<string, number>;
@@ -149,6 +151,8 @@ export function InboxSidebar({
   selectedId,
   selectedInboxId,
   searchQuery,
+  extraContacts = [],
+  onOpenContact,
   leadFilter,
   inboxOpen,
   loading,
@@ -462,7 +466,7 @@ export function InboxSidebar({
       <div className={`flex-1 overflow-y-auto w-full custom-scrollbar ${isMobile && !selectedId ? 'pb-16' : ''}`}>
         {loading ? (
           <div className="p-10 text-center text-muted-foreground text-sm">Carregando conversas...</div>
-        ) : filteredConversations.length === 0 ? (
+        ) : filteredConversations.length === 0 && extraContacts.length === 0 ? (
           <div className="p-10 text-center text-muted-foreground text-sm">
             {searchQuery.trim() ? `Nenhum resultado para "${searchQuery}".` : 'Nenhuma conversa encontrada.'}
           </div>
@@ -632,6 +636,30 @@ export function InboxSidebar({
               );
             });
           })()
+        )}
+        {extraContacts.length > 0 && (
+          <div>
+            <div className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-accent/30 border-b border-border/50">
+              Contatos — clique para iniciar conversa
+            </div>
+            {extraContacts.map(c => (
+              <button
+                key={c.id}
+                onClick={() => onOpenContact?.(c.id)}
+                className="w-full flex items-center gap-3 px-4 py-3 border-b border-border/50 text-left hover:bg-accent/30 transition-colors"
+              >
+                <span className="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold shrink-0 overflow-hidden">
+                  {c.profile_picture_url
+                    ? <img src={c.profile_picture_url} alt="" className="w-full h-full object-cover" />
+                    : c.name.charAt(0).toUpperCase()}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold truncate">{c.name}</span>
+                  <span className="block text-[11px] text-muted-foreground">{c.phone}</span>
+                </span>
+              </button>
+            ))}
+          </div>
         )}
       </div>
 

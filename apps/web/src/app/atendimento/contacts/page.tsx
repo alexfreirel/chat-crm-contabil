@@ -34,9 +34,9 @@ interface Contact {
 
 function getChatStatus(conv: any): ChatStatus {
   if (!conv || conv.status === 'FECHADO') return null;
-  if (conv.ai_mode) return 'BOT';
-  if (conv.assigned_user_id) return 'ACTIVE';
-  return 'WAITING';
+  // Bot/IA e "Aguardando" não são mais usados — o atendente é atribuído a quem abre a conversa
+  if (conv.assigned_user_id || conv.assigned_lawyer_id) return 'ACTIVE';
+  return null;
 }
 
 const CHAT_STATUS_BADGE: Record<NonNullable<ChatStatus>, { label: string; classes: string; dot: string }> = {
