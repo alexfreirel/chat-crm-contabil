@@ -42,9 +42,9 @@ export class LeadsController {
   }
 
   @Get('check-phone')
-  checkPhone(@Query('phone') phone: string) {
+  checkPhone(@Query('phone') phone: string, @Request() req: any) {
     if (!phone) throw new BadRequestException('phone e obrigatorio');
-    return this.leadsService.checkPhone(phone);
+    return this.leadsService.checkPhone(phone, req.user?.tenant_id);
   }
 
   @Get('export')

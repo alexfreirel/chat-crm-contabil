@@ -123,6 +123,8 @@ export default function ContactsPage() {
       const params: Record<string, string> = {
         page: String(page),
         limit: String(PAGE_SIZE),
+        // Mostra também contatos "perdidos" — senão o cadastro acusa "já existe" e a lista não exibe
+        includeAllStages: 'true',
       };
       if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       const response = await api.get('/leads', { params });

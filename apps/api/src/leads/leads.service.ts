@@ -189,15 +189,19 @@ export class LeadsService {
     });
   }
 
-  async findByPhone(phone: string): Promise<Lead | null> {
+  async findByPhone(phone: string, tenantId?: string): Promise<Lead | null> {
     const normalized = to12Digits(phone);
     return this.prisma.lead.findFirst({
-      where: { OR: [{ phone: normalized }, { phone }] },
+      where: {
+        OR: [{ phone: normalized }, { phone }],
+        // Mesmo escopo da listagem de contatos: evita "já existe" de um contato que a lista não mostra
+        ...(tenantId ? { AND: [{ OR: [{ tenant_id: tenantId }, { tenant_id: null }] }] } : {}),
+      },
     });
   }
 
-  async checkPhone(phone: string): Promise<{ exists: boolean; lead?: Lead }> {
-    const found = await this.findByPhone(phone);
+  async checkPhone(phone: string, tenantId?: string): Promise<{ exists: boolean; lead?: Lead }> {
+    const found = await this.findByPhone(phone, tenantId);
     if (!found) return { exists: false };
     return { exists: true, lead: found };
   }
