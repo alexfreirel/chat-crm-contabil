@@ -32,16 +32,129 @@ interface CertidoesConfig {
   folderUrl: string | null;
 }
 
+interface PastaConfig {
+  driveReady: boolean;
+  configured: boolean;
+  folderId: string | null;
+  folderName: string | null;
+  folderUrl: string | null;
+}
+
+/** Cartão de configuração de uma pasta do Drive (link ou ID) — usado para certidões e contratos. */
+function PastaCard({
+  titulo, descricao, endpoint, config, onChange, enabled,
+}: {
+  titulo: string;
+  descricao: string;
+  endpoint: string;
+  config: PastaConfig | null;
+  onChange: (c: PastaConfig) => void;
+  enabled: boolean;
+}) {
+  const [input, setInput] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const salvar = async () => {
+    if (!input.trim()) return;
+    setSaving(true);
+    setMsg(null);
+    try {
+      const res = await api.post(endpoint, { folder: input.trim() });
+      onChange(res.data);
+      setInput('');
+      setMsg({ ok: true, text: `Pasta configurada: ${res.data.folderName || 'OK'}` });
+    } catch (err: any) {
+      setMsg({ ok: false, text: err.response?.data?.message || 'Erro ao salvar a pasta' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+      <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+        <FolderOpen className="w-4 h-4 text-primary" />
+        {titulo}
+      </h3>
+      <p className="text-xs text-muted-foreground -mt-2">{descricao}</p>
+
+      {config?.configured && (
+        <div className="flex items-center gap-3 p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-lg">
+          <FolderOpen className="w-4 h-4 text-emerald-500 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400 truncate">
+              {config.folderName || 'Pasta configurada'}
+            </p>
+            <p className="text-[11px] text-muted-foreground">Os arquivos são salvos aqui, em uma subpasta por empresa</p>
+          </div>
+          {config.folderUrl && (
+            <a
+              href={config.folderUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-blue-600 dark:text-blue-400 bg-blue-500/10 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 transition-colors"
+            >
+              <ExternalLink className="w-3 h-3" />
+              Abrir
+            </a>
+          )}
+        </div>
+      )}
+
+      <div>
+        <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+          {config?.configured ? 'Trocar a pasta (link ou ID)' : 'Link ou ID da pasta no Google Drive'}
+        </label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && salvar()}
+            disabled={!enabled}
+            placeholder="https://drive.google.com/drive/folders/..."
+            className="flex-1 text-sm bg-background border border-border rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground/50 disabled:opacity-50"
+          />
+          <button
+            onClick={salvar}
+            disabled={saving || !input.trim() || !enabled}
+            className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Salvar
+          </button>
+        </div>
+        {!enabled && (
+          <p className="text-[11px] text-amber-600 mt-1">Conecte a conta Google primeiro (passo 1).</p>
+        )}
+      </div>
+
+      {msg && (
+        <div className={`flex items-start gap-2 p-3 rounded-lg border ${
+          msg.ok ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-red-500/5 border-red-500/20'
+        }`}>
+          {msg.ok ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+          )}
+          <p className={`text-xs ${msg.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>
+            {msg.text}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function GoogleDriveSettingsPage() {
   const searchParams = useSearchParams();
   const [config, setConfig] = useState<DriveConfig | null>(null);
   const [certidoes, setCertidoes] = useState<CertidoesConfig | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Pasta das certidões
-  const [folderInput, setFolderInput] = useState('');
-  const [savingFolder, setSavingFolder] = useState(false);
-  const [folderMessage, setFolderMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [contratos, setContratos] = useState<CertidoesConfig | null>(null);
 
   // OAuth2
   const [oauthClientId, setOauthClientId] = useState('');
@@ -54,12 +167,14 @@ export default function GoogleDriveSettingsPage() {
   const fetchConfig = useCallback(async () => {
     try {
       setLoading(true);
-      const [cfg, cert] = await Promise.all([
+      const [cfg, cert, contr] = await Promise.all([
         api.get('/google-drive/config'),
         api.get('/google-drive/certidoes/config'),
+        api.get('/google-drive/contratos/config'),
       ]);
       setConfig(cfg.data);
       setCertidoes(cert.data);
+      setContratos(contr.data);
     } catch {
       setConfig(null);
     } finally {
@@ -83,22 +198,6 @@ export default function GoogleDriveSettingsPage() {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, [searchParams, fetchConfig]);
-
-  const handleSaveFolder = async () => {
-    if (!folderInput.trim()) return;
-    setSavingFolder(true);
-    setFolderMessage(null);
-    try {
-      const res = await api.post('/google-drive/certidoes/config', { folder: folderInput.trim() });
-      setCertidoes(res.data);
-      setFolderInput('');
-      setFolderMessage({ ok: true, text: `Pasta configurada: ${res.data.folderName || 'OK'}` });
-    } catch (err: any) {
-      setFolderMessage({ ok: false, text: err.response?.data?.message || 'Erro ao salvar a pasta' });
-    } finally {
-      setSavingFolder(false);
-    }
-  };
 
   const handleSaveOAuth = async () => {
     setSavingOAuth(true);
@@ -189,7 +288,9 @@ export default function GoogleDriveSettingsPage() {
           <p className="text-xs text-muted-foreground mt-0.5">
             {config?.oauthConnected ? `Conta Google: Conectada (${config.oauthUserEmail})` : 'Conta Google: Pendente'}
             {' · '}
-            {certidoes?.configured ? `Pasta de certidões: ${certidoes.folderName || 'OK'}` : 'Pasta de certidões: Pendente'}
+            {certidoes?.configured ? `Certidões: ${certidoes.folderName || 'OK'}` : 'Certidões: Pendente'}
+            {' · '}
+            {contratos?.configured ? `Contratos: ${contratos.folderName || 'OK'}` : 'Contratos: Pendente'}
           </p>
         </div>
       </div>
@@ -317,79 +418,24 @@ export default function GoogleDriveSettingsPage() {
         )}
       </div>
 
-      {/* ═══════════════════ Pasta das certidões ═══════════════════ */}
-      <div className="bg-card border border-border rounded-xl p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-          <FolderOpen className="w-4 h-4 text-primary" />
-          2. Pasta das certidões
-        </h3>
+      {/* ═══════════════════ Pastas do Drive ═══════════════════ */}
+      <PastaCard
+        titulo="2. Pasta das certidões"
+        descricao="Certidões anexadas no Agente Certidões (CND, FGTS, Trabalhista, Falência, Estadual e Municipal)."
+        endpoint="/google-drive/certidoes/config"
+        config={certidoes}
+        onChange={setCertidoes}
+        enabled={!!config?.oauthConnected}
+      />
 
-        {certidoes?.configured && (
-          <div className="flex items-center gap-3 p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-lg">
-            <FolderOpen className="w-4 h-4 text-emerald-500 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400 truncate">
-                {certidoes.folderName || 'Pasta configurada'}
-              </p>
-              <p className="text-[11px] text-muted-foreground">As certidões são salvas aqui, em uma subpasta por empresa</p>
-            </div>
-            {certidoes.folderUrl && (
-              <a
-                href={certidoes.folderUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-blue-600 dark:text-blue-400 bg-blue-500/10 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 transition-colors"
-              >
-                <ExternalLink className="w-3 h-3" />
-                Abrir
-              </a>
-            )}
-          </div>
-        )}
-
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-            {certidoes?.configured ? 'Trocar a pasta (link ou ID)' : 'Link ou ID da pasta no Google Drive'}
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={folderInput}
-              onChange={(e) => setFolderInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSaveFolder()}
-              disabled={!config?.oauthConnected}
-              placeholder="https://drive.google.com/drive/folders/..."
-              className="flex-1 text-sm bg-background border border-border rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground/50 disabled:opacity-50"
-            />
-            <button
-              onClick={handleSaveFolder}
-              disabled={savingFolder || !folderInput.trim() || !config?.oauthConnected}
-              className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {savingFolder ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              Salvar
-            </button>
-          </div>
-          {!config?.oauthConnected && (
-            <p className="text-[11px] text-amber-600 mt-1">Conecte a conta Google primeiro (passo 1).</p>
-          )}
-        </div>
-
-        {folderMessage && (
-          <div className={`flex items-start gap-2 p-3 rounded-lg border ${
-            folderMessage.ok ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-red-500/5 border-red-500/20'
-          }`}>
-            {folderMessage.ok ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
-            ) : (
-              <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
-            )}
-            <p className={`text-xs ${folderMessage.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>
-              {folderMessage.text}
-            </p>
-          </div>
-        )}
-      </div>
+      <PastaCard
+        titulo="3. Pasta dos contratos sociais"
+        descricao="Contrato de constituição e alterações contratuais. Cada anexo é guardado como arquivo novo, sem substituir os anteriores."
+        endpoint="/google-drive/contratos/config"
+        config={contratos}
+        onChange={setContratos}
+        enabled={!!config?.oauthConnected}
+      />
 
       {/* Como funciona */}
       <div className="bg-card border border-border rounded-xl p-5 space-y-3">

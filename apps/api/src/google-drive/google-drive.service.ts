@@ -494,9 +494,15 @@ export class GoogleDriveService {
     return hasOAuth || hasSA;
   }
 
-  async getCertidoesConfig() {
-    const folderId = await this.getSetting('GDRIVE_CERTIDOES_FOLDER_ID');
-    const folderName = await this.getSetting('GDRIVE_CERTIDOES_FOLDER_NAME');
+  private static readonly PASTA_KEYS = {
+    certidoes: { id: 'GDRIVE_CERTIDOES_FOLDER_ID', name: 'GDRIVE_CERTIDOES_FOLDER_NAME' },
+    contratos: { id: 'GDRIVE_CONTRATOS_FOLDER_ID', name: 'GDRIVE_CONTRATOS_FOLDER_NAME' },
+  } as const;
+
+  private async getPastaConfig(kind: 'certidoes' | 'contratos') {
+    const keys = GoogleDriveService.PASTA_KEYS[kind];
+    const folderId = await this.getSetting(keys.id);
+    const folderName = await this.getSetting(keys.name);
     return {
       driveReady: await this.hasDriveAuth(),
       configured: !!folderId,
@@ -507,7 +513,7 @@ export class GoogleDriveService {
   }
 
   /** Aceita o ID da pasta ou a URL completa (drive.google.com/drive/folders/ID). */
-  async setCertidoesFolder(input: string) {
+  private async setPasta(kind: 'certidoes' | 'contratos', input: string) {
     const raw = (input || '').trim();
     const match = raw.match(/folders\/([a-zA-Z0-9_-]+)/) || raw.match(/[?&]id=([a-zA-Z0-9_-]+)/);
     const folderId = match ? match[1] : raw;
@@ -531,10 +537,16 @@ export class GoogleDriveService {
       throw new Error('Pasta não encontrada ou sem acesso. Compartilhe a pasta com a conta conectada ao Drive.');
     }
 
-    await this.setSetting('GDRIVE_CERTIDOES_FOLDER_ID', folderId);
-    await this.setSetting('GDRIVE_CERTIDOES_FOLDER_NAME', name || '');
-    return this.getCertidoesConfig();
+    const keys = GoogleDriveService.PASTA_KEYS[kind];
+    await this.setSetting(keys.id, folderId);
+    await this.setSetting(keys.name, name || '');
+    return this.getPastaConfig(kind);
   }
+
+  getCertidoesConfig() { return this.getPastaConfig('certidoes'); }
+  setCertidoesFolder(input: string) { return this.setPasta('certidoes', input); }
+  getContratosConfig() { return this.getPastaConfig('contratos'); }
+  setContratosFolder(input: string) { return this.setPasta('contratos', input); }
 
   /** Cria (ou reaproveita) a subpasta "NOME - CNPJ" dentro da pasta de certidões. */
   private async ensureCertidaoEmpresaFolder(rootId: string, nome: string, cnpjFmt: string): Promise<string> {
@@ -644,6 +656,76 @@ export class GoogleDriveService {
       modifiedTime: f.modifiedTime || null,
       cnpj: f.appProperties?.cnpj || '',
       tipo: f.appProperties?.tipo || '',
+    }));
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  Contratos sociais e alterações — nunca substitui: cada anexo é um arquivo novo
+  // ═══════════════════════════════════════════════════════════════
+
+  private static readonly CONTRATO_ORIGEM = 'agente-contratos';
+
+  async uploadContrato(
+    file: { buffer: Buffer; originalname: string; mimetype: string },
+    meta: { cnpj: string; nome: string; titulo: string },
+  ) {
+    const rootId = await this.getSetting(GoogleDriveService.PASTA_KEYS.contratos.id);
+    if (!rootId) throw new Error('Pasta de contratos não configurada no Google Drive');
+
+    const cnpj = meta.cnpj.replace(/\D/g, '');
+    const cnpjFmt = cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+    const empresaFolder = await this.ensureCertidaoEmpresaFolder(rootId, meta.nome || cnpj, cnpjFmt);
+
+    const titulo = (meta.titulo || 'Contrato').replace(/[\\/]/g, '-').trim().slice(0, 120);
+    const ext = (file.originalname.match(/\.[a-zA-Z0-9]{1,6}$/) || ['.pdf'])[0].toLowerCase();
+    const data = new Date().toISOString().slice(0, 10);
+    const fileName = `${titulo} - ${cnpj} - ${data}${ext}`;
+
+    const { Readable } = await import('stream');
+    const drive = await this.getDriveClientForFiles();
+    const res = await drive.files.create({
+      requestBody: {
+        name: fileName,
+        parents: [empresaFolder],
+        appProperties: {
+          origem: GoogleDriveService.CONTRATO_ORIGEM,
+          cnpj,
+          titulo,
+        },
+      },
+      media: { mimeType: file.mimetype || 'application/pdf', body: Readable.from(file.buffer) },
+      fields: 'id,name,webViewLink,createdTime',
+      supportsAllDrives: true,
+    });
+    return {
+      id: res.data.id!,
+      name: res.data.name!,
+      webViewLink: res.data.webViewLink || null,
+      createdTime: res.data.createdTime || null,
+      cnpj,
+      titulo,
+    };
+  }
+
+  /** Lista os contratos anexados (todas as empresas), do mais antigo para o mais recente. */
+  async listContratos() {
+    const drive = await this.getDriveClientForFiles();
+    const res = await drive.files.list({
+      q: `appProperties has { key='origem' and value='${GoogleDriveService.CONTRATO_ORIGEM}' } and trashed=false`,
+      fields: 'files(id,name,webViewLink,createdTime,appProperties)',
+      spaces: 'drive',
+      pageSize: 1000,
+      orderBy: 'createdTime',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    return (res.data.files || []).map(f => ({
+      id: f.id!,
+      name: f.name!,
+      webViewLink: f.webViewLink || null,
+      createdTime: f.createdTime || null,
+      cnpj: f.appProperties?.cnpj || '',
+      titulo: f.appProperties?.titulo || f.name || '',
     }));
   }
 

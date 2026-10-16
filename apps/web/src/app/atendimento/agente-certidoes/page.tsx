@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  ShieldCheck, Building2, Download,
+  ShieldCheck, Building2,
   RefreshCw, CheckCircle2,
   XCircle, ExternalLink, Loader2,
   Users, ArrowRight, Server, Upload, HardDrive, Save,
@@ -14,11 +14,6 @@ import { useRole } from '@/lib/useRole';
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface CnpjEntry { cnpj: string; nome: string; clienteId?: string; }
-
-interface Arquivo {
-  nome: string; cnpj: string; cnpj_fmt: string;
-  tamanho_kb: number; data: string;
-}
 
 type PortalTipo = 'cnd' | 'fgts' | 'trabalhista' | 'falencia' | 'estadual' | 'municipal';
 
@@ -50,6 +45,17 @@ interface DriveConfig {
   driveReady: boolean; configured: boolean;
   folderId: string | null; folderName: string | null; folderUrl: string | null;
 }
+
+interface ContratoDrive {
+  id: string; name: string; webViewLink: string | null;
+  createdTime: string | null; cnpj: string; titulo: string;
+}
+
+const TIPOS_CONTRATO = [
+  'Contrato de Constituição',
+  ...Array.from({ length: 15 }, (_, i) => `${i + 1}ª Alteração Contratual`),
+  'Outro',
+];
 
 interface CertidaoDrive {
   id: string; name: string; webViewLink: string | null;
@@ -94,8 +100,6 @@ export default function AgenteCertidoesPage() {
   const [totalClientes, setTotalClientes] = useState(0);
   const [clientesSemCnpj, setClientesSemCnpj] = useState(0);
 
-  // ── Certidões salvas ──
-  const [arquivos, setArquivos] = useState<Arquivo[]>([]);
 
   // ── Google Drive (pasta das certidões) ──
   const { isAdmin, isContador } = useRole();
@@ -107,6 +111,15 @@ export default function AgenteCertidoesPage() {
   const [anexadas, setAnexadas] = useState<CertidaoDrive[]>([]);
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Contratos sociais / alterações (sempre acumula, nunca substitui) ──
+  const [contratosCfg, setContratosCfg] = useState<DriveConfig | null>(null);
+  const [contratos, setContratos] = useState<ContratoDrive[]>([]);
+  const [contratoAlvo, setContratoAlvo] = useState<CnpjEntry | null>(null);
+  const [contratoTipo, setContratoTipo] = useState('');
+  const [contratoOutro, setContratoOutro] = useState('');
+  const [contratoArquivo, setContratoArquivo] = useState<File | null>(null);
+  const [enviandoContrato, setEnviandoContrato] = useState(false);
   const alvoAnexo = useRef<{ c: CnpjEntry; col: CertidaoCol } | null>(null);
 
   // ── Toast ──
@@ -171,14 +184,6 @@ export default function AgenteCertidoesPage() {
     finally { setCarregandoCnpjs(false); }
   }, []);
 
-  // ─── Certidões salvas ─────────────────────────────────────────────────────
-  const loadArquivos = useCallback(async () => {
-    try {
-      const data: Arquivo[] = await fetch(`${AGENT_API}/api/certidoes`).then(r => r.json());
-      setArquivos(data);
-    } catch { /* offline */ }
-  }, []);
-
   // ─── Abrir portal da certidão (coluna) ────────────────────────────────────
   const abrirPortal = (tipo: PortalTipo) => {
     window.open(PORTAL_URL[tipo], '_blank', 'noopener,noreferrer');
@@ -191,8 +196,52 @@ export default function AgenteCertidoesPage() {
       if (cfg.ok) setDriveCfg(await cfg.json());
       const arq = await fetch(`${API_BASE_URL}/google-drive/certidoes/arquivos`, { headers: authHeaders() });
       if (arq.ok) setAnexadas(await arq.json());
+      const cc = await fetch(`${API_BASE_URL}/google-drive/contratos/config`, { headers: authHeaders() });
+      if (cc.ok) setContratosCfg(await cc.json());
+      const ca = await fetch(`${API_BASE_URL}/google-drive/contratos/arquivos`, { headers: authHeaders() });
+      if (ca.ok) setContratos(await ca.json());
     } catch { /* offline */ }
   }, []);
+
+  // ─── Contratos: abrir o diálogo já sugerindo o próximo tipo ───────────────
+  const abrirContrato = (c: CnpjEntry) => {
+    if (!contratosCfg?.configured) {
+      toast(canConfigDrive ? 'Configure a pasta dos contratos em Configurações › Google Drive.' : 'Peça ao admin/contador para configurar a pasta dos contratos.', 'err');
+      return;
+    }
+    const docs = contratos.filter(d => d.cnpj === c.cnpj);
+    const alteracoes = docs.filter(d => /altera/i.test(d.titulo)).length;
+    const temConstituicao = docs.some(d => /constitui/i.test(d.titulo));
+    setContratoTipo(!temConstituicao && docs.length === 0
+      ? 'Contrato de Constituição'
+      : TIPOS_CONTRATO[Math.min(alteracoes + 1, TIPOS_CONTRATO.length - 2)]);
+    setContratoOutro('');
+    setContratoArquivo(null);
+    setContratoAlvo(c);
+  };
+
+  const enviarContrato = async () => {
+    if (!contratoAlvo || !contratoArquivo) return;
+    const titulo = contratoTipo === 'Outro' ? contratoOutro.trim() : contratoTipo;
+    if (!titulo) { toast('Informe o tipo do documento.', 'err'); return; }
+    setEnviandoContrato(true);
+    try {
+      const form = new FormData();
+      form.append('file', contratoArquivo);
+      form.append('cnpj', contratoAlvo.cnpj);
+      form.append('nome', contratoAlvo.nome);
+      form.append('titulo', titulo);
+      const res = await fetch(`${API_BASE_URL}/google-drive/contratos/upload`, {
+        method: 'POST', headers: authHeaders(), body: form,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(data?.message || 'Falha ao anexar o contrato.', 'err'); return; }
+      setContratos(p => [...p, data]);
+      toast(`${titulo} anexado no Google Drive.`);
+      setContratoAlvo(null);
+    } catch { toast('Erro ao enviar o arquivo.', 'err'); }
+    finally { setEnviandoContrato(false); }
+  };
 
   const salvarPasta = async () => {
     if (!folderInput.trim()) return;
@@ -253,14 +302,13 @@ export default function AgenteCertidoesPage() {
   useEffect(() => {
     checkAgent();
     carregarCnpjs();
-    loadArquivos();
     loadDrive();
     const interval = setInterval(checkAgent, 30000);
     // Ao voltar para a aba, recarrega os anexos (reflete arquivos apagados/alterados direto no Drive)
     const onFocus = () => loadDrive();
     window.addEventListener('focus', onFocus);
     return () => { clearInterval(interval); window.removeEventListener('focus', onFocus); };
-  }, [checkAgent, carregarCnpjs, loadArquivos, loadDrive]);
+  }, [checkAgent, carregarCnpjs, loadDrive]);
 
   if (loading) return (
     <div className="flex items-center justify-center h-screen">
@@ -301,7 +349,7 @@ export default function AgenteCertidoesPage() {
                   : <span className="text-red-500 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block animate-pulse" />Offline</span>
               }
             </div>
-            <button onClick={() => { checkAgent(); carregarCnpjs(); loadArquivos(); loadDrive(); }}
+            <button onClick={() => { checkAgent(); carregarCnpjs(); loadDrive(); }}
               className="p-2 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors">
               <RefreshCw size={16} />
             </button>
@@ -511,57 +559,71 @@ export default function AgenteCertidoesPage() {
             )}
           </div>
 
-          {/* Arquivos salvos */}
+          {/* Contratos sociais e alterações contratuais */}
           <div className="rounded-xl border border-border bg-card overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-              <span className="font-semibold">Arquivos Salvos</span>
-              <button onClick={loadArquivos} className="flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-lg border border-border hover:bg-accent transition-colors">
-                <RefreshCw size={13} /> Atualizar
-              </button>
-            </div>
-            {arquivos.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <Download size={32} className="mx-auto mb-2 opacity-30" />
-                <p className="text-[13px]">Nenhuma certidão baixada ainda.</p>
+            <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-3">
+              <div>
+                <span className="font-semibold">Contratos Sociais e Alterações</span>
+                <p className="text-[12px] text-muted-foreground mt-0.5">
+                  Cada anexo é guardado como um documento novo, sem substituir os anteriores
+                  (constituição, 1ª alteração, 2ª alteração…).
+                </p>
               </div>
+              {contratosCfg?.configured && contratosCfg.folderUrl ? (
+                <a
+                  href={contratosCfg.folderUrl}
+                  target="_blank" rel="noopener noreferrer"
+                  className="shrink-0 inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                >
+                  <ExternalLink size={12} /> Abrir pasta
+                </a>
+              ) : (
+                <span className="shrink-0 text-[12px] text-amber-600">Pasta não configurada</span>
+              )}
+            </div>
+
+            {!cnpjs.length ? (
+              <div className="text-center py-10 text-muted-foreground text-[13px]">Nenhuma empresa cadastrada.</div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-[13px]">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/30">
-                      <th className="text-left px-5 py-3 font-semibold text-muted-foreground">Empresa / CNPJ</th>
-                      <th className="text-left px-5 py-3 font-semibold text-muted-foreground">Arquivo</th>
-                      <th className="text-left px-5 py-3 font-semibold text-muted-foreground">Tamanho</th>
-                      <th className="text-left px-5 py-3 font-semibold text-muted-foreground">Data</th>
-                      <th className="px-5 py-3" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {arquivos.map((f, i) => {
-                      const nomeEmpresa = cnpjs.find(c => c.cnpj === f.cnpj)?.nome;
-                      return (
-                        <tr key={i} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
-                          <td className="px-5 py-3">
-                            <div className="font-medium">{nomeEmpresa || '—'}</div>
-                            <div className="text-muted-foreground font-mono text-[11px]">{f.cnpj_fmt}</div>
-                          </td>
-                          <td className="px-5 py-3 text-muted-foreground">{f.nome}</td>
-                          <td className="px-5 py-3 text-muted-foreground">{f.tamanho_kb} KB</td>
-                          <td className="px-5 py-3 text-muted-foreground">{f.data}</td>
-                          <td className="px-5 py-3">
-                            <a
-                              href={`${AGENT_API}/api/certidoes/arquivo/${encodeURIComponent(f.nome)}`}
-                              download target="_blank" rel="noopener noreferrer"
-                              className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 border border-border rounded-lg hover:bg-accent text-muted-foreground transition-colors"
-                            >
-                              <Download size={12} /> Salvar
-                            </a>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div className="divide-y divide-border/50">
+                {cnpjs.map(c => {
+                  const docs = contratos
+                    .filter(d => d.cnpj === c.cnpj)
+                    .sort((x, y) => (x.createdTime || '').localeCompare(y.createdTime || ''));
+                  return (
+                    <div key={c.cnpj} className="px-5 py-3 flex items-start gap-4 hover:bg-muted/20 transition-colors">
+                      <div className="w-[260px] shrink-0 min-w-0">
+                        <div className="text-[13px] font-medium truncate">{c.nome || '—'}</div>
+                        <div className="text-[11px] text-muted-foreground font-mono">{fmtCnpj(c.cnpj)}</div>
+                      </div>
+                      <div className="flex-1 min-w-0 flex flex-wrap gap-2">
+                        {docs.length === 0 ? (
+                          <span className="text-[12px] text-muted-foreground py-1.5">Nenhum documento anexado</span>
+                        ) : docs.map(d => (
+                          <a
+                            key={d.id}
+                            href={d.webViewLink || '#'}
+                            target="_blank" rel="noopener noreferrer"
+                            title={`${d.name} — abrir no Drive`}
+                            className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                          >
+                            <ExternalLink size={11} />
+                            <span>{d.titulo}</span>
+                            {d.createdTime && (
+                              <span className="text-[10px] opacity-70">{new Date(d.createdTime).toLocaleDateString('pt-BR')}</span>
+                            )}
+                          </a>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => abrirContrato(c)}
+                        className="shrink-0 inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                      >
+                        <Upload size={12} /> Anexar
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -570,6 +632,64 @@ export default function AgenteCertidoesPage() {
       </div>
 
       <input ref={fileInputRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={enviarArquivo} />
+
+      {/* ── Diálogo: anexar contrato / alteração ── */}
+      {contratoAlvo && (
+        <div className="fixed inset-0 z-40 bg-black/50 flex items-center justify-center p-4" onClick={() => !enviandoContrato && setContratoAlvo(null)}>
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div>
+              <h3 className="font-semibold">Anexar contrato / alteração</h3>
+              <p className="text-[12px] text-muted-foreground mt-0.5 truncate">{contratoAlvo.nome} · {fmtCnpj(contratoAlvo.cnpj)}</p>
+            </div>
+
+            <div>
+              <label className="block text-[12px] font-medium text-muted-foreground mb-1">Tipo do documento</label>
+              <select
+                value={contratoTipo}
+                onChange={e => setContratoTipo(e.target.value)}
+                className="w-full text-[13px] px-3 py-2 rounded-lg border border-border bg-background outline-none focus:border-primary"
+              >
+                {TIPOS_CONTRATO.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              {contratoTipo === 'Outro' && (
+                <input
+                  value={contratoOutro}
+                  onChange={e => setContratoOutro(e.target.value)}
+                  placeholder="Ex.: Distrato Social"
+                  className="mt-2 w-full text-[13px] px-3 py-2 rounded-lg border border-border bg-background outline-none focus:border-primary"
+                />
+              )}
+            </div>
+
+            <div>
+              <label className="block text-[12px] font-medium text-muted-foreground mb-1">Arquivo</label>
+              <input
+                type="file"
+                accept="application/pdf,image/*,.doc,.docx"
+                onChange={e => setContratoArquivo(e.target.files?.[0] ?? null)}
+                className="w-full text-[12px] file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border file:border-border file:bg-background file:text-[12px] file:text-muted-foreground"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={() => setContratoAlvo(null)}
+                disabled={enviandoContrato}
+                className="text-[12px] px-3 py-2 rounded-lg border border-border text-muted-foreground hover:bg-accent disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={enviarContrato}
+                disabled={enviandoContrato || !contratoArquivo || (contratoTipo === 'Outro' && !contratoOutro.trim())}
+                className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-lg bg-primary text-primary-foreground disabled:opacity-50"
+              >
+                {enviandoContrato ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />} Enviar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Toasts ── */}
       <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">

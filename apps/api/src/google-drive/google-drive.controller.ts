@@ -271,6 +271,60 @@ export class GoogleDriveController {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  //  Contratos sociais e alterações (Agente Certidões)
+  // ═══════════════════════════════════════════════════════════════
+
+  @Get('contratos/config')
+  getContratosConfig() {
+    return this.driveService.getContratosConfig();
+  }
+
+  @Post('contratos/config')
+  @Roles('ADMIN', 'CONTADOR')
+  async saveContratosConfig(@Body() body: { folder: string }) {
+    if (!body?.folder?.trim()) throw new BadRequestException('Informe o link ou ID da pasta');
+    try {
+      return await this.driveService.setContratosFolder(body.folder);
+    } catch (err: any) {
+      throw new BadRequestException(err.message);
+    }
+  }
+
+  @Get('contratos/arquivos')
+  async listContratos() {
+    const cfg = await this.driveService.getContratosConfig();
+    if (!cfg.configured || !cfg.driveReady) return [];
+    try {
+      return await this.driveService.listContratos();
+    } catch (err: any) {
+      this.logger.warn(`[DRIVE] Erro ao listar contratos: ${err.message}`);
+      return [];
+    }
+  }
+
+  /** Anexa um contrato/alteração. Nunca substitui: cada envio vira um arquivo novo. */
+  @Post('contratos/upload')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 } }))
+  async uploadContrato(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { cnpj: string; nome?: string; titulo: string },
+  ) {
+    if (!file) throw new BadRequestException('Arquivo é obrigatório');
+    if (!/^\d{14}$/.test((body.cnpj || '').replace(/\D/g, ''))) throw new BadRequestException('CNPJ inválido');
+    if (!body.titulo?.trim()) throw new BadRequestException('Informe o tipo do documento (ex.: Contrato de Constituição)');
+    try {
+      return await this.driveService.uploadContrato(file, {
+        cnpj: body.cnpj,
+        nome: body.nome || '',
+        titulo: body.titulo,
+      });
+    } catch (err: any) {
+      this.logger.error(`[DRIVE] Upload de contrato falhou: ${err.message}`);
+      throw new BadRequestException(err.message);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   //  Papel Timbrado (Letterhead Template)
   // ═══════════════════════════════════════════════════════════════
 
