@@ -1,13 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import {
   CheckCircle2, AlertTriangle, Clock, FileText,
   CreditCard, Building2, User, RefreshCw, MessageCircle,
-  ChevronRight, Calendar, DollarSign,
+  ChevronRight, Calendar, DollarSign, ShieldCheck, Download,
+  Palette, Check, LogOut,
 } from 'lucide-react';
 import axios from 'axios';
+import { useTheme } from 'next-themes';
+import { THEMES } from '@/components/ThemeSwitcher';
+
+const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005';
 
 // ── Cliente do portal (sem auth, usa token na URL) ────────────────────────────
 const portalApi = axios.create({
@@ -67,6 +72,21 @@ interface Parcela {
   tipo: string | null;
 }
 
+interface CertidaoArquivo {
+  id: string;
+  nome: string;
+  tipo: string;
+  atualizadaEm: string | null;
+}
+
+const CERTIDOES_TIPOS = [
+  { tipo: 'cnd',         titulo: 'CND Federal',  subtitulo: 'Receita Federal' },
+  { tipo: 'fgts',        titulo: 'CRF FGTS',     subtitulo: 'Caixa' },
+  { tipo: 'trabalhista', titulo: 'Trabalhista',  subtitulo: 'TST' },
+  { tipo: 'falencia',    titulo: 'Falência',     subtitulo: 'TJAL' },
+  { tipo: 'estadual',    titulo: 'Estadual',     subtitulo: 'SEFAZ-AL' },
+];
+
 // ── Utilitários ────────────────────────────────────────────────────────────────
 
 const fmtBRL = (v: number) =>
@@ -103,17 +123,17 @@ const FOLDER_LABELS: Record<string, string> = {
 
 function StatusChip({ status }: { status: 'CONCLUIDA' | 'VENCIDA' | 'PENDENTE' }) {
   if (status === 'CONCLUIDA') return (
-    <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+    <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">
       <CheckCircle2 size={11} /> Concluída
     </span>
   );
   if (status === 'VENCIDA') return (
-    <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-700 bg-red-100 px-2 py-0.5 rounded-full">
+    <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-500 bg-red-500/10 px-2 py-0.5 rounded-full">
       <AlertTriangle size={11} /> Vencida
     </span>
   );
   return (
-    <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+    <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full">
       <Clock size={11} /> Pendente
     </span>
   );
@@ -121,17 +141,17 @@ function StatusChip({ status }: { status: 'CONCLUIDA' | 'VENCIDA' | 'PENDENTE' }
 
 function PaymentChip({ status }: { status: string }) {
   if (status === 'PAGO') return (
-    <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+    <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">
       <CheckCircle2 size={11} /> Pago
     </span>
   );
   if (status === 'ATRASADO') return (
-    <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-700 bg-red-100 px-2 py-0.5 rounded-full">
+    <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-500 bg-red-500/10 px-2 py-0.5 rounded-full">
       <AlertTriangle size={11} /> Atrasado
     </span>
   );
   return (
-    <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+    <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full">
       <Clock size={11} /> Pendente
     </span>
   );
@@ -139,36 +159,60 @@ function PaymentChip({ status }: { status: string }) {
 
 // ── Página principal ───────────────────────────────────────────────────────────
 
+type TabId = 'resumo' | 'obrigacoes' | 'documentos' | 'certidoes' | 'financeiro';
+
+const card = 'bg-card rounded-xl border border-border';
+
 export default function PortalClientePage() {
   const params = useParams();
+  const router = useRouter();
   const token  = params.token as string;
+  const { theme, setTheme } = useTheme();
 
   const [info, setInfo]             = useState<PortalInfo | null>(null);
   const [obrigacoes, setObrigacoes] = useState<Obrigacao[]>([]);
   const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [parcelas, setParcelas]     = useState<Parcela[]>([]);
-  const [tab, setTab]               = useState<'resumo' | 'obrigacoes' | 'documentos' | 'financeiro'>('resumo');
+  const [certidoes, setCertidoes]   = useState<CertidaoArquivo[]>([]);
+  const [tab, setTab]               = useState<TabId>('resumo');
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState<string | null>(null);
+  const [themeOpen, setThemeOpen]   = useState(false);
+  const [mounted, setMounted]       = useState(false);
+  const themeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setMounted(true); }, []);
+
+  // Fecha o menu de temas ao clicar fora
+  useEffect(() => {
+    if (!themeOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (themeRef.current && !themeRef.current.contains(e.target as Node)) setThemeOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [themeOpen]);
 
   useEffect(() => {
     if (!token) return;
     async function load() {
       setLoading(true);
       try {
-        const [infoRes, obRes, docRes, parRes] = await Promise.all([
+        const [infoRes, obRes, docRes, parRes, certRes] = await Promise.all([
           portalApi.get(`/portal/info/${token}`),
           portalApi.get(`/portal/obrigacoes/${token}`),
           portalApi.get(`/portal/documentos/${token}`),
           portalApi.get(`/portal/parcelas/${token}`),
+          portalApi.get(`/portal/certidoes/${token}`).catch(() => ({ data: [] })),
         ]);
         setInfo(infoRes.data);
         setObrigacoes(obRes.data ?? []);
         setDocumentos(docRes.data ?? []);
         setParcelas(parRes.data ?? []);
+        setCertidoes(certRes.data ?? []);
       } catch (err: any) {
         if (err.response?.status === 401) {
-          setError('Link expirado ou inválido. Solicite um novo link ao seu contador.');
+          setError('Sessão expirada ou inválida. Entre novamente com seu CNPJ e senha.');
         } else {
           setError('Erro ao carregar os dados. Tente novamente mais tarde.');
         }
@@ -180,307 +224,410 @@ export default function PortalClientePage() {
   }, [token]);
 
   if (loading) return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+    <div className="min-h-screen bg-background flex items-center justify-center">
       <div className="flex flex-col items-center gap-3">
-        <RefreshCw size={24} className="text-emerald-600 animate-spin" />
-        <p className="text-sm text-slate-500">Carregando seu portal...</p>
+        <RefreshCw size={24} className="text-primary animate-spin" />
+        <p className="text-sm text-muted-foreground">Carregando seu portal...</p>
       </div>
     </div>
   );
 
   if (error || !info) return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center px-6">
+    <div className="min-h-screen bg-background flex items-center justify-center px-6">
       <div className="max-w-sm text-center space-y-4">
-        <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto">
+        <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto">
           <AlertTriangle size={28} className="text-red-500" />
         </div>
-        <h2 className="text-lg font-bold text-slate-800">Acesso inválido</h2>
-        <p className="text-sm text-slate-500">{error ?? 'Token inválido.'}</p>
-        <a
-          href="https://wa.me/5582982344993"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 bg-emerald-600 text-white text-sm font-semibold px-5 py-2.5 rounded-xl"
-        >
-          <MessageCircle size={16} /> Contatar o escritório
-        </a>
+        <h2 className="text-lg font-bold text-foreground">Acesso inválido</h2>
+        <p className="text-sm text-muted-foreground">{error ?? 'Token inválido.'}</p>
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={() => router.push('/portal')}
+            className="bg-primary text-primary-foreground text-sm font-semibold px-5 py-2.5 rounded-xl"
+          >
+            Ir para o login
+          </button>
+          <a
+            href="https://wa.me/5582982344993"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
+          >
+            <MessageCircle size={16} /> Contatar o escritório
+          </a>
+        </div>
       </div>
     </div>
   );
 
   const { cliente, resumo } = info;
 
-  const TABS = [
-    { id: 'resumo',      label: 'Resumo',      icon: <Building2 size={15} /> },
-    { id: 'obrigacoes',  label: 'Obrigações',  icon: <Calendar size={15} /> },
-    { id: 'documentos',  label: 'Documentos',  icon: <FileText size={15} /> },
-    { id: 'financeiro',  label: 'Financeiro',  icon: <DollarSign size={15} /> },
-  ] as const;
+  const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
+    { id: 'resumo',      label: 'Resumo',      icon: <Building2 size={18} /> },
+    { id: 'obrigacoes',  label: 'Obrigações',  icon: <Calendar size={18} /> },
+    { id: 'documentos',  label: 'Documentos',  icon: <FileText size={18} /> },
+    { id: 'certidoes',   label: 'Certidões',   icon: <ShieldCheck size={18} /> },
+    { id: 'financeiro',  label: 'Financeiro',  icon: <DollarSign size={18} /> },
+  ];
+
+  // Última certidão de cada tipo (a API já devolve da mais recente para a mais antiga)
+  const certidaoPorTipo = new Map<string, CertidaoArquivo>();
+  for (const c of certidoes) if (!certidaoPorTipo.has(c.tipo)) certidaoPorTipo.set(c.tipo, c);
+
+  const sair = () => router.push('/portal');
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="min-h-screen md:h-screen md:overflow-hidden bg-background text-foreground flex flex-col md:flex-row">
 
-      {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-20">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/landing/logo.png" alt="Lexcon" className="h-7 w-auto" />
-            <span className="text-xs font-bold text-emerald-700 border border-emerald-200 bg-emerald-50 px-2 py-0.5 rounded-full">
-              Portal do Cliente
-            </span>
-          </div>
-          <a
-            href="https://wa.me/5582982344993"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-800"
-          >
-            <MessageCircle size={14} /> Falar com o escritório
-          </a>
+      {/* ── Sidebar (desktop) ── */}
+      <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-border bg-card">
+        <div className="px-4 py-4 border-b border-border">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/landing/logo.png" alt="Lexcon" className="h-8 w-auto" />
+          <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Portal do Cliente</p>
         </div>
-      </header>
 
-      {/* Hero — Info do cliente */}
-      <div className="bg-white border-b border-slate-200">
-        <div className="max-w-2xl mx-auto px-4 py-5">
-          <div className="flex items-start gap-3">
-            <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
-              <User size={22} className="text-emerald-700" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h1 className="font-bold text-slate-800 text-lg leading-tight truncate">{cliente.nome}</h1>
-              <div className="flex flex-wrap gap-1.5 mt-1.5">
-                <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                  {STAGE_LABELS[cliente.stage] ?? cliente.stage}
-                </span>
-                {cliente.regime_tributario && (
-                  <span className="text-xs text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
-                    {REGIME_LABELS[cliente.regime_tributario] ?? cliente.regime_tributario}
-                  </span>
-                )}
-                {cliente.contador && (
-                  <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                    Contador: {cliente.contador}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="bg-white border-b border-slate-200 sticky top-[53px] z-10">
-        <div className="max-w-2xl mx-auto px-4 flex gap-0">
+        <nav className="flex-1 overflow-y-auto p-3 space-y-1.5">
           {TABS.map(t => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`flex items-center gap-1.5 px-4 py-3 text-xs font-semibold border-b-2 transition-colors ${
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] font-medium shadow-sm transition-colors ${
                 tab === t.id
-                  ? 'border-emerald-600 text-emerald-700'
-                  : 'border-transparent text-slate-500 hover:text-slate-700'
+                  ? 'bg-accent text-foreground'
+                  : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
+              }`}
+            >
+              {t.icon} {t.label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="p-3 border-t border-border space-y-1.5 relative" ref={themeRef}>
+          <a
+            href="https://wa.me/5582982344993"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground shadow-sm transition-colors"
+          >
+            <MessageCircle size={18} /> Falar com o escritório
+          </a>
+
+          <button
+            onClick={() => setThemeOpen(o => !o)}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] font-medium shadow-sm transition-colors ${
+              themeOpen ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
+            }`}
+          >
+            <Palette size={18} /> Aparência
+          </button>
+
+          {themeOpen && mounted && (
+            <div className="absolute bottom-full left-3 right-3 mb-2 bg-card border border-border rounded-xl p-3 flex flex-col gap-1.5 shadow-2xl z-30">
+              <p className="text-[11px] font-bold text-muted-foreground uppercase ml-1 mb-1 tracking-wider">Temas</p>
+              {THEMES.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => { setTheme(t.id); setThemeOpen(false); }}
+                  className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm text-foreground transition-colors hover:bg-accent ${theme === t.id ? 'bg-accent' : ''}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-3.5 h-3.5 rounded-full border border-border shadow-inner" style={{ background: t.color }} />
+                    {t.name}
+                  </div>
+                  {theme === t.id && <Check size={14} className="text-primary" />}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <button
+            onClick={sair}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive shadow-sm transition-colors"
+          >
+            <LogOut size={18} /> Sair
+          </button>
+        </div>
+      </aside>
+
+      {/* ── Topo + abas (mobile) ── */}
+      <header className="md:hidden bg-card border-b border-border sticky top-0 z-20">
+        <div className="px-4 py-3 flex items-center justify-between">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/landing/logo.png" alt="Lexcon" className="h-7 w-auto" />
+          <div className="flex items-center gap-1">
+            {mounted && THEMES.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setTheme(t.id)}
+                title={t.name}
+                aria-label={`Tema ${t.name}`}
+                className={`w-5 h-5 rounded-full border ${theme === t.id ? 'ring-2 ring-primary ring-offset-1 ring-offset-card' : 'border-border'}`}
+                style={{ background: t.color }}
+              />
+            ))}
+            <button onClick={sair} className="ml-2 text-muted-foreground" aria-label="Sair"><LogOut size={16} /></button>
+          </div>
+        </div>
+        <div className="flex overflow-x-auto px-2">
+          {TABS.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold border-b-2 whitespace-nowrap transition-colors ${
+                tab === t.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'
               }`}
             >
               {t.icon} {t.label}
             </button>
           ))}
         </div>
-      </div>
+      </header>
 
-      {/* Content */}
-      <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-5 space-y-4">
+      {/* ── Conteúdo ── */}
+      <div className="flex-1 md:overflow-y-auto">
+        <div className="max-w-3xl mx-auto w-full px-4 md:px-8 py-6 space-y-4">
 
-        {/* ─── Resumo ──────────────────────────────────────────────────── */}
-        {tab === 'resumo' && (
-          <>
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: 'Total de Obrigações', value: resumo.totalObrigacoes, color: 'text-slate-700' },
-                { label: 'Pendentes', value: resumo.pendentes, color: 'text-amber-600' },
-                { label: 'Vencidas', value: resumo.vencidas, color: 'text-red-600' },
-                { label: 'Concluídas', value: resumo.concluidas, color: 'text-emerald-600' },
-              ].map(s => (
-                <div key={s.label} className="bg-white rounded-xl border border-slate-200 p-4">
-                  <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{s.label}</p>
-                </div>
-              ))}
+          {/* Cabeçalho do cliente */}
+          <div className="flex items-start gap-3">
+            <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+              <User size={22} className="text-primary" />
             </div>
+            <div className="flex-1 min-w-0">
+              <h1 className="font-bold text-foreground text-xl leading-tight truncate">{cliente.nome}</h1>
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                  {STAGE_LABELS[cliente.stage] ?? cliente.stage}
+                </span>
+                {cliente.regime_tributario && (
+                  <span className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                    {REGIME_LABELS[cliente.regime_tributario] ?? cliente.regime_tributario}
+                  </span>
+                )}
+                {cliente.contador && (
+                  <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                    Contador: {cliente.contador}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 p-4">
-              <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
-                <CreditCard size={15} className="text-emerald-600" /> Situação Financeira
-              </h3>
+          {/* ─── Resumo ──────────────────────────────────────────────── */}
+          {tab === 'resumo' && (
+            <>
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <p className="text-xs text-slate-500">Total em Aberto</p>
-                  <p className="text-lg font-bold text-amber-600">{fmtBRL(resumo.totalPendente)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Total Pago</p>
-                  <p className="text-lg font-bold text-emerald-600">{fmtBRL(resumo.totalPago)}</p>
-                </div>
-              </div>
-            </div>
-
-            {resumo.vencidas > 0 && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
-                <AlertTriangle size={18} className="text-red-600 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-semibold text-red-800">
-                    Atenção: {resumo.vencidas} obrigação{resumo.vencidas > 1 ? 'ões' : ''} vencida{resumo.vencidas > 1 ? 's' : ''}
-                  </p>
-                  <p className="text-xs text-red-600 mt-0.5">
-                    Entre em contato com o escritório para regularização.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => setTab('obrigacoes')}
-                className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between hover:bg-slate-50 transition-colors"
-              >
-                <span className="text-sm font-medium text-slate-700">Ver Obrigações</span>
-                <ChevronRight size={16} className="text-slate-400" />
-              </button>
-              <button
-                onClick={() => setTab('financeiro')}
-                className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between hover:bg-slate-50 transition-colors"
-              >
-                <span className="text-sm font-medium text-slate-700">Ver Pagamentos</span>
-                <ChevronRight size={16} className="text-slate-400" />
-              </button>
-            </div>
-          </>
-        )}
-
-        {/* ─── Obrigações ──────────────────────────────────────────────── */}
-        {tab === 'obrigacoes' && (
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-100">
-              <h3 className="text-sm font-semibold text-slate-700">
-                Obrigações Fiscais ({obrigacoes.length})
-              </h3>
-            </div>
-            {obrigacoes.length === 0 ? (
-              <div className="py-10 text-center text-slate-400 text-sm">
-                Nenhuma obrigação cadastrada
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {obrigacoes.map(ob => (
-                  <div key={ob.id} className="flex items-start gap-3 px-4 py-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-700 truncate">{ob.titulo}</p>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        Vencimento: {fmtDate(ob.due_at)} · {ob.tipo}
-                      </p>
-                    </div>
-                    <StatusChip status={ob.status} />
+                {[
+                  { label: 'Total de Obrigações', value: resumo.totalObrigacoes, color: 'text-foreground' },
+                  { label: 'Pendentes', value: resumo.pendentes, color: 'text-amber-500' },
+                  { label: 'Vencidas', value: resumo.vencidas, color: 'text-red-500' },
+                  { label: 'Concluídas', value: resumo.concluidas, color: 'text-emerald-500' },
+                ].map(s => (
+                  <div key={s.label} className={`${card} p-4`}>
+                    <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        )}
 
-        {/* ─── Documentos ──────────────────────────────────────────────── */}
-        {tab === 'documentos' && (
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-100">
-              <h3 className="text-sm font-semibold text-slate-700">
-                Documentos ({documentos.length})
-              </h3>
-            </div>
-            {documentos.length === 0 ? (
-              <div className="py-10 text-center text-slate-400 text-sm">
-                Nenhum documento disponível
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {documentos.map(doc => (
-                  <div key={doc.id} className="flex items-start gap-3 px-4 py-3">
-                    <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                      <FileText size={16} className="text-slate-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-700 truncate">{doc.name}</p>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        {FOLDER_LABELS[doc.folder] ?? doc.folder}
-                        {doc.competencia ? ` · ${fmtDate(doc.competencia)}` : ''}
-                        · Enviado {fmtDate(doc.created_at)}
-                      </p>
-                    </div>
-                    <span className="text-xs text-slate-400">
-                      {doc.size ? `${(doc.size / 1024).toFixed(0)} KB` : '—'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ─── Financeiro ──────────────────────────────────────────────── */}
-        {tab === 'financeiro' && (
-          <>
-            {/* Resumo financeiro */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <p className="text-xs text-slate-500">Em Aberto</p>
-                <p className="text-xl font-bold text-amber-600">{fmtBRL(resumo.totalPendente)}</p>
-              </div>
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <p className="text-xs text-slate-500">Total Pago</p>
-                <p className="text-xl font-bold text-emerald-600">{fmtBRL(resumo.totalPago)}</p>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-slate-100">
-                <h3 className="text-sm font-semibold text-slate-700">
-                  Histórico de Pagamentos ({parcelas.length})
+              <div className={`${card} p-4`}>
+                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                  <CreditCard size={15} className="text-primary" /> Situação Financeira
                 </h3>
-              </div>
-              {parcelas.length === 0 ? (
-                <div className="py-10 text-center text-slate-400 text-sm">
-                  Nenhum lançamento encontrado
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total em Aberto</p>
+                    <p className="text-lg font-bold text-amber-500">{fmtBRL(resumo.totalPendente)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total Pago</p>
+                    <p className="text-lg font-bold text-emerald-500">{fmtBRL(resumo.totalPago)}</p>
+                  </div>
                 </div>
+              </div>
+
+              {resumo.vencidas > 0 && (
+                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-start gap-3">
+                  <AlertTriangle size={18} className="text-red-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-red-500">
+                      Atenção: {resumo.vencidas} obrigação{resumo.vencidas > 1 ? 'ões' : ''} vencida{resumo.vencidas > 1 ? 's' : ''}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Entre em contato com o escritório para regularização.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {([
+                  ['obrigacoes', 'Ver Obrigações'],
+                  ['certidoes', 'Ver Certidões'],
+                  ['financeiro', 'Ver Pagamentos'],
+                ] as [TabId, string][]).map(([id, label]) => (
+                  <button
+                    key={id}
+                    onClick={() => setTab(id)}
+                    className={`${card} p-4 flex items-center justify-between hover:bg-accent/50 transition-colors`}
+                  >
+                    <span className="text-sm font-medium text-foreground">{label}</span>
+                    <ChevronRight size={16} className="text-muted-foreground" />
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* ─── Obrigações ──────────────────────────────────────────── */}
+          {tab === 'obrigacoes' && (
+            <div className={`${card} overflow-hidden`}>
+              <div className="px-4 py-3 border-b border-border">
+                <h3 className="text-sm font-semibold text-foreground">Obrigações Fiscais ({obrigacoes.length})</h3>
+              </div>
+              {obrigacoes.length === 0 ? (
+                <div className="py-10 text-center text-muted-foreground text-sm">Nenhuma obrigação cadastrada</div>
               ) : (
-                <div className="divide-y divide-slate-100">
-                  {parcelas.map(p => (
-                    <div key={p.id} className="flex items-center gap-3 px-4 py-3">
+                <div className="divide-y divide-border/60">
+                  {obrigacoes.map(ob => (
+                    <div key={ob.id} className="flex items-start gap-3 px-4 py-3">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-700">
-                          {fmtBRL(p.amount)}
-                          {p.tipo && <span className="text-slate-400 font-normal"> — {p.tipo}</span>}
-                        </p>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          Venc. {fmtDate(p.due_date)}
-                          {p.paid_at ? ` · Pago em ${fmtDate(p.paid_at)}` : ''}
-                          {p.competencia ? ` · Ref. ${fmtDate(p.competencia)}` : ''}
+                        <p className="text-sm font-medium text-foreground truncate">{ob.titulo}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Vencimento: {fmtDate(ob.due_at)} · {ob.tipo}
                         </p>
                       </div>
-                      <PaymentChip status={p.status} />
+                      <StatusChip status={ob.status} />
                     </div>
                   ))}
                 </div>
               )}
             </div>
-          </>
-        )}
-      </main>
+          )}
 
-      {/* Footer */}
-      <footer className="py-5 text-center">
-        <p className="text-xs text-slate-400">
-          © {new Date().getFullYear()} Lexcon Assessoria Contábil · Acesso seguro via link privado
-        </p>
-      </footer>
+          {/* ─── Documentos ──────────────────────────────────────────── */}
+          {tab === 'documentos' && (
+            <div className={`${card} overflow-hidden`}>
+              <div className="px-4 py-3 border-b border-border">
+                <h3 className="text-sm font-semibold text-foreground">Documentos ({documentos.length})</h3>
+              </div>
+              {documentos.length === 0 ? (
+                <div className="py-10 text-center text-muted-foreground text-sm">Nenhum documento disponível</div>
+              ) : (
+                <div className="divide-y divide-border/60">
+                  {documentos.map(doc => (
+                    <div key={doc.id} className="flex items-start gap-3 px-4 py-3">
+                      <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                        <FileText size={16} className="text-muted-foreground" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{doc.name}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {FOLDER_LABELS[doc.folder] ?? doc.folder}
+                          {doc.competencia ? ` · ${fmtDate(doc.competencia)}` : ''}
+                          · Enviado {fmtDate(doc.created_at)}
+                        </p>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {doc.size ? `${(doc.size / 1024).toFixed(0)} KB` : '—'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─── Certidões ───────────────────────────────────────────── */}
+          {tab === 'certidoes' && (
+            <div className={`${card} overflow-hidden`}>
+              <div className="px-4 py-3 border-b border-border">
+                <h3 className="text-sm font-semibold text-foreground">Certidões da empresa</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Emitidas pelo escritório. A data indica quando cada certidão foi anexada ou atualizada.
+                </p>
+              </div>
+              <div className="divide-y divide-border/60">
+                {CERTIDOES_TIPOS.map(c => {
+                  const arq = certidaoPorTipo.get(c.tipo);
+                  return (
+                    <div key={c.tipo} className="flex items-center gap-3 px-4 py-3.5">
+                      <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                        <ShieldCheck size={16} className={arq ? 'text-primary' : 'text-muted-foreground'} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground">{c.titulo}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {c.subtitulo}
+                          {arq?.atualizadaEm ? ` · ${fmtDate(arq.atualizadaEm)}` : ''}
+                        </p>
+                      </div>
+                      {arq ? (
+                        <a
+                          href={`${API}/portal/certidoes/${token}/${arq.id}/download`}
+                          className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                        >
+                          <Download size={13} /> Baixar
+                        </a>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Ainda não disponível</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ─── Financeiro ──────────────────────────────────────────── */}
+          {tab === 'financeiro' && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div className={`${card} p-4`}>
+                  <p className="text-xs text-muted-foreground">Em Aberto</p>
+                  <p className="text-xl font-bold text-amber-500">{fmtBRL(resumo.totalPendente)}</p>
+                </div>
+                <div className={`${card} p-4`}>
+                  <p className="text-xs text-muted-foreground">Total Pago</p>
+                  <p className="text-xl font-bold text-emerald-500">{fmtBRL(resumo.totalPago)}</p>
+                </div>
+              </div>
+
+              <div className={`${card} overflow-hidden`}>
+                <div className="px-4 py-3 border-b border-border">
+                  <h3 className="text-sm font-semibold text-foreground">Histórico de Pagamentos ({parcelas.length})</h3>
+                </div>
+                {parcelas.length === 0 ? (
+                  <div className="py-10 text-center text-muted-foreground text-sm">Nenhum lançamento encontrado</div>
+                ) : (
+                  <div className="divide-y divide-border/60">
+                    {parcelas.map(p => (
+                      <div key={p.id} className="flex items-center gap-3 px-4 py-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground">
+                            {fmtBRL(p.amount)}
+                            {p.tipo && <span className="text-muted-foreground font-normal"> — {p.tipo}</span>}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Venc. {fmtDate(p.due_date)}
+                            {p.paid_at ? ` · Pago em ${fmtDate(p.paid_at)}` : ''}
+                            {p.competencia ? ` · Ref. ${fmtDate(p.competencia)}` : ''}
+                          </p>
+                        </div>
+                        <PaymentChip status={p.status} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          <p className="pt-4 pb-2 text-center text-xs text-muted-foreground">
+            © {new Date().getFullYear()} Lexcon Assessoria Contábil · Acesso seguro
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

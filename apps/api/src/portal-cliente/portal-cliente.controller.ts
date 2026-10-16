@@ -1,6 +1,7 @@
 import {
-  Controller, Get, Post, Patch, Param, Body, Request, UseGuards,
+  Controller, Get, Post, Patch, Param, Body, Request, Res, UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { PortalClienteService } from './portal-cliente.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -66,6 +67,26 @@ export class PortalClienteController {
   @Get('documentos/:token')
   getDocumentos(@Param('token') token: string) {
     return this.service.getDocumentos(token);
+  }
+
+  @Public()
+  @Get('certidoes/:token')
+  getCertidoes(@Param('token') token: string) {
+    return this.service.getCertidoes(token);
+  }
+
+  @Public()
+  @Get('certidoes/:token/:fileId/download')
+  async baixarCertidao(
+    @Param('token') token: string,
+    @Param('fileId') fileId: string,
+    @Res() res: Response,
+  ) {
+    const { buffer, name, mimeType } = await this.service.baixarCertidao(token, fileId);
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(name)}`);
+    res.setHeader('Content-Length', buffer.length);
+    res.end(buffer);
   }
 
   @Public()

@@ -9,6 +9,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import * as jwt from 'jsonwebtoken';
 import * as argon2 from 'argon2';
+import { GoogleDriveService } from '../google-drive/google-drive.service';
 
 const PORTAL_SECRET  = process.env.JWT_SECRET || '__INSECURE_DEV_FALLBACK_CHANGE_ME__';
 const PORTAL_EXPIRES = '7d';
@@ -23,7 +24,10 @@ interface PortalTokenPayload {
 export class PortalClienteService {
   private readonly logger = new Logger(PortalClienteService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly drive: GoogleDriveService,
+  ) {}
 
   // ─── Gera um token JWT de acesso ao portal ──────────────────────────────────
   async gerarLink(clienteId: string, tenantId?: string): Promise<{ token: string; url: string }> {
@@ -291,6 +295,46 @@ export class PortalClienteService {
       competencia: p.competencia,
       tipo: p.honorario?.tipo ?? null,
     }));
+  }
+
+  // ─── Certidões da empresa (somente leitura; anexadas pelo Agente Certidões) ──
+  private async getCnpjDoCliente(clienteId: string): Promise<string> {
+    const c = await this.prisma.clienteContabil.findUnique({
+      where: { id: clienteId },
+      select: {
+        portal_login: true, cpf_cnpj: true,
+        lead: { select: { ficha_contabil: { select: { cnpj: true } } } },
+      },
+    });
+    const cnpj = (c?.portal_login || c?.cpf_cnpj || c?.lead?.ficha_contabil?.cnpj || '').replace(/\D/g, '');
+    if (cnpj.length !== 14) throw new NotFoundException('Cliente sem CNPJ cadastrado');
+    return cnpj;
+  }
+
+  async getCertidoes(token: string) {
+    const payload = this.verifyToken(token);
+    const cnpj = await this.getCnpjDoCliente(payload.clienteId);
+    try {
+      const arquivos = await this.drive.listCertidoes(cnpj);
+      // Não expõe link do Drive (o cliente não tem acesso a ele): o download passa pela API
+      return arquivos.map(a => ({
+        id: a.id,
+        nome: a.name,
+        tipo: a.tipo,
+        atualizadaEm: a.modifiedTime || a.createdTime,
+      }));
+    } catch (err: any) {
+      this.logger.warn(`Falha ao listar certidões do cliente ${payload.clienteId}: ${err.message}`);
+      return [];
+    }
+  }
+
+  async baixarCertidao(token: string, fileId: string) {
+    const payload = this.verifyToken(token);
+    const cnpj = await this.getCnpjDoCliente(payload.clienteId);
+    const file = await this.drive.downloadCertidao(fileId, cnpj);
+    if (!file) throw new NotFoundException('Certidão não encontrada');
+    return file;
   }
 
   // ─── Utilitário ─────────────────────────────────────────────────────────────

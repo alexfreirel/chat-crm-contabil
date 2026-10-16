@@ -622,11 +622,13 @@ export class GoogleDriveService {
     };
   }
 
-  /** Lista as certidões anexadas pelo agente (todas as empresas), mais recentes primeiro. */
-  async listCertidoes() {
+  /** Lista as certidões anexadas pelo agente (todas as empresas, ou só a do CNPJ informado), mais recentes primeiro. */
+  async listCertidoes(cnpj?: string) {
     const drive = await this.getDriveClientForFiles();
+    const cnpjDigits = (cnpj || '').replace(/\D/g, '');
+    const filtroCnpj = cnpjDigits ? ` and appProperties has { key='cnpj' and value='${cnpjDigits}' }` : '';
     const res = await drive.files.list({
-      q: `appProperties has { key='origem' and value='${GoogleDriveService.CERTIDAO_ORIGEM}' } and trashed=false`,
+      q: `appProperties has { key='origem' and value='${GoogleDriveService.CERTIDAO_ORIGEM}' }${filtroCnpj} and trashed=false`,
       fields: 'files(id,name,webViewLink,createdTime,modifiedTime,appProperties)',
       spaces: 'drive',
       pageSize: 1000,
@@ -643,6 +645,41 @@ export class GoogleDriveService {
       cnpj: f.appProperties?.cnpj || '',
       tipo: f.appProperties?.tipo || '',
     }));
+  }
+
+  /**
+   * Baixa uma certidão para o portal do cliente. Só entrega se o arquivo for uma certidão
+   * anexada pelo agente E pertencer ao CNPJ informado (evita acesso a arquivos de outras empresas).
+   */
+  async downloadCertidao(fileId: string, cnpj: string): Promise<{ buffer: Buffer; name: string; mimeType: string } | null> {
+    const drive = await this.getDriveClientForFiles();
+    let meta;
+    try {
+      meta = await drive.files.get({
+        fileId,
+        fields: 'id,name,mimeType,trashed,appProperties',
+        supportsAllDrives: true,
+      });
+    } catch {
+      return null;
+    }
+    const props = meta.data.appProperties || {};
+    if (
+      meta.data.trashed ||
+      props.origem !== GoogleDriveService.CERTIDAO_ORIGEM ||
+      props.cnpj !== cnpj.replace(/\D/g, '')
+    ) {
+      return null;
+    }
+    const res = await drive.files.get(
+      { fileId, alt: 'media', supportsAllDrives: true },
+      { responseType: 'arraybuffer' },
+    );
+    return {
+      buffer: Buffer.from(res.data as ArrayBuffer),
+      name: meta.data.name || 'certidao.pdf',
+      mimeType: meta.data.mimeType || 'application/pdf',
+    };
   }
 
   /**
