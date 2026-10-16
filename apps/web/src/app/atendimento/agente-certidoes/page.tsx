@@ -254,7 +254,10 @@ export default function AgenteCertidoesPage() {
     loadArquivos();
     loadDrive();
     const interval = setInterval(checkAgent, 30000);
-    return () => clearInterval(interval);
+    // Ao voltar para a aba, recarrega os anexos (reflete arquivos apagados/alterados direto no Drive)
+    const onFocus = () => loadDrive();
+    window.addEventListener('focus', onFocus);
+    return () => { clearInterval(interval); window.removeEventListener('focus', onFocus); };
   }, [checkAgent, carregarCnpjs, loadArquivos, loadDrive]);
 
   if (loading) return (
@@ -482,10 +485,10 @@ export default function AgenteCertidoesPage() {
                                     <a
                                       href={anexo.webViewLink}
                                       target="_blank" rel="noopener noreferrer"
-                                      className="inline-flex items-center text-emerald-600 hover:text-emerald-700"
-                                      title="Abrir a certidão no Drive"
+                                      className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                                      title="Abrir a certidão anexada no Drive"
                                     >
-                                      <CheckCircle2 size={16} />
+                                      <ExternalLink size={12} /> Ver
                                     </a>
                                   )}
                                 </div>
