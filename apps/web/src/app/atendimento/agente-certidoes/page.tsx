@@ -332,10 +332,10 @@ export default function AgenteCertidoesPage() {
           <div>
             <div className="flex items-center gap-2">
               <ShieldCheck size={22} className="text-primary" />
-              <h1 className="text-2xl font-bold">Agente Certidões</h1>
+              <h1 className="text-2xl font-bold">Certidões e Contratos</h1>
             </div>
             <p className="text-[13px] text-muted-foreground mt-0.5">
-              Emissão de certidões PJ — Receita Federal, FGTS/CRF, TST e TJAL
+              Certidões PJ (Federal, FGTS, Trabalhista, Falência, Estadual e Municipal) e contratos sociais
             </p>
           </div>
           <div className="flex items-center gap-3">

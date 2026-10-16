@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   CheckCircle2, AlertTriangle, Clock, FileText,
   CreditCard, Building2, User, RefreshCw, MessageCircle,
-  ChevronRight, Calendar, DollarSign, ShieldCheck, Download,
+  ChevronRight, Calendar, DollarSign, ShieldCheck, Download, FileSignature,
   Palette, Check, LogOut,
 } from 'lucide-react';
 import axios from 'axios';
@@ -70,6 +70,12 @@ interface Parcela {
   payment_method: string | null;
   competencia: string | null;
   tipo: string | null;
+}
+
+interface ContratoArquivo {
+  id: string;
+  titulo: string;
+  anexadoEm: string | null;
 }
 
 interface CertidaoArquivo {
@@ -160,7 +166,7 @@ function PaymentChip({ status }: { status: string }) {
 
 // ── Página principal ───────────────────────────────────────────────────────────
 
-type TabId = 'resumo' | 'obrigacoes' | 'documentos' | 'certidoes' | 'financeiro';
+type TabId = 'resumo' | 'obrigacoes' | 'documentos' | 'certidoes' | 'contratos' | 'financeiro';
 
 const card = 'bg-card rounded-xl border border-border';
 
@@ -175,6 +181,7 @@ export default function PortalClientePage() {
   const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [parcelas, setParcelas]     = useState<Parcela[]>([]);
   const [certidoes, setCertidoes]   = useState<CertidaoArquivo[]>([]);
+  const [contratos, setContratos]   = useState<ContratoArquivo[]>([]);
   const [tab, setTab]               = useState<TabId>('resumo');
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState<string | null>(null);
@@ -199,18 +206,20 @@ export default function PortalClientePage() {
     async function load() {
       setLoading(true);
       try {
-        const [infoRes, obRes, docRes, parRes, certRes] = await Promise.all([
+        const [infoRes, obRes, docRes, parRes, certRes, contrRes] = await Promise.all([
           portalApi.get(`/portal/info/${token}`),
           portalApi.get(`/portal/obrigacoes/${token}`),
           portalApi.get(`/portal/documentos/${token}`),
           portalApi.get(`/portal/parcelas/${token}`),
           portalApi.get(`/portal/certidoes/${token}`).catch(() => ({ data: [] })),
+          portalApi.get(`/portal/contratos/${token}`).catch(() => ({ data: [] })),
         ]);
         setInfo(infoRes.data);
         setObrigacoes(obRes.data ?? []);
         setDocumentos(docRes.data ?? []);
         setParcelas(parRes.data ?? []);
         setCertidoes(certRes.data ?? []);
+        setContratos(contrRes.data ?? []);
       } catch (err: any) {
         if (err.response?.status === 401) {
           setError('Sessão expirada ou inválida. Entre novamente com seu CNPJ e senha.');
@@ -268,6 +277,7 @@ export default function PortalClientePage() {
     { id: 'obrigacoes',  label: 'Obrigações',  icon: <Calendar size={18} /> },
     { id: 'documentos',  label: 'Documentos',  icon: <FileText size={18} /> },
     { id: 'certidoes',   label: 'Certidões',   icon: <ShieldCheck size={18} /> },
+    { id: 'contratos',   label: 'Contratos',   icon: <FileSignature size={18} /> },
     { id: 'financeiro',  label: 'Financeiro',  icon: <DollarSign size={18} /> },
   ];
 
@@ -577,6 +587,43 @@ export default function PortalClientePage() {
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* ─── Contratos ───────────────────────────────────────────── */}
+          {tab === 'contratos' && (
+            <div className={`${card} overflow-hidden`}>
+              <div className="px-4 py-3 border-b border-border">
+                <h3 className="text-sm font-semibold text-foreground">Contratos sociais e alterações</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Contrato de constituição e alterações contratuais da empresa, na ordem em que foram anexados.
+                </p>
+              </div>
+              {contratos.length === 0 ? (
+                <div className="py-10 text-center text-muted-foreground text-sm">Nenhum contrato disponível</div>
+              ) : (
+                <div className="divide-y divide-border/60">
+                  {contratos.map(c => (
+                    <div key={c.id} className="flex items-center gap-3 px-4 py-3.5">
+                      <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                        <FileSignature size={16} className="text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{c.titulo}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {c.anexadoEm ? `Anexado em ${fmtDate(c.anexadoEm)}` : ''}
+                        </p>
+                      </div>
+                      <a
+                        href={`${API}/portal/contratos/${token}/${c.id}/download`}
+                        className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                      >
+                        <Download size={13} /> Baixar
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

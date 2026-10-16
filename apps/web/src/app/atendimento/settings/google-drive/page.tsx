@@ -267,7 +267,7 @@ export default function GoogleDriveSettingsPage() {
         <div>
           <h1 className="text-xl font-bold text-foreground">Google Drive</h1>
           <p className="text-sm text-muted-foreground">
-            Armazenamento das certidões anexadas no Agente Certidões
+            Armazenamento das certidões e contratos anexados em Certidões e Contratos
           </p>
         </div>
       </div>
@@ -421,7 +421,7 @@ export default function GoogleDriveSettingsPage() {
       {/* ═══════════════════ Pastas do Drive ═══════════════════ */}
       <PastaCard
         titulo="2. Pasta das certidões"
-        descricao="Certidões anexadas no Agente Certidões (CND, FGTS, Trabalhista, Falência, Estadual e Municipal)."
+        descricao="Certidões anexadas em Certidões e Contratos (CND, FGTS, Trabalhista, Falência, Estadual e Municipal)."
         endpoint="/google-drive/certidoes/config"
         config={certidoes}
         onChange={setCertidoes}
@@ -445,8 +445,8 @@ export default function GoogleDriveSettingsPage() {
         </div>
         <div className="text-xs text-muted-foreground space-y-2">
           <p>
-            No <strong>Agente Certidões</strong>, o botão <strong>Anexar</strong> de cada empresa envia o PDF da certidão
-            para a pasta configurada acima, organizado assim:
+            Em <strong>Certidões e Contratos</strong>, o botão <strong>Anexar</strong> de cada empresa envia o arquivo
+            para a pasta configurada acima (certidões ou contratos), organizado assim:
           </p>
           <div className="bg-background rounded-lg p-3 font-mono text-[11px] space-y-1">
             <p>Pasta das certidões</p>

@@ -90,6 +90,26 @@ export class PortalClienteController {
   }
 
   @Public()
+  @Get('contratos/:token')
+  getContratos(@Param('token') token: string) {
+    return this.service.getContratos(token);
+  }
+
+  @Public()
+  @Get('contratos/:token/:fileId/download')
+  async baixarContrato(
+    @Param('token') token: string,
+    @Param('fileId') fileId: string,
+    @Res() res: Response,
+  ) {
+    const { buffer, name, mimeType } = await this.service.baixarContrato(token, fileId);
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(name)}`);
+    res.setHeader('Content-Length', buffer.length);
+    res.end(buffer);
+  }
+
+  @Public()
   @Get('parcelas/:token')
   getParcelas(@Param('token') token: string) {
     return this.service.getParcelas(token);

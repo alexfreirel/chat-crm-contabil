@@ -337,6 +337,31 @@ export class PortalClienteService {
     return file;
   }
 
+  // ─── Contratos sociais e alterações (somente leitura; anexados em Certidões e Contratos) ──
+  async getContratos(token: string) {
+    const payload = this.verifyToken(token);
+    const cnpj = await this.getCnpjDoCliente(payload.clienteId);
+    try {
+      const arquivos = await this.drive.listContratos(cnpj); // do mais antigo para o mais recente
+      return arquivos.map(a => ({
+        id: a.id,
+        titulo: a.titulo,
+        anexadoEm: a.createdTime,
+      }));
+    } catch (err: any) {
+      this.logger.warn(`Falha ao listar contratos do cliente ${payload.clienteId}: ${err.message}`);
+      return [];
+    }
+  }
+
+  async baixarContrato(token: string, fileId: string) {
+    const payload = this.verifyToken(token);
+    const cnpj = await this.getCnpjDoCliente(payload.clienteId);
+    const file = await this.drive.downloadContrato(fileId, cnpj);
+    if (!file) throw new NotFoundException('Contrato não encontrado');
+    return file;
+  }
+
   // ─── Utilitário ─────────────────────────────────────────────────────────────
   private verifyToken(token: string): PortalTokenPayload {
     try {

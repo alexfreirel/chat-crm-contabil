@@ -707,11 +707,13 @@ export class GoogleDriveService {
     };
   }
 
-  /** Lista os contratos anexados (todas as empresas), do mais antigo para o mais recente. */
-  async listContratos() {
+  /** Lista os contratos anexados (todas as empresas, ou só a do CNPJ informado), do mais antigo para o mais recente. */
+  async listContratos(cnpj?: string) {
     const drive = await this.getDriveClientForFiles();
+    const cnpjDigits = (cnpj || '').replace(/\D/g, '');
+    const filtroCnpj = cnpjDigits ? ` and appProperties has { key='cnpj' and value='${cnpjDigits}' }` : '';
     const res = await drive.files.list({
-      q: `appProperties has { key='origem' and value='${GoogleDriveService.CONTRATO_ORIGEM}' } and trashed=false`,
+      q: `appProperties has { key='origem' and value='${GoogleDriveService.CONTRATO_ORIGEM}' }${filtroCnpj} and trashed=false`,
       fields: 'files(id,name,webViewLink,createdTime,appProperties)',
       spaces: 'drive',
       pageSize: 1000,
@@ -733,7 +735,20 @@ export class GoogleDriveService {
    * Baixa uma certidão para o portal do cliente. Só entrega se o arquivo for uma certidão
    * anexada pelo agente E pertencer ao CNPJ informado (evita acesso a arquivos de outras empresas).
    */
-  async downloadCertidao(fileId: string, cnpj: string): Promise<{ buffer: Buffer; name: string; mimeType: string } | null> {
+  async downloadCertidao(fileId: string, cnpj: string) {
+    return this.downloadAnexo(fileId, cnpj, GoogleDriveService.CERTIDAO_ORIGEM);
+  }
+
+  /** Idem downloadCertidao, para contratos sociais e alterações. */
+  async downloadContrato(fileId: string, cnpj: string) {
+    return this.downloadAnexo(fileId, cnpj, GoogleDriveService.CONTRATO_ORIGEM);
+  }
+
+  private async downloadAnexo(
+    fileId: string,
+    cnpj: string,
+    origem: string,
+  ): Promise<{ buffer: Buffer; name: string; mimeType: string } | null> {
     const drive = await this.getDriveClientForFiles();
     let meta;
     try {
@@ -748,7 +763,7 @@ export class GoogleDriveService {
     const props = meta.data.appProperties || {};
     if (
       meta.data.trashed ||
-      props.origem !== GoogleDriveService.CERTIDAO_ORIGEM ||
+      props.origem !== origem ||
       props.cnpj !== cnpj.replace(/\D/g, '')
     ) {
       return null;

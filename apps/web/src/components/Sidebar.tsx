@@ -293,7 +293,7 @@ export function Sidebar() {
       show: true,
     },
     agenteCertidoes: {
-      label: 'Agente Certidões',
+      label: 'Certidões e Contratos',
       href: '/atendimento/agente-certidoes',
       icon: <ShieldCheck size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/agente-certidoes'),
