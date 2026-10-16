@@ -20,7 +20,7 @@ interface Arquivo {
   tamanho_kb: number; data: string;
 }
 
-type PortalTipo = 'cnd' | 'fgts' | 'trabalhista' | 'falencia' | 'estadual';
+type PortalTipo = 'cnd' | 'fgts' | 'trabalhista' | 'falencia' | 'estadual' | 'municipal';
 
 interface CertidaoCol {
   tipo: PortalTipo;
@@ -34,6 +34,7 @@ const CERTIDOES: CertidaoCol[] = [
   { tipo: 'trabalhista', titulo: 'Trabalhista',  subtitulo: 'TST' },
   { tipo: 'falencia',    titulo: 'Falência',     subtitulo: 'TJAL' },
   { tipo: 'estadual',    titulo: 'Estadual',     subtitulo: 'SEFAZ-AL' },
+  { tipo: 'municipal',   titulo: 'Municipal',    subtitulo: 'Prefeitura de Arapiraca' },
 ];
 
 const PORTAL_URL: Record<PortalTipo, string> = {
@@ -42,6 +43,7 @@ const PORTAL_URL: Record<PortalTipo, string> = {
   trabalhista: 'https://cndt-certidao.tst.jus.br/inicio.faces',
   falencia:    'https://www2.tjal.jus.br/sco/abrirCadastro.do?servico=810101',
   estadual:    'https://contribuinte.sefaz.al.gov.br/certidao/#/emitir-certidao-positiva',
+  municipal:   'https://arapiraca.abaco.com.br/eagata/servlet/hwtportalcontribuinte?20,certidao-geral',
 };
 
 interface DriveConfig {

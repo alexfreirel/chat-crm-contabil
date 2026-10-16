@@ -85,6 +85,7 @@ const CERTIDOES_TIPOS = [
   { tipo: 'trabalhista', titulo: 'Trabalhista',  subtitulo: 'TST' },
   { tipo: 'falencia',    titulo: 'Falência',     subtitulo: 'TJAL' },
   { tipo: 'estadual',    titulo: 'Estadual',     subtitulo: 'SEFAZ-AL' },
+  { tipo: 'municipal',   titulo: 'Municipal',    subtitulo: 'Prefeitura de Arapiraca' },
 ];
 
 // ── Utilitários ────────────────────────────────────────────────────────────────
