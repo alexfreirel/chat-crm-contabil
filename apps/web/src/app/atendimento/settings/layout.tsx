@@ -20,6 +20,7 @@ const settingsSections: MenuSection[] = [
     title: 'Equipe & Acesso',
     items: [
       { label: 'Usuários & Perfis', href: '/atendimento/settings/users', icon: UserCog },
+      { label: 'Acesso dos Clientes', href: '/atendimento/settings/portal-clientes', icon: Users },
       { label: 'Permissões', href: '/atendimento/settings/permissions', icon: Shield },
       { label: 'Departamentos', href: '/atendimento/settings/sectors', icon: Briefcase },
     ],
@@ -74,6 +75,7 @@ const settingsSections: MenuSection[] = [
 // Rotas restritas a ADMIN
 const adminOnlyPaths = new Set([
   '/atendimento/settings/users',
+  '/atendimento/settings/portal-clientes',
   '/atendimento/settings/permissions',
   '/atendimento/settings/ai',
   '/atendimento/settings/costs',

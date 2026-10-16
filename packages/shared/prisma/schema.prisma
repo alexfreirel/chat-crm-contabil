@@ -544,6 +544,11 @@ model ClienteContabil {
   estado            String?
   // Integração
   google_drive_folder_id String?
+  // Portal do Cliente (login = CNPJ só com dígitos; senha definida pelo admin)
+  portal_login           String?   @unique
+  portal_ativo           Boolean   @default(false)
+  portal_senha_hash      String?
+  portal_ultimo_acesso   DateTime?
   created_at        DateTime  @default(now())
   updated_at        DateTime  @updatedAt
 

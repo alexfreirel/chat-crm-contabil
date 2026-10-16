@@ -1,9 +1,11 @@
 import {
-  Controller, Get, Post, Param, Body, Request, UseGuards,
+  Controller, Get, Post, Patch, Param, Body, Request, UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { PortalClienteService } from './portal-cliente.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Public } from '../auth/decorators/public.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('portal')
 export class PortalClienteController {
@@ -17,6 +19,33 @@ export class PortalClienteController {
     @Request() req: any,
   ) {
     return this.service.gerarLink(clienteId, req.user?.tenant_id);
+  }
+
+  // ─── Admin: acesso dos clientes ao portal (login = CNPJ, senha definida aqui) ──
+  @UseGuards(JwtAuthGuard)
+  @Roles('ADMIN')
+  @Get('acessos')
+  listarAcessos(@Request() req: any) {
+    return this.service.listarAcessos(req.user?.tenant_id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Roles('ADMIN')
+  @Patch('acesso/:clienteId')
+  configurarAcesso(
+    @Param('clienteId') clienteId: string,
+    @Body() body: { ativo?: boolean; senha?: string },
+    @Request() req: any,
+  ) {
+    return this.service.configurarAcesso(clienteId, body, req.user?.tenant_id);
+  }
+
+  // ─── Login do cliente (público, com limite de tentativas) ───────────────────
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Post('login')
+  login(@Body() body: { login: string; senha: string }) {
+    return this.service.login(body?.login, body?.senha);
   }
 
   // ─── Endpoints públicos (acessados pelo token no link) ─────────────────────

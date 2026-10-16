@@ -2,10 +2,11 @@ import { Metadata } from 'next';
 import { MessageCircle, Phone, Mail, MapPin, Clock, Instagram, Facebook } from 'lucide-react';
 import localFont from 'next/font/local';
 import { Playfair_Display } from 'next/font/google';
+import LoginForm from './LoginForm';
 
 export const metadata: Metadata = {
-  title: 'Portal do Cliente | André Lustosa Advogados',
-  description: 'Área do cliente André Lustosa Advogados. Entre em contato para acompanhar seu processo.',
+  title: 'Portal do Cliente | Lexcon Assessoria Contábil',
+  description: 'Área do cliente Lexcon Assessoria Contábil. Acesse com o CNPJ da sua empresa.',
   robots: { index: false, follow: false },
 };
 
@@ -71,25 +72,24 @@ export default function PortalPage() {
 
           {/* Title */}
           <h1 className="font-[family-name:var(--font-playfair)] text-3xl sm:text-4xl font-bold text-white leading-tight">
-            Acompanhe seu processo<br />
+            Acompanhe sua contabilidade<br />
             <span className="text-[#A89048]">com quem você confia</span>
           </h1>
 
           <p className="text-slate-400 text-sm leading-relaxed max-w-md mx-auto">
-            O portal online está em desenvolvimento. Por enquanto, entre em contato
-            diretamente conosco para acompanhar o andamento do seu caso.
+            Entre com o CNPJ da sua empresa e a senha informada pelo escritório.
           </p>
 
-          {/* CTA principal */}
-          <a
-            href={WHATSAPP}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-3 bg-emerald-600 hover:bg-emerald-500 transition-all text-white font-bold px-8 py-4 rounded-xl text-sm shadow-[0_8px_30px_rgba(16,185,129,0.25)] hover:shadow-[0_8px_40px_rgba(16,185,129,0.4)] hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <MessageCircle size={18} />
-            Falar com o Escritório
-          </a>
+          <div className="flex justify-center">
+            <LoginForm />
+          </div>
+
+          <p className="text-[12px] text-slate-500">
+            Não tem acesso ou esqueceu a senha?{' '}
+            <a href={WHATSAPP} target="_blank" rel="noopener noreferrer" className="text-[#A89048] hover:underline">
+              Fale com o escritório
+            </a>
+          </p>
         </div>
 
         {/* Cards de contato */}

@@ -1,4 +1,6 @@
 import {
+  BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -6,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as jwt from 'jsonwebtoken';
+import * as argon2 from 'argon2';
 
 const PORTAL_SECRET  = process.env.JWT_SECRET || '__INSECURE_DEV_FALLBACK_CHANGE_ME__';
 const PORTAL_EXPIRES = '7d';
@@ -40,6 +43,113 @@ export class PortalClienteService {
 
     this.logger.log(`Portal link gerado para cliente ${clienteId} (${cliente.lead?.name ?? 'sem nome'})`);
     return { token, url };
+  }
+
+  // ─── Login do cliente (CNPJ + senha definida pelo admin) ────────────────────
+  async login(loginRaw: string, senha: string): Promise<{ token: string; nome: string }> {
+    const login = (loginRaw || '').replace(/\D/g, '');
+    // Mesma mensagem para qualquer falha: não revela se o CNPJ existe
+    const invalido = new UnauthorizedException('CNPJ ou senha inválidos');
+    if (login.length !== 14 || !senha) throw invalido;
+
+    const cliente = await this.prisma.clienteContabil.findUnique({
+      where: { portal_login: login },
+      select: {
+        id: true, portal_ativo: true, portal_senha_hash: true, archived: true,
+        nome_empresa: true, lead: { select: { name: true } },
+      },
+    });
+    if (!cliente?.portal_senha_hash) throw invalido;
+
+    const senhaOk = await argon2.verify(cliente.portal_senha_hash, senha).catch(() => false);
+    if (!senhaOk) throw invalido;
+    if (!cliente.portal_ativo || cliente.archived) {
+      throw new UnauthorizedException('Acesso ao portal desativado. Fale com o escritório.');
+    }
+
+    await this.prisma.clienteContabil.update({
+      where: { id: cliente.id },
+      data: { portal_ultimo_acesso: new Date() },
+    });
+
+    const payload: PortalTokenPayload = { sub: cliente.id, clienteId: cliente.id, type: 'portal' };
+    const token = jwt.sign(payload, PORTAL_SECRET, { expiresIn: '12h' });
+    return { token, nome: cliente.nome_empresa || cliente.lead?.name || 'Cliente' };
+  }
+
+  // ─── Admin: lista clientes com situação do acesso ao portal ─────────────────
+  async listarAcessos(tenantId?: string) {
+    const clientes = await this.prisma.clienteContabil.findMany({
+      where: { archived: false, ...(tenantId ? { tenant_id: tenantId } : {}) },
+      select: {
+        id: true, cpf_cnpj: true, nome_empresa: true,
+        portal_login: true, portal_ativo: true, portal_senha_hash: true, portal_ultimo_acesso: true,
+        lead: { select: { name: true, ficha_contabil: { select: { cnpj: true, razao_social: true } } } },
+      },
+      orderBy: { created_at: 'desc' },
+      take: 1000,
+    });
+    return clientes
+      .map(c => {
+        const cnpj = (c.cpf_cnpj || c.lead?.ficha_contabil?.cnpj || '').replace(/\D/g, '');
+        return {
+          id: c.id,
+          nome: c.nome_empresa || c.lead?.ficha_contabil?.razao_social || c.lead?.name || cnpj || 'Sem nome',
+          cnpj: cnpj.length === 14 ? cnpj : null, // portal é só para PJ com CNPJ válido
+          ativo: c.portal_ativo,
+          temSenha: !!c.portal_senha_hash,
+          login: c.portal_login,
+          ultimoAcesso: c.portal_ultimo_acesso,
+        };
+      })
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  }
+
+  // ─── Admin: ativa/desativa e define a senha do portal de um cliente ─────────
+  async configurarAcesso(
+    clienteId: string,
+    data: { ativo?: boolean; senha?: string },
+    tenantId?: string,
+  ) {
+    const cliente = await this.prisma.clienteContabil.findUnique({
+      where: { id: clienteId },
+      select: {
+        id: true, tenant_id: true, cpf_cnpj: true, portal_senha_hash: true,
+        lead: { select: { ficha_contabil: { select: { cnpj: true } } } },
+      },
+    });
+    if (!cliente) throw new NotFoundException('Cliente não encontrado');
+    if (tenantId && cliente.tenant_id && cliente.tenant_id !== tenantId) {
+      throw new UnauthorizedException('Acesso negado');
+    }
+
+    const cnpj = (cliente.cpf_cnpj || cliente.lead?.ficha_contabil?.cnpj || '').replace(/\D/g, '');
+    if (cnpj.length !== 14) {
+      throw new BadRequestException('Este cliente não tem CNPJ válido cadastrado (o login é o CNPJ).');
+    }
+
+    const update: Record<string, any> = { portal_login: cnpj };
+    if (data.senha !== undefined && data.senha !== '') {
+      if (data.senha.length < 6) throw new BadRequestException('A senha deve ter pelo menos 6 caracteres.');
+      update.portal_senha_hash = await argon2.hash(data.senha);
+    }
+    if (data.ativo !== undefined) {
+      if (data.ativo && !update.portal_senha_hash && !cliente.portal_senha_hash) {
+        throw new BadRequestException('Defina uma senha antes de ativar o acesso.');
+      }
+      update.portal_ativo = data.ativo;
+    }
+
+    try {
+      await this.prisma.clienteContabil.update({ where: { id: clienteId }, data: update });
+    } catch (err: any) {
+      if (err?.code === 'P2002') {
+        throw new ConflictException('Já existe outro cadastro com acesso usando este CNPJ.');
+      }
+      throw err;
+    }
+    this.logger.log(`Acesso ao portal atualizado para cliente ${clienteId}`);
+    return { ok: true };
   }
 
   // ─── Valida token e retorna dados básicos do cliente ────────────────────────
