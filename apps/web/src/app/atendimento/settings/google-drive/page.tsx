@@ -155,6 +155,7 @@ export default function GoogleDriveSettingsPage() {
   const [loading, setLoading] = useState(true);
 
   const [contratos, setContratos] = useState<CertidoesConfig | null>(null);
+  const [impostos, setImpostos] = useState<CertidoesConfig | null>(null);
 
   // OAuth2
   const [oauthClientId, setOauthClientId] = useState('');
@@ -167,14 +168,16 @@ export default function GoogleDriveSettingsPage() {
   const fetchConfig = useCallback(async () => {
     try {
       setLoading(true);
-      const [cfg, cert, contr] = await Promise.all([
+      const [cfg, cert, contr, imp] = await Promise.all([
         api.get('/google-drive/config'),
         api.get('/google-drive/certidoes/config'),
         api.get('/google-drive/contratos/config'),
+        api.get('/google-drive/impostos/config'),
       ]);
       setConfig(cfg.data);
       setCertidoes(cert.data);
       setContratos(contr.data);
+      setImpostos(imp.data);
     } catch {
       setConfig(null);
     } finally {
@@ -291,6 +294,8 @@ export default function GoogleDriveSettingsPage() {
             {certidoes?.configured ? `Certidões: ${certidoes.folderName || 'OK'}` : 'Certidões: Pendente'}
             {' · '}
             {contratos?.configured ? `Contratos: ${contratos.folderName || 'OK'}` : 'Contratos: Pendente'}
+            {' · '}
+            {impostos?.configured ? `Impostos: ${impostos.folderName || 'OK'}` : 'Impostos: Pendente'}
           </p>
         </div>
       </div>
@@ -434,6 +439,15 @@ export default function GoogleDriveSettingsPage() {
         endpoint="/google-drive/contratos/config"
         config={contratos}
         onChange={setContratos}
+        enabled={!!config?.oauthConnected}
+      />
+
+      <PastaCard
+        titulo="4. Pasta dos impostos"
+        descricao="Guias de impostos federais, estaduais e municipais anexadas mês a mês na aba Impostos. Dentro da subpasta de cada empresa, uma pasta por competência (ex.: 2026-10)."
+        endpoint="/google-drive/impostos/config"
+        config={impostos}
+        onChange={setImpostos}
         enabled={!!config?.oauthConnected}
       />
 

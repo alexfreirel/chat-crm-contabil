@@ -325,6 +325,69 @@ export class GoogleDriveController {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  //  Impostos mensais (Certidões e Contratos › Impostos)
+  // ═══════════════════════════════════════════════════════════════
+
+  @Get('impostos/config')
+  getImpostosConfig() {
+    return this.driveService.getImpostosConfig();
+  }
+
+  @Post('impostos/config')
+  @Roles('ADMIN', 'CONTADOR')
+  async saveImpostosConfig(@Body() body: { folder: string }) {
+    if (!body?.folder?.trim()) throw new BadRequestException('Informe o link ou ID da pasta');
+    try {
+      return await this.driveService.setImpostosFolder(body.folder);
+    } catch (err: any) {
+      throw new BadRequestException(err.message);
+    }
+  }
+
+  @Get('impostos/arquivos')
+  async listImpostos(@Query('competencia') competencia: string) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(competencia || '')) throw new BadRequestException('Competência inválida (use AAAA-MM)');
+    const cfg = await this.driveService.getImpostosConfig();
+    if (!cfg.configured || !cfg.driveReady) return [];
+    try {
+      return await this.driveService.listImpostos(competencia);
+    } catch (err: any) {
+      this.logger.warn(`[DRIVE] Erro ao listar impostos: ${err.message}`);
+      return [];
+    }
+  }
+
+  @Post('impostos/upload')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } }))
+  async uploadImposto(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { cnpj: string; nome?: string; tipo: string; titulo?: string; competencia: string },
+  ) {
+    if (!file) throw new BadRequestException('Arquivo é obrigatório');
+    if (!/^\d{14}$/.test((body.cnpj || '').replace(/\D/g, ''))) throw new BadRequestException('CNPJ inválido');
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(body.competencia || '')) throw new BadRequestException('Competência inválida (use AAAA-MM)');
+    const tiposValidos = [
+      'simples', 'pis_cofins', 'irpj_csll', 'federal_outros',
+      'icms_antecipado', 'icms_st', 'icms_normal', 'estadual_outros',
+      'iss',
+    ];
+    if (!tiposValidos.includes(body.tipo)) throw new BadRequestException('Tipo de imposto inválido');
+    try {
+      return await this.driveService.uploadImposto(file, {
+        cnpj: body.cnpj,
+        nome: body.nome || '',
+        tipo: body.tipo,
+        titulo: (body.titulo || body.tipo).trim(),
+        competencia: body.competencia,
+        acumula: body.tipo.endsWith('_outros'),
+      });
+    } catch (err: any) {
+      this.logger.error(`[DRIVE] Upload de imposto falhou: ${err.message}`);
+      throw new BadRequestException(err.message);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   //  Papel Timbrado (Letterhead Template)
   // ═══════════════════════════════════════════════════════════════
 

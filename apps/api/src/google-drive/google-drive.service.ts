@@ -497,9 +497,10 @@ export class GoogleDriveService {
   private static readonly PASTA_KEYS = {
     certidoes: { id: 'GDRIVE_CERTIDOES_FOLDER_ID', name: 'GDRIVE_CERTIDOES_FOLDER_NAME' },
     contratos: { id: 'GDRIVE_CONTRATOS_FOLDER_ID', name: 'GDRIVE_CONTRATOS_FOLDER_NAME' },
+    impostos: { id: 'GDRIVE_IMPOSTOS_FOLDER_ID', name: 'GDRIVE_IMPOSTOS_FOLDER_NAME' },
   } as const;
 
-  private async getPastaConfig(kind: 'certidoes' | 'contratos') {
+  private async getPastaConfig(kind: 'certidoes' | 'contratos' | 'impostos') {
     const keys = GoogleDriveService.PASTA_KEYS[kind];
     const folderId = await this.getSetting(keys.id);
     const folderName = await this.getSetting(keys.name);
@@ -513,7 +514,7 @@ export class GoogleDriveService {
   }
 
   /** Aceita o ID da pasta ou a URL completa (drive.google.com/drive/folders/ID). */
-  private async setPasta(kind: 'certidoes' | 'contratos', input: string) {
+  private async setPasta(kind: 'certidoes' | 'contratos' | 'impostos', input: string) {
     const raw = (input || '').trim();
     const match = raw.match(/folders\/([a-zA-Z0-9_-]+)/) || raw.match(/[?&]id=([a-zA-Z0-9_-]+)/);
     const folderId = match ? match[1] : raw;
@@ -547,6 +548,8 @@ export class GoogleDriveService {
   setCertidoesFolder(input: string) { return this.setPasta('certidoes', input); }
   getContratosConfig() { return this.getPastaConfig('contratos'); }
   setContratosFolder(input: string) { return this.setPasta('contratos', input); }
+  getImpostosConfig() { return this.getPastaConfig('impostos'); }
+  setImpostosFolder(input: string) { return this.setPasta('impostos', input); }
 
   /** Cria (ou reaproveita) a subpasta "NOME - CNPJ" dentro da pasta de certidões. */
   private async ensureCertidaoEmpresaFolder(rootId: string, nome: string, cnpjFmt: string): Promise<string> {
@@ -728,6 +731,131 @@ export class GoogleDriveService {
       createdTime: f.createdTime || null,
       cnpj: f.appProperties?.cnpj || '',
       titulo: f.appProperties?.titulo || f.name || '',
+    }));
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  Impostos mensais — pasta/EMPRESA - CNPJ/AAAA-MM/arquivo
+  // ═══════════════════════════════════════════════════════════════
+
+  private static readonly IMPOSTO_ORIGEM = 'agente-impostos';
+
+  /** Cria (ou reaproveita) uma subpasta com o nome dado dentro de parentId. */
+  private async ensureChildFolder(parentId: string, name: string): Promise<string> {
+    const drive = await this.getDriveClientForFiles();
+    const safe = name.replace(/[\\/]/g, '-').slice(0, 200);
+    const existing = await drive.files.list({
+      q: `name='${safe.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      fields: 'files(id)',
+      spaces: 'drive',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    if (existing.data.files?.length) return existing.data.files[0].id!;
+    const res = await drive.files.create({
+      requestBody: { name: safe, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] },
+      fields: 'id',
+      supportsAllDrives: true,
+    });
+    return res.data.id!;
+  }
+
+  /**
+   * Anexa o imposto de uma competência (AAAA-MM). Para os tipos comuns há um arquivo por
+   * empresa/competência/tipo (reenviar atualiza no mesmo lugar). Para "outros" cada envio
+   * vira um arquivo novo, pois pode haver várias guias no mês.
+   */
+  async uploadImposto(
+    file: { buffer: Buffer; originalname: string; mimetype: string },
+    meta: { cnpj: string; nome: string; tipo: string; titulo: string; competencia: string; acumula: boolean },
+  ) {
+    const rootId = await this.getSetting(GoogleDriveService.PASTA_KEYS.impostos.id);
+    if (!rootId) throw new Error('Pasta de impostos não configurada no Google Drive');
+
+    const cnpj = meta.cnpj.replace(/\D/g, '');
+    const cnpjFmt = cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+    const empresaFolder = await this.ensureCertidaoEmpresaFolder(rootId, meta.nome || cnpj, cnpjFmt);
+    const competenciaFolder = await this.ensureChildFolder(empresaFolder, meta.competencia);
+
+    const ext = (file.originalname.match(/\.[a-zA-Z0-9]{1,6}$/) || ['.pdf'])[0].toLowerCase();
+    const sufixo = meta.acumula ? ` - ${new Date().toISOString().slice(11, 19).replace(/:/g, '')}` : '';
+    const fileName = `${meta.titulo} - ${cnpj} - ${meta.competencia}${sufixo}${ext}`.replace(/[\\/]/g, '-');
+
+    const { Readable } = await import('stream');
+    const drive = await this.getDriveClientForFiles();
+    const mimeType = file.mimetype || 'application/pdf';
+    const fields = 'id,name,webViewLink,createdTime,modifiedTime';
+
+    let existingId: string | undefined;
+    if (!meta.acumula) {
+      const existing = await drive.files.list({
+        q: `'${competenciaFolder}' in parents and trashed=false and appProperties has { key='origem' and value='${GoogleDriveService.IMPOSTO_ORIGEM}' } and appProperties has { key='tipo' and value='${meta.tipo}' }`,
+        fields: 'files(id)',
+        spaces: 'drive',
+        orderBy: 'modifiedTime desc',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      });
+      existingId = existing.data.files?.[0]?.id || undefined;
+    }
+
+    const res = existingId
+      ? await drive.files.update({
+          fileId: existingId,
+          requestBody: { name: fileName },
+          media: { mimeType, body: Readable.from(file.buffer) },
+          fields,
+          supportsAllDrives: true,
+        })
+      : await drive.files.create({
+          requestBody: {
+            name: fileName,
+            parents: [competenciaFolder],
+            appProperties: {
+              origem: GoogleDriveService.IMPOSTO_ORIGEM,
+              cnpj,
+              tipo: meta.tipo,
+              competencia: meta.competencia,
+            },
+          },
+          media: { mimeType, body: Readable.from(file.buffer) },
+          fields,
+          supportsAllDrives: true,
+        });
+    return {
+      id: res.data.id!,
+      name: res.data.name!,
+      webViewLink: res.data.webViewLink || null,
+      createdTime: res.data.createdTime || null,
+      modifiedTime: res.data.modifiedTime || null,
+      cnpj,
+      tipo: meta.tipo,
+      competencia: meta.competencia,
+      atualizada: !!existingId,
+    };
+  }
+
+  /** Lista os impostos anexados de uma competência (AAAA-MM), todas as empresas. */
+  async listImpostos(competencia: string) {
+    const drive = await this.getDriveClientForFiles();
+    const res = await drive.files.list({
+      q: `appProperties has { key='origem' and value='${GoogleDriveService.IMPOSTO_ORIGEM}' } and appProperties has { key='competencia' and value='${competencia}' } and trashed=false`,
+      fields: 'files(id,name,webViewLink,createdTime,modifiedTime,appProperties)',
+      spaces: 'drive',
+      pageSize: 1000,
+      orderBy: 'modifiedTime desc',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    return (res.data.files || []).map(f => ({
+      id: f.id!,
+      name: f.name!,
+      webViewLink: f.webViewLink || null,
+      createdTime: f.createdTime || null,
+      modifiedTime: f.modifiedTime || null,
+      cnpj: f.appProperties?.cnpj || '',
+      tipo: f.appProperties?.tipo || '',
+      competencia: f.appProperties?.competencia || competencia,
     }));
   }
 
