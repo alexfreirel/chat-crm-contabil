@@ -29,6 +29,9 @@ interface Task {
   conversation_id: string | null;
   cliente_contabil_id?: string | null;
   cliente_contabil?: { id: string; nome_empresa: string | null; lead: { name: string | null } | null } | null;
+  recorrente?: boolean;
+  recorrencia_meses?: number | null;
+  recorrencia_pai_id?: string | null;
   _count?: { comments: number };
 }
 
@@ -1000,6 +1003,21 @@ export function TasksPanel({ viewAllTasks = false }: { viewAllTasks?: boolean } 
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.color}`}>
                         {cfg.label}
                       </span>
+                      {(task.recorrente || task.recorrencia_pai_id) ? (
+                        <span
+                          title="Tarefa padrão: recorrente, gerada todo mês"
+                          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary"
+                        >
+                          Padrão
+                        </span>
+                      ) : (
+                        <span
+                          title="Tarefa flutuante: única, sem recorrência"
+                          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-400/10 text-amber-500"
+                        >
+                          Flutuante
+                        </span>
+                      )}
                     </div>
 
                     {task.description && (
