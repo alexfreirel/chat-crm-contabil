@@ -573,27 +573,52 @@ export class GoogleDriveService {
 
     const { Readable } = await import('stream');
     const drive = await this.getDriveClientForFiles();
-    const res = await drive.files.create({
-      requestBody: {
-        name: fileName,
-        parents: [empresaFolder],
-        appProperties: {
-          origem: GoogleDriveService.CERTIDAO_ORIGEM,
-          cnpj,
-          tipo: meta.tipo,
-        },
-      },
-      media: { mimeType: file.mimetype || 'application/pdf', body: Readable.from(file.buffer) },
-      fields: 'id,name,webViewLink,createdTime',
+    const mimeType = file.mimetype || 'application/pdf';
+    const fields = 'id,name,webViewLink,createdTime,modifiedTime';
+
+    // Já existe certidão desse tipo para a empresa? Atualiza no mesmo lugar (o Drive guarda
+    // o histórico de versões); senão cria. Assim há sempre um arquivo por empresa/certidão.
+    const existing = await drive.files.list({
+      q: `'${empresaFolder}' in parents and trashed=false and appProperties has { key='origem' and value='${GoogleDriveService.CERTIDAO_ORIGEM}' } and appProperties has { key='tipo' and value='${meta.tipo}' }`,
+      fields: 'files(id)',
+      spaces: 'drive',
+      orderBy: 'modifiedTime desc',
       supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
     });
+    const existingId = existing.data.files?.[0]?.id;
+
+    const res = existingId
+      ? await drive.files.update({
+          fileId: existingId,
+          requestBody: { name: fileName },
+          media: { mimeType, body: Readable.from(file.buffer) },
+          fields,
+          supportsAllDrives: true,
+        })
+      : await drive.files.create({
+          requestBody: {
+            name: fileName,
+            parents: [empresaFolder],
+            appProperties: {
+              origem: GoogleDriveService.CERTIDAO_ORIGEM,
+              cnpj,
+              tipo: meta.tipo,
+            },
+          },
+          media: { mimeType, body: Readable.from(file.buffer) },
+          fields,
+          supportsAllDrives: true,
+        });
     return {
       id: res.data.id!,
       name: res.data.name!,
       webViewLink: res.data.webViewLink || null,
       createdTime: res.data.createdTime || null,
+      modifiedTime: res.data.modifiedTime || null,
       cnpj,
       tipo: meta.tipo,
+      atualizada: !!existingId,
     };
   }
 
@@ -602,10 +627,10 @@ export class GoogleDriveService {
     const drive = await this.getDriveClientForFiles();
     const res = await drive.files.list({
       q: `appProperties has { key='origem' and value='${GoogleDriveService.CERTIDAO_ORIGEM}' } and trashed=false`,
-      fields: 'files(id,name,webViewLink,createdTime,appProperties)',
+      fields: 'files(id,name,webViewLink,createdTime,modifiedTime,appProperties)',
       spaces: 'drive',
       pageSize: 1000,
-      orderBy: 'createdTime desc',
+      orderBy: 'modifiedTime desc',
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
     });
@@ -614,6 +639,7 @@ export class GoogleDriveService {
       name: f.name!,
       webViewLink: f.webViewLink || null,
       createdTime: f.createdTime || null,
+      modifiedTime: f.modifiedTime || null,
       cnpj: f.appProperties?.cnpj || '',
       tipo: f.appProperties?.tipo || '',
     }));

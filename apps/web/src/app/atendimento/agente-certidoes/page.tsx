@@ -51,7 +51,7 @@ interface DriveConfig {
 
 interface CertidaoDrive {
   id: string; name: string; webViewLink: string | null;
-  createdTime: string | null; cnpj: string; tipo: string;
+  createdTime: string | null; modifiedTime?: string | null; cnpj: string; tipo: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -241,8 +241,8 @@ export default function AgenteCertidoesPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast(data?.message || 'Falha ao anexar.', 'err'); return; }
-      setAnexadas(p => [data, ...p]);
-      toast(`${col.titulo} anexada no Google Drive.`);
+      setAnexadas(p => [data, ...p.filter(a => !(a.cnpj === data.cnpj && a.tipo === data.tipo))]);
+      toast(data.atualizada ? `${col.titulo} atualizada no Google Drive.` : `${col.titulo} anexada no Google Drive.`);
     } catch { toast('Erro ao enviar o arquivo.', 'err'); }
     finally { setUploading(p => ({ ...p, [key]: false })); }
   };
@@ -463,27 +463,36 @@ export default function AgenteCertidoesPage() {
                           const anexo = ultimaAnexada.get(key);
                           return (
                             <td key={col.tipo} className="px-3 py-3 text-center">
-                              <div className="inline-flex items-center gap-1.5">
-                                <button
-                                  onClick={() => iniciarAnexo(c, col)}
-                                  disabled={enviando}
-                                  className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
-                                  title={anexo ? `Anexar nova versão — ${col.titulo}` : `Anexar ${col.titulo}`}
-                                >
-                                  {enviando
-                                    ? <><Loader2 size={12} className="animate-spin" /> Enviando…</>
-                                    : <><Upload size={12} /> Anexar</>
-                                  }
-                                </button>
-                                {anexo?.webViewLink && (
-                                  <a
-                                    href={anexo.webViewLink}
-                                    target="_blank" rel="noopener noreferrer"
-                                    className="inline-flex items-center text-emerald-600 hover:text-emerald-700"
-                                    title={`Anexada${anexo.createdTime ? ` em ${new Date(anexo.createdTime).toLocaleDateString('pt-BR')}` : ''} — abrir no Drive`}
+                              <div className="inline-flex flex-col items-center gap-1">
+                                <div className="inline-flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => iniciarAnexo(c, col)}
+                                    disabled={enviando}
+                                    className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
+                                    title={anexo ? `Substituir pela certidão nova — ${col.titulo}` : `Anexar ${col.titulo}`}
                                   >
-                                    <CheckCircle2 size={16} />
-                                  </a>
+                                    {enviando
+                                      ? <><Loader2 size={12} className="animate-spin" /> Enviando…</>
+                                      : anexo
+                                        ? <><RefreshCw size={12} /> Atualizar</>
+                                        : <><Upload size={12} /> Anexar</>
+                                    }
+                                  </button>
+                                  {anexo?.webViewLink && (
+                                    <a
+                                      href={anexo.webViewLink}
+                                      target="_blank" rel="noopener noreferrer"
+                                      className="inline-flex items-center text-emerald-600 hover:text-emerald-700"
+                                      title="Abrir a certidão no Drive"
+                                    >
+                                      <CheckCircle2 size={16} />
+                                    </a>
+                                  )}
+                                </div>
+                                {anexo && (anexo.modifiedTime || anexo.createdTime) && (
+                                  <span className="text-[10px] text-muted-foreground" title="Data em que foi anexada ou atualizada">
+                                    {new Date((anexo.modifiedTime || anexo.createdTime)!).toLocaleDateString('pt-BR')}
+                                  </span>
                                 )}
                               </div>
                             </td>
