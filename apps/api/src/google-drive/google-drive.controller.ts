@@ -165,7 +165,16 @@ export class GoogleDriveController {
     @Query('error') error: string,
     @Res() res: Response,
   ) {
-    const frontendUrl = process.env.FRONTEND_URL
+    // O redirect URI salvo é do próprio domínio deste sistema — usa a origem dele para
+    // voltar à tela de configurações (evita cair no domínio de outro sistema).
+    let redirectOrigin: string | null = null;
+    try {
+      const saved = await this.prisma.globalSetting.findUnique({ where: { key: 'GDRIVE_OAUTH_REDIRECT_URI' } });
+      if (saved?.value) redirectOrigin = new URL(saved.value).origin;
+    } catch { /* usa os fallbacks */ }
+
+    const frontendUrl = redirectOrigin
+      || process.env.FRONTEND_URL
       || process.env.NEXT_PUBLIC_API_URL?.replace('/api', '')
       || 'https://andrelustosaadvogados.com.br';
 
