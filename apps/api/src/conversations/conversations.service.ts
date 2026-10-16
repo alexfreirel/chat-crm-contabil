@@ -170,7 +170,11 @@ export class ConversationsService {
       orderBy: { last_message_at: 'desc' },
       include: {
         lead: {
-          include: { memory: { select: { facts_json: true } } },
+          include: {
+            memory: { select: { facts_json: true } },
+            // Usado pelo inbox para saber em qual aba (Leads/Clientes) a conversa aparece
+            clientes_contabil: { select: { id: true }, take: 1 },
+          },
         },
         messages: { orderBy: { created_at: 'asc' }, take: 100, include: { media: true, skill: { select: { id: true, name: true, area: true } } } },
         assigned_user: { select: { id: true, name: true } },

@@ -876,8 +876,11 @@ export default function Dashboard() {
   }, [fetchConversations]);
 
   // Ao trocar clientMode: deseleciona conversa ativa para evitar contexto errado
+  const pendingOpenConvRef = useRef<string | null>(null);
   useEffect(() => {
-    setSelectedId(null);
+    // Se a troca de aba veio de "abrir contato", seleciona a conversa pedida em vez de limpar
+    setSelectedId(pendingOpenConvRef.current);
+    pendingOpenConvRef.current = null;
   }, [clientMode]);
 
   // Canned responses — fetch once on mount (não depende do inbox)
@@ -901,14 +904,30 @@ export default function Dashboard() {
 
   // Abre (ou cria) a conversa de um lead/contato
   const openLeadChat = useCallback(async (leadId: string) => {
+    // A conversa só aparece na lista se estiver na aba certa (Leads x Clientes) e o lead não
+    // estiver PERDIDO. Sem isso o clique "abria" uma conversa invisível e a tela ficava em branco.
+    const showConversation = async (convId: string, lead?: any) => {
+      if (lead?.stage === 'PERDIDO') {
+        await api.patch(`/conversations/${convId}/reopen`).catch(() => {});
+        await api.patch(`/conversations/${convId}/assign`).catch(() => {});
+      }
+      const isClientLead = (lead?.clientes_contabil?.length ?? 0) > 0;
+      if (lead && isClientLead !== clientModeRef.current) {
+        pendingOpenConvRef.current = convId; // o efeito de troca de aba abre depois do refetch
+        setClientMode(isClientLead);
+        return;
+      }
+      await fetchConversations(selectedInboxIdRef.current, true);
+      setSelectedId(convId);
+    };
+
     try {
       // Buscar conversas existentes do lead
       const r = await api.get(`/conversations/lead/${leadId}`, { _silent401: true } as any);
       const convs = r.data as any[];
       const open = convs.find((c: any) => c.status !== 'FECHADO') ?? convs[0];
       if (open?.id) {
-        setSelectedId(open.id);
-        fetchConversations(selectedInboxIdRef.current, true);
+        await showConversation(open.id, open.lead);
         return;
       }
     } catch { /* sem conversas — cria nova */ }
@@ -920,8 +939,9 @@ export default function Dashboard() {
         instance_name: 'whatsapp',
       });
       await api.patch(`/conversations/${newConv.data.id}/assign`).catch(() => {});
-      await fetchConversations(selectedInboxIdRef.current, true);
-      setSelectedId(newConv.data.id);
+      const leadRes = await api.get(`/conversations/lead/${leadId}`, { _silent401: true } as any).catch(() => null);
+      const leadInfo = (leadRes?.data as any[] | undefined)?.find((c: any) => c.id === newConv.data.id)?.lead;
+      await showConversation(newConv.data.id, leadInfo);
     } catch {
       showError('Não foi possível abrir o chat com esse contato.');
     }
