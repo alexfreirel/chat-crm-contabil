@@ -1,14 +1,15 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ShieldCheck, Building2, Download,
   RefreshCw, CheckCircle2,
   XCircle, ExternalLink, Loader2,
-  Users, ArrowRight, Server,
+  Users, ArrowRight, Server, Upload, HardDrive, Save,
 } from 'lucide-react';
 import { API_BASE_URL } from '@/lib/api';
+import { useRole } from '@/lib/useRole';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -35,13 +36,23 @@ const CERTIDOES: CertidaoCol[] = [
   { tipo: 'estadual',    titulo: 'Estadual',     subtitulo: 'SEFAZ-AL' },
 ];
 
-const PORTAL_INSTRUCAO: Record<PortalTipo, { campo: string; acao: string }> = {
-  cnd:         { campo: 'Informe o CNPJ',   acao: 'Emitir Certidão' },
-  fgts:        { campo: 'Inscrição (CNPJ)', acao: 'Consultar' },
-  trabalhista: { campo: 'CNPJ',             acao: 'Emitir Certidão' },
-  falencia:    { campo: 'CNPJ',             acao: 'Solicitar Certidão' },
-  estadual:    { campo: 'Usuário (CACEAL)', acao: 'Entrar' },
+const PORTAL_URL: Record<PortalTipo, string> = {
+  cnd:         'https://servicos.receitafederal.gov.br/servico/certidoes/#/home/cnpj',
+  fgts:        'https://consulta-crf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf',
+  trabalhista: 'https://cndt-certidao.tst.jus.br/inicio.faces',
+  falencia:    'https://www2.tjal.jus.br/sco/abrirCadastro.do?servico=810101',
+  estadual:    'https://contribuinte.sefaz.al.gov.br/certidao/#/emitir-certidao-positiva',
 };
+
+interface DriveConfig {
+  driveReady: boolean; configured: boolean;
+  folderId: string | null; folderName: string | null; folderUrl: string | null;
+}
+
+interface CertidaoDrive {
+  id: string; name: string; webViewLink: string | null;
+  createdTime: string | null; cnpj: string; tipo: string;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -54,6 +65,10 @@ function limparCnpj(c: string) { return c.replace(/\D/g, ''); }
 
 function statusKey(cnpj: string, tipo: PortalTipo) { return `${cnpj}|${tipo}`; }
 
+function authHeaders(): Record<string, string> {
+  return { Authorization: `Bearer ${localStorage.getItem('token')}` };
+}
+
 /* ────────────────────────────────────────────────────────────────────────────
    Backend Python do Agente Certidões — apps/agente-fiscal/app_certidoes.py
    Em produção usa /agente-certidoes-api (proxy via Traefik na VPS).
@@ -65,11 +80,6 @@ const AGENT_API = process.env.NEXT_PUBLIC_AGENT_CERTIDOES_URL
     : 'http://localhost:5001');
 
 // ─── Página principal ─────────────────────────────────────────────────────────
-
-interface CellStatus {
-  running: boolean;
-  resultado?: { ok: boolean; mensagem: string; cnpj_fmt?: string; url?: string };
-}
 
 export default function AgenteCertidoesPage() {
   const router = useRouter();
@@ -85,8 +95,17 @@ export default function AgenteCertidoesPage() {
   // ── Certidões salvas ──
   const [arquivos, setArquivos] = useState<Arquivo[]>([]);
 
-  // ── Status individual por (cnpj, tipo) ──
-  const [statuses, setStatuses] = useState<Record<string, CellStatus>>({});
+  // ── Google Drive (pasta das certidões) ──
+  const { isAdmin, isContador } = useRole();
+  const canConfigDrive = isAdmin || isContador;
+  const [driveCfg, setDriveCfg] = useState<DriveConfig | null>(null);
+  const [folderInput, setFolderInput] = useState('');
+  const [savingFolder, setSavingFolder] = useState(false);
+  const [editandoPasta, setEditandoPasta] = useState(false);
+  const [anexadas, setAnexadas] = useState<CertidaoDrive[]>([]);
+  const [uploading, setUploading] = useState<Record<string, boolean>>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const alvoAnexo = useRef<{ c: CnpjEntry; col: CertidaoCol } | null>(null);
 
   // ── Toast ──
   const [toasts, setToasts] = useState<{ id: number; text: string; type: 'ok' | 'err' }[]>([]);
@@ -158,44 +177,74 @@ export default function AgenteCertidoesPage() {
     } catch { /* offline */ }
   }, []);
 
-  // ─── Abrir portal para um CNPJ específico ─────────────────────────────────
-  const abrirPortal = async (tipo: PortalTipo, cnpj: string) => {
-    const cnpjLimpo = limparCnpj(cnpj);
-    if (cnpjLimpo.length !== 14) { toast('CNPJ inválido.', 'err'); return; }
-    const key = statusKey(cnpjLimpo, tipo);
+  // ─── Abrir portal da certidão (coluna) ────────────────────────────────────
+  const abrirPortal = (tipo: PortalTipo) => {
+    window.open(PORTAL_URL[tipo], '_blank', 'noopener,noreferrer');
+  };
 
-    // Para portais não-estadual, copia CNPJ antes de abrir (clipboard é síncrono)
-    let copiadoCnpj = false;
-    if (tipo !== 'estadual') {
-      try { await navigator.clipboard.writeText(cnpjLimpo); copiadoCnpj = true; } catch { /* ok */ }
-    }
-    setStatuses(p => ({ ...p, [key]: { running: true } }));
+  // ─── Google Drive: config + certidões anexadas ────────────────────────────
+  const loadDrive = useCallback(async () => {
     try {
-      const res = await fetch(`${AGENT_API}/api/baixar/${tipo}/${cnpjLimpo}`, { method: 'POST' });
-      const data = await res.json();
-      const url = data?.resultado?.url;
-      const caceal = data?.resultado?.caceal;
-      if (url) window.open(url, '_blank', 'noopener,noreferrer');
-      // Para estadual: copia CACEAL retornado pelo backend
-      if (tipo === 'estadual' && caceal) {
-        try { await navigator.clipboard.writeText(caceal); } catch { /* ok */ }
-      }
-      const inst = PORTAL_INSTRUCAO[tipo];
-      setStatuses(p => ({
-        ...p,
-        [key]: {
-          running: false,
-          resultado: data?.resultado ? {
-            ...data.resultado,
-            mensagem: copiadoCnpj
-              ? `CNPJ copiado! No portal, clique em "${inst.campo}" e cole (Ctrl+V). Depois resolva o captcha e clique em "${inst.acao}".`
-              : data.resultado.mensagem,
-          } : data?.resultado,
-        },
-      }));
-    } catch {
-      setStatuses(p => ({ ...p, [key]: { running: false, resultado: { ok: false, mensagem: 'Agente inacessível.' } } }));
+      const cfg = await fetch(`${API_BASE_URL}/google-drive/certidoes/config`, { headers: authHeaders() });
+      if (cfg.ok) setDriveCfg(await cfg.json());
+      const arq = await fetch(`${API_BASE_URL}/google-drive/certidoes/arquivos`, { headers: authHeaders() });
+      if (arq.ok) setAnexadas(await arq.json());
+    } catch { /* offline */ }
+  }, []);
+
+  const salvarPasta = async () => {
+    if (!folderInput.trim()) return;
+    setSavingFolder(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/google-drive/certidoes/config`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder: folderInput.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(data?.message || 'Não foi possível salvar a pasta.', 'err'); return; }
+      setDriveCfg(data);
+      setFolderInput('');
+      setEditandoPasta(false);
+      toast('Pasta do Google Drive configurada.');
+      loadDrive();
+    } catch { toast('Erro ao salvar a pasta.', 'err'); }
+    finally { setSavingFolder(false); }
+  };
+
+  const iniciarAnexo = (c: CnpjEntry, col: CertidaoCol) => {
+    if (!driveCfg?.configured) {
+      toast(canConfigDrive ? 'Configure a pasta do Google Drive primeiro.' : 'Peça ao admin/contador para configurar a pasta do Google Drive.', 'err');
+      return;
     }
+    alvoAnexo.current = { c, col };
+    fileInputRef.current?.click();
+  };
+
+  const enviarArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    const alvo = alvoAnexo.current;
+    if (!file || !alvo) return;
+    const { c, col } = alvo;
+    const key = statusKey(c.cnpj, col.tipo);
+    setUploading(p => ({ ...p, [key]: true }));
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('cnpj', c.cnpj);
+      form.append('nome', c.nome);
+      form.append('tipo', col.tipo);
+      form.append('titulo', col.titulo);
+      const res = await fetch(`${API_BASE_URL}/google-drive/certidoes/upload`, {
+        method: 'POST', headers: authHeaders(), body: form,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(data?.message || 'Falha ao anexar.', 'err'); return; }
+      setAnexadas(p => [data, ...p]);
+      toast(`${col.titulo} anexada no Google Drive.`);
+    } catch { toast('Erro ao enviar o arquivo.', 'err'); }
+    finally { setUploading(p => ({ ...p, [key]: false })); }
   };
 
   // ─── Init ─────────────────────────────────────────────────────────────────
@@ -203,9 +252,10 @@ export default function AgenteCertidoesPage() {
     checkAgent();
     carregarCnpjs();
     loadArquivos();
+    loadDrive();
     const interval = setInterval(checkAgent, 30000);
     return () => clearInterval(interval);
-  }, [checkAgent, carregarCnpjs, loadArquivos]);
+  }, [checkAgent, carregarCnpjs, loadArquivos, loadDrive]);
 
   if (loading) return (
     <div className="flex items-center justify-center h-screen">
@@ -213,11 +263,12 @@ export default function AgenteCertidoesPage() {
     </div>
   );
 
-  // Mensagem de retorno mais recente (mostra apenas a última ação por contexto)
-  const ultimoStatus = Object.entries(statuses)
-    .map(([k, v]) => ({ k, ...v }))
-    .filter(s => s.resultado)
-    .pop();
+  // Última certidão anexada por (cnpj, tipo) — a lista já vem da mais recente para a mais antiga
+  const ultimaAnexada = new Map<string, CertidaoDrive>();
+  for (const a of anexadas) {
+    const k = `${a.cnpj}|${a.tipo}`;
+    if (!ultimaAnexada.has(k)) ultimaAnexada.set(k, a);
+  }
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background">
@@ -245,7 +296,7 @@ export default function AgenteCertidoesPage() {
                   : <span className="text-red-500 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block animate-pulse" />Offline</span>
               }
             </div>
-            <button onClick={() => { checkAgent(); carregarCnpjs(); loadArquivos(); }}
+            <button onClick={() => { checkAgent(); carregarCnpjs(); loadArquivos(); loadDrive(); }}
               className="p-2 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors">
               <RefreshCw size={16} />
             </button>
@@ -295,15 +346,67 @@ export default function AgenteCertidoesPage() {
             </div>
           </div>
 
-          {/* Mensagem de retorno da última ação */}
-          {ultimoStatus?.resultado && (
-            <div className={`text-[12px] rounded-lg px-4 py-3 border ${ultimoStatus.resultado.ok ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 border-emerald-200' : 'bg-red-50 dark:bg-red-950/20 text-red-700 border-red-200'}`}>
-              {ultimoStatus.resultado.ok
-                ? <><CheckCircle2 size={12} className="inline mr-1" /> <strong>{ultimoStatus.resultado.mensagem}</strong>{ultimoStatus.resultado.cnpj_fmt ? <> — {ultimoStatus.resultado.cnpj_fmt}</> : null}</>
-                : <><XCircle size={12} className="inline mr-1" /> <strong>Erro:</strong> {ultimoStatus.resultado.mensagem}</>
-              }
+          {/* Google Drive — pasta das certidões */}
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="flex items-start gap-3">
+              <HardDrive size={20} className="text-primary mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold">Google Drive — pasta das certidões</p>
+                {!driveCfg ? (
+                  <p className="text-[12px] text-muted-foreground mt-0.5">Carregando…</p>
+                ) : !driveCfg.driveReady ? (
+                  <p className="text-[12px] text-amber-600 mt-0.5">
+                    O Google Drive ainda não está conectado. O administrador precisa conectar em Configurações › Google Drive.
+                  </p>
+                ) : driveCfg.configured && !editandoPasta ? (
+                  <p className="text-[12px] text-muted-foreground mt-0.5">
+                    As certidões anexadas são salvas em{' '}
+                    <a href={driveCfg.folderUrl || '#'} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary hover:underline">
+                      {driveCfg.folderName || 'pasta configurada'}
+                    </a>
+                    , em uma subpasta por empresa.
+                  </p>
+                ) : (
+                  <p className="text-[12px] text-muted-foreground mt-0.5">
+                    {canConfigDrive
+                      ? 'Cole o link (ou ID) da pasta do Drive onde as certidões serão salvas. Ela precisa estar acessível à conta conectada ao Drive.'
+                      : 'A pasta de certidões ainda não foi configurada. Peça ao administrador ou contador.'}
+                  </p>
+                )}
+
+                {canConfigDrive && driveCfg?.driveReady && (!driveCfg.configured || editandoPasta) && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <input
+                      value={folderInput}
+                      onChange={e => setFolderInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') salvarPasta(); }}
+                      placeholder="https://drive.google.com/drive/folders/..."
+                      className="flex-1 min-w-0 text-[12px] px-3 py-2 rounded-lg border border-border bg-background outline-none focus:border-primary"
+                    />
+                    <button
+                      onClick={salvarPasta}
+                      disabled={savingFolder || !folderInput.trim()}
+                      className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-lg bg-primary text-primary-foreground disabled:opacity-50"
+                    >
+                      {savingFolder ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Salvar
+                    </button>
+                    {editandoPasta && (
+                      <button onClick={() => { setEditandoPasta(false); setFolderInput(''); }}
+                        className="text-[12px] px-3 py-2 rounded-lg border border-border text-muted-foreground hover:bg-accent">
+                        Cancelar
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+              {canConfigDrive && driveCfg?.configured && !editandoPasta && (
+                <button onClick={() => setEditandoPasta(true)}
+                  className="text-[12px] px-3 py-1.5 rounded-lg border border-border hover:bg-accent text-muted-foreground transition-colors">
+                  Alterar pasta
+                </button>
+              )}
             </div>
-          )}
+          </div>
 
           {/* Tabela unificada */}
           <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -336,6 +439,13 @@ export default function AgenteCertidoesPage() {
                         <th key={col.tipo} className="text-center px-3 py-3 font-semibold text-muted-foreground whitespace-nowrap">
                           <div>{col.titulo}</div>
                           <div className="text-[10px] font-normal opacity-70 mt-0.5">{col.subtitulo}</div>
+                          <button
+                            onClick={() => abrirPortal(col.tipo)}
+                            className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                            title={`Abrir portal — ${col.titulo} (${col.subtitulo})`}
+                          >
+                            <ExternalLink size={12} /> Abrir
+                          </button>
                         </th>
                       ))}
                     </tr>
@@ -348,25 +458,34 @@ export default function AgenteCertidoesPage() {
                           <div className="text-[11px] text-muted-foreground font-mono">{fmtCnpj(c.cnpj)}</div>
                         </td>
                         {CERTIDOES.map(col => {
-                          const st = statuses[statusKey(c.cnpj, col.tipo)];
-                          const running = !!st?.running;
-                          const erro = st?.resultado && !st.resultado.ok;
+                          const key = statusKey(c.cnpj, col.tipo);
+                          const enviando = !!uploading[key];
+                          const anexo = ultimaAnexada.get(key);
                           return (
                             <td key={col.tipo} className="px-3 py-3 text-center">
-                              <button
-                                onClick={() => abrirPortal(col.tipo, c.cnpj)}
-                                disabled={running}
-                                className={`inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50 ${erro
-                                  ? 'border-red-300 text-red-600 hover:bg-red-50'
-                                  : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
-                                }`}
-                                title={`${col.titulo} — ${col.subtitulo}`}
-                              >
-                                {running
-                                  ? <><Loader2 size={12} className="animate-spin" /> Abrindo…</>
-                                  : <><ExternalLink size={12} /> Abrir</>
-                                }
-                              </button>
+                              <div className="inline-flex items-center gap-1.5">
+                                <button
+                                  onClick={() => iniciarAnexo(c, col)}
+                                  disabled={enviando}
+                                  className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
+                                  title={anexo ? `Anexar nova versão — ${col.titulo}` : `Anexar ${col.titulo}`}
+                                >
+                                  {enviando
+                                    ? <><Loader2 size={12} className="animate-spin" /> Enviando…</>
+                                    : <><Upload size={12} /> Anexar</>
+                                  }
+                                </button>
+                                {anexo?.webViewLink && (
+                                  <a
+                                    href={anexo.webViewLink}
+                                    target="_blank" rel="noopener noreferrer"
+                                    className="inline-flex items-center text-emerald-600 hover:text-emerald-700"
+                                    title={`Anexada${anexo.createdTime ? ` em ${new Date(anexo.createdTime).toLocaleDateString('pt-BR')}` : ''} — abrir no Drive`}
+                                  >
+                                    <CheckCircle2 size={16} />
+                                  </a>
+                                )}
+                              </div>
                             </td>
                           );
                         })}
@@ -435,6 +554,8 @@ export default function AgenteCertidoesPage() {
 
         </div>
       </div>
+
+      <input ref={fileInputRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={enviarArquivo} />
 
       {/* ── Toasts ── */}
       <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">

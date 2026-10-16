@@ -482,6 +482,143 @@ export class GoogleDriveService {
     };
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  //  Certidões (Agente Certidões) — pasta própria no Drive
+  // ═══════════════════════════════════════════════════════════════
+
+  private static readonly CERTIDAO_ORIGEM = 'agente-certidoes';
+
+  private async hasDriveAuth(): Promise<boolean> {
+    const hasOAuth = !!(await this.getSetting('GDRIVE_OAUTH_REFRESH_TOKEN'));
+    const hasSA = !!(await this.getSetting('GDRIVE_SERVICE_ACCOUNT_B64'));
+    return hasOAuth || hasSA;
+  }
+
+  async getCertidoesConfig() {
+    const folderId = await this.getSetting('GDRIVE_CERTIDOES_FOLDER_ID');
+    const folderName = await this.getSetting('GDRIVE_CERTIDOES_FOLDER_NAME');
+    return {
+      driveReady: await this.hasDriveAuth(),
+      configured: !!folderId,
+      folderId: folderId || null,
+      folderName: folderName || null,
+      folderUrl: folderId ? `https://drive.google.com/drive/folders/${folderId}` : null,
+    };
+  }
+
+  /** Aceita o ID da pasta ou a URL completa (drive.google.com/drive/folders/ID). */
+  async setCertidoesFolder(input: string) {
+    const raw = (input || '').trim();
+    const match = raw.match(/folders\/([a-zA-Z0-9_-]+)/) || raw.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    const folderId = match ? match[1] : raw;
+    if (!/^[a-zA-Z0-9_-]{10,}$/.test(folderId)) {
+      throw new Error('ID ou link da pasta inválido');
+    }
+    if (!(await this.hasDriveAuth())) {
+      throw new Error('Google Drive não conectado. Peça ao administrador para conectar em Configurações > Google Drive.');
+    }
+
+    const drive = await this.getDriveClientForFiles();
+    let name: string | null | undefined;
+    try {
+      const res = await drive.files.get({ fileId: folderId, fields: 'id,name,mimeType', supportsAllDrives: true });
+      if (res.data.mimeType !== 'application/vnd.google-apps.folder') {
+        throw new Error('O link informado não é de uma pasta');
+      }
+      name = res.data.name;
+    } catch (err: any) {
+      if (err.message === 'O link informado não é de uma pasta') throw err;
+      throw new Error('Pasta não encontrada ou sem acesso. Compartilhe a pasta com a conta conectada ao Drive.');
+    }
+
+    await this.setSetting('GDRIVE_CERTIDOES_FOLDER_ID', folderId);
+    await this.setSetting('GDRIVE_CERTIDOES_FOLDER_NAME', name || '');
+    return this.getCertidoesConfig();
+  }
+
+  /** Cria (ou reaproveita) a subpasta "NOME - CNPJ" dentro da pasta de certidões. */
+  private async ensureCertidaoEmpresaFolder(rootId: string, nome: string, cnpjFmt: string): Promise<string> {
+    const drive = await this.getDriveClientForFiles();
+    const folderName = `${nome} - ${cnpjFmt}`.replace(/[\\/]/g, '-').slice(0, 200);
+    const existing = await drive.files.list({
+      q: `name='${folderName.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}' and '${rootId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      fields: 'files(id)',
+      spaces: 'drive',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    if (existing.data.files?.length) return existing.data.files[0].id!;
+    const res = await drive.files.create({
+      requestBody: { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [rootId] },
+      fields: 'id',
+      supportsAllDrives: true,
+    });
+    return res.data.id!;
+  }
+
+  async uploadCertidao(
+    file: { buffer: Buffer; originalname: string; mimetype: string },
+    meta: { cnpj: string; nome: string; tipo: string; titulo: string },
+  ) {
+    const rootId = await this.getSetting('GDRIVE_CERTIDOES_FOLDER_ID');
+    if (!rootId) throw new Error('Pasta de certidões não configurada no Google Drive');
+
+    const cnpj = meta.cnpj.replace(/\D/g, '');
+    const cnpjFmt = cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+    const empresaFolder = await this.ensureCertidaoEmpresaFolder(rootId, meta.nome || cnpj, cnpjFmt);
+
+    const ext = (file.originalname.match(/\.[a-zA-Z0-9]{1,6}$/) || ['.pdf'])[0].toLowerCase();
+    const data = new Date().toISOString().slice(0, 10);
+    const fileName = `${meta.titulo} - ${cnpj} - ${data}${ext}`.replace(/[\\/]/g, '-');
+
+    const { Readable } = await import('stream');
+    const drive = await this.getDriveClientForFiles();
+    const res = await drive.files.create({
+      requestBody: {
+        name: fileName,
+        parents: [empresaFolder],
+        appProperties: {
+          origem: GoogleDriveService.CERTIDAO_ORIGEM,
+          cnpj,
+          tipo: meta.tipo,
+        },
+      },
+      media: { mimeType: file.mimetype || 'application/pdf', body: Readable.from(file.buffer) },
+      fields: 'id,name,webViewLink,createdTime',
+      supportsAllDrives: true,
+    });
+    return {
+      id: res.data.id!,
+      name: res.data.name!,
+      webViewLink: res.data.webViewLink || null,
+      createdTime: res.data.createdTime || null,
+      cnpj,
+      tipo: meta.tipo,
+    };
+  }
+
+  /** Lista as certidões anexadas pelo agente (todas as empresas), mais recentes primeiro. */
+  async listCertidoes() {
+    const drive = await this.getDriveClientForFiles();
+    const res = await drive.files.list({
+      q: `appProperties has { key='origem' and value='${GoogleDriveService.CERTIDAO_ORIGEM}' } and trashed=false`,
+      fields: 'files(id,name,webViewLink,createdTime,appProperties)',
+      spaces: 'drive',
+      pageSize: 1000,
+      orderBy: 'createdTime desc',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    return (res.data.files || []).map(f => ({
+      id: f.id!,
+      name: f.name!,
+      webViewLink: f.webViewLink || null,
+      createdTime: f.createdTime || null,
+      cnpj: f.appProperties?.cnpj || '',
+      tipo: f.appProperties?.tipo || '',
+    }));
+  }
+
   /**
    * Define um arquivo do Google Drive como template de papel timbrado.
    *

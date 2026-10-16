@@ -8,11 +8,15 @@ import {
   Param,
   Res,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
   BadRequestException,
   NotFoundException,
   Logger,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { GoogleDriveService } from './google-drive.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -195,6 +199,66 @@ export class GoogleDriveController {
   async disconnectOAuth() {
     await this.driveService.disconnectOAuth();
     return { ok: true, message: 'OAuth2 desconectado' };
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  Certidões (Agente Certidões)
+  // ═══════════════════════════════════════════════════════════════
+
+  /** GET /google-drive/certidoes/config — pasta de certidões configurada */
+  @Get('certidoes/config')
+  getCertidoesConfig() {
+    return this.driveService.getCertidoesConfig();
+  }
+
+  /** POST /google-drive/certidoes/config — define a pasta (ID ou link) */
+  @Post('certidoes/config')
+  @Roles('ADMIN', 'CONTADOR')
+  async saveCertidoesConfig(@Body() body: { folder: string }) {
+    if (!body?.folder?.trim()) throw new BadRequestException('Informe o link ou ID da pasta');
+    try {
+      return await this.driveService.setCertidoesFolder(body.folder);
+    } catch (err: any) {
+      throw new BadRequestException(err.message);
+    }
+  }
+
+  /** GET /google-drive/certidoes/arquivos — certidões já anexadas */
+  @Get('certidoes/arquivos')
+  async listCertidoes() {
+    const cfg = await this.driveService.getCertidoesConfig();
+    if (!cfg.configured || !cfg.driveReady) return [];
+    try {
+      return await this.driveService.listCertidoes();
+    } catch (err: any) {
+      this.logger.warn(`[DRIVE] Erro ao listar certidões: ${err.message}`);
+      return [];
+    }
+  }
+
+  /** POST /google-drive/certidoes/upload — anexa uma certidão (multipart) */
+  @Post('certidoes/upload')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } }))
+  async uploadCertidao(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { cnpj: string; nome?: string; tipo: string; titulo?: string },
+  ) {
+    if (!file) throw new BadRequestException('Arquivo é obrigatório');
+    if (!/^\d{14}$/.test((body.cnpj || '').replace(/\D/g, ''))) throw new BadRequestException('CNPJ inválido');
+    if (!['cnd', 'fgts', 'trabalhista', 'falencia', 'estadual'].includes(body.tipo)) {
+      throw new BadRequestException('Tipo de certidão inválido');
+    }
+    try {
+      return await this.driveService.uploadCertidao(file, {
+        cnpj: body.cnpj,
+        nome: body.nome || '',
+        tipo: body.tipo,
+        titulo: body.titulo || body.tipo.toUpperCase(),
+      });
+    } catch (err: any) {
+      this.logger.error(`[DRIVE] Upload de certidão falhou: ${err.message}`);
+      throw new BadRequestException(err.message);
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════
