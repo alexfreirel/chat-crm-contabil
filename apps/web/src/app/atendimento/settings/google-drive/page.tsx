@@ -143,6 +143,8 @@ export default function GoogleDriveSettingsPage() {
       await api.post('/google-drive/oauth/config', {
         clientId: oauthClientId.trim(),
         clientSecret: oauthClientSecret.trim(),
+        // Mesma URL exibida no passo 2 — evita redirect_uri_mismatch quando a API não tem NEXT_PUBLIC_API_URL
+        redirectUri: `${process.env.NEXT_PUBLIC_API_URL || `${window.location.origin}/api`}/google-drive/oauth/callback`,
       });
       setOauthMessage({ ok: true, text: 'Credenciais OAuth2 salvas! Agora clique em "Conectar com Google".' });
       setOauthClientId('');
