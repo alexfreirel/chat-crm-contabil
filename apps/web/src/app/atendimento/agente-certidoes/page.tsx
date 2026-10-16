@@ -485,7 +485,7 @@ export default function AgenteCertidoesPage() {
                                     <a
                                       href={anexo.webViewLink}
                                       target="_blank" rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                                      className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                                       title="Abrir a certidão anexada no Drive"
                                     >
                                       <ExternalLink size={12} /> Ver
