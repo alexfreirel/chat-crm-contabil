@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Wallet, HelpCircle,
   ChevronRight, Plus, UserPlus, CheckSquare,
   ClipboardList, Sparkles,
-  FileSpreadsheet, Building2, FileText, CalendarDays, Link2, ShieldCheck, Receipt, Banknote,
+  FileSpreadsheet, Building2, FileText, CalendarDays, Link2, ShieldCheck, Receipt, Banknote, LineChart,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { API_BASE_URL } from '@/lib/api';
@@ -317,6 +317,13 @@ export function Sidebar() {
       match: (p) => p.startsWith('/atendimento/folha-pagamento'),
       show: acc('folha', true),
     },
+    analiseClientes: {
+      label: 'Análise de Clientes',
+      href: '/atendimento/analise-clientes',
+      icon: <LineChart size={20} strokeWidth={2} />,
+      match: (p) => p.startsWith('/atendimento/analise-clientes'),
+      show: acc('analiseClientes', true),
+    },
     calendarioFiscal: {
       label: 'Calendário Fiscal',
       href: '/atendimento/calendario-fiscal',
@@ -356,7 +363,7 @@ export function Sidebar() {
     {
       id: 'contabil',
       label: 'Contábil',
-      items: [allItems.clientes, allItems.assistente, allItems.agenteFiscal, allItems.agenteCertidoes, allItems.impostos, allItems.folhaPagamento, allItems.agenda].filter(i => i.show),
+      items: [allItems.clientes, allItems.assistente, allItems.agenteFiscal, allItems.agenteCertidoes, allItems.impostos, allItems.folhaPagamento, allItems.analiseClientes, allItems.agenda].filter(i => i.show),
     },
     {
       id: 'gestao',

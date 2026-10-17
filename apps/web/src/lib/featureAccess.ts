@@ -33,7 +33,8 @@ export const FEATURES: FeatureDef[] = [
   { key: 'certidoes',   routes: ['/atendimento/agente-certidoes'],                   defaults: { ASSISTENTE: t, ASSISTENTE_PESSOAL: t, FINANCEIRO: t } },
   { key: 'impostos',    routes: ['/atendimento/impostos'],                           defaults: { ASSISTENTE: t, ASSISTENTE_PESSOAL: t, FINANCEIRO: t } },
   { key: 'folha',       routes: ['/atendimento/folha-pagamento'],                    defaults: { ASSISTENTE: t, ASSISTENTE_PESSOAL: t, FINANCEIRO: t } },
-  { key: 'financeiro',  routes: ['/atendimento/financeiro'],                         defaults: { ASSISTENTE: f, ASSISTENTE_PESSOAL: f, FINANCEIRO: t } },
+  { key: 'analiseClientes', routes: ['/atendimento/analise-clientes'],              defaults: { ASSISTENTE: t, ASSISTENTE_PESSOAL: t, FINANCEIRO: t } },
+  { key: 'financeiro', routes: ['/atendimento/financeiro'],                         defaults: { ASSISTENTE: f, ASSISTENTE_PESSOAL: f, FINANCEIRO: t } },
   { key: 'agenda',      routes: ['/atendimento/agenda', '/atendimento/tasks'],       defaults: { ASSISTENTE: t, ASSISTENTE_PESSOAL: t, FINANCEIRO: t } },
 ];
 

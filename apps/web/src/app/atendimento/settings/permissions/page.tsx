@@ -117,6 +117,11 @@ const MATRIX_SECTIONS: MatrixSection[] = [
         description: 'Resumo da folha, contra-cheques, FGTS, INSS, admissão, rescisão e férias',
         permissions: { CONTADOR: 'full', ASSISTENTE: 'none', ASSISTENTE_PESSOAL: 'full', FINANCEIRO: 'none' },
       },
+      {
+        label: 'Análise de Clientes',
+        description: 'Relatório fiscal a partir do PGDAS-D: faturamento, limites, faixa, Fator R e alertas',
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'full', ASSISTENTE_PESSOAL: 'full', FINANCEIRO: 'full' },
+      },
     ],
   },
   {
@@ -196,6 +201,7 @@ const FEATURE_BY_LABEL: Record<string, string> = {
   'Certidões, Contratos Sociais e Alvarás': 'certidoes',
   'Impostos': 'impostos',
   'Folha de Pagamentos': 'folha',
+  'Análise de Clientes': 'analiseClientes',
   'Financeiro': 'financeiro',
   'Agenda & Tarefas': 'agenda',
 };
