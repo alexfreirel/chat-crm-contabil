@@ -311,6 +311,9 @@ export default function PortalClientePage() {
   const certidaoPorTipo = new Map<string, CertidaoArquivo>();
   for (const c of certidoes) if (!certidaoPorTipo.has(c.tipo)) certidaoPorTipo.set(c.tipo, c);
 
+  // Alvará de Funcionamento (anexado no Portal do Contador junto das certidões)
+  const alvara = certidaoPorTipo.get('alvara');
+
   // Impostos agrupados por competência (mais recente primeiro)
   const impostosPorCompetencia = new Map<string, ImpostoArquivo[]>();
   for (const i of impostos) {
@@ -576,12 +579,31 @@ export default function PortalClientePage() {
           {tab === 'documentos' && (
             <div className={`${card} overflow-hidden`}>
               <div className="px-4 py-3 border-b border-border">
-                <h3 className="text-sm font-semibold text-foreground">Documentos ({documentos.length})</h3>
+                <h3 className="text-sm font-semibold text-foreground">Documentos ({documentos.length + (alvara ? 1 : 0)})</h3>
               </div>
-              {documentos.length === 0 ? (
+              {documentos.length === 0 && !alvara ? (
                 <div className="py-10 text-center text-muted-foreground text-sm">Nenhum documento disponível</div>
               ) : (
                 <div className="divide-y divide-border/60">
+                  {alvara && (
+                    <div className="flex items-center gap-3 px-4 py-3.5">
+                      <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                        <FileText size={16} className="text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground">Alvará de Funcionamento</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {alvara.atualizadaEm ? `Anexado em ${fmtDate(alvara.atualizadaEm)}` : ''}
+                        </p>
+                      </div>
+                      <a
+                        href={`${API}/portal/certidoes/${token}/${alvara.id}/download`}
+                        className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                      >
+                        <Download size={13} /> Baixar
+                      </a>
+                    </div>
+                  )}
                   {documentos.map(doc => (
                     <div key={doc.id} className="flex items-start gap-3 px-4 py-3">
                       <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
