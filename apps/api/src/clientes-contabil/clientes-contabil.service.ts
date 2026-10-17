@@ -55,7 +55,7 @@ export class ClientesContabilService {
             notes: data.notes,
             priority: data.priority ?? 'NORMAL',
             tenant_id: data.tenant_id,
-            stage: 'ONBOARDING',
+            stage: 'ATIVO',
           },
           include: {
             lead: { select: { id: true, name: true, phone: true } },
@@ -103,7 +103,7 @@ export class ClientesContabilService {
               notes: data.notes,
               priority: data.priority ?? 'NORMAL',
               tenant_id: data.tenant_id,
-              stage: 'ONBOARDING',
+              stage: 'ATIVO',
             } as any,
             include: {
               lead: { select: { id: true, name: true, phone: true } },
@@ -390,7 +390,6 @@ export class ClientesContabilService {
 
   getStages() {
     return [
-      { value: 'ONBOARDING', label: 'Onboarding', color: '#3b82f6' },
       { value: 'ATIVO', label: 'Ativo', color: '#22c55e' },
       { value: 'SUSPENSO', label: 'Suspenso', color: '#eab308' },
       { value: 'ENCERRADO', label: 'Encerrado', color: '#6b7280' },

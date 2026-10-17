@@ -329,7 +329,7 @@ export class LeadsService {
               accountant_id: conv.assigned_accountant_id,
               service_type: conv.service_type ?? 'OUTRO',
               tenant_id: conv.tenant_id ?? undefined,
-              stage: 'ONBOARDING',
+              stage: 'ATIVO',
             },
           });
           this.logger.log(`Auto-created ClienteContabil for lead ${id} → accountant ${conv.assigned_accountant_id}`);

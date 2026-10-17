@@ -115,8 +115,8 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
     return () => clearTimeout(t);
   }, [leadSearch]);
 
-  async function saveLeadContact() {
-    if (!leadId) return;
+  async function saveLeadContact(): Promise<"ok" | "relinked" | "error"> {
+    if (!leadId) return "error";
     setSavingLead(true);
     setSaveError(null);
     try {
@@ -139,17 +139,19 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
             setLeadSaved(true);
             onRefresh();
             setTimeout(() => setLeadSaved(false), 3000);
-            return;
+            return "relinked";
           }
         }
         setSaveError(`❌ Erro ao salvar contato: ${err.message || res.status}`);
-        return;
+        return "error";
       }
       setLeadSaved(true);
       onRefresh();
       setTimeout(() => setLeadSaved(false), 3000);
+      return "ok";
     } catch (e: any) {
       setSaveError(`❌ Erro de comunicação: ${e.message}`);
+      return "error";
     } finally {
       setSavingLead(false);
     }
@@ -268,6 +270,18 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
     setSaved(false);
     setSaveError(null);
     try {
+      // Nome/telefone do contato também são gravados por este mesmo botão
+      const contatoAlterado =
+        leadName !== (cliente?.lead?.name || '') || leadPhone !== (cliente?.lead?.phone || '');
+      if (contatoAlterado) {
+        const r = await saveLeadContact();
+        if (r === 'error') return;
+        if (r === 'relinked') {
+          // O cliente foi religado a outro lead: salve de novo para gravar a ficha no lead correto
+          setSaveError('ℹ️ O contato foi vinculado ao lead já existente com este telefone. Clique em Salvar novamente para gravar a ficha.');
+          return;
+        }
+      }
       const payload = {
         ...form,
         faturamento_mensal: parseCurrency(form.faturamento_mensal) || null,
@@ -403,11 +417,7 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <button onClick={saveLeadContact} disabled={savingLead}
-                    className="btn btn-primary btn-sm">
-                    {savingLead ? 'Salvando...' : 'Salvar contato'}
-                  </button>
-                  {leadSaved && <span className="text-xs text-success">✅ Salvo!</span>}
+                  <span className="text-xs text-base-content/50">Alterações de contato são gravadas pelo botão Salvar abaixo.</span>
                   <button onClick={() => setShowLinkLead(v => !v)}
                     className="btn btn-ghost btn-sm ml-auto">
                     🔗 Trocar lead vinculado
@@ -792,7 +802,7 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
               ? <><span className="loading loading-spinner loading-xs" /> Salvando...</>
               : saved
               ? '✅ Salvo!'
-              : '💾 Salvar ficha'}
+              : '💾 Salvar'}
           </button>
           {saved && <span className="text-xs text-success">Ficha atualizada com sucesso!</span>}
         </div>

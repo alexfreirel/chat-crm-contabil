@@ -1,16 +1,16 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Archive, Trash2 } from 'lucide-react';
 import TabFichaContabil from './components/TabFichaContabil';
 import TabObrigacoes from './components/TabObrigacoes';
 import TabTimeline from './components/TabTimeline';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:44001/api';
 
-const STAGE_OPTIONS = ['ONBOARDING', 'ATIVO', 'SUSPENSO', 'ENCERRADO'];
+const STAGE_OPTIONS = ['ATIVO', 'SUSPENSO', 'ENCERRADO'];
 const STAGE_COLORS: Record<string, string> = {
-  ONBOARDING: 'badge-info', ATIVO: 'badge-success',
+  ATIVO: 'badge-success',
   SUSPENSO: 'badge-warning', ENCERRADO: 'badge-ghost',
 };
 
@@ -137,13 +137,22 @@ export default function WorkspacePage() {
           >
             {STAGE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
+          <div className="w-px h-6 bg-base-300 mx-1" />
           {!data.archived && (
-            <button onClick={() => setShowArchiveModal(true)} className="btn btn-sm btn-ghost text-error">
-              Encerrar
+            <button
+              onClick={() => setShowArchiveModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border border-amber-500/40 text-amber-600 hover:bg-amber-500/10 transition-colors"
+              title="Encerrar o atendimento deste cliente (pode ser reativado depois)"
+            >
+              <Archive className="w-4 h-4" /> Encerrar
             </button>
           )}
-          <button onClick={() => setShowDeleteModal(true)} className="btn btn-sm btn-error">
-            Excluir
+          <button
+            onClick={() => setShowDeleteModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border border-red-500/40 text-red-600 hover:bg-red-500 hover:text-white transition-colors"
+            title="Excluir o cliente definitivamente"
+          >
+            <Trash2 className="w-4 h-4" /> Excluir
           </button>
         </div>
       </div>

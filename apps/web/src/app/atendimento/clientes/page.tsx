@@ -7,14 +7,12 @@ const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:44001/api';
 
 const STAGES = [
   { value: '', label: 'Todos' },
-  { value: 'ONBOARDING', label: 'Onboarding' },
   { value: 'ATIVO', label: 'Ativos' },
   { value: 'SUSPENSO', label: 'Suspensos' },
   { value: 'ENCERRADO', label: 'Encerrados' },
 ];
 
 const STAGE_COLORS: Record<string, string> = {
-  ONBOARDING: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
   ATIVO: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
   SUSPENSO: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
   ENCERRADO: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
@@ -416,7 +414,6 @@ export default function ClientesPage() {
     });
 
   const counts: Record<string, number> = {
-    ONBOARDING: clientes.filter(c => c.stage === 'ONBOARDING').length,
     ATIVO: clientes.filter(c => c.stage === 'ATIVO').length,
     SUSPENSO: clientes.filter(c => c.stage === 'SUSPENSO').length,
     ENCERRADO: clientes.filter(c => c.stage === 'ENCERRADO').length,
@@ -445,7 +442,7 @@ export default function ClientesPage() {
 
       {/* Stage counters */}
       {!loading && (
-        <div className="grid grid-cols-4 border-b border-border">
+        <div className="grid grid-cols-3 border-b border-border">
           {Object.entries(counts).map(([s, n]) => (
             <button
               key={s}
