@@ -9,6 +9,7 @@ import {
   Users, ArrowRight, Server, Upload, HardDrive, Save,
 } from 'lucide-react';
 import { API_BASE_URL } from '@/lib/api';
+import { abrirAnexo } from '@/lib/abrirAnexo';
 import { useRole } from '@/lib/useRole';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -129,6 +130,10 @@ export default function AgenteCertidoesPage() {
     const id = ++toastIdRef;
     setToasts(p => [...p, { id, text, type }]);
     setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 3500);
+  };
+
+  const verAnexo = async (fileId: string) => {
+    if (!(await abrirAnexo(fileId))) toast('Não foi possível abrir o arquivo.', 'err');
   };
 
   // ─── Auth ─────────────────────────────────────────────────────────────────
@@ -533,15 +538,14 @@ export default function AgenteCertidoesPage() {
                                         : <><Upload size={12} /> Anexar</>
                                     }
                                   </button>
-                                  {anexo?.webViewLink && (
-                                    <a
-                                      href={anexo.webViewLink}
-                                      target="_blank" rel="noopener noreferrer"
+                                  {anexo && (
+                                    <button
+                                      onClick={() => verAnexo(anexo.id)}
                                       className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                                      title="Abrir a certidão anexada no Drive"
+                                      title="Abrir a certidão anexada"
                                     >
                                       <ExternalLink size={12} /> Ver
-                                    </a>
+                                    </button>
                                   )}
                                 </div>
                                 {anexo && (anexo.modifiedTime || anexo.createdTime) && (
@@ -611,16 +615,13 @@ export default function AgenteCertidoesPage() {
                             {d.createdTime && (
                               <span className="text-[10px] opacity-70">{new Date(d.createdTime).toLocaleDateString('pt-BR')}</span>
                             )}
-                            {d.webViewLink && (
-                              <a
-                                href={d.webViewLink}
-                                target="_blank" rel="noopener noreferrer"
-                                title={`${d.name} — abrir no Drive`}
-                                className="inline-flex items-center gap-1 text-[12px] px-2.5 py-1 rounded-md border border-border hover:bg-accent hover:text-foreground transition-colors"
-                              >
-                                <ExternalLink size={11} /> Ver
-                              </a>
-                            )}
+                            <button
+                              onClick={() => verAnexo(d.id)}
+                              title={`${d.name} — abrir`}
+                              className="inline-flex items-center gap-1 text-[12px] px-2.5 py-1 rounded-md border border-border hover:bg-accent hover:text-foreground transition-colors"
+                            >
+                              <ExternalLink size={11} /> Ver
+                            </button>
                           </div>
                         ))}
                       </div>

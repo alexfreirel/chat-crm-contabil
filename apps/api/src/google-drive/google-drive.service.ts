@@ -900,10 +900,22 @@ export class GoogleDriveService {
     return this.downloadAnexo(fileId, cnpj, GoogleDriveService.CONTRATO_ORIGEM);
   }
 
+  /**
+   * Abre um anexo (certidão, contrato ou imposto) para a equipe logada. O link do Drive
+   * (webViewLink) só abre para contas com permissão, então o arquivo é servido pela API.
+   */
+  async downloadAnexoInterno(fileId: string) {
+    return this.downloadAnexo(fileId, null, [
+      GoogleDriveService.CERTIDAO_ORIGEM,
+      GoogleDriveService.CONTRATO_ORIGEM,
+      GoogleDriveService.IMPOSTO_ORIGEM,
+    ]);
+  }
+
   private async downloadAnexo(
     fileId: string,
-    cnpj: string,
-    origem: string,
+    cnpj: string | null,
+    origem: string | string[],
   ): Promise<{ buffer: Buffer; name: string; mimeType: string } | null> {
     const drive = await this.getDriveClientForFiles();
     let meta;
@@ -919,8 +931,8 @@ export class GoogleDriveService {
     const props = meta.data.appProperties || {};
     if (
       meta.data.trashed ||
-      props.origem !== origem ||
-      props.cnpj !== cnpj.replace(/\D/g, '')
+      !(Array.isArray(origem) ? origem : [origem]).includes(props.origem) ||
+      (cnpj !== null && props.cnpj !== cnpj.replace(/\D/g, ''))
     ) {
       return null;
     }

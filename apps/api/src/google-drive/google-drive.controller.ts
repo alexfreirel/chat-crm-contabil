@@ -290,6 +290,17 @@ export class GoogleDriveController {
     }
   }
 
+  /** Abre (inline) uma certidão, contrato ou imposto anexado, sem depender de permissão no Drive. */
+  @Get('anexo/:fileId')
+  async verAnexo(@Param('fileId') fileId: string, @Res() res: Response) {
+    const file = await this.driveService.downloadAnexoInterno(fileId);
+    if (!file) throw new NotFoundException('Arquivo não encontrado');
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.name)}`);
+    res.setHeader('Content-Length', file.buffer.length);
+    res.end(file.buffer);
+  }
+
   @Get('contratos/arquivos')
   async listContratos() {
     const cfg = await this.driveService.getContratosConfig();

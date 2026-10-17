@@ -7,6 +7,7 @@ import {
   Loader2, Upload, ChevronLeft, ChevronRight, Search, HardDrive,
 } from 'lucide-react';
 import { API_BASE_URL } from '@/lib/api';
+import { abrirAnexo } from '@/lib/abrirAnexo';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -101,6 +102,10 @@ export default function ImpostosPage() {
     const id = ++toastSeq.current;
     setToasts(p => [...p, { id, text, type }]);
     setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 3500);
+  };
+
+  const verAnexo = async (fileId: string) => {
+    if (!(await abrirAnexo(fileId))) toast('Não foi possível abrir o arquivo.', 'err');
   };
 
   // ─── Auth ───────────────────────────────────────────────────────────────
@@ -365,15 +370,14 @@ export default function ImpostosPage() {
                                         : <><Upload size={12} /> Anexar</>
                                     }
                                   </button>
-                                  {ultimo?.webViewLink && !col.acumula && (
-                                    <a
-                                      href={ultimo.webViewLink}
-                                      target="_blank" rel="noopener noreferrer"
+                                  {ultimo && !col.acumula && (
+                                    <button
+                                      onClick={() => verAnexo(ultimo.id)}
                                       className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                                      title="Abrir no Drive"
+                                      title="Abrir o arquivo"
                                     >
                                       <ExternalLink size={12} /> Ver
-                                    </a>
+                                    </button>
                                   )}
                                 </div>
 
@@ -381,15 +385,14 @@ export default function ImpostosPage() {
                                 {col.acumula && arquivos.length > 0 && (
                                   <div className="flex flex-wrap justify-center gap-1 max-w-[190px]">
                                     {arquivos.map((a, n) => (
-                                      <a
+                                      <button
                                         key={a.id}
-                                        href={a.webViewLink || '#'}
-                                        target="_blank" rel="noopener noreferrer"
-                                        title={`${a.name} — abrir no Drive`}
+                                        onClick={() => verAnexo(a.id)}
+                                        title={`${a.name} — abrir`}
                                         className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
                                       >
                                         <ExternalLink size={10} /> {arquivos.length - n}
-                                      </a>
+                                      </button>
                                     ))}
                                   </div>
                                 )}
