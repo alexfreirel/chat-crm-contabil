@@ -141,7 +141,7 @@ export default function WorkspacePage() {
           {!data.archived && (
             <button
               onClick={() => setShowArchiveModal(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border border-amber-500/40 text-amber-600 hover:bg-amber-500/10 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-primary hover:bg-primary/90 shadow-sm transition-colors"
               title="Encerrar o atendimento deste cliente (pode ser reativado depois)"
             >
               <Archive className="w-4 h-4" /> Encerrar
@@ -149,7 +149,7 @@ export default function WorkspacePage() {
           )}
           <button
             onClick={() => setShowDeleteModal(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border border-red-500/40 text-red-600 hover:bg-red-500 hover:text-white transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-primary hover:bg-primary/90 shadow-sm transition-colors"
             title="Excluir o cliente definitivamente"
           >
             <Trash2 className="w-4 h-4" /> Excluir
