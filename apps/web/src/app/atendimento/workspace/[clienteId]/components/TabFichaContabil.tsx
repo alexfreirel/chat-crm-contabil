@@ -278,7 +278,7 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
         if (r === 'error') return;
         if (r === 'relinked') {
           // O cliente foi religado a outro lead: salve de novo para gravar a ficha no lead correto
-          setSaveError('ℹ️ O contato foi vinculado ao lead já existente com este telefone. Clique em Salvar novamente para gravar a ficha.');
+          setSaveError('ℹ️ O contato foi vinculado ao contato já existente com este telefone. Clique em Salvar novamente para gravar a ficha.');
           return;
         }
       }
