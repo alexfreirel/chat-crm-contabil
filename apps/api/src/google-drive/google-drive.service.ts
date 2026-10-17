@@ -494,16 +494,27 @@ export class GoogleDriveService {
     return hasOAuth || hasSA;
   }
 
-  private static readonly PASTA_KEYS = {
-    certidoes: { id: 'GDRIVE_CERTIDOES_FOLDER_ID', name: 'GDRIVE_CERTIDOES_FOLDER_NAME' },
-    contratos: { id: 'GDRIVE_CONTRATOS_FOLDER_ID', name: 'GDRIVE_CONTRATOS_FOLDER_NAME' },
-    impostos: { id: 'GDRIVE_IMPOSTOS_FOLDER_ID', name: 'GDRIVE_IMPOSTOS_FOLDER_NAME' },
-  } as const;
+  /**
+   * Pasta única "Documentos Empresas": certidões, alvarás, contratos e impostos de todas as
+   * empresas ficam em subpastas "NOME - CNPJ" dentro dela.
+   */
+  private static readonly PASTA_EMPRESAS = { id: 'GDRIVE_EMPRESAS_FOLDER_ID', name: 'GDRIVE_EMPRESAS_FOLDER_NAME' } as const;
+  /** Chaves antigas (uma pasta por tipo): usadas só como fallback até a pasta única ser configurada. */
+  private static readonly PASTA_LEGADO = { id: 'GDRIVE_CERTIDOES_FOLDER_ID', name: 'GDRIVE_CERTIDOES_FOLDER_NAME' } as const;
 
-  private async getPastaConfig(kind: 'certidoes' | 'contratos' | 'impostos') {
-    const keys = GoogleDriveService.PASTA_KEYS[kind];
-    const folderId = await this.getSetting(keys.id);
-    const folderName = await this.getSetting(keys.name);
+  private async getEmpresasFolderId(): Promise<string | null> {
+    return (await this.getSetting(GoogleDriveService.PASTA_EMPRESAS.id))
+      || (await this.getSetting(GoogleDriveService.PASTA_LEGADO.id))
+      || null;
+  }
+
+  private async getPastaConfig() {
+    let folderId = await this.getSetting(GoogleDriveService.PASTA_EMPRESAS.id);
+    let folderName = await this.getSetting(GoogleDriveService.PASTA_EMPRESAS.name);
+    if (!folderId) {
+      folderId = await this.getSetting(GoogleDriveService.PASTA_LEGADO.id);
+      folderName = await this.getSetting(GoogleDriveService.PASTA_LEGADO.name);
+    }
     return {
       driveReady: await this.hasDriveAuth(),
       configured: !!folderId,
@@ -514,7 +525,7 @@ export class GoogleDriveService {
   }
 
   /** Aceita o ID da pasta ou a URL completa (drive.google.com/drive/folders/ID). */
-  private async setPasta(kind: 'certidoes' | 'contratos' | 'impostos', input: string) {
+  private async setPasta(input: string) {
     const raw = (input || '').trim();
     const match = raw.match(/folders\/([a-zA-Z0-9_-]+)/) || raw.match(/[?&]id=([a-zA-Z0-9_-]+)/);
     const folderId = match ? match[1] : raw;
@@ -538,18 +549,14 @@ export class GoogleDriveService {
       throw new Error('Pasta não encontrada ou sem acesso. Compartilhe a pasta com a conta conectada ao Drive.');
     }
 
-    const keys = GoogleDriveService.PASTA_KEYS[kind];
+    const keys = GoogleDriveService.PASTA_EMPRESAS;
     await this.setSetting(keys.id, folderId);
     await this.setSetting(keys.name, name || '');
-    return this.getPastaConfig(kind);
+    return this.getPastaConfig();
   }
 
-  getCertidoesConfig() { return this.getPastaConfig('certidoes'); }
-  setCertidoesFolder(input: string) { return this.setPasta('certidoes', input); }
-  getContratosConfig() { return this.getPastaConfig('contratos'); }
-  setContratosFolder(input: string) { return this.setPasta('contratos', input); }
-  getImpostosConfig() { return this.getPastaConfig('impostos'); }
-  setImpostosFolder(input: string) { return this.setPasta('impostos', input); }
+  getEmpresasConfig() { return this.getPastaConfig(); }
+  setEmpresasFolder(input: string) { return this.setPasta(input); }
 
   /** Cria (ou reaproveita) a subpasta "NOME - CNPJ" dentro da pasta de certidões. */
   private async ensureCertidaoEmpresaFolder(rootId: string, nome: string, cnpjFmt: string): Promise<string> {
@@ -575,8 +582,8 @@ export class GoogleDriveService {
     file: { buffer: Buffer; originalname: string; mimetype: string },
     meta: { cnpj: string; nome: string; tipo: string; titulo: string },
   ) {
-    const rootId = await this.getSetting('GDRIVE_CERTIDOES_FOLDER_ID');
-    if (!rootId) throw new Error('Pasta de certidões não configurada no Google Drive');
+    const rootId = await this.getEmpresasFolderId();
+    if (!rootId) throw new Error('Pasta Documentos Empresas não configurada no Google Drive');
 
     const cnpj = meta.cnpj.replace(/\D/g, '');
     const cnpjFmt = cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
@@ -672,8 +679,8 @@ export class GoogleDriveService {
     file: { buffer: Buffer; originalname: string; mimetype: string },
     meta: { cnpj: string; nome: string; titulo: string },
   ) {
-    const rootId = await this.getSetting(GoogleDriveService.PASTA_KEYS.contratos.id);
-    if (!rootId) throw new Error('Pasta de contratos não configurada no Google Drive');
+    const rootId = await this.getEmpresasFolderId();
+    if (!rootId) throw new Error('Pasta Documentos Empresas não configurada no Google Drive');
 
     const cnpj = meta.cnpj.replace(/\D/g, '');
     const cnpjFmt = cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
@@ -769,8 +776,8 @@ export class GoogleDriveService {
     file: { buffer: Buffer; originalname: string; mimetype: string },
     meta: { cnpj: string; nome: string; tipo: string; titulo: string; competencia: string; acumula: boolean },
   ) {
-    const rootId = await this.getSetting(GoogleDriveService.PASTA_KEYS.impostos.id);
-    if (!rootId) throw new Error('Pasta de impostos não configurada no Google Drive');
+    const rootId = await this.getEmpresasFolderId();
+    if (!rootId) throw new Error('Pasta Documentos Empresas não configurada no Google Drive');
 
     const cnpj = meta.cnpj.replace(/\D/g, '');
     const cnpjFmt = cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');

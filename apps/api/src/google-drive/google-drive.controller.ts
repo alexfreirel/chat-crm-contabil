@@ -214,19 +214,22 @@ export class GoogleDriveController {
   //  Certidões (Agente Certidões)
   // ═══════════════════════════════════════════════════════════════
 
-  /** GET /google-drive/certidoes/config — pasta de certidões configurada */
-  @Get('certidoes/config')
-  getCertidoesConfig() {
-    return this.driveService.getCertidoesConfig();
+  /**
+   * GET /google-drive/empresas/config — pasta única "Documentos Empresas" (certidões, alvarás,
+   * contratos e impostos). As rotas certidoes|contratos|impostos/config são aliases desta.
+   */
+  @Get(['empresas/config', 'certidoes/config', 'contratos/config', 'impostos/config'])
+  getEmpresasConfig() {
+    return this.driveService.getEmpresasConfig();
   }
 
-  /** POST /google-drive/certidoes/config — define a pasta (ID ou link) */
-  @Post('certidoes/config')
+  /** POST /google-drive/empresas/config — define a pasta (ID ou link) */
+  @Post(['empresas/config', 'certidoes/config', 'contratos/config', 'impostos/config'])
   @Roles('ADMIN', 'CONTADOR')
-  async saveCertidoesConfig(@Body() body: { folder: string }) {
+  async saveEmpresasConfig(@Body() body: { folder: string }) {
     if (!body?.folder?.trim()) throw new BadRequestException('Informe o link ou ID da pasta');
     try {
-      return await this.driveService.setCertidoesFolder(body.folder);
+      return await this.driveService.setEmpresasFolder(body.folder);
     } catch (err: any) {
       throw new BadRequestException(err.message);
     }
@@ -235,7 +238,7 @@ export class GoogleDriveController {
   /** GET /google-drive/certidoes/arquivos — certidões já anexadas */
   @Get('certidoes/arquivos')
   async listCertidoes() {
-    const cfg = await this.driveService.getCertidoesConfig();
+    const cfg = await this.driveService.getEmpresasConfig();
     if (!cfg.configured || !cfg.driveReady) return [];
     try {
       return await this.driveService.listCertidoes();
@@ -275,22 +278,6 @@ export class GoogleDriveController {
   //  Contratos sociais e alterações (Agente Certidões)
   // ═══════════════════════════════════════════════════════════════
 
-  @Get('contratos/config')
-  getContratosConfig() {
-    return this.driveService.getContratosConfig();
-  }
-
-  @Post('contratos/config')
-  @Roles('ADMIN', 'CONTADOR')
-  async saveContratosConfig(@Body() body: { folder: string }) {
-    if (!body?.folder?.trim()) throw new BadRequestException('Informe o link ou ID da pasta');
-    try {
-      return await this.driveService.setContratosFolder(body.folder);
-    } catch (err: any) {
-      throw new BadRequestException(err.message);
-    }
-  }
-
   /** Abre (inline) uma certidão, contrato ou imposto anexado, sem depender de permissão no Drive. */
   @Get('anexo/:fileId')
   async verAnexo(@Param('fileId') fileId: string, @Res() res: Response) {
@@ -304,7 +291,7 @@ export class GoogleDriveController {
 
   @Get('contratos/arquivos')
   async listContratos() {
-    const cfg = await this.driveService.getContratosConfig();
+    const cfg = await this.driveService.getEmpresasConfig();
     if (!cfg.configured || !cfg.driveReady) return [];
     try {
       return await this.driveService.listContratos();
@@ -340,26 +327,10 @@ export class GoogleDriveController {
   //  Impostos mensais (Certidões e Contratos › Impostos)
   // ═══════════════════════════════════════════════════════════════
 
-  @Get('impostos/config')
-  getImpostosConfig() {
-    return this.driveService.getImpostosConfig();
-  }
-
-  @Post('impostos/config')
-  @Roles('ADMIN', 'CONTADOR')
-  async saveImpostosConfig(@Body() body: { folder: string }) {
-    if (!body?.folder?.trim()) throw new BadRequestException('Informe o link ou ID da pasta');
-    try {
-      return await this.driveService.setImpostosFolder(body.folder);
-    } catch (err: any) {
-      throw new BadRequestException(err.message);
-    }
-  }
-
   @Get('impostos/arquivos')
   async listImpostos(@Query('competencia') competencia: string) {
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(competencia || '')) throw new BadRequestException('Competência inválida (use AAAA-MM)');
-    const cfg = await this.driveService.getImpostosConfig();
+    const cfg = await this.driveService.getEmpresasConfig();
     if (!cfg.configured || !cfg.driveReady) return [];
     try {
       return await this.driveService.listImpostos(competencia);

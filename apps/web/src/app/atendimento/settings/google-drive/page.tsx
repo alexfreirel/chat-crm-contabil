@@ -154,9 +154,6 @@ export default function GoogleDriveSettingsPage() {
   const [certidoes, setCertidoes] = useState<CertidoesConfig | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [contratos, setContratos] = useState<CertidoesConfig | null>(null);
-  const [impostos, setImpostos] = useState<CertidoesConfig | null>(null);
-
   // OAuth2
   const [oauthClientId, setOauthClientId] = useState('');
   const [oauthClientSecret, setOauthClientSecret] = useState('');
@@ -168,16 +165,12 @@ export default function GoogleDriveSettingsPage() {
   const fetchConfig = useCallback(async () => {
     try {
       setLoading(true);
-      const [cfg, cert, contr, imp] = await Promise.all([
+      const [cfg, cert] = await Promise.all([
         api.get('/google-drive/config'),
-        api.get('/google-drive/certidoes/config'),
-        api.get('/google-drive/contratos/config'),
-        api.get('/google-drive/impostos/config'),
+        api.get('/google-drive/empresas/config'),
       ]);
       setConfig(cfg.data);
       setCertidoes(cert.data);
-      setContratos(contr.data);
-      setImpostos(imp.data);
     } catch {
       setConfig(null);
     } finally {
@@ -270,7 +263,7 @@ export default function GoogleDriveSettingsPage() {
         <div>
           <h1 className="text-xl font-bold text-foreground">Google Drive</h1>
           <p className="text-sm text-muted-foreground">
-            Armazenamento das certidões e contratos anexados em Certidões e Contratos
+            Armazenamento dos documentos das empresas (certidões, alvará, contratos e impostos)
           </p>
         </div>
       </div>
@@ -291,11 +284,7 @@ export default function GoogleDriveSettingsPage() {
           <p className="text-xs text-muted-foreground mt-0.5">
             {config?.oauthConnected ? `Conta Google: Conectada (${config.oauthUserEmail})` : 'Conta Google: Pendente'}
             {' · '}
-            {certidoes?.configured ? `Certidões: ${certidoes.folderName || 'OK'}` : 'Certidões: Pendente'}
-            {' · '}
-            {contratos?.configured ? `Contratos: ${contratos.folderName || 'OK'}` : 'Contratos: Pendente'}
-            {' · '}
-            {impostos?.configured ? `Impostos: ${impostos.folderName || 'OK'}` : 'Impostos: Pendente'}
+            {certidoes?.configured ? `Documentos Empresas: ${certidoes.folderName || 'OK'}` : 'Documentos Empresas: Pendente'}
           </p>
         </div>
       </div>
@@ -425,29 +414,11 @@ export default function GoogleDriveSettingsPage() {
 
       {/* ═══════════════════ Pastas do Drive ═══════════════════ */}
       <PastaCard
-        titulo="2. Pasta das certidões"
-        descricao="Certidões anexadas em Certidões e Contratos (CND, FGTS, Trabalhista, Falência, Estadual e Municipal)."
-        endpoint="/google-drive/certidoes/config"
+        titulo="2. Pasta Documentos Empresas"
+        descricao="Pasta única onde ficam todos os arquivos das empresas: certidões, alvará, contratos sociais e impostos. Cada empresa ganha uma subpasta própria."
+        endpoint="/google-drive/empresas/config"
         config={certidoes}
         onChange={setCertidoes}
-        enabled={!!config?.oauthConnected}
-      />
-
-      <PastaCard
-        titulo="3. Pasta dos contratos sociais"
-        descricao="Contrato de constituição e alterações contratuais. Cada anexo é guardado como arquivo novo, sem substituir os anteriores."
-        endpoint="/google-drive/contratos/config"
-        config={contratos}
-        onChange={setContratos}
-        enabled={!!config?.oauthConnected}
-      />
-
-      <PastaCard
-        titulo="4. Pasta dos impostos"
-        descricao="Guias de impostos federais, estaduais e municipais anexadas mês a mês na aba Impostos. Dentro da subpasta de cada empresa, uma pasta por competência (ex.: 2026-10)."
-        endpoint="/google-drive/impostos/config"
-        config={impostos}
-        onChange={setImpostos}
         enabled={!!config?.oauthConnected}
       />
 
@@ -459,14 +430,16 @@ export default function GoogleDriveSettingsPage() {
         </div>
         <div className="text-xs text-muted-foreground space-y-2">
           <p>
-            Em <strong>Certidões e Contratos</strong>, o botão <strong>Anexar</strong> de cada empresa envia o arquivo
-            para a pasta configurada acima (certidões ou contratos), organizado assim:
+            Em <strong>Certidões e Contratos</strong> e em <strong>Impostos</strong>, o botão <strong>Anexar</strong> de cada
+            empresa envia o arquivo para a pasta Documentos Empresas, organizado assim:
           </p>
           <div className="bg-background rounded-lg p-3 font-mono text-[11px] space-y-1">
-            <p>Pasta das certidões</p>
+            <p>Documentos Empresas</p>
             <p className="ml-4">EMPRESA LTDA - 12.345.678/0001-90</p>
             <p className="ml-8">CND Federal - 12345678000190 - 2026-10-16.pdf</p>
-            <p className="ml-8">CRF FGTS - 12345678000190 - 2026-10-16.pdf</p>
+            <p className="ml-8">ALVARA - 12345678000190 - 2026-10-16.pdf</p>
+            <p className="ml-8">Contrato Social - 12345678000190 - 2026-10-16.pdf</p>
+            <p className="ml-8">2026-10 (impostos do mês)</p>
           </div>
           <p>
             Para compartilhar com outras pessoas (cliente, sócio, equipe), use o compartilhamento do próprio Google Drive
