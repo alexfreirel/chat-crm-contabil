@@ -362,6 +362,33 @@ export class PortalClienteService {
     return file;
   }
 
+  // ─── Impostos mensais (somente leitura; apenas o que foi anexado no Portal do Contador) ──
+  async getImpostos(token: string) {
+    const payload = this.verifyToken(token);
+    const cnpj = await this.getCnpjDoCliente(payload.clienteId);
+    try {
+      const arquivos = await this.drive.listImpostosPorCnpj(cnpj);
+      return arquivos.map(a => ({
+        id: a.id,
+        nome: a.name,
+        tipo: a.tipo,
+        competencia: a.competencia,
+        atualizadaEm: a.modifiedTime || a.createdTime,
+      }));
+    } catch (err: any) {
+      this.logger.warn(`Falha ao listar impostos do cliente ${payload.clienteId}: ${err.message}`);
+      return [];
+    }
+  }
+
+  async baixarImposto(token: string, fileId: string) {
+    const payload = this.verifyToken(token);
+    const cnpj = await this.getCnpjDoCliente(payload.clienteId);
+    const file = await this.drive.downloadImposto(fileId, cnpj);
+    if (!file) throw new NotFoundException('Imposto não encontrado');
+    return file;
+  }
+
   // ─── Utilitário ─────────────────────────────────────────────────────────────
   private verifyToken(token: string): PortalTokenPayload {
     try {

@@ -859,6 +859,34 @@ export class GoogleDriveService {
     }));
   }
 
+  /** Lista todos os impostos anexados de uma empresa (todas as competências), para o portal do cliente. */
+  async listImpostosPorCnpj(cnpj: string) {
+    const drive = await this.getDriveClientForFiles();
+    const cnpjLimpo = cnpj.replace(/\D/g, '');
+    const res = await drive.files.list({
+      q: `appProperties has { key='origem' and value='${GoogleDriveService.IMPOSTO_ORIGEM}' } and appProperties has { key='cnpj' and value='${cnpjLimpo}' } and trashed=false`,
+      fields: 'files(id,name,createdTime,modifiedTime,appProperties)',
+      spaces: 'drive',
+      pageSize: 1000,
+      orderBy: 'modifiedTime desc',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    return (res.data.files || []).map(f => ({
+      id: f.id!,
+      name: f.name!,
+      createdTime: f.createdTime || null,
+      modifiedTime: f.modifiedTime || null,
+      tipo: f.appProperties?.tipo || '',
+      competencia: f.appProperties?.competencia || '',
+    }));
+  }
+
+  /** Baixa um imposto para o portal do cliente (só se pertencer ao CNPJ informado). */
+  async downloadImposto(fileId: string, cnpj: string) {
+    return this.downloadAnexo(fileId, cnpj, GoogleDriveService.IMPOSTO_ORIGEM);
+  }
+
   /**
    * Baixa uma certidão para o portal do cliente. Só entrega se o arquivo for uma certidão
    * anexada pelo agente E pertencer ao CNPJ informado (evita acesso a arquivos de outras empresas).

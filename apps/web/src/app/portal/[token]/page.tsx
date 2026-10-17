@@ -6,7 +6,7 @@ import {
   CheckCircle2, AlertTriangle, Clock, FileText,
   CreditCard, Building2, User, RefreshCw, MessageCircle,
   ChevronRight, Calendar, DollarSign, ShieldCheck, Download, FileSignature,
-  Palette, Check, LogOut,
+  Palette, Check, LogOut, Receipt,
 } from 'lucide-react';
 import axios from 'axios';
 import { useTheme } from 'next-themes';
@@ -84,6 +84,32 @@ interface CertidaoArquivo {
   tipo: string;
   atualizadaEm: string | null;
 }
+
+interface ImpostoArquivo {
+  id: string;
+  nome: string;
+  tipo: string;
+  competencia: string;
+  atualizadaEm: string | null;
+}
+
+const IMPOSTOS_TITULOS: Record<string, { titulo: string; grupo: string }> = {
+  simples:         { titulo: 'Simples Nacional',                grupo: 'Federal' },
+  pis_cofins:      { titulo: 'PIS e COFINS',                    grupo: 'Federal' },
+  irpj_csll:       { titulo: 'IRPJ e CSLL',                     grupo: 'Federal' },
+  federal_outros:  { titulo: 'Outros',                          grupo: 'Federal' },
+  icms_antecipado: { titulo: 'ICMS Antecipado e FECOEP',        grupo: 'Estadual' },
+  icms_st:         { titulo: 'ICMS Subst. Tributária e FECOEP', grupo: 'Estadual' },
+  icms_normal:     { titulo: 'ICMS Normal',                     grupo: 'Estadual' },
+  estadual_outros: { titulo: 'Outros',                          grupo: 'Estadual' },
+  iss:             { titulo: 'ISS',                             grupo: 'Municipal' },
+};
+
+const MESES_NOME = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+const rotuloCompetencia = (c: string) => {
+  const [a, m] = c.split('-').map(Number);
+  return a && m ? `${MESES_NOME[m - 1]} de ${a}` : c;
+};
 
 const CERTIDOES_TIPOS = [
   { tipo: 'cnd',         titulo: 'CND Federal',  subtitulo: 'Receita Federal' },
@@ -166,7 +192,7 @@ function PaymentChip({ status }: { status: string }) {
 
 // ── Página principal ───────────────────────────────────────────────────────────
 
-type TabId = 'resumo' | 'obrigacoes' | 'documentos' | 'certidoes' | 'contratos' | 'financeiro';
+type TabId = 'resumo' | 'impostos' | 'documentos' | 'certidoes' | 'contratos' | 'financeiro';
 
 const card = 'bg-card rounded-xl border border-border';
 
@@ -177,7 +203,7 @@ export default function PortalClientePage() {
   const { theme, setTheme } = useTheme();
 
   const [info, setInfo]             = useState<PortalInfo | null>(null);
-  const [obrigacoes, setObrigacoes] = useState<Obrigacao[]>([]);
+  const [impostos, setImpostos]     = useState<ImpostoArquivo[]>([]);
   const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [parcelas, setParcelas]     = useState<Parcela[]>([]);
   const [certidoes, setCertidoes]   = useState<CertidaoArquivo[]>([]);
@@ -206,16 +232,16 @@ export default function PortalClientePage() {
     async function load() {
       setLoading(true);
       try {
-        const [infoRes, obRes, docRes, parRes, certRes, contrRes] = await Promise.all([
+        const [infoRes, impRes, docRes, parRes, certRes, contrRes] = await Promise.all([
           portalApi.get(`/portal/info/${token}`),
-          portalApi.get(`/portal/obrigacoes/${token}`),
+          portalApi.get(`/portal/impostos/${token}`).catch(() => ({ data: [] })),
           portalApi.get(`/portal/documentos/${token}`),
           portalApi.get(`/portal/parcelas/${token}`),
           portalApi.get(`/portal/certidoes/${token}`).catch(() => ({ data: [] })),
           portalApi.get(`/portal/contratos/${token}`).catch(() => ({ data: [] })),
         ]);
         setInfo(infoRes.data);
-        setObrigacoes(obRes.data ?? []);
+        setImpostos(impRes.data ?? []);
         setDocumentos(docRes.data ?? []);
         setParcelas(parRes.data ?? []);
         setCertidoes(certRes.data ?? []);
@@ -274,7 +300,7 @@ export default function PortalClientePage() {
 
   const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
     { id: 'resumo',      label: 'Resumo',      icon: <Building2 size={18} /> },
-    { id: 'obrigacoes',  label: 'Obrigações',  icon: <Calendar size={18} /> },
+    { id: 'impostos',    label: 'Impostos',    icon: <Receipt size={18} /> },
     { id: 'documentos',  label: 'Documentos',  icon: <FileText size={18} /> },
     { id: 'certidoes',   label: 'Certidões',   icon: <ShieldCheck size={18} /> },
     { id: 'contratos',   label: 'Contratos',   icon: <FileSignature size={18} /> },
@@ -284,6 +310,14 @@ export default function PortalClientePage() {
   // Última certidão de cada tipo (a API já devolve da mais recente para a mais antiga)
   const certidaoPorTipo = new Map<string, CertidaoArquivo>();
   for (const c of certidoes) if (!certidaoPorTipo.has(c.tipo)) certidaoPorTipo.set(c.tipo, c);
+
+  // Impostos agrupados por competência (mais recente primeiro)
+  const impostosPorCompetencia = new Map<string, ImpostoArquivo[]>();
+  for (const i of impostos) {
+    if (!i.competencia) continue;
+    impostosPorCompetencia.set(i.competencia, [...(impostosPorCompetencia.get(i.competencia) || []), i]);
+  }
+  const competenciasImpostos = [...impostosPorCompetencia.keys()].sort().reverse();
 
   const sair = () => router.push('/portal');
 
@@ -473,7 +507,7 @@ export default function PortalClientePage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {([
-                  ['obrigacoes', 'Ver Obrigações'],
+                  ['impostos', 'Ver Impostos'],
                   ['certidoes', 'Ver Certidões'],
                   ['financeiro', 'Ver Pagamentos'],
                 ] as [TabId, string][]).map(([id, label]) => (
@@ -491,27 +525,49 @@ export default function PortalClientePage() {
           )}
 
           {/* ─── Obrigações ──────────────────────────────────────────── */}
-          {tab === 'obrigacoes' && (
+          {tab === 'impostos' && (
             <div className={`${card} overflow-hidden`}>
               <div className="px-4 py-3 border-b border-border">
-                <h3 className="text-sm font-semibold text-foreground">Obrigações Fiscais ({obrigacoes.length})</h3>
+                <h3 className="text-sm font-semibold text-foreground">Impostos</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Guias mensais disponibilizadas pelo escritório. A data indica quando cada guia foi anexada ou atualizada.
+                </p>
               </div>
-              {obrigacoes.length === 0 ? (
-                <div className="py-10 text-center text-muted-foreground text-sm">Nenhuma obrigação cadastrada</div>
+              {competenciasImpostos.length === 0 ? (
+                <div className="py-10 text-center text-muted-foreground text-sm">Nenhum imposto disponível</div>
               ) : (
-                <div className="divide-y divide-border/60">
-                  {obrigacoes.map(ob => (
-                    <div key={ob.id} className="flex items-start gap-3 px-4 py-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">{ob.titulo}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Vencimento: {fmtDate(ob.due_at)} · {ob.tipo}
-                        </p>
-                      </div>
-                      <StatusChip status={ob.status} />
+                competenciasImpostos.map(comp => (
+                  <div key={comp}>
+                    <div className="px-4 py-2 bg-muted/40 border-y border-border/60 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                      {rotuloCompetencia(comp)}
                     </div>
-                  ))}
-                </div>
+                    <div className="divide-y divide-border/60">
+                      {impostosPorCompetencia.get(comp)!.map(i => {
+                        const info = IMPOSTOS_TITULOS[i.tipo];
+                        return (
+                          <div key={i.id} className="flex items-center gap-3 px-4 py-3.5">
+                            <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                              <Receipt size={16} className="text-primary" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-foreground truncate">{info?.titulo ?? i.nome}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {info?.grupo ?? 'Imposto'}
+                                {i.atualizadaEm ? ` · ${fmtDate(i.atualizadaEm)}` : ''}
+                              </p>
+                            </div>
+                            <a
+                              href={`${API}/portal/impostos/${token}/${i.id}/download`}
+                              className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                            >
+                              <Download size={13} /> Baixar
+                            </a>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))
               )}
             </div>
           )}

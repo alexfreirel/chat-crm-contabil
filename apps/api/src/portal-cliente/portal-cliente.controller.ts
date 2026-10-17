@@ -110,6 +110,26 @@ export class PortalClienteController {
   }
 
   @Public()
+  @Get('impostos/:token')
+  getImpostos(@Param('token') token: string) {
+    return this.service.getImpostos(token);
+  }
+
+  @Public()
+  @Get('impostos/:token/:fileId/download')
+  async baixarImposto(
+    @Param('token') token: string,
+    @Param('fileId') fileId: string,
+    @Res() res: Response,
+  ) {
+    const { buffer, name, mimeType } = await this.service.baixarImposto(token, fileId);
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(name)}`);
+    res.setHeader('Content-Length', buffer.length);
+    res.end(buffer);
+  }
+
+  @Public()
   @Get('parcelas/:token')
   getParcelas(@Param('token') token: string) {
     return this.service.getParcelas(token);
