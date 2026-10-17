@@ -17,6 +17,7 @@ const SPECIALTY_SUGGESTIONS = [
 const ROLE_OPTIONS = [
   { value: 'CONTADOR',   label: '📊 Contador',   desc: 'Controle total do sistema e dos clientes contábeis' },
   { value: 'ASSISTENTE', label: '🎓 Assistente', desc: 'Suporte administrativo e tarefas' },
+  { value: 'ASSISTENTE_PESSOAL', label: '🧾 Assistente Pessoal', desc: 'Suporte do departamento pessoal (folha, admissões, férias)' },
   { value: 'FINANCEIRO', label: '💰 Financeiro', desc: 'Gestão financeira e cobranças' },
 ];
 
@@ -25,11 +26,12 @@ function roleBadge(role: string) {
     ADMIN:      'bg-violet-900/30 text-violet-300 border-violet-800/30', // backward-compat
     CONTADOR:   'bg-violet-900/30 text-violet-300 border-violet-800/30', // superadmin
     ASSISTENTE: 'bg-amber-900/30 text-amber-300 border-amber-800/30',
+    ASSISTENTE_PESSOAL: 'bg-sky-900/30 text-sky-300 border-sky-800/30',
     FINANCEIRO: 'bg-emerald-900/30 text-emerald-300 border-emerald-800/30',
   };
   const label: Record<string, string> = {
     ADMIN: 'Contador', CONTADOR: 'Contador',
-    ASSISTENTE: 'Assistente', FINANCEIRO: 'Financeiro',
+    ASSISTENTE: 'Assistente', ASSISTENTE_PESSOAL: 'Assistente Pessoal', FINANCEIRO: 'Financeiro',
   };
   const cls = map[role] || 'bg-muted/20 text-muted-foreground border-border';
   return (

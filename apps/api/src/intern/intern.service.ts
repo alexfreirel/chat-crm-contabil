@@ -262,7 +262,7 @@ export class InternService {
     const where: any = {
       type: { in: ['TAREFA', 'PRAZO'] },
       status: { in: ['AGENDADO', 'CONFIRMADO'] },
-      assigned_user: { role: 'ASSISTENTE' },
+      assigned_user: { role: { in: ['ASSISTENTE', 'ASSISTENTE_PESSOAL'] } },
     };
     if (tenantId) {
       where.OR = [{ tenant_id: tenantId }, { tenant_id: null }];

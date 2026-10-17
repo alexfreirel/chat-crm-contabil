@@ -502,7 +502,7 @@ export class TasksService {
 
     const users = await this.prisma.user.findMany({
       where: {
-        role: 'ASSISTENTE',
+        role: { in: ['ASSISTENTE', 'ASSISTENTE_PESSOAL'] },
         ...(tenantId ? { OR: [{ tenant_id: tenantId }, { tenant_id: null }] } : {}),
         ...(requester.isManager ? {} : { id: requester.id }),
       },

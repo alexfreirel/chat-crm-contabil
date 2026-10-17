@@ -6,24 +6,27 @@ import { Shield, Check, X, ChevronDown, Loader2, Users } from 'lucide-react';
 import api from '@/lib/api';
 
 // ─── Roles visíveis (ADMIN removido — CONTADOR é o superadmin) ───────────────
-const ROLES = ['CONTADOR', 'ASSISTENTE', 'FINANCEIRO'] as const;
+const ROLES = ['CONTADOR', 'ASSISTENTE', 'ASSISTENTE_PESSOAL', 'FINANCEIRO'] as const;
 type Role = typeof ROLES[number];
 
 const ROLE_LABELS: Record<Role, string> = {
   CONTADOR:   'Contador',
   ASSISTENTE: 'Assistente',
+  ASSISTENTE_PESSOAL: 'Assistente Pessoal',
   FINANCEIRO: 'Financeiro',
 };
 
 const ROLE_DESCRIPTIONS: Record<Role, string> = {
   CONTADOR:   'Controle total do sistema',
   ASSISTENTE: 'Suporte e tarefas',
+  ASSISTENTE_PESSOAL: 'Departamento pessoal',
   FINANCEIRO: 'Cobranças e financeiro',
 };
 
 const ROLE_COLORS: Record<Role, string> = {
   CONTADOR:   'bg-violet-500/10 text-violet-400 border-violet-500/20',
   ASSISTENTE: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+  ASSISTENTE_PESSOAL: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
   FINANCEIRO: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
 };
 
@@ -41,12 +44,12 @@ const MATRIX_SECTIONS: MatrixSection[] = [
       {
         label: 'Dashboard',
         description: 'Painel com métricas e KPIs do escritório',
-        permissions: { CONTADOR: 'full', ASSISTENTE: 'partial', FINANCEIRO: 'partial' },
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'partial', ASSISTENTE_PESSOAL: 'partial', FINANCEIRO: 'partial' },
       },
       {
         label: 'Analytics',
         description: 'Relatórios avançados e gráficos de performance',
-        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', FINANCEIRO: 'partial' },
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', ASSISTENTE_PESSOAL: 'none', FINANCEIRO: 'partial' },
       },
     ],
   },
@@ -56,22 +59,22 @@ const MATRIX_SECTIONS: MatrixSection[] = [
       {
         label: 'Inbox — WhatsApp',
         description: 'Conversas com leads e clientes via WhatsApp',
-        permissions: { CONTADOR: 'full', ASSISTENTE: 'full', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'full', ASSISTENTE_PESSOAL: 'full', FINANCEIRO: 'none' },
       },
       {
         label: 'Leads & CRM',
         description: 'Funil comercial e gestão de leads',
-        permissions: { CONTADOR: 'full', ASSISTENTE: 'full', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', ASSISTENTE_PESSOAL: 'none', FINANCEIRO: 'none' },
       },
       {
         label: 'Contatos',
         description: 'Lista completa de contatos e clientes',
-        permissions: { CONTADOR: 'full', ASSISTENTE: 'full', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'full', ASSISTENTE_PESSOAL: 'full', FINANCEIRO: 'none' },
       },
       {
         label: 'Follow-up IA',
         description: 'Sequências automáticas de mensagens e nutrição',
-        permissions: { CONTADOR: 'full', ASSISTENTE: 'full', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'full', ASSISTENTE_PESSOAL: 'full', FINANCEIRO: 'none' },
       },
     ],
   },
@@ -81,22 +84,22 @@ const MATRIX_SECTIONS: MatrixSection[] = [
       {
         label: 'Clientes Contábeis',
         description: 'Workspace completo dos clientes do escritório',
-        permissions: { CONTADOR: 'full', ASSISTENTE: 'partial', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'partial', ASSISTENTE_PESSOAL: 'partial', FINANCEIRO: 'none' },
       },
       {
         label: 'Obrigações Fiscais',
         description: 'Vencimentos, SPED, DIRF, PGDAS e obrigações acessórias',
-        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', ASSISTENTE_PESSOAL: 'none', FINANCEIRO: 'none' },
       },
       {
         label: 'Documentos Contábeis',
         description: 'Upload e gestão de documentos dos clientes',
-        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', ASSISTENTE_PESSOAL: 'none', FINANCEIRO: 'none' },
       },
       {
         label: 'Agente Fiscal SEFAZ',
         description: 'Consultas automáticas na SEFAZ e alertas fiscais',
-        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', ASSISTENTE_PESSOAL: 'none', FINANCEIRO: 'none' },
       },
     ],
   },
@@ -106,17 +109,17 @@ const MATRIX_SECTIONS: MatrixSection[] = [
       {
         label: 'Honorários & Contratos',
         description: 'Planos de cobrança e parcelas dos clientes',
-        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', FINANCEIRO: 'full' },
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', ASSISTENTE_PESSOAL: 'none', FINANCEIRO: 'full' },
       },
       {
         label: 'Financeiro',
         description: 'Fluxo de caixa, cobranças e relatórios financeiros',
-        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', FINANCEIRO: 'full' },
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', ASSISTENTE_PESSOAL: 'none', FINANCEIRO: 'full' },
       },
       {
         label: 'Notas Fiscais',
         description: 'Emissão e gestão de NFS-e do escritório',
-        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', FINANCEIRO: 'full' },
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', ASSISTENTE_PESSOAL: 'none', FINANCEIRO: 'full' },
       },
     ],
   },
@@ -126,12 +129,12 @@ const MATRIX_SECTIONS: MatrixSection[] = [
       {
         label: 'Agenda & Tarefas',
         description: 'Calendário, reuniões e tarefas da equipe',
-        permissions: { CONTADOR: 'full', ASSISTENTE: 'partial', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'partial', ASSISTENTE_PESSOAL: 'partial', FINANCEIRO: 'none' },
       },
       {
         label: 'Contatos — editar',
         description: 'Criar e editar dados de contatos',
-        permissions: { CONTADOR: 'full', ASSISTENTE: 'full', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'full', ASSISTENTE_PESSOAL: 'full', FINANCEIRO: 'none' },
       },
     ],
   },
@@ -141,22 +144,22 @@ const MATRIX_SECTIONS: MatrixSection[] = [
       {
         label: 'Configurações do Sistema',
         description: 'Ajustes gerais, inboxes e integrações',
-        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', ASSISTENTE_PESSOAL: 'none', FINANCEIRO: 'none' },
       },
       {
         label: 'Usuários & Perfis',
         description: 'Criar, editar e remover usuários',
-        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', ASSISTENTE_PESSOAL: 'none', FINANCEIRO: 'none' },
       },
       {
         label: 'Automações',
         description: 'Regras automáticas e bots do sistema',
-        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', ASSISTENTE_PESSOAL: 'none', FINANCEIRO: 'none' },
       },
       {
         label: 'Permissões',
         description: 'Controle de acesso por perfil',
-        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', FINANCEIRO: 'none' },
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', ASSISTENTE_PESSOAL: 'none', FINANCEIRO: 'none' },
       },
     ],
   },

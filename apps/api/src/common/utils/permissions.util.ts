@@ -12,14 +12,21 @@ export const ROLES = {
   CONTADOR: 'CONTADOR',
   ASSISTENTE: 'ASSISTENTE',
   FINANCEIRO: 'FINANCEIRO',
+  /** Assistente do Departamento Pessoal: herda tudo do ASSISTENTE (ver expandRoles) */
+  ASSISTENTE_PESSOAL: 'ASSISTENTE_PESSOAL',
 } as const;
 
 export type AppRole = (typeof ROLES)[keyof typeof ROLES];
 
+/** ASSISTENTE_PESSOAL é uma modalidade de ASSISTENTE: carrega também o role ASSISTENTE. */
+export function expandRoles(roles: string[]): string[] {
+  return roles.includes('ASSISTENTE_PESSOAL') && !roles.includes('ASSISTENTE') ? [...roles, 'ASSISTENTE'] : roles;
+}
+
 /** Normaliza role(s) para array — aceita string ou string[] */
 export function normalizeRoles(roles: string | string[] | null | undefined): string[] {
-  if (Array.isArray(roles)) return roles;
-  if (typeof roles === 'string' && roles) return [roles];
+  if (Array.isArray(roles)) return expandRoles(roles);
+  if (typeof roles === 'string' && roles) return expandRoles([roles]);
   return ['ASSISTENTE'];
 }
 

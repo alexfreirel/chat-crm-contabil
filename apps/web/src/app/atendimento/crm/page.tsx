@@ -10,6 +10,7 @@ function getSocketPath() { return process.env.NEXT_PUBLIC_SOCKET_PATH ?? '/socke
 import api, { API_BASE_URL } from '@/lib/api';
 import { formatPhone } from '@/lib/utils';
 import { CRM_STAGES, normalizeStage, findStage } from '@/lib/crmStages';
+import { RouteGuard } from '@/components/RouteGuard';
 import { STAGE_TEMPLATES } from '@/lib/crmTemplates';
 import { showError, showSuccess } from '@/lib/toast';
 
@@ -1054,7 +1055,7 @@ function CrmAnalyticsPanel({ leads, onClose }: { leads: CrmLead[]; onClose: () =
 
 // ─── CrmPage ────────────────────────────────────────────────────────────────
 
-export default function CrmPage() {
+function CrmPageContent() {
   const router = useRouter();
   const [leads, setLeads] = useState<CrmLead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2166,5 +2167,14 @@ export default function CrmPage() {
       )}
 
     </div>
+  );
+}
+
+export default function CrmPage() {
+  // Assistentes (incluindo Assistente Pessoal) não acessam Leads & CRM
+  return (
+    <RouteGuard allowedRoles={['ADMIN', 'CONTADOR']}>
+      <CrmPageContent />
+    </RouteGuard>
   );
 }

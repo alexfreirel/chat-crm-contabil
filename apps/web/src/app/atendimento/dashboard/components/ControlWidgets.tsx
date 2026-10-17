@@ -66,7 +66,7 @@ export function ObrigacoesFiscaisWidget({ items }: { items: ObrigacaoFiscalItem[
 /* ─── Carga da equipe (tarefas pendentes / atrasadas por assistente) ─── */
 
 export function TeamLoadWidget({ members }: { members: TeamMember[] }) {
-  const assistants = members.filter(m => m.role === 'ASSISTENTE');
+  const assistants = members.filter(m => (m.role === 'ASSISTENTE' || m.role === 'ASSISTENTE_PESSOAL'));
   const rows = (assistants.length > 0 ? assistants : members)
     .map(m => ({ ...m }))
     .sort((a, b) => b.overdueTasks - a.overdueTasks || b.pendingTasks - a.pendingTasks);

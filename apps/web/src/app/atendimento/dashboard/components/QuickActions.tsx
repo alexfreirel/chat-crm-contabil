@@ -8,7 +8,7 @@ const ALL_ACTIONS = [
   { label: 'Atendimento', icon: MessageSquare, href: '/atendimento', color: 'text-blue-500 bg-blue-500/10', roles: ['ADMIN', 'CONTADOR', 'ASSISTENTE', 'FINANCEIRO'] },
   { label: 'Novo Cliente', icon: Calculator, href: '/atendimento/clientes', color: 'text-purple-500 bg-purple-500/10', roles: ['ADMIN', 'CONTADOR'] },
   { label: 'Agenda', icon: Calendar, href: '/atendimento/agenda', color: 'text-rose-500 bg-rose-500/10', roles: ['ADMIN', 'CONTADOR', 'ASSISTENTE'] },
-  { label: 'CRM', icon: Briefcase, href: '/atendimento/crm', color: 'text-amber-500 bg-amber-500/10', roles: ['ADMIN', 'CONTADOR', 'ASSISTENTE'] },
+  { label: 'CRM', icon: Briefcase, href: '/atendimento/crm', color: 'text-amber-500 bg-amber-500/10', roles: ['ADMIN', 'CONTADOR'] },
   { label: 'Clientes', icon: BookOpen, href: '/atendimento/clientes', color: 'text-teal-500 bg-teal-500/10', roles: ['ADMIN', 'CONTADOR', 'ASSISTENTE'] },
   { label: 'Financeiro', icon: Settings, href: '/atendimento/financeiro', color: 'text-emerald-500 bg-emerald-500/10', roles: ['ADMIN', 'FINANCEIRO'] },
   { label: 'Manual', icon: HelpCircle, href: '/atendimento/manual', color: 'text-violet-500 bg-violet-500/10', roles: ['ADMIN', 'CONTADOR', 'ASSISTENTE', 'FINANCEIRO'] },

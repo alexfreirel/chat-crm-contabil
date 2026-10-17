@@ -218,7 +218,7 @@ export function Sidebar() {
       href: '/atendimento/crm',
       icon: <Briefcase size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/crm'),
-      show: true,
+      show: !perms.isAssistente || perms.isAdmin || perms.isContador, // assistentes não veem Leads & CRM
     },
     contacts: {
       label: 'Contatos',

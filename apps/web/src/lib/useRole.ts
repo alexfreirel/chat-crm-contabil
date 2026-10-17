@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 
-export type AppRole = 'ADMIN' | 'CONTADOR' | 'ASSISTENTE' | 'FINANCEIRO';
+export type AppRole = 'ADMIN' | 'CONTADOR' | 'ASSISTENTE' | 'ASSISTENTE_PESSOAL' | 'FINANCEIRO';
 
 export interface RoleInfo {
   role: AppRole | null;       // Primeiro role (backward compat)
@@ -56,7 +56,7 @@ function buildInfo(roles: AppRole[], userId: string | null): RoleInfo {
     userId,
     isAdmin: roles.includes('ADMIN'),
     isContador: roles.includes('CONTADOR'),
-    isAssistente: roles.includes('ASSISTENTE'),
+    isAssistente: roles.includes('ASSISTENTE') || roles.includes('ASSISTENTE_PESSOAL'),
     isFinanceiro: roles.includes('FINANCEIRO'),
     canManageSettings: roles.includes('ADMIN'),
     canViewDashboard: has(['ADMIN', 'CONTADOR', 'ASSISTENTE']),

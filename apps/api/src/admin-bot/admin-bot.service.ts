@@ -572,7 +572,7 @@ Para qual cliente contábil? (responda 1, 2, 3 ou "nenhum")`;
 
         case 'list_users': {
           const users = await this.prisma.user.findMany({
-            where: { role: { in: ['ADMIN', 'CONTADOR', 'ASSISTENTE'] } },
+            where: { role: { in: ['ADMIN', 'CONTADOR', 'ASSISTENTE', 'ASSISTENTE_PESSOAL'] } },
             select: { id: true, name: true, role: true },
             orderBy: { name: 'asc' },
           });

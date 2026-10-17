@@ -14,7 +14,7 @@ interface UserInfo {
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: 'Admin', CONTADOR: 'Contador',
-  ASSISTENTE: 'Assistente', FINANCEIRO: 'Financeiro',
+  ASSISTENTE: 'Assistente', ASSISTENTE_PESSOAL: 'Assistente Pessoal', FINANCEIRO: 'Financeiro',
 };
 
 export function TeamOnline() {

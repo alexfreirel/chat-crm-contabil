@@ -48,7 +48,7 @@ export function TeamPerformanceBoard({ data, loading }: Props) {
   const tabCounts: Record<string, number> = {
     TODOS: data.members.length,
     CONTADOR: data.members.filter(m => m.role === 'CONTADOR').length,
-    ASSISTENTE: data.members.filter(m => m.role === 'ASSISTENTE').length,
+    ASSISTENTE: data.members.filter(m => (m.role === 'ASSISTENTE' || m.role === 'ASSISTENTE_PESSOAL')).length,
   };
 
   // Sort by score for podium

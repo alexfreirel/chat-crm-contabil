@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
+import { expandRoles } from '../common/utils/permissions.util';
 
 @Injectable()
 export class AuthService {
@@ -24,7 +25,7 @@ export class AuthService {
     const roles: string[] = (Array.isArray(user.roles) && user.roles.length > 0)
       ? user.roles
       : (user.role ? [user.role] : ['ASSISTENTE']);
-    const payload = { email: user.email, sub: user.id, roles, tenant_id: user.tenant_id };
+    const payload = { email: user.email, sub: user.id, roles: expandRoles(roles), tenant_id: user.tenant_id };
     return {
       access_token: this.jwtService.sign(payload),
       user: payload
@@ -35,7 +36,7 @@ export class AuthService {
     const roles: string[] = (Array.isArray(user.roles) && user.roles.length > 0)
       ? user.roles
       : (user.role ? [user.role] : ['ASSISTENTE']);
-    const payload = { email: user.email, sub: user.id, roles, tenant_id: user.tenant_id };
+    const payload = { email: user.email, sub: user.id, roles: expandRoles(roles), tenant_id: user.tenant_id };
     const mcp_token = this.jwtService.sign(payload, { expiresIn: '365d' });
     return { mcp_token };
   }

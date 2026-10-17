@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { expandRoles } from '../common/utils/permissions.util';
 
 type Quartile = 'TOP' | 'MID' | 'LOW';
 
@@ -35,7 +36,7 @@ export class TeamPerformanceService {
     });
 
     // Normalize: treat role as array for compatibility
-    const usersNorm = users.map(u => ({ ...u, roles: u.role ? [u.role] : [] }));
+    const usersNorm = users.map(u => ({ ...u, roles: u.role ? expandRoles([u.role]) : [] }));
 
     const especialistas = usersNorm.filter(u => u.roles?.includes('CONTADOR') || u.roles?.includes('ADMIN'));
     const assistentes2 = usersNorm.filter(u => u.roles?.includes('ASSISTENTE'));

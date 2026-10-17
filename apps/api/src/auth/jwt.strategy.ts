@@ -1,6 +1,7 @@
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
 import { Injectable, Logger } from '@nestjs/common';
+import { expandRoles } from '../common/utils/permissions.util';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -25,6 +26,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const roles: string[] = Array.isArray(payload.roles)
       ? payload.roles
       : (payload.role ? [payload.role] : ['ASSISTENTE']);
-    return { id: payload.sub, email: payload.email, roles, role: roles[0], tenant_id: payload.tenant_id };
+    return { id: payload.sub, email: payload.email, roles: expandRoles(roles), role: roles[0], tenant_id: payload.tenant_id };
   }
 }
