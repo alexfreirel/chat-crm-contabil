@@ -4,10 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import TabFichaContabil from './components/TabFichaContabil';
 import TabObrigacoes from './components/TabObrigacoes';
-import TabDocumentos from './components/TabDocumentos';
-import TabHonorarios from './components/TabHonorarios';
 import TabTimeline from './components/TabTimeline';
-import TabComunicacoes from './components/TabComunicacoes';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:44001/api';
 
@@ -23,15 +20,12 @@ const SERVICE_LABELS: Record<string, string> = {
   IR_PF: 'IRPF', IR_PJ: 'IRPJ', CONSULTORIA: 'Consultoria', OUTRO: 'Outro',
 };
 
-type TabId = 'ficha' | 'obrigacoes' | 'documentos' | 'honorarios' | 'timeline' | 'comunicacoes';
+type TabId = 'ficha' | 'obrigacoes' | 'timeline';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'ficha', label: 'Ficha', icon: '🏢' },
   { id: 'obrigacoes', label: 'Obrigações', icon: '📅' },
-  { id: 'documentos', label: 'Documentos', icon: '📄' },
-  { id: 'honorarios', label: 'Honorários', icon: '💰' },
   { id: 'timeline', label: 'Timeline', icon: '📈' },
-  { id: 'comunicacoes', label: 'Comunicações', icon: '💬' },
 ];
 
 export default function WorkspacePage() {
@@ -176,10 +170,7 @@ export default function WorkspacePage() {
       <div className="flex-1 overflow-y-auto">
         {activeTab === 'ficha' && <TabFichaContabil cliente={data} onRefresh={() => fetchData(true)} />}
         {activeTab === 'obrigacoes' && <TabObrigacoes clienteId={clienteId} cliente={data} onRefresh={() => fetchData(true)} />}
-        {activeTab === 'documentos' && <TabDocumentos clienteId={clienteId} />}
-        {activeTab === 'honorarios' && <TabHonorarios clienteId={clienteId} onRefresh={() => fetchData(true)} />}
         {activeTab === 'timeline' && <TabTimeline clienteId={clienteId} cliente={data} />}
-        {activeTab === 'comunicacoes' && <TabComunicacoes conversationId={data.conversation_id} />}
       </div>
 
       {/* Modal de exclusão */}
