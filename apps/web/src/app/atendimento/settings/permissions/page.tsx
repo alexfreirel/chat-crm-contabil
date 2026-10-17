@@ -101,6 +101,21 @@ const MATRIX_SECTIONS: MatrixSection[] = [
         description: 'Consultas automáticas na SEFAZ e alertas fiscais',
         permissions: { CONTADOR: 'full', ASSISTENTE: 'none', ASSISTENTE_PESSOAL: 'none', FINANCEIRO: 'none' },
       },
+      {
+        label: 'Certidões, Contratos Sociais e Alvarás',
+        description: 'Anexos por empresa no Drive (CND, FGTS, contratos, alvará)',
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'full', ASSISTENTE_PESSOAL: 'full', FINANCEIRO: 'none' },
+      },
+      {
+        label: 'Impostos',
+        description: 'Guias mensais federais, estaduais e municipais por empresa',
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'full', ASSISTENTE_PESSOAL: 'none', FINANCEIRO: 'none' },
+      },
+      {
+        label: 'Folha de Pagamentos',
+        description: 'Resumo da folha, contra-cheques, FGTS, INSS, admissão, rescisão e férias',
+        permissions: { CONTADOR: 'full', ASSISTENTE: 'none', ASSISTENTE_PESSOAL: 'full', FINANCEIRO: 'none' },
+      },
     ],
   },
   {
