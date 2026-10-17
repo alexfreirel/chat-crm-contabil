@@ -15,6 +15,7 @@ import { useTheme } from 'next-themes';
 import { API_BASE_URL } from '@/lib/api';
 import { NotificationCenter } from '@/app/atendimento/components/NotificationCenter';
 import { useRole } from '@/lib/useRole';
+import { useFeatureAccess } from '@/lib/featureAccess';
 import { THEMES } from '@/components/ThemeSwitcher';
 
 // ─── Tooltip Styles (shared) ──────────────────────────────────────
@@ -41,6 +42,9 @@ export function Sidebar() {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const perms = useRole();
+  const { canAccess } = useFeatureAccess();
+  // Admin/Contador mantêm as regras de menu existentes; os demais perfis seguem o que foi autorizado em Permissões
+  const acc = (key: string, original: boolean) => (perms.isAdmin || perms.isContador) ? original : canAccess(key);
 
   const [expanded, setExpanded] = useState(false);
   const [showThemeMenu, setShowThemeMenu] = useState(false);
@@ -203,7 +207,7 @@ export function Sidebar() {
       href: '/atendimento/dashboard',
       icon: <LayoutDashboard size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/dashboard'),
-      show: perms.canViewDashboard,
+      show: acc('dashboard', perms.canViewDashboard),
     },
     inbox: {
       label: 'Inbox (WhatsApp)',
@@ -211,21 +215,21 @@ export function Sidebar() {
       icon: <MessageSquare size={20} strokeWidth={2} />,
       match: (p) => p === '/atendimento' || p.startsWith('/atendimento/chat'),
       badge: unreadTotal,
-      show: true,
+      show: acc('inbox', true),
     },
     crm: {
       label: 'Leads & CRM',
       href: '/atendimento/crm',
       icon: <Briefcase size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/crm'),
-      show: !perms.isAssistente || perms.isAdmin || perms.isContador, // assistentes não veem Leads & CRM
+      show: acc('crm', true),
     },
     contacts: {
       label: 'Contatos',
       href: '/atendimento/contacts',
       icon: <Users size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/contacts'),
-      show: true,
+      show: acc('contatos', true),
     },
     agenda: {
       label: 'Tarefas',
@@ -233,14 +237,14 @@ export function Sidebar() {
       icon: <Calendar size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/agenda') || p.startsWith('/atendimento/tasks'),
       badge: overdueCount,
-      show: true,
+      show: acc('agenda', true),
     },
     clientes: {
       label: 'Clientes Contábeis',
       href: '/atendimento/clientes',
       icon: <Building2 size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/clientes') || p.startsWith('/atendimento/workspace'),
-      show: true,
+      show: acc('clientes', true),
     },
     assistente: {
       label: 'Meu Painel',
@@ -255,21 +259,21 @@ export function Sidebar() {
       href: '/atendimento/followup',
       icon: <Sparkles size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/followup'),
-      show: perms.isAdmin,
+      show: acc('followup', perms.isAdmin),
     },
     financeiro: {
       label: 'Financeiro',
       href: '/atendimento/financeiro',
       icon: <Wallet size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/financeiro'),
-      show: perms.canViewFinanceiro,
+      show: acc('financeiro', perms.canViewFinanceiro),
     },
     analytics: {
       label: 'Analytics',
       href: '/atendimento/marketing/analytics',
       icon: <BarChart2 size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/marketing'),
-      show: perms.canViewAnalytics,
+      show: acc('analytics', perms.canViewAnalytics),
     },
     manual: {
       label: 'Manual',
@@ -290,42 +294,42 @@ export function Sidebar() {
       href: '/atendimento/agente-fiscal',
       icon: <FileSpreadsheet size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/agente-fiscal'),
-      show: true,
+      show: acc('agenteFiscal', true),
     },
     agenteCertidoes: {
       label: 'Certidões e Contratos',
       href: '/atendimento/agente-certidoes',
       icon: <ShieldCheck size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/agente-certidoes'),
-      show: true,
+      show: acc('certidoes', true),
     },
     impostos: {
       label: 'Impostos',
       href: '/atendimento/impostos',
       icon: <Receipt size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/impostos'),
-      show: true,
+      show: acc('impostos', true),
     },
     folhaPagamento: {
       label: 'Folha de Pagamentos',
       href: '/atendimento/folha-pagamento',
       icon: <Banknote size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/folha-pagamento'),
-      show: true,
+      show: acc('folha', true),
     },
     calendarioFiscal: {
       label: 'Calendário Fiscal',
       href: '/atendimento/calendario-fiscal',
       icon: <CalendarDays size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/calendario-fiscal'),
-      show: !perms.isAssistente,
+      show: acc('obrigacoes', !perms.isAssistente),
     },
     relatorios: {
       label: 'Relatórios',
       href: '/atendimento/relatorios',
       icon: <BarChart2 size={20} strokeWidth={2} />,
       match: (p) => p.startsWith('/atendimento/relatorios'),
-      show: perms.canViewAnalytics || perms.isAdmin,
+      show: acc('analytics', perms.canViewAnalytics || perms.isAdmin),
     },
     integracoes: {
       label: 'Integrações',

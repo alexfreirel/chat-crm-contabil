@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useRole } from '@/lib/useRole';
+import { useFeatureAccess, featureForPath } from '@/lib/featureAccess';
 import { playNotificationSound, unlockAudioContext } from '@/lib/notificationSounds';
 import toast from 'react-hot-toast';
 import { awardXp, registerActivity, unlockAchievement } from '@/lib/gamification';
@@ -51,6 +52,15 @@ export default function AtendimentoLayout({ children }: { children: React.ReactN
   const [overdueCount, setOverdueCount] = useState(0);
   const pathnameRef = useRef(pathname);
   useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
+
+  // ─── Permissões: bloqueia rotas que o perfil do usuário não está autorizado a acessar ───
+  const { matrix: accessMatrix, loaded: accessLoaded, canAccess, firstAllowedPath } = useFeatureAccess();
+  useEffect(() => {
+    if (!accessLoaded || pathname === '/atendimento/login') return;
+    const feature = featureForPath(pathname);
+    if (feature && !canAccess(feature.key)) router.replace(firstAllowedPath());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, accessLoaded, accessMatrix]);
 
   // ─── Auth check ───────────────────────────────────────────
   useEffect(() => {

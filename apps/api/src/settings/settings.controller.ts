@@ -31,6 +31,38 @@ export class SettingsController {
     @InjectQueue('ai-jobs') private readonly aiQueue: Queue,
   ) {}
 
+  // ─── Matriz de acesso (Permissões) ─────────────────────
+  // Guarda, por funcionalidade e perfil, se o acesso foi autorizado. Lida por todos os usuários
+  // logados (menu e rotas); alterada só por Admin/Contador.
+
+  @Get('access-matrix')
+  async getAccessMatrix() {
+    const row = await this.prisma.globalSetting.findUnique({ where: { key: 'ACCESS_MATRIX' } });
+    if (!row?.value) return {};
+    try { return JSON.parse(row.value); } catch { return {}; }
+  }
+
+  @Put('access-matrix')
+  @Roles('ADMIN', 'CONTADOR')
+  async saveAccessMatrix(@Body() body: Record<string, Record<string, boolean>>) {
+    const perfis = ['ASSISTENTE', 'ASSISTENTE_PESSOAL', 'FINANCEIRO'];
+    const clean: Record<string, Record<string, boolean>> = {};
+    for (const [feature, porPerfil] of Object.entries(body || {})) {
+      if (!/^[a-zA-Z0-9_]{1,40}$/.test(feature) || typeof porPerfil !== 'object' || !porPerfil) continue;
+      clean[feature] = {};
+      for (const perfil of perfis) {
+        if (typeof porPerfil[perfil] === 'boolean') clean[feature][perfil] = porPerfil[perfil];
+      }
+    }
+    const value = JSON.stringify(clean);
+    await this.prisma.globalSetting.upsert({
+      where: { key: 'ACCESS_MATRIX' },
+      update: { value },
+      create: { key: 'ACCESS_MATRIX', value },
+    });
+    return clean;
+  }
+
   // ─── Generic Settings ─────────────────────────────────
 
   @Get()

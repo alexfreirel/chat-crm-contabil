@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Shield, Check, X, ChevronDown, Loader2, Users } from 'lucide-react';
 import api from '@/lib/api';
+import { FEATURES, EDITABLE_ROLES, effectiveFor, setAccessMatrix, useFeatureAccess, type AccessMatrix, type EditableRole } from '@/lib/featureAccess';
 
 // ─── Roles visíveis (ADMIN removido — CONTADOR é o superadmin) ───────────────
 const ROLES = ['CONTADOR', 'ASSISTENTE', 'ASSISTENTE_PESSOAL', 'FINANCEIRO'] as const;
@@ -181,6 +182,24 @@ const MATRIX_SECTIONS: MatrixSection[] = [
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+// Linhas da matriz que controlam o acesso de verdade (menu + rotas). As demais são só informativas.
+const FEATURE_BY_LABEL: Record<string, string> = {
+  'Dashboard': 'dashboard',
+  'Analytics': 'analytics',
+  'Inbox — WhatsApp': 'inbox',
+  'Leads & CRM': 'crm',
+  'Contatos': 'contatos',
+  'Follow-up IA': 'followup',
+  'Clientes Contábeis': 'clientes',
+  'Obrigações Fiscais': 'obrigacoes',
+  'Agente Fiscal SEFAZ': 'agenteFiscal',
+  'Certidões, Contratos Sociais e Alvarás': 'certidoes',
+  'Impostos': 'impostos',
+  'Folha de Pagamentos': 'folha',
+  'Financeiro': 'financeiro',
+  'Agenda & Tarefas': 'agenda',
+};
+
 function PermIcon({ p }: { p: Permission }) {
   if (p === 'full')    return <Check size={14} className="text-emerald-400 mx-auto" />;
   if (p === 'partial') return <span className="text-amber-400 text-[10px] font-bold leading-none">parcial</span>;
@@ -196,6 +215,44 @@ export default function PermissionsSettingsPage() {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [dropdownPos, setDropdownPos]   = useState<{ top: number; left: number } | null>(null);
   const [activeTab, setActiveTab]   = useState<'matrix' | 'users'>('matrix');
+
+  // ─── Matriz editável: rascunho local até clicar em "Salvar permissões" ───
+  const { matrix: savedMatrix, loaded: matrixLoaded } = useFeatureAccess();
+  const [draft, setDraft] = useState<AccessMatrix | null>(null);
+  const [savingMatrix, setSavingMatrix] = useState(false);
+  const [matrixMsg, setMatrixMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Valor atual de uma célula (rascunho, senão o salvo, senão o padrão)
+  const cellValue = (featureKey: string, role: EditableRole): boolean => {
+    const feature = FEATURES.find(f => f.key === featureKey)!;
+    return effectiveFor(draft ?? savedMatrix, feature, role);
+  };
+
+  const toggleCell = (featureKey: string, role: EditableRole) => {
+    const base: AccessMatrix = draft ?? Object.fromEntries(FEATURES.map(f => [
+      f.key,
+      Object.fromEntries(EDITABLE_ROLES.map(r => [r, effectiveFor(savedMatrix, f, r)])),
+    ]));
+    const atual = base[featureKey]?.[role] ?? false;
+    setDraft({ ...base, [featureKey]: { ...base[featureKey], [role]: !atual } });
+    setMatrixMsg(null);
+  };
+
+  const saveMatrix = async () => {
+    if (!draft) return;
+    setSavingMatrix(true);
+    setMatrixMsg(null);
+    try {
+      const { data } = await api.put('/settings/access-matrix', draft);
+      setAccessMatrix(data as AccessMatrix);
+      setDraft(null);
+      setMatrixMsg({ ok: true, text: 'Permissões salvas. Quem já está logado vê a mudança ao recarregar a página.' });
+    } catch (err: any) {
+      setMatrixMsg({ ok: false, text: err?.response?.data?.message || 'Erro ao salvar as permissões.' });
+    } finally {
+      setSavingMatrix(false);
+    }
+  };
 
   const openDropdownAt = (userId: string, btnEl: HTMLElement) => {
     if (openDropdown === userId) { setOpenDropdown(null); setDropdownPos(null); return; }
@@ -319,19 +376,72 @@ export default function PermissionsSettingsPage() {
                             <div className="font-semibold text-foreground text-[13px]">{row.label}</div>
                             <div className="text-[11px] text-muted-foreground mt-0.5">{row.description}</div>
                           </td>
-                          {ROLES.map(role => (
-                            <td key={role} className="px-4 py-3.5 text-center">
-                              <div className="flex items-center justify-center h-5">
-                                <PermIcon p={row.permissions[role]} />
-                              </div>
-                            </td>
-                          ))}
+                          {ROLES.map(role => {
+                            const featureKey = FEATURE_BY_LABEL[row.label];
+                            // Linhas ligadas ao menu/rotas: caixa de marcar para os perfis configuráveis
+                            if (featureKey && role !== 'CONTADOR') {
+                              const permitido = cellValue(featureKey, role as EditableRole);
+                              return (
+                                <td key={role} className="px-4 py-3.5 text-center">
+                                  <button
+                                    type="button"
+                                    role="checkbox"
+                                    aria-checked={permitido}
+                                    disabled={!matrixLoaded}
+                                    onClick={() => toggleCell(featureKey, role as EditableRole)}
+                                    title={permitido ? 'Acesso autorizado — clique para bloquear' : 'Acesso bloqueado — clique para autorizar'}
+                                    className={`w-6 h-6 rounded-md border inline-flex items-center justify-center transition-colors disabled:opacity-40 ${
+                                      permitido
+                                        ? 'bg-primary border-primary text-white'
+                                        : 'bg-card border-border text-transparent hover:border-primary/60'
+                                    }`}
+                                  >
+                                    <Check size={14} />
+                                  </button>
+                                </td>
+                              );
+                            }
+                            return (
+                              <td key={role} className="px-4 py-3.5 text-center">
+                                <div className="flex items-center justify-center h-5">
+                                  <PermIcon p={featureKey ? 'full' : row.permissions[role]} />
+                                </div>
+                              </td>
+                            );
+                          })}
                         </tr>
                       ))}
                     </>
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Salvar alterações da matriz */}
+            <div className="px-5 py-3.5 border-t border-border flex items-center gap-3 flex-wrap">
+              <p className="flex-1 min-w-[220px] text-[12px] text-muted-foreground">
+                Marque ou desmarque para autorizar ou bloquear o acesso de cada perfil às telas.
+                Contador e Admin sempre têm acesso. As linhas sem caixa de marcar são apenas informativas.
+              </p>
+              {matrixMsg && (
+                <span className={`text-[12px] font-medium ${matrixMsg.ok ? 'text-emerald-500' : 'text-red-500'}`}>{matrixMsg.text}</span>
+              )}
+              {draft && (
+                <button
+                  onClick={() => { setDraft(null); setMatrixMsg(null); }}
+                  disabled={savingMatrix}
+                  className="px-3 py-2 rounded-lg border border-border text-[12px] font-medium text-muted-foreground hover:bg-accent"
+                >
+                  Descartar
+                </button>
+              )}
+              <button
+                onClick={saveMatrix}
+                disabled={!draft || savingMatrix}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-white text-[12px] font-semibold shadow-sm hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {savingMatrix && <Loader2 size={13} className="animate-spin" />} Salvar permissões
+              </button>
             </div>
 
             {/* Legenda */}
