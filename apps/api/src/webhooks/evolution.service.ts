@@ -246,19 +246,26 @@ export class EvolutionService {
         origin: 'whatsapp',
       });
 
-      // 1b. Lead PERDIDO/FINALIZADO voltou a falar → reativar para QUALIFICANDO
+      // 1b. Lead PERDIDO/FINALIZADO voltou a falar → reativar em atendimento
       // Sem isso, a conversa existe mas fica invisível no inbox (filtro de stage).
       if (!isFromMe && ['PERDIDO', 'FINALIZADO'].includes(lead.stage)) {
         await this.prisma.lead.update({
           where: { id: lead.id },
           data: {
-            stage: 'QUALIFICANDO',
+            stage: 'EM_ATENDIMENTO',
             stage_entered_at: new Date(),
             loss_reason: null,
           },
         });
-        (lead as any).stage = 'QUALIFICANDO';
-        this.logger.log(`[REACTIVATE] Lead ${lead.id} (${phone}) voltou a falar — stage ${lead.stage} → QUALIFICANDO`);
+        (lead as any).stage = 'EM_ATENDIMENTO';
+        this.logger.log(`[REACTIVATE] Lead ${lead.id} (${phone}) voltou a falar — stage ${lead.stage} → EM_ATENDIMENTO`);
+      }
+
+      // 1c. Diálogo iniciado: lead em etapa inicial (Novo/Inicial/Qualificando) passa a "Em Atendimento"
+      if (['NOVO', 'INICIAL', 'QUALIFICANDO'].includes((lead as any).stage)) {
+        await this.leadsService.updateStatus(lead.id, 'EM_ATENDIMENTO')
+          .then(() => { (lead as any).stage = 'EM_ATENDIMENTO'; })
+          .catch(err => this.logger.warn(`[STAGE] Falha ao mover lead ${lead.id} para EM_ATENDIMENTO: ${err.message}`));
       }
 
       // 2. Find or Create Conversation

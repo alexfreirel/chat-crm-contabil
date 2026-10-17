@@ -1437,14 +1437,14 @@ export default function Dashboard() {
     if (!selectedId || selectedId.startsWith('demo-')) return;
     try {
       await api.patch(`/conversations/${selectedId}/reopen`);
-      // Atualiza leadStage para QUALIFICANDO imediatamente (sem esperar re-fetch)
-      setLeadStage('QUALIFICANDO');
-      setConversations(prev => prev.map(c =>
-        c.id === selectedId ? { ...c, status: 'WAITING', leadStage: 'QUALIFICANDO' } : c
-      ));
-      setAdiadoConversations(prev => prev.map(c =>
-        c.id === selectedId ? { ...c, status: 'WAITING', leadStage: 'QUALIFICANDO' } : c
-      ));
+      // Reabrir conversa de lead FINALIZADO/PERDIDO o reativa em atendimento (reflete sem esperar re-fetch)
+      const reativado = ['FINALIZADO', 'PERDIDO'].includes(leadStage || '');
+      if (reativado) setLeadStage('EM_ATENDIMENTO');
+      const aposReabrir = (c: any) => c.id === selectedId
+        ? { ...c, status: 'WAITING', ...(reativado ? { leadStage: 'EM_ATENDIMENTO' } : {}) }
+        : c;
+      setConversations(prev => prev.map(aposReabrir));
+      setAdiadoConversations(prev => prev.map(aposReabrir));
       fetchConversations(selectedInboxIdRef.current, true);
       showSuccess('Conversa reaberta');
     } catch (e) {

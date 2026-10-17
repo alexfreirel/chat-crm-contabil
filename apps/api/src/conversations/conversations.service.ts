@@ -302,12 +302,12 @@ export class ConversationsService {
       data: { status: 'ABERTO', assigned_user_id: null },
       include: { lead: { select: { id: true, stage: true } } },
     });
-    // Se o lead está FINALIZADO ou PERDIDO, reativar para QUALIFICANDO
+    // Se o lead está FINALIZADO ou PERDIDO, reativar em atendimento
     const lead = (conv as any).lead;
     if (lead && ['FINALIZADO', 'PERDIDO'].includes(lead.stage)) {
       await this.prisma.lead.update({
         where: { id: lead.id },
-        data: { stage: 'QUALIFICANDO', stage_entered_at: new Date(), loss_reason: null },
+        data: { stage: 'EM_ATENDIMENTO', stage_entered_at: new Date(), loss_reason: null },
       });
     }
     this.chatGateway.emitConversationsUpdate((conv as any).tenant_id ?? null);
