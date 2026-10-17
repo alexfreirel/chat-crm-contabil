@@ -391,6 +391,33 @@ export class PortalClienteService {
     return file;
   }
 
+  // ─── Folha de pagamento (somente leitura; apenas o que foi anexado no Portal do Contador) ──
+  async getFolha(token: string) {
+    const payload = this.verifyToken(token);
+    const cnpj = await this.getCnpjDoCliente(payload.clienteId);
+    try {
+      const arquivos = await this.drive.listFolhaPorCnpj(cnpj);
+      return arquivos.map(a => ({
+        id: a.id,
+        nome: a.name,
+        tipo: a.tipo,
+        competencia: a.competencia,
+        atualizadaEm: a.modifiedTime || a.createdTime,
+      }));
+    } catch (err: any) {
+      this.logger.warn(`Falha ao listar folha do cliente ${payload.clienteId}: ${err.message}`);
+      return [];
+    }
+  }
+
+  async baixarFolha(token: string, fileId: string) {
+    const payload = this.verifyToken(token);
+    const cnpj = await this.getCnpjDoCliente(payload.clienteId);
+    const file = await this.drive.downloadFolha(fileId, cnpj);
+    if (!file) throw new NotFoundException('Documento não encontrado');
+    return file;
+  }
+
   // ─── Utilitário ─────────────────────────────────────────────────────────────
   private verifyToken(token: string): PortalTokenPayload {
     try {

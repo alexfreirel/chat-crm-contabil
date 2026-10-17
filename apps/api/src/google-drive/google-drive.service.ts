@@ -996,6 +996,34 @@ export class GoogleDriveService {
     }));
   }
 
+  /** Lista todos os documentos de folha de uma empresa (todas as competências), para o portal do cliente. */
+  async listFolhaPorCnpj(cnpj: string) {
+    const drive = await this.getDriveClientForFiles();
+    const cnpjLimpo = cnpj.replace(/\D/g, '');
+    const res = await drive.files.list({
+      q: `appProperties has { key='origem' and value='${GoogleDriveService.FOLHA_ORIGEM}' } and appProperties has { key='cnpj' and value='${cnpjLimpo}' } and trashed=false`,
+      fields: 'files(id,name,createdTime,modifiedTime,appProperties)',
+      spaces: 'drive',
+      pageSize: 1000,
+      orderBy: 'modifiedTime desc',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    return (res.data.files || []).map(f => ({
+      id: f.id!,
+      name: f.name!,
+      createdTime: f.createdTime || null,
+      modifiedTime: f.modifiedTime || null,
+      tipo: f.appProperties?.tipo || '',
+      competencia: f.appProperties?.competencia || '',
+    }));
+  }
+
+  /** Baixa um documento de folha para o portal do cliente (só se pertencer ao CNPJ informado). */
+  async downloadFolha(fileId: string, cnpj: string) {
+    return this.downloadAnexo(fileId, cnpj, GoogleDriveService.FOLHA_ORIGEM);
+  }
+
   /** Baixa um imposto para o portal do cliente (só se pertencer ao CNPJ informado). */
   async downloadImposto(fileId: string, cnpj: string) {
     return this.downloadAnexo(fileId, cnpj, GoogleDriveService.IMPOSTO_ORIGEM);

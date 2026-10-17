@@ -6,7 +6,7 @@ import {
   CheckCircle2, AlertTriangle, Clock, FileText,
   CreditCard, Building2, User, RefreshCw, MessageCircle,
   ChevronRight, Calendar, DollarSign, ShieldCheck, Download, FileSignature,
-  Palette, Check, LogOut, Receipt,
+  Palette, Check, LogOut, Receipt, Banknote,
 } from 'lucide-react';
 import axios from 'axios';
 import { useTheme } from 'next-themes';
@@ -105,7 +105,17 @@ const IMPOSTOS_TITULOS: Record<string, { titulo: string; grupo: string }> = {
   iss:             { titulo: 'ISS',                             grupo: 'Municipal' },
 };
 
-const MESES_NOME = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+const FOLHA_TITULOS: Record<string, { titulo: string; grupo: string }> = {
+  resumo:        { titulo: 'Resumo da Folha', grupo: 'Folha do mês' },
+  contracheques: { titulo: 'Contra-cheques',  grupo: 'Folha do mês' },
+  fgts:          { titulo: 'FGTS',            grupo: 'Folha do mês' },
+  inss:          { titulo: 'INSS',            grupo: 'Folha do mês' },
+  admissao:      { titulo: 'Admissão',        grupo: 'Movimentações' },
+  rescisao:      { titulo: 'Rescisão',        grupo: 'Movimentações' },
+  ferias:        { titulo: 'Férias',          grupo: 'Movimentações' },
+};
+
+const MESES_NOME =['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const rotuloCompetencia = (c: string) => {
   const [a, m] = c.split('-').map(Number);
   return a && m ? `${MESES_NOME[m - 1]} de ${a}` : c;
@@ -192,7 +202,7 @@ function PaymentChip({ status }: { status: string }) {
 
 // ── Página principal ───────────────────────────────────────────────────────────
 
-type TabId = 'resumo' | 'impostos' | 'documentos' | 'certidoes' | 'contratos' | 'financeiro';
+type TabId = 'resumo' | 'impostos' | 'folha' | 'documentos' | 'certidoes' | 'contratos' | 'financeiro';
 
 const card = 'bg-card rounded-xl border border-border';
 
@@ -204,6 +214,7 @@ export default function PortalClientePage() {
 
   const [info, setInfo]             = useState<PortalInfo | null>(null);
   const [impostos, setImpostos]     = useState<ImpostoArquivo[]>([]);
+  const [folha, setFolha]           = useState<ImpostoArquivo[]>([]);
   const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [parcelas, setParcelas]     = useState<Parcela[]>([]);
   const [certidoes, setCertidoes]   = useState<CertidaoArquivo[]>([]);
@@ -232,9 +243,10 @@ export default function PortalClientePage() {
     async function load() {
       setLoading(true);
       try {
-        const [infoRes, impRes, docRes, parRes, certRes, contrRes] = await Promise.all([
+        const [infoRes, impRes, folhaRes, docRes, parRes, certRes, contrRes] = await Promise.all([
           portalApi.get(`/portal/info/${token}`),
           portalApi.get(`/portal/impostos/${token}`).catch(() => ({ data: [] })),
+          portalApi.get(`/portal/folha/${token}`).catch(() => ({ data: [] })),
           portalApi.get(`/portal/documentos/${token}`),
           portalApi.get(`/portal/parcelas/${token}`),
           portalApi.get(`/portal/certidoes/${token}`).catch(() => ({ data: [] })),
@@ -242,6 +254,7 @@ export default function PortalClientePage() {
         ]);
         setInfo(infoRes.data);
         setImpostos(impRes.data ?? []);
+        setFolha(folhaRes.data ?? []);
         setDocumentos(docRes.data ?? []);
         setParcelas(parRes.data ?? []);
         setCertidoes(certRes.data ?? []);
@@ -301,6 +314,7 @@ export default function PortalClientePage() {
   const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
     { id: 'resumo',      label: 'Resumo',      icon: <Building2 size={18} /> },
     { id: 'impostos',    label: 'Impostos',    icon: <Receipt size={18} /> },
+    { id: 'folha',       label: 'Folha de Pagamento', icon: <Banknote size={18} /> },
     { id: 'documentos',  label: 'Documentos',  icon: <FileText size={18} /> },
     { id: 'certidoes',   label: 'Certidões',   icon: <ShieldCheck size={18} /> },
     { id: 'contratos',   label: 'Contratos',   icon: <FileSignature size={18} /> },
@@ -321,6 +335,14 @@ export default function PortalClientePage() {
     impostosPorCompetencia.set(i.competencia, [...(impostosPorCompetencia.get(i.competencia) || []), i]);
   }
   const competenciasImpostos = [...impostosPorCompetencia.keys()].sort().reverse();
+
+  // Folha de pagamento agrupada por competência (mais recente primeiro)
+  const folhaPorCompetencia = new Map<string, ImpostoArquivo[]>();
+  for (const f of folha) {
+    if (!f.competencia) continue;
+    folhaPorCompetencia.set(f.competencia, [...(folhaPorCompetencia.get(f.competencia) || []), f]);
+  }
+  const competenciasFolha = [...folhaPorCompetencia.keys()].sort().reverse();
 
   const sair = () => router.push('/portal');
 
@@ -561,6 +583,54 @@ export default function PortalClientePage() {
                             </div>
                             <a
                               href={`${API}/portal/impostos/${token}/${i.id}/download`}
+                              className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                            >
+                              <Download size={13} /> Baixar
+                            </a>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* ─── Folha de Pagamento ──────────────────────────────────── */}
+          {tab === 'folha' && (
+            <div className={`${card} overflow-hidden`}>
+              <div className="px-4 py-3 border-b border-border">
+                <h3 className="text-sm font-semibold text-foreground">Folha de Pagamento</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Resumo da folha, contra-cheques, FGTS, INSS, admissões, rescisões e férias disponibilizados pelo escritório.
+                </p>
+              </div>
+              {competenciasFolha.length === 0 ? (
+                <div className="py-10 text-center text-muted-foreground text-sm">Nenhum documento de folha disponível</div>
+              ) : (
+                competenciasFolha.map(comp => (
+                  <div key={comp}>
+                    <div className="px-4 py-2 bg-muted/40 border-y border-border/60 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                      {rotuloCompetencia(comp)}
+                    </div>
+                    <div className="divide-y divide-border/60">
+                      {folhaPorCompetencia.get(comp)!.map(f => {
+                        const info = FOLHA_TITULOS[f.tipo];
+                        return (
+                          <div key={f.id} className="flex items-center gap-3 px-4 py-3.5">
+                            <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                              <Banknote size={16} className="text-primary" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-foreground truncate">{info?.titulo ?? f.nome}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {info?.grupo ?? 'Folha'}
+                                {f.atualizadaEm ? ` · ${fmtDate(f.atualizadaEm)}` : ''}
+                              </p>
+                            </div>
+                            <a
+                              href={`${API}/portal/folha/${token}/${f.id}/download`}
                               className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                             >
                               <Download size={13} /> Baixar
