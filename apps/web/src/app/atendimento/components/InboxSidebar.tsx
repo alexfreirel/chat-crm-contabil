@@ -1,6 +1,6 @@
 'use client';
 
-import { Search, X, PanelLeftClose, Bell, Clock, UserCheck, UserSearch } from 'lucide-react';
+import { Search, X, PanelLeftClose, Bell, Clock, UserCheck } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import {
   requestNotificationPermission,
@@ -124,8 +124,6 @@ export interface InboxSidebarProps {
   onClearBulk?: () => void;
   onBulkAction?: (action: 'close' | 'assign', ids: string[]) => void;
   // Callbacks
-  clientMode: boolean;
-  onSetClientMode: (mode: boolean) => void;
   onSelectConversation: (id: string) => void;
   onSetSearchQuery: (q: string) => void;
   onSetLeadFilter: (f: string) => void;
@@ -163,8 +161,6 @@ export function InboxSidebar({
   onToggleBulk,
   onClearBulk,
   onBulkAction,
-  clientMode,
-  onSetClientMode,
   onSelectConversation,
   onSetSearchQuery,
   onSetLeadFilter,
@@ -181,9 +177,6 @@ export function InboxSidebar({
   const myActiveConvs = (c: ConversationSummary) =>
     (c.status === 'ACTIVE' || c.status === 'MONITORING') && c.assignedAgentId === currentUserId;
 
-  // Contadores de nao-lidos por modo (Leads vs Clientes)
-  const unreadLeadsCount = conversations.filter(c => !c.isClient && (unreadCounts[c.id] ?? 0) > 0).reduce((sum, c) => sum + (unreadCounts[c.id] ?? 0), 0);
-  const unreadClientsCount = conversations.filter(c => c.isClient && (unreadCounts[c.id] ?? 0) > 0).reduce((sum, c) => sum + (unreadCounts[c.id] ?? 0), 0);
 
   // ─── Saved Filters ────────────────────────────────────────────
   // Lazy init evita setState dentro de useEffect (anti-pattern flagged
@@ -246,38 +239,6 @@ export function InboxSidebar({
             aria-label="Fechar painel de inbox"
           >
             <PanelLeftClose size={18} />
-          </button>
-        </div>
-
-        {/* Toggle Leads / Clientes */}
-        <div className="flex rounded-xl border border-border overflow-hidden">
-          <button
-            onClick={() => onSetClientMode(false)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[12px] font-semibold transition-colors ${
-              !clientMode
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'
-            }`}
-          >
-            <UserSearch size={13} />
-            Leads
-            {unreadLeadsCount > 0 && (
-              <span className="ml-1 min-w-[18px] h-[18px] flex items-center justify-center text-[9px] font-bold rounded-full bg-red-500 text-white">{unreadLeadsCount > 99 ? '99+' : unreadLeadsCount}</span>
-            )}
-          </button>
-          <button
-            onClick={() => onSetClientMode(true)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[12px] font-semibold transition-colors ${
-              clientMode
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'
-            }`}
-          >
-            <UserCheck size={13} />
-            Clientes
-            {unreadClientsCount > 0 && (
-              <span className="ml-1 min-w-[18px] h-[18px] flex items-center justify-center text-[9px] font-bold rounded-full bg-red-500 text-white">{unreadClientsCount > 99 ? '99+' : unreadClientsCount}</span>
-            )}
           </button>
         </div>
 
@@ -554,6 +515,11 @@ export function InboxSidebar({
                       )}
                       <div className="mb-1 flex items-center gap-2 flex-wrap">
                         {statusBadge(conv.status, conv.assignedAgentName, conv.leadStage)}
+                        {conv.isClientContabil && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600" title="Cliente contábil">
+                            <UserCheck size={10} /> Cliente
+                          </span>
+                        )}
                         {/* Badge SLA: aguardando resposta há mais de 15min */}
                         {(() => {
                           const unread = unreadCounts[conv.id] || 0;

@@ -33,6 +33,7 @@ export interface ConversationSummary {
   activeTask?: ActiveTask | null;
   hasNotes?: boolean;
   isClient?: boolean;
+  isClientContabil?: boolean;
 }
 
 export interface MessageReaction {

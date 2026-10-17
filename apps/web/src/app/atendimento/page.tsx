@@ -104,8 +104,6 @@ export default function Dashboard() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [userInboxes, setUserInboxes] = useState<any[]>([]);
   const [selectedInboxId, setSelectedInboxId] = useState<string | null>(null);
-  const [clientMode, setClientMode] = useState(false); // false = Leads, true = Clientes
-  const clientModeRef = useRef(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [msgTotalPages, setMsgTotalPages] = useState(1);
@@ -266,7 +264,6 @@ export default function Dashboard() {
 
   // Keep refs in sync
   useEffect(() => { selectedInboxIdRef.current = selectedInboxId; }, [selectedInboxId]);
-  useEffect(() => { clientModeRef.current = clientMode; }, [clientMode]);
   useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
   useEffect(() => { currentUserIdRef.current = currentUserId; }, [currentUserId]);
 
@@ -556,7 +553,6 @@ export default function Dashboard() {
       const res = await api.get('/conversations', {
         params: {
           inboxId: inboxId || undefined,
-          clientMode: String(clientModeRef.current),
         },
         // silent=true: chamadas de background (inboxUpdate) não disparam redirect global de 401
         ...( silent ? { _silent401: true } as any : {} ),
@@ -852,14 +848,14 @@ export default function Dashboard() {
       .catch(() => {}); // falha silenciosa — badges partem do zero se API indisponível
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Initial data load + refetch on inbox filter change or clientMode change
+  // Initial data load + refetch on inbox filter change
   useEffect(() => {
     fetchInboxes(true);
     fetchConversations(selectedInboxId, true);
     fetchAdiadoConversations(selectedInboxId);
     fetchPendingTransfers(true);
     fetchSpecialists(true);
-  }, [fetchConversations, fetchAdiadoConversations, fetchPendingTransfers, selectedInboxId, clientMode]);
+  }, [fetchConversations, fetchAdiadoConversations, fetchPendingTransfers, selectedInboxId]);
 
   // Polling de transferências pendentes (30s) — resiliência caso o socket perca o evento
   useEffect(() => {
@@ -875,13 +871,13 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchConversations]);
 
-  // Ao trocar clientMode: deseleciona conversa ativa para evitar contexto errado
+  // Ao montar: seleciona a conversa pedida (se houver)
   const pendingOpenConvRef = useRef<string | null>(null);
   useEffect(() => {
     // Se a troca de aba veio de "abrir contato", seleciona a conversa pedida em vez de limpar
     setSelectedId(pendingOpenConvRef.current);
     pendingOpenConvRef.current = null;
-  }, [clientMode]);
+  }, []);
 
   // Canned responses — fetch once on mount (não depende do inbox)
   useEffect(() => {
@@ -910,12 +906,6 @@ export default function Dashboard() {
       if (lead?.stage === 'PERDIDO') {
         await api.patch(`/conversations/${convId}/reopen`).catch(() => {});
         await api.patch(`/conversations/${convId}/assign`).catch(() => {});
-      }
-      const isClientLead = (lead?.clientes_contabil?.length ?? 0) > 0;
-      if (lead && isClientLead !== clientModeRef.current) {
-        pendingOpenConvRef.current = convId; // o efeito de troca de aba abre depois do refetch
-        setClientMode(isClientLead);
-        return;
       }
       await fetchConversations(selectedInboxIdRef.current, true);
       setSelectedId(convId);
@@ -2261,8 +2251,6 @@ export default function Dashboard() {
         onSelectConversation={setSelectedId}
         onSetSearchQuery={setSearchQuery}
         onSetLeadFilter={setLeadFilter}
-        clientMode={clientMode}
-        onSetClientMode={(mode) => { setClientMode(mode); }}
         onSetSelectedInboxId={setSelectedInboxId}
         onSetInboxOpen={setInboxOpen}
         onSetShowNotifBanner={setShowNotifBanner}

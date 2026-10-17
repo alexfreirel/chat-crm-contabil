@@ -43,7 +43,13 @@ export class ConversationsService {
         stage: { notIn: ['PERDIDO'] },
       };
     } else {
-      where.lead = { stage: { notIn: ['PERDIDO'] } };
+      // Sem filtro (lista unificada): leads ativos + todos os clientes contábeis
+      where.lead = {
+        OR: [
+          { clientes_contabil: { some: {} } },
+          { stage: { notIn: ['PERDIDO'] } },
+        ],
+      };
     }
 
     // ─── Controle de acesso ────────────────────────────────────────────
@@ -58,7 +64,7 @@ export class ConversationsService {
         where,
         orderBy: { last_message_at: 'desc' },
         include: {
-          lead: { select: { id: true, name: true, phone: true, email: true, stage: true, stage_entered_at: true, profile_picture_url: true, tags: true, is_client: true, became_client_at: true } },
+          lead: { select: { id: true, name: true, phone: true, email: true, stage: true, stage_entered_at: true, profile_picture_url: true, tags: true, is_client: true, became_client_at: true, clientes_contabil: { select: { id: true }, take: 1 } } },
           messages: { orderBy: { created_at: 'desc' }, take: 1, include: { media: true } },
           assigned_user: { select: { id: true, name: true } },
           tasks: {
@@ -125,6 +131,7 @@ export class ConversationsService {
       leadTags: (c.lead as any)?.tags || [],
       stageEnteredAt: (c.lead as any)?.stage_entered_at?.toISOString() || null,
       isClient: (c.lead as any)?.is_client ?? false,
+      isClientContabil: ((c.lead as any)?.clientes_contabil?.length ?? 0) > 0,
       becameClientAt: (c.lead as any)?.became_client_at?.toISOString() || null,
       nextStep: (c as any).next_step || null,
       activeTask: (c as any).tasks?.[0] ? {

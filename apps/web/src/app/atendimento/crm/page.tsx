@@ -311,6 +311,12 @@ function LeadCard({
             NOVO
           </span>
         )}
+        {/* Badge Cliente (lead já convertido em cliente) */}
+        {lead.is_client && (
+          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 text-[9px] font-bold border border-emerald-500/30">
+            Cliente
+          </span>
+        )}
         {/* Badge IA ou Humano */}
         {conv && (
           <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold border ${
@@ -1544,14 +1550,8 @@ export default function CrmPage() {
       return ta - tb;
     });
 
-  // Colunas baseadas em ai_mode (IA ativa) + is_client:
-  // Inicial Leads      → IA atendendo leads       (ai_mode=true,  is_client=false)
-  // Inicial Clientes   → IA atendendo clientes    (ai_mode=true,  is_client=true)
-  // Qualificando Leads → IA qualificou, humano    (ai_mode=false, is_client=false)
-  // Atendimento Clientes → humano atendendo cliente (ai_mode=false, is_client=true)
   const KANBAN_COLUMNS = [
-    { id: 'QUALIFICANDO',    label: 'Leads em Atendimento',    color: '#3b82f6', emoji: '👤' },
-    { id: 'EM_ATENDIMENTO',  label: 'Clientes em Atendimento', color: '#10b981', emoji: '👤' },
+    { id: 'EM_ATENDIMENTO',  label: 'Em Atendimento', color: '#10b981', emoji: '👤' },
   ];
 
   const getStageLeads = (stageId: string) =>
@@ -1561,10 +1561,7 @@ export default function CrmPage() {
     sortLeads(filteredLeads.filter(l => {
       const conv = l.conversations?.[0];
       const aiMode = conv?.ai_mode ?? true; // sem conversa: IA vai atender
-      const isClient = !!l.is_client;
-      if (col.id === 'QUALIFICANDO')    return !isClient && !aiMode;
-      if (col.id === 'EM_ATENDIMENTO')  return isClient && !aiMode;
-      return false;
+      return !aiMode; // leads e clientes na mesma coluna
     }));
 
   const moveLeadToColumn = async (leadId: string, col: typeof KANBAN_COLUMNS[number]) => {
@@ -1572,7 +1569,7 @@ export default function CrmPage() {
     if (!lead) return;
     const conv = lead.conversations?.[0];
     const newAiMode = false;
-    const newIsClient = col.id === 'EM_ATENDIMENTO';
+    const newIsClient = !!lead.is_client; // a coluna única não altera se é lead ou cliente
 
     // Atualização otimista imediata
     setLeads(cur => cur.map(l => l.id === leadId ? {
