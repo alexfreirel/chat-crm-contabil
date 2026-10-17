@@ -254,7 +254,8 @@ export class GoogleDriveController {
   ) {
     if (!file) throw new BadRequestException('Arquivo é obrigatório');
     if (!/^\d{14}$/.test((body.cnpj || '').replace(/\D/g, ''))) throw new BadRequestException('CNPJ inválido');
-    if (!['cnd', 'fgts', 'trabalhista', 'falencia', 'estadual', 'municipal'].includes(body.tipo)) {
+    // 'alvara' (Alvará de Funcionamento) usa a mesma pasta e o mesmo fluxo das certidões
+    if (!['cnd', 'fgts', 'trabalhista', 'falencia', 'estadual', 'municipal', 'alvara'].includes(body.tipo)) {
       throw new BadRequestException('Tipo de certidão inválido');
     }
     try {

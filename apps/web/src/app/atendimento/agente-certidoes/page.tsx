@@ -19,10 +19,13 @@ interface CnpjEntry { cnpj: string; nome: string; clienteId?: string; }
 type PortalTipo = 'cnd' | 'fgts' | 'trabalhista' | 'falencia' | 'estadual' | 'municipal';
 
 interface CertidaoCol {
-  tipo: PortalTipo;
+  tipo: PortalTipo | 'alvara';
   titulo: string;
   subtitulo: string;
 }
+
+// Alvará de Funcionamento: mesmo fluxo das certidões (um arquivo por empresa, "Atualizar" substitui)
+const ALVARA: CertidaoCol = { tipo: 'alvara', titulo: 'Alvará de Funcionamento', subtitulo: 'Prefeitura' };
 
 const CERTIDOES: CertidaoCol[] = [
   { tipo: 'cnd',         titulo: 'CND Federal',  subtitulo: 'Receita Federal' },
@@ -72,7 +75,7 @@ function fmtCnpj(c: string) {
 
 function limparCnpj(c: string) { return c.replace(/\D/g, ''); }
 
-function statusKey(cnpj: string, tipo: PortalTipo) { return `${cnpj}|${tipo}`; }
+function statusKey(cnpj: string, tipo: CertidaoCol['tipo']) { return `${cnpj}|${tipo}`; }
 
 function authHeaders(): Record<string, string> {
   return { Authorization: `Bearer ${localStorage.getItem('token')}` };
@@ -631,6 +634,65 @@ export default function AgenteCertidoesPage() {
                       >
                         <Upload size={12} /> Anexar
                       </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Alvará de Funcionamento */}
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            <div className="px-5 py-4 border-b border-border">
+              <span className="font-semibold">Alvará de Funcionamento</span>
+              <p className="text-[12px] text-muted-foreground mt-0.5">
+                Um alvará por empresa. Ao atualizar, o arquivo novo substitui o anterior (o Drive guarda o histórico de versões).
+              </p>
+            </div>
+
+            {!cnpjs.length ? (
+              <div className="text-center py-10 text-muted-foreground text-[13px]">Nenhuma empresa cadastrada.</div>
+            ) : (
+              <div className="divide-y divide-border/50">
+                {cnpjs.map(c => {
+                  const key = statusKey(c.cnpj, ALVARA.tipo);
+                  const enviando = !!uploading[key];
+                  const anexo = ultimaAnexada.get(key);
+                  return (
+                    <div key={c.cnpj} className="px-5 py-3 flex items-center gap-4 hover:bg-muted/20 transition-colors">
+                      <div className="w-[260px] shrink-0 min-w-0">
+                        <div className="text-[13px] font-medium truncate">{c.nome || '—'}</div>
+                        <div className="text-[11px] text-muted-foreground font-mono">{fmtCnpj(c.cnpj)}</div>
+                      </div>
+                      <div className="flex-1 min-w-0 text-[12px] text-muted-foreground">
+                        {anexo
+                          ? <>Anexado em {new Date((anexo.modifiedTime || anexo.createdTime)!).toLocaleDateString('pt-BR')}</>
+                          : 'Nenhum alvará anexado'}
+                      </div>
+                      <div className="shrink-0 inline-flex items-center gap-1.5">
+                        <button
+                          onClick={() => iniciarAnexo(c, ALVARA)}
+                          disabled={enviando}
+                          className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
+                          title={anexo ? 'Substituir pelo alvará novo' : 'Anexar alvará'}
+                        >
+                          {enviando
+                            ? <><Loader2 size={12} className="animate-spin" /> Enviando…</>
+                            : anexo
+                              ? <><RefreshCw size={12} /> Atualizar</>
+                              : <><Upload size={12} /> Anexar</>
+                          }
+                        </button>
+                        {anexo && (
+                          <button
+                            onClick={() => verAnexo(anexo.id)}
+                            className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                            title="Abrir o alvará anexado"
+                          >
+                            <ExternalLink size={12} /> Ver
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
