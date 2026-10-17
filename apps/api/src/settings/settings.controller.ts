@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, UseGuards, Request, Param, Put, Logger, UseInterceptors, UploadedFile, Res, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, UseGuards, Request, Param, Put, Logger, UseInterceptors, UploadedFile, Res, NotFoundException, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -61,6 +61,50 @@ export class SettingsController {
       create: { key: 'ACCESS_MATRIX', value },
     });
     return clean;
+  }
+
+  // ─── Análise de Clientes (PGDAS-D) ─────────────────────
+  // Uma análise por CNPJ, guardada como JSON em GlobalSetting (chave ANALISE_PGDAS:<cnpj>).
+  // Os PDFs são lidos no navegador; aqui só chegam os valores extraídos e o resumo para a lista.
+
+  @Get('analise-pgdas')
+  async listAnalisesPgdas() {
+    const rows = await this.prisma.globalSetting.findMany({ where: { key: { startsWith: 'ANALISE_PGDAS:' } } });
+    return rows.map(r => {
+      let resumo: unknown = null;
+      try { resumo = JSON.parse(r.value)?.resumo ?? null; } catch { /* ignora */ }
+      return { cnpj: r.key.slice('ANALISE_PGDAS:'.length), resumo, updated_at: r.updated_at };
+    });
+  }
+
+  @Get('analise-pgdas/:cnpj')
+  async getAnalisePgdas(@Param('cnpj') cnpj: string) {
+    const key = `ANALISE_PGDAS:${String(cnpj).replace(/\D/g, '')}`;
+    const row = await this.prisma.globalSetting.findUnique({ where: { key } });
+    if (!row?.value) return {};
+    try { return { ...JSON.parse(row.value), updated_at: row.updated_at }; } catch { return {}; }
+  }
+
+  @Put('analise-pgdas/:cnpj')
+  async saveAnalisePgdas(@Param('cnpj') cnpj: string, @Body() body: { dados?: unknown; obs?: unknown; resumo?: unknown }) {
+    const digits = String(cnpj).replace(/\D/g, '');
+    if (digits.length !== 14) throw new BadRequestException('CNPJ inválido');
+    const value = JSON.stringify({
+      dados: body?.dados ?? null,
+      obs: typeof body?.obs === 'string' ? body.obs.slice(0, 10000) : '',
+      resumo: body?.resumo ?? null,
+    });
+    if (value.length > 500_000) throw new BadRequestException('Análise grande demais');
+    const key = `ANALISE_PGDAS:${digits}`;
+    const row = await this.prisma.globalSetting.upsert({ where: { key }, update: { value }, create: { key, value } });
+    return { ok: true, updated_at: row.updated_at };
+  }
+
+  @Delete('analise-pgdas/:cnpj')
+  async deleteAnalisePgdas(@Param('cnpj') cnpj: string) {
+    const key = `ANALISE_PGDAS:${String(cnpj).replace(/\D/g, '')}`;
+    await this.prisma.globalSetting.deleteMany({ where: { key } });
+    return { ok: true };
   }
 
   // ─── Generic Settings ─────────────────────────────────
