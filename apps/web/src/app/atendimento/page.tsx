@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback, useMemo, Fragment } from 'rea
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, UserCheck, PanelLeftOpen, CornerDownLeft, Inbox, Pencil, Search, ChevronDown, ClipboardList, ArrowLeft, MoreVertical, Clock, StickyNote } from 'lucide-react';
+import { MessageSquare, Send, Download, Mic, FileText, Bot, BotOff, Paperclip, X, CheckCheck, Check, Eye, XCircle, Trash2, Reply, UserCheck, PanelLeftOpen, CornerDownLeft, Inbox, Pencil, Search, ChevronDown, ClipboardList, ArrowLeft, MoreVertical, Clock, StickyNote, ChevronUp } from 'lucide-react';
 
 import { EventModal, type UserOption } from '@/components/EventModal';
 import { AudioRecorder } from '@/components/AudioRecorder';
@@ -198,6 +198,7 @@ export default function Dashboard() {
   // Busca dentro da conversa
   const [msgSearchOpen, setMsgSearchOpen] = useState(false);
   const [msgSearchQuery, setMsgSearchQuery] = useState('');
+  const [msgMatchPos, setMsgMatchPos] = useState(0); // 0 = ocorrência mais recente
   const msgSearchInputRef = useRef<HTMLInputElement>(null);
   // Encaminhar mensagem
   const [forwardMsg, setForwardMsg] = useState<{ id: string; text: string } | null>(null);
@@ -2143,11 +2144,33 @@ export default function Dashboard() {
   const isClosed = selected?.status === 'CLOSED';
 
   // Mensagens filtradas pela busca dentro da conversa
-  const displayMessages = useMemo(() => {
-    if (!msgSearchOpen || !msgSearchQuery.trim()) return messages;
+  // A conversa continua completa; a busca navega entre as ocorrências (setas)
+  const displayMessages = messages;
+  const msgMatches = useMemo(() => {
+    if (!msgSearchOpen || !msgSearchQuery.trim()) return [] as string[];
     const q = msgSearchQuery.toLowerCase().trim();
-    return messages.filter(m => m.text?.toLowerCase().includes(q));
+    return messages.filter(m => m.text?.toLowerCase().includes(q)).map(m => m.id);
   }, [messages, msgSearchOpen, msgSearchQuery]);
+  const msgMatchCurrent = msgMatches.length > 0
+    ? msgMatches.length - 1 - Math.min(msgMatchPos, msgMatches.length - 1)
+    : -1;
+
+  useEffect(() => {
+    if (msgMatchCurrent < 0) return;
+    const el = document.getElementById(`msg-${msgMatches[msgMatchCurrent]}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('ring-2', 'ring-primary/60');
+    return () => { el.classList.remove('ring-2', 'ring-primary/60'); };
+  }, [msgMatches, msgMatchCurrent]);
+
+  const goToMatch = (dir: 'prev' | 'next') => {
+    if (msgMatches.length === 0) return;
+    const n = msgMatches.length;
+    const pos = Math.min(msgMatchPos, n - 1);
+    // prev = ocorrência mais antiga; next = mais recente
+    setMsgMatchPos(dir === 'prev' ? (pos + 1) % n : (pos - 1 + n) % n);
+  };
 
   const handleImageDownload = async (src: string) => {
     try {
@@ -2439,16 +2462,37 @@ export default function Dashboard() {
                   ref={msgSearchInputRef}
                   type="text"
                   value={msgSearchQuery}
-                  onChange={e => setMsgSearchQuery(e.target.value)}
+                  onChange={e => { setMsgSearchQuery(e.target.value); setMsgMatchPos(0); }}
                   placeholder="Buscar nas mensagens..."
                   className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
-                  onKeyDown={e => { if (e.key === 'Escape') { setMsgSearchOpen(false); setMsgSearchQuery(''); } }}
+                  onKeyDown={e => {
+                    if (e.key === 'Escape') { setMsgSearchOpen(false); setMsgSearchQuery(''); }
+                    else if (e.key === 'Enter') { e.preventDefault(); goToMatch(e.shiftKey ? 'next' : 'prev'); }
+                  }}
                 />
-                {msgSearchQuery && (
+                {msgSearchQuery.trim() && (
                   <span className="text-[10px] text-muted-foreground shrink-0">
-                    {displayMessages.length} resultado{displayMessages.length !== 1 ? 's' : ''}
+                    {msgMatches.length === 0
+                      ? 'Nenhum resultado'
+                      : `${msgMatchCurrent + 1} de ${msgMatches.length}`}
                   </span>
                 )}
+                <button
+                  onClick={() => goToMatch('prev')}
+                  disabled={msgMatches.length < 2}
+                  className="p-1 text-muted-foreground hover:text-foreground transition-colors shrink-0 disabled:opacity-30"
+                  title="Resultado anterior (Enter)"
+                >
+                  <ChevronUp size={16} />
+                </button>
+                <button
+                  onClick={() => goToMatch('next')}
+                  disabled={msgMatches.length < 2}
+                  className="p-1 text-muted-foreground hover:text-foreground transition-colors shrink-0 disabled:opacity-30"
+                  title="Próximo resultado (Shift+Enter)"
+                >
+                  <ChevronDown size={16} />
+                </button>
                 <button
                   onClick={() => { setMsgSearchOpen(false); setMsgSearchQuery(''); }}
                   className="p-1 text-muted-foreground hover:text-foreground transition-colors shrink-0"
