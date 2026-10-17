@@ -81,7 +81,7 @@ export default function WorkspacePage() {
   }
 
   if (loading) return (
-    <div className="flex items-center justify-center h-full">
+    <div className="ws-compat flex items-center justify-center h-full">
       <span className="loading loading-spinner loading-lg" />
     </div>
   );
@@ -99,9 +99,9 @@ export default function WorkspacePage() {
   const ficha = lead?.ficha_contabil;
 
   return (
-    <div className="flex flex-col h-full bg-base-100">
+    <div className="ws-compat flex flex-col h-full bg-background">
       {/* Header */}
-      <div className="flex items-start gap-4 px-6 py-4 border-b border-base-300 bg-base-200/30">
+      <div className="flex items-start gap-4 px-6 py-4 border-b border-border bg-card">
         {/* Botão voltar */}
         <button
           onClick={() => router.push('/atendimento/clientes')}
@@ -158,7 +158,7 @@ export default function WorkspacePage() {
       </div>
 
       {/* Abas */}
-      <div className="flex border-b border-base-300 bg-base-100 overflow-x-auto">
+      <div className="flex border-b border-border bg-card overflow-x-auto">
         {TABS.map(tab => (
           <button
             key={tab.id}

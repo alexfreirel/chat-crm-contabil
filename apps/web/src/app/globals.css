@@ -656,3 +656,127 @@
     animation: none !important;
   }
 }
+
+/* ============================================================
+   WORKSPACE DO CLIENTE CONTÁBIL — camada de compatibilidade
+   O workspace foi escrito com classes no estilo daisyUI (btn, input,
+   card, modal...), mas o projeto não usa daisyUI. Aqui elas são
+   mapeadas para os tokens do tema, igual à lista de Clientes Contábeis.
+   ============================================================ */
+
+@theme {
+  --color-base-100: var(--bg-primary);
+  --color-base-200: var(--bg-secondary);
+  --color-base-300: var(--border-default);
+  --color-base-content: var(--text-primary);
+  --color-primary-content: #ffffff;
+  --color-success: #10b981;
+  --color-warning: #d97706;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
+}
+
+.ws-compat .btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: .375rem;
+  padding: .5rem 1rem; border-radius: .5rem; border: 1px solid transparent;
+  font-size: .875rem; font-weight: 500; line-height: 1.25; cursor: pointer;
+  transition: background-color .15s, opacity .15s, border-color .15s;
+}
+.ws-compat .btn:disabled { opacity: .5; cursor: not-allowed; }
+.ws-compat .btn-sm { padding: .375rem .75rem; font-size: .8125rem; }
+.ws-compat .btn-xs { padding: .125rem .5rem; font-size: .75rem; }
+.ws-compat .btn-primary { background: var(--accent-primary); color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.ws-compat .btn-primary:hover:not(:disabled) { opacity: .9; }
+.ws-compat .btn-success { background: #10b981; color: #fff; }
+.ws-compat .btn-error { background: #ef4444; color: #fff; }
+.ws-compat .btn-success:hover:not(:disabled),
+.ws-compat .btn-error:hover:not(:disabled) { opacity: .9; }
+.ws-compat .btn-ghost { background: transparent; }
+.ws-compat .btn-ghost:hover:not(:disabled) { background: var(--bg-hover); }
+.ws-compat .btn-outline { background: transparent; border-color: var(--border-default); }
+.ws-compat .btn-outline:hover:not(:disabled) { background: var(--bg-hover); }
+
+.ws-compat .input,
+.ws-compat .select,
+.ws-compat .textarea {
+  width: 100%; border: 1px solid var(--border-default); background: var(--bg-secondary);
+  color: var(--text-primary); border-radius: .5rem; padding: .5rem .75rem; font-size: .875rem;
+}
+.ws-compat .input-sm,
+.ws-compat .select-sm { padding: .375rem .625rem; font-size: .8125rem; }
+.ws-compat .input:focus,
+.ws-compat .select:focus,
+.ws-compat .textarea:focus { outline: 2px solid var(--accent-primary); outline-offset: -1px; }
+.ws-compat .checkbox, .ws-compat .toggle { accent-color: var(--accent-primary); width: 1rem; height: 1rem; cursor: pointer; }
+.ws-compat .checkbox-xs { width: .875rem; height: .875rem; }
+
+.ws-compat .form-control { display: flex; flex-direction: column; gap: .25rem; }
+.ws-compat .label { display: flex; align-items: center; justify-content: space-between; }
+.ws-compat .label-text { font-size: .75rem; color: var(--text-secondary); }
+
+.ws-compat .card { border: 1px solid var(--border-default); border-radius: .75rem; }
+.ws-compat .card-body { display: flex; flex-direction: column; }
+
+.ws-compat .badge {
+  display: inline-flex; align-items: center; border-radius: 9999px; border: 1px solid transparent;
+  padding: .125rem .625rem; font-size: .75rem; font-weight: 500; background: var(--bg-tertiary);
+}
+.ws-compat .badge-sm { font-size: .6875rem; padding: .0625rem .5rem; }
+.ws-compat .badge-xs { font-size: .625rem; padding: 0 .375rem; }
+.ws-compat .badge-success { background: rgba(16,185,129,.15); color: #047857; }
+.ws-compat .badge-warning { background: rgba(245,158,11,.18); color: #b45309; }
+.ws-compat .badge-error { background: rgba(239,68,68,.15); color: #b91c1c; }
+.ws-compat .badge-info { background: rgba(59,130,246,.15); color: #1d4ed8; }
+.ws-compat .badge-ghost { background: var(--bg-tertiary); color: var(--text-muted); }
+.ws-compat .badge-outline { background: transparent; border-color: var(--border-default); }
+
+.ws-compat .alert {
+  display: flex; align-items: center; gap: .5rem; border-radius: .5rem; padding: .75rem 1rem;
+  border: 1px solid var(--border-default); background: var(--bg-tertiary);
+}
+.ws-compat .alert-error { background: rgba(239,68,68,.1); border-color: rgba(239,68,68,.3); color: #b91c1c; }
+.ws-compat .alert-warning { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.35); color: #92400e; }
+.ws-compat .alert-success { background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.3); color: #047857; }
+.ws-compat .alert-info { background: rgba(59,130,246,.1); border-color: rgba(59,130,246,.3); color: #1d4ed8; }
+
+.ws-compat .modal {
+  position: fixed; inset: 0; z-index: 50; display: none; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.45);
+}
+.ws-compat .modal-open { display: flex; }
+.ws-compat .modal-backdrop { position: absolute; inset: 0; }
+.ws-compat .modal-box {
+  position: relative; z-index: 1; width: calc(100% - 2rem); max-width: 32rem; padding: 1.5rem;
+  background: var(--bg-secondary); border: 1px solid var(--border-default); border-radius: .75rem;
+  box-shadow: 0 20px 40px rgba(0,0,0,.2);
+}
+.ws-compat .modal-action { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
+
+@keyframes ws-spin { to { transform: rotate(360deg); } }
+.ws-compat .loading {
+  display: inline-block; width: 1.5rem; height: 1.5rem; border-radius: 9999px;
+  border: 2px solid currentColor; border-top-color: transparent; animation: ws-spin .7s linear infinite;
+}
+.ws-compat .loading-xs { width: .875rem; height: .875rem; }
+.ws-compat .loading-lg { width: 2.5rem; height: 2.5rem; }
+
+.ws-compat .progress {
+  appearance: none; -webkit-appearance: none; height: .5rem; border-radius: 9999px; overflow: hidden;
+  border: 0; background: var(--bg-tertiary); color: var(--accent-primary);
+}
+.ws-compat .progress::-webkit-progress-bar { background: var(--bg-tertiary); }
+.ws-compat .progress::-webkit-progress-value { background: currentColor; border-radius: 9999px; }
+.ws-compat .progress::-moz-progress-bar { background: currentColor; border-radius: 9999px; }
+.ws-compat .progress-success { color: #10b981; }
+.ws-compat .progress-warning { color: #f59e0b; }
+.ws-compat .progress-error { color: #ef4444; }
+
+.ws-compat .tabs { display: flex; gap: .25rem; }
+.ws-compat .tabs-boxed { background: var(--bg-tertiary); padding: .25rem; border-radius: .5rem; }
+.ws-compat .tab {
+  padding: .375rem .75rem; border-radius: .5rem; font-size: .875rem; color: var(--text-muted);
+  cursor: pointer; transition: background-color .15s, color .15s;
+}
+.ws-compat .tab-sm { padding: .25rem .625rem; font-size: .8125rem; }
+.ws-compat .tab:hover { color: var(--text-primary); }
+.ws-compat .tab-active { background: var(--accent-primary); color: #fff !important; }
