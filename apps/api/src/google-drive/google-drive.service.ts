@@ -889,6 +889,113 @@ export class GoogleDriveService {
     }));
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  //  Folha de pagamento — pasta/EMPRESA - CNPJ/Folha de Pagamento/AAAA-MM/arquivo
+  // ═══════════════════════════════════════════════════════════════
+
+  private static readonly FOLHA_ORIGEM = 'agente-folha';
+  private static readonly FOLHA_PASTA = 'Folha de Pagamento';
+
+  /**
+   * Anexa um documento da folha de uma competência (AAAA-MM). Para os tipos mensais há um
+   * arquivo por empresa/competência/tipo (reenviar atualiza no mesmo lugar). Para admissão,
+   * rescisão e férias (`acumula`) cada envio vira um arquivo novo, pois pode haver vários no mês.
+   */
+  async uploadFolha(
+    file: { buffer: Buffer; originalname: string; mimetype: string },
+    meta: { cnpj: string; nome: string; tipo: string; titulo: string; competencia: string; acumula: boolean },
+  ) {
+    const rootId = await this.getEmpresasFolderId();
+    if (!rootId) throw new Error('Pasta Documentos Empresas não configurada no Google Drive');
+
+    const cnpj = meta.cnpj.replace(/\D/g, '');
+    const cnpjFmt = cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+    const empresaFolder = await this.ensureCertidaoEmpresaFolder(rootId, meta.nome || cnpj, cnpjFmt);
+    const folhaFolder = await this.ensureChildFolder(empresaFolder, GoogleDriveService.FOLHA_PASTA);
+    const competenciaFolder = await this.ensureChildFolder(folhaFolder, meta.competencia);
+
+    const ext = (file.originalname.match(/\.[a-zA-Z0-9]{1,6}$/) || ['.pdf'])[0].toLowerCase();
+    const sufixo = meta.acumula ? ` - ${new Date().toISOString().slice(11, 19).replace(/:/g, '')}` : '';
+    const fileName = `${meta.titulo} - ${cnpj} - ${meta.competencia}${sufixo}${ext}`.replace(/[\\/]/g, '-');
+
+    const { Readable } = await import('stream');
+    const drive = await this.getDriveClientForFiles();
+    const mimeType = file.mimetype || 'application/pdf';
+    const fields = 'id,name,webViewLink,createdTime,modifiedTime';
+
+    let existingId: string | undefined;
+    if (!meta.acumula) {
+      const existing = await drive.files.list({
+        q: `'${competenciaFolder}' in parents and trashed=false and appProperties has { key='origem' and value='${GoogleDriveService.FOLHA_ORIGEM}' } and appProperties has { key='tipo' and value='${meta.tipo}' }`,
+        fields: 'files(id)',
+        spaces: 'drive',
+        orderBy: 'modifiedTime desc',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      });
+      existingId = existing.data.files?.[0]?.id || undefined;
+    }
+
+    const res = existingId
+      ? await drive.files.update({
+          fileId: existingId,
+          requestBody: { name: fileName },
+          media: { mimeType, body: Readable.from(file.buffer) },
+          fields,
+          supportsAllDrives: true,
+        })
+      : await drive.files.create({
+          requestBody: {
+            name: fileName,
+            parents: [competenciaFolder],
+            appProperties: {
+              origem: GoogleDriveService.FOLHA_ORIGEM,
+              cnpj,
+              tipo: meta.tipo,
+              competencia: meta.competencia,
+            },
+          },
+          media: { mimeType, body: Readable.from(file.buffer) },
+          fields,
+          supportsAllDrives: true,
+        });
+    return {
+      id: res.data.id!,
+      name: res.data.name!,
+      webViewLink: res.data.webViewLink || null,
+      createdTime: res.data.createdTime || null,
+      modifiedTime: res.data.modifiedTime || null,
+      cnpj,
+      tipo: meta.tipo,
+      competencia: meta.competencia,
+      atualizada: !!existingId,
+    };
+  }
+
+  /** Lista os documentos de folha anexados de uma competência (AAAA-MM), todas as empresas. */
+  async listFolha(competencia: string) {
+    const drive = await this.getDriveClientForFiles();
+    const res = await drive.files.list({
+      q: `appProperties has { key='origem' and value='${GoogleDriveService.FOLHA_ORIGEM}' } and appProperties has { key='competencia' and value='${competencia}' } and trashed=false`,
+      fields: 'files(id,name,webViewLink,createdTime,modifiedTime,appProperties)',
+      spaces: 'drive',
+      pageSize: 1000,
+      orderBy: 'modifiedTime desc',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    return (res.data.files || []).map(f => ({
+      id: f.id!,
+      name: f.name!,
+      webViewLink: f.webViewLink || null,
+      createdTime: f.createdTime || null,
+      modifiedTime: f.modifiedTime || null,
+      cnpj: f.appProperties?.cnpj || '',
+      tipo: f.appProperties?.tipo || '',
+      competencia: f.appProperties?.competencia || competencia,
+    }));
+  }
+
   /** Baixa um imposto para o portal do cliente (só se pertencer ao CNPJ informado). */
   async downloadImposto(fileId: string, cnpj: string) {
     return this.downloadAnexo(fileId, cnpj, GoogleDriveService.IMPOSTO_ORIGEM);
@@ -916,6 +1023,7 @@ export class GoogleDriveService {
       GoogleDriveService.CERTIDAO_ORIGEM,
       GoogleDriveService.CONTRATO_ORIGEM,
       GoogleDriveService.IMPOSTO_ORIGEM,
+      GoogleDriveService.FOLHA_ORIGEM,
     ]);
   }
 

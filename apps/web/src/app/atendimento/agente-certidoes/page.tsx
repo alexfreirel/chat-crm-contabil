@@ -345,10 +345,10 @@ export default function AgenteCertidoesPage() {
           <div>
             <div className="flex items-center gap-2">
               <ShieldCheck size={22} className="text-primary" />
-              <h1 className="text-2xl font-bold">Certidões e Contratos</h1>
+              <h1 className="text-2xl font-bold">Certidões, Contratos Sociais e Alvarás</h1>
             </div>
             <p className="text-[13px] text-muted-foreground mt-0.5">
-              Certidões PJ (Federal, FGTS, Trabalhista, Falência, Estadual e Municipal) e contratos sociais
+              Certidões PJ (Federal, FGTS, Trabalhista, Falência, Estadual e Municipal), contratos sociais e alvarás
             </p>
           </div>
           <div className="flex items-center gap-3">

@@ -430,7 +430,7 @@ export default function GoogleDriveSettingsPage() {
         </div>
         <div className="text-xs text-muted-foreground space-y-2">
           <p>
-            Em <strong>Certidões e Contratos</strong> e em <strong>Impostos</strong>, o botão <strong>Anexar</strong> de cada
+            Em <strong>Certidões, Contratos Sociais e Alvarás</strong> e em <strong>Impostos</strong>, o botão <strong>Anexar</strong> de cada
             empresa envia o arquivo para a pasta Documentos Empresas, organizado assim:
           </p>
           <div className="bg-background rounded-lg p-3 font-mono text-[11px] space-y-1">

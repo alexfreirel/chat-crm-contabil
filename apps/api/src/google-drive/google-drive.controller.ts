@@ -371,6 +371,50 @@ export class GoogleDriveController {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  //  Folha de pagamento (Folha de Pagamentos)
+  // ═══════════════════════════════════════════════════════════════
+
+  @Get('folha/arquivos')
+  async listFolha(@Query('competencia') competencia: string) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(competencia || '')) throw new BadRequestException('Competência inválida (use AAAA-MM)');
+    const cfg = await this.driveService.getEmpresasConfig();
+    if (!cfg.configured || !cfg.driveReady) return [];
+    try {
+      return await this.driveService.listFolha(competencia);
+    } catch (err: any) {
+      this.logger.warn(`[DRIVE] Erro ao listar folha: ${err.message}`);
+      return [];
+    }
+  }
+
+  @Post('folha/upload')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } }))
+  async uploadFolha(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { cnpj: string; nome?: string; tipo: string; titulo?: string; competencia: string },
+  ) {
+    if (!file) throw new BadRequestException('Arquivo é obrigatório');
+    if (!/^\d{14}$/.test((body.cnpj || '').replace(/\D/g, ''))) throw new BadRequestException('CNPJ inválido');
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(body.competencia || '')) throw new BadRequestException('Competência inválida (use AAAA-MM)');
+    const tiposValidos = ['resumo', 'contracheques', 'fgts', 'inss', 'admissao', 'rescisao', 'ferias'];
+    if (!tiposValidos.includes(body.tipo)) throw new BadRequestException('Tipo de documento da folha inválido');
+    try {
+      return await this.driveService.uploadFolha(file, {
+        cnpj: body.cnpj,
+        nome: body.nome || '',
+        tipo: body.tipo,
+        titulo: (body.titulo || body.tipo).trim(),
+        competencia: body.competencia,
+        // Admissão, rescisão e férias podem ter vários arquivos no mês
+        acumula: ['admissao', 'rescisao', 'ferias'].includes(body.tipo),
+      });
+    } catch (err: any) {
+      this.logger.error(`[DRIVE] Upload de folha falhou: ${err.message}`);
+      throw new BadRequestException(err.message);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   //  Papel Timbrado (Letterhead Template)
   // ═══════════════════════════════════════════════════════════════
 

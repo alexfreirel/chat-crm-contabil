@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Wallet, HelpCircle,
   ChevronRight, Plus, UserPlus, CheckSquare,
   ClipboardList, Sparkles,
-  FileSpreadsheet, Building2, FileText, CalendarDays, Link2, ShieldCheck, Receipt,
+  FileSpreadsheet, Building2, FileText, CalendarDays, Link2, ShieldCheck, Receipt, Banknote,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { API_BASE_URL } from '@/lib/api';
@@ -306,6 +306,13 @@ export function Sidebar() {
       match: (p) => p.startsWith('/atendimento/impostos'),
       show: true,
     },
+    folhaPagamento: {
+      label: 'Folha de Pagamentos',
+      href: '/atendimento/folha-pagamento',
+      icon: <Banknote size={20} strokeWidth={2} />,
+      match: (p) => p.startsWith('/atendimento/folha-pagamento'),
+      show: true,
+    },
     calendarioFiscal: {
       label: 'Calendário Fiscal',
       href: '/atendimento/calendario-fiscal',
@@ -345,7 +352,7 @@ export function Sidebar() {
     {
       id: 'contabil',
       label: 'Contábil',
-      items: [allItems.clientes, allItems.assistente, allItems.agenteFiscal, allItems.agenteCertidoes, allItems.impostos, allItems.agenda].filter(i => i.show),
+      items: [allItems.clientes, allItems.assistente, allItems.agenteFiscal, allItems.agenteCertidoes, allItems.impostos, allItems.folhaPagamento, allItems.agenda].filter(i => i.show),
     },
     {
       id: 'gestao',
