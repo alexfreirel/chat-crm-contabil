@@ -263,7 +263,7 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
 
   async function handleSave() {
     if (!leadId) {
-      setSaveError('❌ Nenhum lead vinculado. Vá até a aba "Contato" e vincule um lead antes de salvar.');
+      setSaveError('❌ Nenhum contato vinculado. Vá até a aba "Contato" e vincule um contato antes de salvar.');
       return;
     }
     setSaving(true);
@@ -400,7 +400,7 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
       {activeSection === 'contato' && (
         <div className="card bg-base-200 border border-base-300">
           <div className="card-body p-4 space-y-4">
-            <h3 className="font-bold text-sm">📞 Contato / Lead Vinculado</h3>
+            <h3 className="font-bold text-sm">📞 Contato Vinculado</h3>
 
             {leadId ? (
               <>
@@ -420,13 +420,13 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
                   <span className="text-xs text-base-content/50">Alterações de contato são gravadas pelo botão Salvar abaixo.</span>
                   <button onClick={() => setShowLinkLead(v => !v)}
                     className="btn btn-ghost btn-sm ml-auto">
-                    🔗 Trocar lead vinculado
+                    🔗 Trocar contato vinculado
                   </button>
                 </div>
 
                 {showLinkLead && (
                   <div className="border-t border-base-300 pt-3 space-y-2">
-                    <p className="text-xs font-semibold text-base-content/60">Buscar outro lead para vincular</p>
+                    <p className="text-xs font-semibold text-base-content/60">Buscar outro contato para vincular</p>
                     <input className="input input-bordered input-sm w-full" placeholder="Nome ou telefone..."
                       value={leadSearch} onChange={e => setLeadSearch(e.target.value)} autoFocus />
                     {leadResults.length > 0 && (
@@ -441,7 +441,7 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
                       </div>
                     )}
                     {leadSearch.length >= 2 && leadResults.length === 0 && (
-                      <p className="text-xs text-base-content/50">Nenhum lead encontrado</p>
+                      <p className="text-xs text-base-content/50">Nenhum contato encontrado</p>
                     )}
                   </div>
                 )}
@@ -449,10 +449,10 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
             ) : (
               <div className="space-y-3">
                 <div className="alert alert-warning py-2 text-sm">
-                  ⚠️ Nenhum lead vinculado a este cliente
+                  ⚠️ Nenhum contato vinculado a este cliente
                 </div>
-                <p className="text-xs text-base-content/60">Vincule um lead existente para habilitar o WhatsApp e o histórico de conversas.</p>
-                <input className="input input-bordered input-sm w-full" placeholder="Buscar lead por nome ou telefone..."
+                <p className="text-xs text-base-content/60">Vincule um contato existente para habilitar o WhatsApp e o histórico de conversas.</p>
+                <input className="input input-bordered input-sm w-full" placeholder="Buscar contato por nome ou telefone..."
                   value={leadSearch} onChange={e => setLeadSearch(e.target.value)} />
                 {leadResults.length > 0 && (
                   <div className="bg-base-100 border border-base-300 rounded-lg max-h-48 overflow-y-auto">
@@ -793,7 +793,7 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
         )}
         {!leadId && !saveError && (
           <div className="alert alert-warning py-2 text-sm">
-            ⚠️ Sem lead vinculado — vá em <strong>📞 Contato</strong> e vincule um lead para habilitar o salvamento.
+            ⚠️ Sem contato vinculado — vá em <strong>📞 Contato</strong> e vincule um contato para habilitar o salvamento.
           </div>
         )}
         <div className="flex items-center gap-3">

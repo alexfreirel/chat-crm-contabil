@@ -24,7 +24,7 @@ type TabId = 'ficha' | 'obrigacoes' | 'timeline';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'ficha', label: 'Ficha', icon: '🏢' },
-  { id: 'obrigacoes', label: 'Obrigações', icon: '📅' },
+  { id: 'obrigacoes', label: 'Tarefas', icon: '📅' },
   { id: 'timeline', label: 'Timeline', icon: '📈' },
 ];
 
@@ -121,7 +121,6 @@ export default function WorkspacePage() {
           <div className="flex flex-wrap gap-3 mt-1 text-sm text-base-content/60">
             <span>📱 {lead?.phone}</span>
             {ficha?.cnpj && <span>🔢 CNPJ: {ficha.cnpj}</span>}
-            <span>📦 {SERVICE_LABELS[data.service_type] || data.service_type}</span>
             {data.regime_tributario && <span>💼 {data.regime_tributario.replace(/_/g, ' ')}</span>}
             {data.accountant && <span>👤 {data.accountant.name}</span>}
           </div>
