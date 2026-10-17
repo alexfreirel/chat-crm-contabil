@@ -1,6 +1,6 @@
 'use client';
 
-import { Search, X, PanelLeftClose, Bell, Clock, UserCheck } from 'lucide-react';
+import { Search, X, PanelLeftClose, Bell, Clock, UserCheck, UserSearch } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import {
   requestNotificationPermission,
@@ -501,13 +501,25 @@ export function InboxSidebar({
                         <span className="font-semibold truncate pl-0.5 text-foreground">
                           {conv.contactName || conv.contactPhone}
                         </span>
-                        <div className="flex items-center gap-1.5 shrink-0 ml-1">
-                          {(unreadCounts[conv.id] || 0) > 0 && (
-                            <span className="bg-red-500 text-white text-[11px] font-bold rounded-full min-w-[20px] h-[20px] flex items-center justify-center px-1 leading-none shadow-md">
-                              {unreadCounts[conv.id] > 99 ? '99+' : unreadCounts[conv.id]}
+                        <div className="flex flex-col items-end gap-0.5 shrink-0 ml-1">
+                          {/* Identifica se a conversa é de um cliente contábil ou de um lead */}
+                          {conv.isClientContabil ? (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 border border-emerald-500/30" title="Cliente vinculado em Clientes Contábeis">
+                              <UserCheck size={9} /> Cliente
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-600 border border-blue-500/30" title="Lead (ainda não é cliente contábil)">
+                              <UserSearch size={9} /> Lead
                             </span>
                           )}
-                          <span className="text-[11px] text-muted-foreground">{formatTime(conv.lastMessageAt)}</span>
+                          <div className="flex items-center gap-1.5">
+                            {(unreadCounts[conv.id] || 0) > 0 && (
+                              <span className="bg-red-500 text-white text-[11px] font-bold rounded-full min-w-[20px] h-[20px] flex items-center justify-center px-1 leading-none shadow-md">
+                                {unreadCounts[conv.id] > 99 ? '99+' : unreadCounts[conv.id]}
+                              </span>
+                            )}
+                            <span className="text-[11px] text-muted-foreground">{formatTime(conv.lastMessageAt)}</span>
+                          </div>
                         </div>
                       </div>
                       {conv.contactPhone && conv.contactName !== conv.contactPhone && (
@@ -515,11 +527,6 @@ export function InboxSidebar({
                       )}
                       <div className="mb-1 flex items-center gap-2 flex-wrap">
                         {statusBadge(conv.status, conv.assignedAgentName, conv.leadStage)}
-                        {conv.isClientContabil && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600" title="Cliente contábil">
-                            <UserCheck size={10} /> Cliente
-                          </span>
-                        )}
                         {/* Badge SLA: aguardando resposta há mais de 15min */}
                         {(() => {
                           const unread = unreadCounts[conv.id] || 0;
