@@ -600,19 +600,26 @@ export default function AgenteCertidoesPage() {
                         {docs.length === 0 ? (
                           <span className="text-[12px] text-muted-foreground py-1.5">Nenhum documento anexado</span>
                         ) : docs.map(d => (
-                          <a
+                          <div
                             key={d.id}
-                            href={d.webViewLink || '#'}
-                            target="_blank" rel="noopener noreferrer"
-                            title={`${d.name} — abrir no Drive`}
-                            className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                            className="inline-flex items-center gap-2 text-[12px] pl-2.5 pr-1 py-1 rounded-lg border border-border text-muted-foreground"
+                            title={d.name}
                           >
-                            <ExternalLink size={11} />
                             <span>{d.titulo}</span>
                             {d.createdTime && (
                               <span className="text-[10px] opacity-70">{new Date(d.createdTime).toLocaleDateString('pt-BR')}</span>
                             )}
-                          </a>
+                            {d.webViewLink && (
+                              <a
+                                href={d.webViewLink}
+                                target="_blank" rel="noopener noreferrer"
+                                title={`${d.name} — abrir no Drive`}
+                                className="inline-flex items-center gap-1 text-[12px] px-2.5 py-1 rounded-md border border-border hover:bg-accent hover:text-foreground transition-colors"
+                              >
+                                <ExternalLink size={11} /> Ver
+                              </a>
+                            )}
+                          </div>
                         ))}
                       </div>
                       <button
