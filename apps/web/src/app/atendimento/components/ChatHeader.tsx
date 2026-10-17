@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Bot, BotOff, UserCheck, CornerDownLeft, Inbox, Eye, ClipboardList, ArrowLeft, ChevronDown, ChevronRight, MoreVertical, Clock, Copy, Check, Tag, Plus, X as XIcon, RefreshCw } from 'lucide-react';
+import { Bot, BotOff, UserCheck, CornerDownLeft, Inbox, Eye, ClipboardList, ArrowLeft, ChevronDown, ChevronRight, MoreVertical, Clock, Copy, Check, Tag, Plus, X as XIcon, RefreshCw, Search } from 'lucide-react';
 import { CRM_STAGES, findStage, normalizeStage } from '@/lib/crmStages';
 import { useRole } from '@/lib/useRole';
 import type { ConversationSummary, ActiveTask } from '../types';
@@ -58,6 +58,8 @@ export interface ChatHeaderProps {
   onLightbox: (url: string) => void;
   onCreateTask: () => void;
   onSyncHistory?: () => void;
+  onToggleSearch?: () => void;
+  searchOpen?: boolean;
   contactPresence?: string;
   // Task management
   activeTask?: ActiveTask | null;
@@ -98,6 +100,8 @@ export function ChatHeader({
   onLightbox,
   onCreateTask,
   onSyncHistory,
+  onToggleSearch,
+  searchOpen,
   contactPresence,
   activeTask,
   onCompleteTask,
@@ -238,6 +242,15 @@ export function ChatHeader({
         {/* Badges informativos inline — mobile */}
         {isMobile && (
           <div className="flex items-center gap-1.5">
+            {isRealConvo && onToggleSearch && (
+              <button
+                onClick={onToggleSearch}
+                aria-label="Pesquisar na conversa"
+                className={`p-1.5 rounded-lg transition-colors ${searchOpen ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}
+              >
+                <Search size={18} />
+              </button>
+            )}
             {isRealConvo && (
               <span className={`w-2 h-2 rounded-full shrink-0 ${aiMode ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]' : 'bg-muted-foreground/40'}`} title={aiMode ? 'IA Ativa' : 'IA Inativa'} />
             )}
@@ -296,6 +309,15 @@ export function ChatHeader({
             >
               <ClipboardList size={16} />
               Tarefa
+            </button>
+          )}
+          {isRealConvo && onToggleSearch && (
+            <button
+              onClick={onToggleSearch}
+              title="Pesquisar na conversa (Ctrl+F)"
+              className={`p-2 rounded-xl transition-colors ${searchOpen ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}
+            >
+              <Search size={16} />
             </button>
           )}
           {isRealConvo && onSyncHistory && (

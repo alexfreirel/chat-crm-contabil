@@ -520,6 +520,20 @@ export default function Dashboard() {
     if (msgSearchOpen) requestAnimationFrame(() => msgSearchInputRef.current?.focus());
   }, [msgSearchOpen]);
 
+  // Ctrl+F abre a busca dentro da conversa selecionada
+  useEffect(() => {
+    if (!selectedId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        setMsgSearchOpen(true);
+        requestAnimationFrame(() => msgSearchInputRef.current?.focus());
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedId]);
+
   // Fechar dropdown de especialista ao clicar fora
   // Checa ambos os refs (ChatHeader + sidebar) para evitar fechar prematuramente
   useEffect(() => {
@@ -2354,6 +2368,11 @@ export default function Dashboard() {
                   showError('Falha ao sincronizar histórico');
                 }
               }}
+              onToggleSearch={() => {
+                if (msgSearchOpen) setMsgSearchQuery('');
+                setMsgSearchOpen(v => !v);
+              }}
+              searchOpen={msgSearchOpen}
               contactPresence={contactPresence}
               activeTask={selected?.activeTask}
               onCompleteTask={handleCompleteTask}
