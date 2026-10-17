@@ -303,10 +303,12 @@ export class PortalClienteService {
       where: { id: clienteId },
       select: {
         portal_login: true, cpf_cnpj: true,
-        lead: { select: { ficha_contabil: { select: { cnpj: true } } } },
+        lead: { select: { cpf_cnpj: true, ficha_contabil: { select: { cnpj: true } } } },
       },
     });
-    const cnpj = (c?.portal_login || c?.cpf_cnpj || c?.lead?.ficha_contabil?.cnpj || '').replace(/\D/g, '');
+    // Primeiro valor com 14 dígitos (algum deles pode estar vazio ou ser um CPF)
+    const cnpj = [c?.portal_login, c?.cpf_cnpj, c?.lead?.ficha_contabil?.cnpj, c?.lead?.cpf_cnpj]
+      .map(v => (v || '').replace(/\D/g, '')).find(v => v.length === 14) || '';
     if (cnpj.length !== 14) throw new NotFoundException('Cliente sem CNPJ cadastrado');
     return cnpj;
   }

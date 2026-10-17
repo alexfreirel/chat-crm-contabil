@@ -160,7 +160,7 @@ export default function AgenteCertidoesPage() {
         id?: string;
         cpf_cnpj?: string;
         nome_empresa?: string;
-        lead?: { name?: string; ficha_contabil?: { cnpj?: string; razao_social?: string } };
+        lead?: { name?: string; cpf_cnpj?: string; ficha_contabil?: { cnpj?: string; razao_social?: string } };
       };
       const clientes: ClienteRaw[] = data?.data || data || [];
 
@@ -168,7 +168,9 @@ export default function AgenteCertidoesPage() {
       const lista: CnpjEntry[] = [];
       let semCnpj = 0;
       for (const c of clientes) {
-        const cnpj = limparCnpj(c.cpf_cnpj || c.lead?.ficha_contabil?.cnpj || '');
+        // Primeiro valor com 14 dígitos (o cpf_cnpj do cadastro pode estar vazio ou ser um CPF)
+        const cnpj = [c.cpf_cnpj, c.lead?.ficha_contabil?.cnpj, c.lead?.cpf_cnpj]
+          .map(v => limparCnpj(v || '')).find(v => v.length === 14) || '';
         if (cnpj.length !== 14) { semCnpj++; continue; }
         if (seen.has(cnpj)) continue;
         seen.add(cnpj);
