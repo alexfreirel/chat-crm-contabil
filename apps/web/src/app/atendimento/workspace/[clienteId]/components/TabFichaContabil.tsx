@@ -333,10 +333,6 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
     { id: 'socios',     label: '👥 Sócios',               fields: [] },
     { id: 'endereco',   label: '📍 Endereço',             fields: ['cep', 'cidade'] },
     { id: 'contatos',   label: '🔐 Acessos',              fields: ['email_contabil', 'banco'] },
-    { id: 'dp',         label: '👥 Responsáveis',           fields: [] },
-    { id: 'sistemas',   label: '💻 Sistemas',             fields: [] },
-    { id: 'anterior',   label: '🔄 Contab. Anterior',     fields: [] },
-    { id: 'servicos',   label: '📋 Serviços',             fields: [] },
     { id: 'obs',        label: '📝 Observações',          fields: [] },
   ];
 
@@ -756,115 +752,6 @@ export default function TabFichaContabil({ cliente, onRefresh }: { cliente: any;
               <p className="text-[10px] text-base-content/40">
                 Ao salvar a ficha com usuário e senha preenchidos, a empresa será cadastrada/atualizada automaticamente na aba <strong>Empresas</strong> do Agente Fiscal SEFAZ.
               </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Seção: Responsáveis ── */}
-      {activeSection === 'dp' && (
-        <div className="card bg-base-200 border border-base-300">
-          <div className="card-body p-4 space-y-4">
-            <h3 className="font-bold text-sm">👥 Responsáveis por Setor</h3>
-            <p className="text-xs text-base-content/50">Defina o responsável de cada área para este cliente.</p>
-            <div className="space-y-3">
-              {([
-                { key: 'resp_fiscal',   label: 'Fiscal',   emoji: '📊' },
-                { key: 'resp_pessoal',  label: 'Pessoal',  emoji: '👷' },
-                { key: 'resp_contabil', label: 'Contábil', emoji: '📒' },
-              ] as const).map(({ key, label, emoji }) => (
-                <div key={key} className="flex items-center gap-3 bg-base-100 rounded-lg px-4 py-3 border border-base-300">
-                  <span className="text-sm font-bold w-24 shrink-0">{emoji} {label}</span>
-                  <select
-                    className="select select-bordered select-sm flex-1"
-                    value={(form as any)[key]}
-                    onChange={e => set(key, e.target.value)}
-                  >
-                    <option value="">— Não definido —</option>
-                    {users.map(u => (
-                      <option key={u.id} value={u.id}>
-                        {u.name}{u.role ? ` (${u.role})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-            </div>
-            {users.length === 0 && (
-              <p className="text-xs text-warning">Nenhum usuário encontrado. Verifique a conexão com a API.</p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Seção: Sistemas ── */}
-      {activeSection === 'sistemas' && (
-        <div className="card bg-base-200 border border-base-300">
-          <div className="card-body p-4">
-            <h3 className="font-bold text-sm mb-4">💻 Sistemas Utilizados</h3>
-            <p className="text-xs text-base-content/50 mb-3">Informe os softwares atuais do cliente para identificar necessidades de integração</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="form-control">
-                <label className="label py-0"><span className="label-text text-xs">ERP / Sistema de Gestão</span></label>
-                <input className="input input-bordered input-sm" value={form.sistema_erp} onChange={e => set('sistema_erp', e.target.value)} placeholder="Ex: Omie, Bling, SAP, Totvs..." />
-              </div>
-              <div className="form-control">
-                <label className="label py-0"><span className="label-text text-xs">Emissor de Nota Fiscal</span></label>
-                <input className="input input-bordered input-sm" value={form.sistema_nf} onChange={e => set('sistema_nf', e.target.value)} placeholder="Ex: NFe.io, Nota Express, prefeitura..." />
-              </div>
-              <div className="form-control">
-                <label className="label py-0"><span className="label-text text-xs">Sistema de Folha de Pagamento</span></label>
-                <input className="input input-bordered input-sm" value={form.sistema_folha} onChange={e => set('sistema_folha', e.target.value)} placeholder="Ex: Domínio, Protheus, Folhamatic..." />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Seção: Contabilidade Anterior ── */}
-      {activeSection === 'anterior' && (
-        <div className="card bg-base-200 border border-base-300">
-          <div className="card-body p-4">
-            <h3 className="font-bold text-sm mb-4">🔄 Contabilidade Anterior</h3>
-            <p className="text-xs text-base-content/50 mb-3">Informações sobre o escritório de contabilidade anterior do cliente</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="form-control md:col-span-2">
-                <label className="label py-0"><span className="label-text text-xs">Escritório / Contador Anterior</span></label>
-                <input className="input input-bordered input-sm" value={form.escritorio_anterior} onChange={e => set('escritorio_anterior', e.target.value)} placeholder="Nome do escritório ou contador" />
-              </div>
-              <div className="form-control">
-                <label className="label py-0"><span className="label-text text-xs">Data prevista de transição / início</span></label>
-                <input className="input input-bordered input-sm" type="date" value={form.data_transicao} onChange={e => set('data_transicao', e.target.value)} />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Seção: Serviços ── */}
-      {activeSection === 'servicos' && (
-        <div className="card bg-base-200 border border-base-300">
-          <div className="card-body p-4">
-            <h3 className="font-bold text-sm mb-4">📋 Serviços Contratados</h3>
-            <div className="flex flex-wrap gap-2">
-              {SERVICOS.map(s => (
-                <label
-                  key={s.value}
-                  className={`flex items-center gap-2 cursor-pointer border rounded-lg px-3 py-2 transition-colors ${
-                    form.servicos.includes(s.value)
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-base-300 bg-base-100 hover:border-primary/40'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    className="checkbox checkbox-xs checkbox-primary"
-                    checked={form.servicos.includes(s.value)}
-                    onChange={() => toggleServico(s.value)}
-                  />
-                  <span className="text-sm">{s.label}</span>
-                </label>
-              ))}
             </div>
           </div>
         </div>
