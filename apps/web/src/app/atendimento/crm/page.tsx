@@ -1471,7 +1471,11 @@ export default function CrmPage() {
   const deleteStaleLeads = async () => {
     try {
       const { data: prev } = await api.get('/leads/cleanup/sem-atividade/preview', { params: { days: stagnationDays } });
-      if (!prev?.total) { showSuccess('Nenhum lead sem atividade para excluir.'); return; }
+      if (!prev?.total) {
+        showSuccess('Nenhum lead sem atividade para excluir.');
+        setDismissedStagnation(true); // o alerta não tem mais o que excluir
+        return;
+      }
       if (!window.confirm(`Excluir permanentemente ${prev.total} lead(s) sem atividade há mais de ${stagnationDays} dia(s), com conversas e mensagens? Clientes não são afetados. Esta ação não pode ser desfeita.`)) return;
       const { data } = await api.delete('/leads/cleanup/sem-atividade', { params: { days: stagnationDays } });
       showSuccess(`${data?.deletados ?? 0} lead(s) excluído(s).`);
@@ -1741,6 +1745,9 @@ export default function CrmPage() {
           const stagnant = leads.filter(l => {
             const stage = normalizeStage(l.stage);
             if (stage === 'PERDIDO' || stage === 'FINALIZADO') return false;
+            // Mesmos critérios do "Excluir parados" (API): clientes e leads criados há menos de N dias não entram
+            if (l.is_client) return false;
+            if (l.created_at && Date.now() - new Date(l.created_at).getTime() < stagnationDays * 86400000) return false;
             const latestConv = l.conversations?.[0];
             if (latestConv && latestConv.status === 'FECHADO') return false;
             const lastMsg = latestConv?.last_message_at;
