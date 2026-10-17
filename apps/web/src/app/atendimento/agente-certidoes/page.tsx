@@ -19,13 +19,16 @@ interface CnpjEntry { cnpj: string; nome: string; clienteId?: string; }
 type PortalTipo = 'cnd' | 'fgts' | 'trabalhista' | 'falencia' | 'estadual' | 'municipal';
 
 interface CertidaoCol {
-  tipo: PortalTipo | 'alvara';
+  tipo: PortalTipo;
   titulo: string;
   subtitulo: string;
 }
 
+// Coluna que aceita anexo: as certidões ou o alvará
+interface AnexoCol { tipo: PortalTipo | 'alvara'; titulo: string; }
+
 // Alvará de Funcionamento: mesmo fluxo das certidões (um arquivo por empresa, "Atualizar" substitui)
-const ALVARA: CertidaoCol = { tipo: 'alvara', titulo: 'Alvará de Funcionamento', subtitulo: 'Prefeitura' };
+const ALVARA: AnexoCol = { tipo: 'alvara', titulo: 'Alvará de Funcionamento' };
 
 const CERTIDOES: CertidaoCol[] = [
   { tipo: 'cnd',         titulo: 'CND Federal',  subtitulo: 'Receita Federal' },
@@ -75,7 +78,7 @@ function fmtCnpj(c: string) {
 
 function limparCnpj(c: string) { return c.replace(/\D/g, ''); }
 
-function statusKey(cnpj: string, tipo: CertidaoCol['tipo']) { return `${cnpj}|${tipo}`; }
+function statusKey(cnpj: string, tipo: AnexoCol['tipo']) { return `${cnpj}|${tipo}`; }
 
 function authHeaders(): Record<string, string> {
   return { Authorization: `Bearer ${localStorage.getItem('token')}` };
@@ -124,7 +127,7 @@ export default function AgenteCertidoesPage() {
   const [contratoOutro, setContratoOutro] = useState('');
   const [contratoArquivo, setContratoArquivo] = useState<File | null>(null);
   const [enviandoContrato, setEnviandoContrato] = useState(false);
-  const alvoAnexo = useRef<{ c: CnpjEntry; col: CertidaoCol } | null>(null);
+  const alvoAnexo = useRef<{ c: CnpjEntry; col: AnexoCol } | null>(null);
 
   // ── Toast ──
   const [toasts, setToasts] = useState<{ id: number; text: string; type: 'ok' | 'err' }[]>([]);
@@ -273,7 +276,7 @@ export default function AgenteCertidoesPage() {
     finally { setSavingFolder(false); }
   };
 
-  const iniciarAnexo = (c: CnpjEntry, col: CertidaoCol) => {
+  const iniciarAnexo = (c: CnpjEntry, col: AnexoCol) => {
     if (!driveCfg?.configured) {
       toast(canConfigDrive ? 'Configure a pasta do Google Drive primeiro.' : 'Peça ao admin/contador para configurar a pasta do Google Drive.', 'err');
       return;
