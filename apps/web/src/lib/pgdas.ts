@@ -155,18 +155,29 @@ const PDFJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.mi
 const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+function loadScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Não foi possível carregar o leitor de PDF.'));
+    document.head.appendChild(s);
+  });
+}
+
+// O worker é carregado como script comum (window.pdfjsWorker): o pdf.js roda na thread
+// principal, sem precisar criar um Web Worker de outro domínio.
 let pdfjsPromise: Promise<any> | null = null;
 function loadPdfjs(): Promise<any> {
   const w = window as any;
-  if (w.pdfjsLib) return Promise.resolve(w.pdfjsLib);
+  if (w.pdfjsLib && w.pdfjsWorker) return Promise.resolve(w.pdfjsLib);
   if (!pdfjsPromise) {
-    pdfjsPromise = new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = PDFJS_URL;
-      s.onload = () => { w.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER; resolve(w.pdfjsLib); };
-      s.onerror = () => { pdfjsPromise = null; reject(new Error('Não foi possível carregar o leitor de PDF.')); };
-      document.head.appendChild(s);
-    });
+    pdfjsPromise = (async () => {
+      if (!w.pdfjsLib) await loadScript(PDFJS_URL);
+      if (!w.pdfjsWorker) await loadScript(PDFJS_WORKER);
+      w.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+      return w.pdfjsLib;
+    })().catch(err => { pdfjsPromise = null; throw err; });
   }
   return pdfjsPromise;
 }

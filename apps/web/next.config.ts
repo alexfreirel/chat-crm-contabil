@@ -12,6 +12,7 @@ const googleScriptSrc = [
   "https://googleads.g.doubleclick.net",
   "https://www.google.com",
   "https://connect.facebook.net",   // Meta Pixel (se utilizado)
+  "https://cdnjs.cloudflare.com",   // pdf.js da Análise de Clientes
 ].join(" ");
 
 const googleConnectSrc = [
