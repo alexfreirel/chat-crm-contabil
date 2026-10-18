@@ -1,6 +1,6 @@
 /* Chamadas da API da Análise de Clientes: empresas (Clientes Contábeis) e análises salvas por CNPJ. */
 import { API_BASE_URL } from '@/lib/api';
-import { Cliente, analyze, alerts } from '@/lib/pgdas';
+import { Cliente, analyze, alerts, parsePGDAS, pdfText, mesclar, novoCliente, paLbl } from '@/lib/pgdas';
 
 export interface Empresa { cnpj: string; nome: string; clienteId?: string }
 
@@ -79,4 +79,22 @@ export function resumir(S: Cliente): Resumo | null {
     atencao: al.filter(x => x[0] === 'warn').length,
     oportunidades: al.filter(x => x[0] === 'info').length,
   };
+}
+
+/* Lê um PDF do PGDAS-D e mescla na análise salva do CNPJ (usado ao anexar em Impostos).
+   Retorna uma mensagem de resultado; lança erro se o arquivo não for utilizável. */
+export async function importarPgdas(file: File, cnpj: string, nome: string): Promise<string> {
+  if (!/\.pdf$/i.test(file.name)) throw new Error('não é PDF');
+  const txt = await pdfText(file);
+  if (txt.replace(/\s/g, '').length < 50) throw new Error('PDF sem texto (imagem escaneada)');
+  const r = parsePGDAS(txt);
+  if (!r.pa && !Object.keys(r.hist).length) throw new Error('não parece um extrato do PGDAS-D');
+  const c = limparCnpj(cnpj);
+  if (r.cnpj && limparCnpj(r.cnpj).slice(0, 8) !== c.slice(0, 8)) throw new Error(`o PDF é de outro CNPJ (${r.cnpj})`);
+  const salva = await buscarAnalise(c);
+  const base: Cliente = salva?.dados || novoCliente();
+  if (!base.cnpj) base.cnpj = fmtCnpj(c);
+  if (!base.nome) base.nome = nome;
+  await salvarAnalise(c, mesclar(base, r), salva?.obs || '');
+  return r.pa ? `PA ${paLbl(r.pa)}` : 'extrato lido';
 }

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { API_BASE_URL } from '@/lib/api';
 import { abrirAnexo } from '@/lib/abrirAnexo';
+import { importarPgdas } from '@/lib/analiseClientes';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -215,6 +216,15 @@ export default function ImpostosPage() {
       if (!res.ok) { toast(data?.message || 'Falha ao anexar.', 'err'); return; }
       setAnexos(p => [data, ...p.filter(x => x.id !== data.id)]);
       toast(data.atualizada ? `${a.col.titulo} atualizado.` : `${a.col.titulo} anexado.`);
+      // PGDAS-D também alimenta a Análise de Clientes automaticamente
+      if (a.col.tipo === 'pgdas') {
+        try {
+          const r = await importarPgdas(file, a.c.cnpj, a.c.nome);
+          toast(`PGDAS-D enviado para a Análise de Clientes (${r}).`);
+        } catch (err) {
+          toast(`Anexado, mas não entrou na Análise de Clientes: ${(err as Error)?.message || 'erro ao ler o PDF'}.`, 'err');
+        }
+      }
     } catch { toast('Erro ao enviar o arquivo.', 'err'); }
     finally { setUploading(p => ({ ...p, [key]: false })); }
   };
