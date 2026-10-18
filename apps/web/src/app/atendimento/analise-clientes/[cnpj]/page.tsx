@@ -1,20 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { LineChart as LineIcon, Upload, Loader2, Trash2, Plus, Printer, AlertTriangle, CheckCircle2, Info, XCircle, ArrowLeft, Cloud, CloudOff } from 'lucide-react';
+import { LineChart as LineIcon, Loader2, Printer, AlertTriangle, CheckCircle2, Info, XCircle, ArrowLeft, Cloud } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell, CartesianGrid } from 'recharts';
 import {
-  ANEXOS, SUBLIMITE, TETO, TRIBS, MESES_ABREV, Anexo, Cliente, Nivel,
-  brl, brlK, pct, numFmt, parseBR, lbl, paLbl, addM, sum, efetiva,
-  parsePGDAS, pdfText, novoCliente, mesclar, analyze, alerts,
+  ANEXOS, SUBLIMITE, TETO, TRIBS, MESES_ABREV, Cliente, Nivel,
+  brl, brlK, pct, lbl, paLbl, addM, sum, efetiva,
+  novoCliente, analyze, alerts,
 } from '@/lib/pgdas';
-import { carregarEmpresas, buscarAnalise, salvarAnalise, apagarAnalise, fmtCnpj, limparCnpj } from '@/lib/analiseClientes';
+import { carregarEmpresas, buscarAnalise, apagarAnalise, fmtCnpj, limparCnpj } from '@/lib/analiseClientes';
 
-// Os PDFs são lidos no navegador; só os valores extraídos são salvos no servidor (um registro por CNPJ).
-type SaveState = 'idle' | 'saving' | 'saved' | 'error';
-
-type LogItem = { id: number; text: string; type: 'ok' | 'warn' | 'err' };
+// Os dados vêm do PGDAS-D anexado na aba Impostos (um registro por CNPJ); esta tela só exibe a análise.
 
 const NIVEL: Record<Nivel, { label: string; cls: string; icon: React.ReactNode }> = {
   bad:  { label: 'Crítico',      cls: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30',             icon: <XCircle size={16} /> },
@@ -55,20 +52,10 @@ export default function AnaliseEmpresaPage() {
   const params = useParams<{ cnpj: string }>();
   const cnpj = limparCnpj(String(params?.cnpj || ''));
   const [S, setS] = useState<Cliente>(novoCliente);
-  const [obs, setObs] = useState('');
-  const [log, setLog] = useState<LogItem[]>([]);
-  const [lendo, setLendo] = useState(false);
-  const [novoMes, setNovoMes] = useState('');
-  const [over, setOver] = useState(false);
-  const [confirmar, setConfirmar] = useState(false);
   const [carregando, setCarregando] = useState(true);
+  const [confirmar, setConfirmar] = useState(false);
   const [erroCarga, setErroCarga] = useState('');
-  const [saveState, setSaveState] = useState<SaveState>('idle');
   const [salvoEm, setSalvoEm] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const logSeq = useRef(0);
-  // Só salva depois que a análise do servidor foi carregada e o usuário mexeu em algo
-  const sujo = useRef(false);
 
   // ─── Carrega a empresa e a análise salva ────────────────────────────────
   useEffect(() => {
@@ -86,7 +73,6 @@ export default function AnaliseEmpresaPage() {
         if (!base.cnpj) base.cnpj = fmtCnpj(cnpj);
         if (!base.nome && empresa) base.nome = empresa.nome;
         setS(base);
-        setObs(salva?.obs || '');
         setSalvoEm(salva?.updated_at || null);
       } catch {
         if (vivo) setErroCarga('Não foi possível carregar a análise desta empresa.');
@@ -97,90 +83,17 @@ export default function AnaliseEmpresaPage() {
     return () => { vivo = false; };
   }, [router, cnpj]);
 
-  // ─── Salva no servidor (com atraso, para agrupar edições) ───────────────
-  useEffect(() => {
-    if (carregando || erroCarga || !sujo.current) return;
-    setSaveState('saving');
-    const t = setTimeout(async () => {
-      try {
-        const em = await salvarAnalise(cnpj, S, obs);
-        setSalvoEm(em || new Date().toISOString());
-        setSaveState('saved');
-      } catch { setSaveState('error'); }
-    }, 800);
-    return () => clearTimeout(t);
-  }, [S, obs, cnpj, carregando, erroCarga]);
-
-  // Toda alteração do usuário passa por aqui para marcar a análise como alterada
-  const alterar = (fn: (prev: Cliente) => Cliente) => { sujo.current = true; setS(fn); };
-  const alterarObs = (v: string) => { sujo.current = true; setObs(v); };
-
-  const addLog = (text: string, type: LogItem['type']) =>
-    setLog(p => [{ id: ++logSeq.current, text, type }, ...p].slice(0, 30));
-
   const a = useMemo(() => analyze(S), [S]);
   const alertas = useMemo(() => (a ? alerts(S, a) : []), [S, a]);
 
-  // ─── Leitura dos PDFs ───────────────────────────────────────────────────
-  const lerArquivos = async (files: File[]) => {
-    if (!files.length) return;
-    setLendo(true);
-    // Trabalha numa cópia para mesclar vários PDFs em sequência
-    let atual: Cliente = JSON.parse(JSON.stringify(S));
-    for (const f of files) {
-      if (!/\.pdf$/i.test(f.name)) { addLog(`${f.name}: não é PDF.`, 'err'); continue; }
-      try {
-        const txt = await pdfText(f);
-        if (txt.replace(/\s/g, '').length < 50) { addLog(`${f.name}: PDF sem texto (imagem escaneada). Use o PDF gerado pelo portal do Simples.`, 'err'); continue; }
-        const r = parsePGDAS(txt);
-        if (!r.pa && !Object.keys(r.hist).length) { addLog(`${f.name}: não reconheci um extrato do PGDAS-D neste arquivo.`, 'err'); continue; }
-        // Mesma raiz de CNPJ (8 dígitos): aceita matriz e filiais
-        if (r.cnpj && limparCnpj(r.cnpj).slice(0, 8) !== cnpj.slice(0, 8)) {
-          addLog(`${f.name}: é de outro CNPJ (${r.cnpj}). Abra a análise dessa empresa na lista.`, 'warn'); continue;
-        }
-        atual = mesclar(atual, r);
-        const parts: string[] = [];
-        if (r.pa) parts.push('PA ' + paLbl(r.pa));
-        if (r.rpa != null) parts.push('receita ' + brl(r.rpa));
-        if (r.das != null) parts.push('DAS ' + brl(r.das));
-        const nh = Object.keys(r.hist).length;
-        if (nh) parts.push(nh + ' meses anteriores');
-        addLog(`${f.name}: ${parts.join(' · ') || 'lido'}`, r.rpa != null && r.das != null ? 'ok' : 'warn');
-        if (r.pa && (r.rpa == null || r.das == null)) addLog(`Confira a receita e o DAS de ${paLbl(r.pa)} na tabela.`, 'warn');
-      } catch (err) {
-        addLog(`${f.name}: erro ao ler o PDF (${(err as Error)?.message || err}).`, 'err');
-      }
-    }
-    alterar(() => atual);
-    setLendo(false);
-  };
-
-  // ─── Edição ─────────────────────────────────────────────────────────────
-  const editarMes = (k: string, campo: 'rec' | 'das' | 'folha', valor: string) => {
-    alterar(prev => {
-      const n: Cliente = { ...prev, months: { ...prev.months, [k]: { ...prev.months[k], [campo]: parseBR(valor) } } };
-      if (campo === 'das') n.months[k].trib = null;
-      if (campo === 'rec') { n.rbt12P = { ...prev.rbt12P }; delete n.rbt12P[k]; }
-      return n;
-    });
-  };
-  const removerMes = (k: string) => alterar(prev => { const m = { ...prev.months }; delete m[k]; return { ...prev, months: m }; });
-  const adicionarMes = () => {
-    if (!novoMes) return;
-    alterar(prev => prev.months[novoMes] ? prev : { ...prev, months: { ...prev.months, [novoMes]: { rec: null, das: null, folha: null, trib: null } } });
-  };
   const limpar = async () => {
     setConfirmar(false);
-    sujo.current = false;
     await apagarAnalise(cnpj).catch(() => {});
     const n = novoCliente();
     n.cnpj = fmtCnpj(cnpj);
     n.nome = S.nome;
-    setS(n); setObs(''); setLog([]); setSalvoEm(null); setSaveState('idle');
+    setS(n); setSalvoEm(null);
   };
-
-  const mesesTabela = Object.keys(S.months).sort().reverse();
-  const inputCls = 'w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40';
 
   if (carregando) return (
     <div className="flex items-center justify-center h-screen">
@@ -216,9 +129,7 @@ export default function AnaliseEmpresaPage() {
             <p className="text-[13px] text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
               <span className="font-mono">{fmtCnpj(cnpj)}</span>
               <span className="inline-flex items-center gap-1">
-                {saveState === 'saving' ? <><Loader2 size={12} className="animate-spin" /> Salvando…</>
-                  : saveState === 'error' ? <span className="inline-flex items-center gap-1 text-red-500"><CloudOff size={12} /> Não foi possível salvar</span>
-                  : salvoEm ? <><Cloud size={12} /> Salvo em {new Date(salvoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</>
+                {salvoEm ? <><Cloud size={12} /> Atualizado em {new Date(salvoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</>
                   : 'Nenhuma análise salva ainda'}
               </span>
             </p>
@@ -228,7 +139,7 @@ export default function AnaliseEmpresaPage() {
               className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
               <Printer size={16} /> Imprimir / PDF
             </button>
-            <button type="button" onClick={() => setConfirmar(true)} disabled={!Object.keys(S.months).length && !obs}
+            <button type="button" onClick={() => setConfirmar(true)} disabled={!Object.keys(S.months).length}
               className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50">
               Limpar análise
             </button>
@@ -244,104 +155,15 @@ export default function AnaliseEmpresaPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto print-full">
-        <div className="grid gap-6 p-6 lg:grid-cols-[380px_minmax(0,1fr)]">
-          {/* ─── Painel de dados ─── */}
-          <aside className="flex flex-col gap-4 no-print">
-            <div className="rounded-xl border border-border bg-card p-4">
-              <h2 className="text-sm font-semibold mb-3">1. Extratos do PGDAS-D</h2>
-              <label
-                tabIndex={0}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileRef.current?.click(); } }}
-                onDragOver={e => { e.preventDefault(); setOver(true); }}
-                onDragLeave={() => setOver(false)}
-                onDrop={e => { e.preventDefault(); setOver(false); lerArquivos([...e.dataTransfer.files]); }}
-                className={`flex flex-col items-center gap-1 rounded-lg border-2 border-dashed p-5 text-center cursor-pointer transition ${over ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/60'}`}
-              >
-                {lendo ? <Loader2 size={22} className="animate-spin text-primary" /> : <Upload size={22} className="text-primary" />}
-                <strong className="text-sm">{lendo ? 'Lendo PDFs…' : 'Selecionar PDFs do PGDAS'}</strong>
-                <span className="text-xs text-muted-foreground">Arraste ou clique. Um ou mais meses do mesmo CNPJ (extrato ou declaração).</span>
-                <input ref={fileRef} type="file" accept="application/pdf,.pdf" multiple hidden
-                  onChange={e => { lerArquivos([...(e.target.files || [])]); e.target.value = ''; }} />
-              </label>
-              {log.length > 0 && (
-                <div className="mt-3 max-h-40 overflow-y-auto flex flex-col gap-1 text-xs">
-                  {log.map(l => (
-                    <div key={l.id} className={l.type === 'ok' ? 'text-emerald-600 dark:text-emerald-400' : l.type === 'warn' ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}>{l.text}</div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3">
-              <h2 className="text-sm font-semibold">2. Identificação</h2>
-              <label className="text-xs text-muted-foreground">Cliente
-                <input className={inputCls} value={S.nome} onChange={e => alterar(p => ({ ...p, nome: e.target.value }))} />
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="text-xs text-muted-foreground">CNPJ
-                  <input className={`${inputCls} opacity-70`} value={fmtCnpj(cnpj)} readOnly />
-                </label>
-                <label className="text-xs text-muted-foreground">Anexo principal
-                  <select className={inputCls} value={S.anexo} onChange={e => alterar(p => ({ ...p, anexo: e.target.value as Anexo }))}>
-                    {(Object.keys(ANEXOS) as Anexo[]).map(k => <option key={k} value={k}>{k} · {ANEXOS[k].nome}</option>)}
-                  </select>
-                </label>
-              </div>
-              {S.anexosFound.length > 1 && (
-                <p className="text-xs text-muted-foreground">Atividades nos anexos {S.anexosFound.join(', ')}. A tabela de faixas usa o anexo principal.</p>
-              )}
-            </div>
-
-            <div className="rounded-xl border border-border bg-card p-4">
-              <h2 className="text-sm font-semibold">3. Conferir valores</h2>
-              <p className="text-xs text-muted-foreground mb-3">Valores lidos dos PDFs. Corrija ou complete à mão quando precisar.</p>
-              <div className="max-h-80 overflow-y-auto">
-                <table className="w-full text-xs">
-                  <thead className="text-muted-foreground">
-                    <tr><th className="text-left pb-1">Mês</th><th className="text-right pb-1">Faturamento</th><th className="text-right pb-1">DAS</th><th className="text-right pb-1">Folha</th><th /></tr>
-                  </thead>
-                  <tbody>
-                    {mesesTabela.length === 0 && <tr><td colSpan={5} className="py-3 text-muted-foreground">Nenhum mês ainda.</td></tr>}
-                    {mesesTabela.map(k => (
-                      <tr key={k} className="border-t border-border">
-                        <td className="py-1 pr-1 tabular-nums">{paLbl(k)}</td>
-                        {(['rec', 'das', 'folha'] as const).map(c => (
-                          <td key={c} className="py-1 px-0.5">
-                            <input
-                              key={`${k}-${c}-${S.months[k][c]}`}
-                              defaultValue={numFmt(S.months[k][c])}
-                              onBlur={e => { if (e.target.value !== numFmt(S.months[k][c])) editarMes(k, c, e.target.value); }}
-                              inputMode="decimal" aria-label={`${c} ${paLbl(k)}`}
-                              className="w-full rounded border border-border bg-background px-1.5 py-1 text-right tabular-nums outline-none focus:ring-1 focus:ring-primary/40"
-                            />
-                          </td>
-                        ))}
-                        <td><button type="button" onClick={() => removerMes(k)} aria-label={`Remover ${paLbl(k)}`} className="p-1 text-muted-foreground hover:text-red-500"><Trash2 size={13} /></button></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="mt-3 flex gap-2">
-                <input type="month" value={novoMes} onChange={e => setNovoMes(e.target.value)} className={inputCls} aria-label="Mês para adicionar" />
-                <button type="button" onClick={adicionarMes} className="flex items-center gap-1 whitespace-nowrap rounded-lg border border-border px-3 text-sm hover:bg-muted"><Plus size={14} /> Mês</button>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-border bg-card p-4">
-              <h2 className="text-sm font-semibold mb-2">4. Observações do contador</h2>
-              <textarea value={obs} onChange={e => alterarObs(e.target.value)} rows={4} placeholder="Recomendações e próximos passos para o cliente" className={inputCls} />
-            </div>
-          </aside>
-
+        <div className="grid gap-6 p-6">
           {/* ─── Relatório ─── */}
           <main className="flex flex-col gap-4 min-w-0">
             {!a ? (
               <div className="rounded-xl border border-dashed border-border bg-card p-12 text-center">
                 <h3 className="text-lg font-semibold">Nenhum dado ainda</h3>
-                <p className="text-sm text-muted-foreground mt-1">Envie os PDFs do PGDAS-D do cliente ou adicione os meses na tabela ao lado.</p>
+                <p className="text-sm text-muted-foreground mt-1">Anexe o PGDAS-D do cliente na aba Impostos para gerar a análise automaticamente.</p>
               </div>
-            ) : <Relatorio S={S} a={a} alertas={alertas} obs={obs} />}
+            ) : <Relatorio S={S} a={a} alertas={alertas} />}
           </main>
         </div>
       </div>
@@ -349,7 +171,7 @@ export default function AnaliseEmpresaPage() {
   );
 }
 
-function Relatorio({ S, a, alertas, obs }: { S: Cliente; a: NonNullable<ReturnType<typeof analyze>>; alertas: [Nivel, string, string][]; obs: string }) {
+function Relatorio({ S, a, alertas }: { S: Cliente; a: NonNullable<ReturnType<typeof analyze>>; alertas: [Nivel, string, string][] }) {
   const f = ANEXOS[S.anexo].f;
   const varM = a.prevM ? a.rec / a.prevM - 1 : null;
   const varY = a.prevY ? a.rec / a.prevY - 1 : null;
@@ -419,6 +241,26 @@ function Relatorio({ S, a, alertas, obs }: { S: Cliente; a: NonNullable<ReturnTy
           {varY != null && <>Em relação a {lbl(addM(a.pa, -12))}, o faturamento variou <Variacao v={varY} txt="" />. </>}
           Nos últimos 12 meses, incluindo {paLbl(a.pa)}, a empresa faturou <b className="tabular-nums">{brl(a.rec12)}</b>.
         </p>
+        <div className="mt-4 overflow-x-auto max-h-80 overflow-y-auto">
+          <table className="w-full text-xs tabular-nums">
+            <thead className="text-muted-foreground">
+              <tr className="text-left"><th className="py-1">Mês</th><th className="text-right">Faturamento</th><th className="text-right">DAS</th><th className="text-right">Folha</th></tr>
+            </thead>
+            <tbody>
+              {[...a.serie].reverse().map(k => {
+                const o = S.months[k];
+                return (
+                  <tr key={k} className={`border-t border-border ${k === a.pa ? 'bg-primary/10 font-semibold' : ''}`}>
+                    <td className="py-1">{paLbl(k)}</td>
+                    <td className="text-right">{o?.rec != null ? brl(o.rec) : '—'}</td>
+                    <td className="text-right">{o?.das != null ? brl(o.das) : '—'}</td>
+                    <td className="text-right">{o?.folha != null ? brl(o.folha) : '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </Secao>
 
       <Secao titulo={`Limites do Simples Nacional em ${a.y}`} sub="receita acumulada no ano e projeção">
@@ -523,12 +365,6 @@ function Relatorio({ S, a, alertas, obs }: { S: Cliente; a: NonNullable<ReturnTy
           </Secao>
         );
       })()}
-
-      {obs.trim() && (
-        <Secao titulo="Observações do contador">
-          <p className="text-sm whitespace-pre-wrap">{obs}</p>
-        </Secao>
-      )}
 
       <footer className="flex justify-between gap-4 flex-wrap text-xs text-muted-foreground px-1">
         <span>Fonte: extratos do PGDAS-D. Tabelas da LC 123/2006 vigentes.</span>
