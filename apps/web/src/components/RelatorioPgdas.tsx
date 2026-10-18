@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { AlertTriangle, CheckCircle2, Info, XCircle } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell, CartesianGrid } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell, CartesianGrid, LabelList } from 'recharts';
 import {
   ANEXOS, SUBLIMITE, TETO, TRIBS, MESES_ABREV, Cliente, Nivel,
   brl, brlK, pct, lbl, paLbl, addM, sum, efetiva, analyze, alerts,
@@ -50,7 +50,7 @@ function Relatorio({ S, a, alertas }: { S: Cliente; a: NonNullable<ReturnType<ty
   const varY = a.prevY ? a.rec / a.prevY - 1 : null;
   const sc = (v: number) => Math.min(100, v / TETO * 100);
   const sub = a.mesesAte(SUBLIMITE), teto = a.mesesAte(TETO), restante = 12 - a.mo;
-  const serie = a.serie.map(k => ({ k, label: lbl(k), v: S.months[k].rec || 0 }));
+  const serie = a.serie.slice(-12).map(k => ({ k, label: lbl(k), v: S.months[k].rec || 0 }));
   const tribTot = a.trib ? sum(Object.values(a.trib)) : 0;
   const tribMax = a.trib ? Math.max(...Object.values(a.trib)) : 0;
 
@@ -94,16 +94,17 @@ function Relatorio({ S, a, alertas }: { S: Cliente; a: NonNullable<ReturnType<ty
       </Secao>
 
       <Secao titulo="Faturamento mensal" sub={`últimos ${serie.length} meses`}>
-        <div className="h-60">
+        <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={serie} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+            <BarChart data={serie} margin={{ top: 22, right: 8, left: 8, bottom: 0 }}>
               <CartesianGrid vertical={false} strokeOpacity={0.15} />
               <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
               <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={60}
-                tickFormatter={v => v >= 1e6 ? (v / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' mi' : Math.round(v / 1e3) + ' mil'} />
+                tickFormatter={v => v >= 1e6 ? (v / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' mi' : (v / 1e3).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' mil'} />
               <Tooltip formatter={v => brl(Number(v))} labelStyle={{ color: '#111' }} cursor={{ fillOpacity: 0.08 }} />
               <ReferenceLine y={a.media12} stroke="#f59e0b" strokeDasharray="4 4" />
               <Bar dataKey="v" name="Faturamento" radius={[3, 3, 0, 0]}>
+                <LabelList dataKey="v" position="top" fontSize={11} fill="currentColor" formatter={(v: unknown) => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} />
                 {serie.map(s => <Cell key={s.k} fill={s.k === a.pa ? 'var(--color-primary)' : 'color-mix(in srgb, var(--color-primary) 40%, transparent)'} />)}
               </Bar>
             </BarChart>
@@ -114,26 +115,6 @@ function Relatorio({ S, a, alertas }: { S: Cliente; a: NonNullable<ReturnType<ty
           {varY != null && <>Em relação a {lbl(addM(a.pa, -12))}, o faturamento variou <Variacao v={varY} txt="" />. </>}
           Nos últimos 12 meses, incluindo {paLbl(a.pa)}, a empresa faturou <b className="tabular-nums">{brl(a.rec12)}</b>.
         </p>
-        <div className="mt-4 overflow-x-auto max-h-80 overflow-y-auto">
-          <table className="w-full text-xs tabular-nums">
-            <thead className="text-muted-foreground">
-              <tr className="text-left"><th className="py-1">Mês</th><th className="text-right">Faturamento</th><th className="text-right">DAS</th><th className="text-right">Folha</th></tr>
-            </thead>
-            <tbody>
-              {[...a.serie].reverse().map(k => {
-                const o = S.months[k];
-                return (
-                  <tr key={k} className={`border-t border-border ${k === a.pa ? 'bg-primary/10 font-semibold' : ''}`}>
-                    <td className="py-1">{paLbl(k)}</td>
-                    <td className="text-right">{o?.rec != null ? brl(o.rec) : '—'}</td>
-                    <td className="text-right">{o?.das != null ? brl(o.das) : '—'}</td>
-                    <td className="text-right">{o?.folha != null ? brl(o.folha) : '—'}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
       </Secao>
 
       <Secao titulo={`Limites do Simples Nacional em ${a.y}`} sub="receita acumulada no ano e projeção">

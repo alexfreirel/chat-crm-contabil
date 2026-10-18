@@ -462,7 +462,7 @@ export default function PortalClientePage() {
 
       {/* ── Conteúdo ── */}
       <div className="flex-1 md:overflow-y-auto">
-        <div className="max-w-3xl mx-auto w-full px-4 md:px-8 py-6 space-y-4">
+        <div className="max-w-6xl mx-auto w-full px-4 md:px-8 py-6 space-y-4">
 
           {/* Cabeçalho do cliente */}
           <div className="flex items-start gap-3">
