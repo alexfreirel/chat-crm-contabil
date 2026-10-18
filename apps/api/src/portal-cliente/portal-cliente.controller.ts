@@ -110,6 +110,12 @@ export class PortalClienteController {
   }
 
   @Public()
+  @Get('analise/:token')
+  getAnalise(@Param('token') token: string) {
+    return this.service.getAnalise(token);
+  }
+
+  @Public()
   @Get('impostos/:token')
   getImpostos(@Param('token') token: string) {
     return this.service.getImpostos(token);

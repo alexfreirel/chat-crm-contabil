@@ -364,6 +364,18 @@ export class PortalClienteService {
     return file;
   }
 
+  // ─── Análise fiscal (PGDAS-D): gerada ao anexar o PGDAS-D em Impostos; só os dados, sem observações internas ──
+  async getAnalise(token: string) {
+    const payload = this.verifyToken(token);
+    const cnpj = await this.getCnpjDoCliente(payload.clienteId);
+    const row = await this.prisma.globalSetting.findUnique({ where: { key: `ANALISE_PGDAS:${cnpj}` } });
+    if (!row?.value) return null;
+    try {
+      const dados = JSON.parse(row.value)?.dados ?? null;
+      return dados ? { dados, updated_at: row.updated_at } : null;
+    } catch { return null; }
+  }
+
   // ─── Impostos mensais (somente leitura; apenas o que foi anexado no Portal do Contador) ──
   async getImpostos(token: string) {
     const payload = this.verifyToken(token);

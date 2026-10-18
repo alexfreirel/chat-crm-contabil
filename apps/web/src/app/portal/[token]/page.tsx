@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { RelatorioPgdas } from '@/components/RelatorioPgdas';
+import type { Cliente } from '@/lib/pgdas';
 import { useParams, useRouter } from 'next/navigation';
 import {
   CheckCircle2, AlertTriangle, Clock, FileText,
@@ -220,6 +222,7 @@ export default function PortalClientePage() {
   const [parcelas, setParcelas]     = useState<Parcela[]>([]);
   const [certidoes, setCertidoes]   = useState<CertidaoArquivo[]>([]);
   const [contratos, setContratos]   = useState<ContratoArquivo[]>([]);
+  const [analise, setAnalise]       = useState<Cliente | null>(null);
   const [tab, setTab]               = useState<TabId>('resumo');
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState<string | null>(null);
@@ -244,7 +247,7 @@ export default function PortalClientePage() {
     async function load() {
       setLoading(true);
       try {
-        const [infoRes, impRes, folhaRes, docRes, parRes, certRes, contrRes] = await Promise.all([
+        const [infoRes, impRes, folhaRes, docRes, parRes, certRes, contrRes, anaRes] = await Promise.all([
           portalApi.get(`/portal/info/${token}`),
           portalApi.get(`/portal/impostos/${token}`).catch(() => ({ data: [] })),
           portalApi.get(`/portal/folha/${token}`).catch(() => ({ data: [] })),
@@ -252,6 +255,7 @@ export default function PortalClientePage() {
           portalApi.get(`/portal/parcelas/${token}`),
           portalApi.get(`/portal/certidoes/${token}`).catch(() => ({ data: [] })),
           portalApi.get(`/portal/contratos/${token}`).catch(() => ({ data: [] })),
+          portalApi.get(`/portal/analise/${token}`).catch(() => ({ data: null })),
         ]);
         setInfo(infoRes.data);
         setImpostos(impRes.data ?? []);
@@ -260,6 +264,7 @@ export default function PortalClientePage() {
         setParcelas(parRes.data ?? []);
         setCertidoes(certRes.data ?? []);
         setContratos(contrRes.data ?? []);
+        setAnalise(anaRes.data?.dados ?? null);
       } catch (err: any) {
         if (err.response?.status === 401) {
           setError('Sessão expirada ou inválida. Entre novamente com seu CNPJ e senha.');
@@ -530,6 +535,8 @@ export default function PortalClientePage() {
                   </div>
                 </div>
               )}
+
+              {analise && <RelatorioPgdas S={analise} />}
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {([

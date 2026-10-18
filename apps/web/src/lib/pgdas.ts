@@ -295,8 +295,6 @@ export function alerts(S: Cliente, a: Analise): [Nivel, string, string][] {
   }
   if ((S.anexo === 'I' || S.anexo === 'II') && !S.flags.st && !S.flags.mono)
     out.push(['info', 'Oportunidade: revisar ST e monofásicos', 'Não há receitas segregadas com ICMS-ST ou PIS/COFINS monofásico. Se a empresa vende produtos nessas condições, há imposto pago a mais que pode ser recuperado dos últimos 5 anos.']);
-  if ((S.anexo === 'III' || S.anexo === 'IV' || S.anexo === 'V') && !S.flags.ret)
-    out.push(['info', 'Conferir ISS retido', 'Não há receitas com ISS retido. Se clientes retêm o ISS na fonte, essa parcela deve ser segregada para não ser paga duas vezes.']);
   if (a.fatorR != null && (S.anexo === 'III' || S.anexo === 'V')) {
     if (a.fatorR < 0.28 && a.fatorR > 0.2) out.push(['warn', 'Fator R abaixo de 28%', `O Fator R está em ${pct(a.fatorR, 1)}. Ajustando pró-labore ou folha, a atividade pode ser tributada no Anexo III, com alíquota menor.`]);
     else if (a.fatorR >= 0.28 && a.fatorR < 0.30) out.push(['warn', 'Fator R no limite', `O Fator R está em ${pct(a.fatorR, 1)}, muito perto dos 28%. Uma queda na folha pode levar a atividade ao Anexo V.`]);
