@@ -350,7 +350,7 @@ export class GoogleDriveController {
     if (!/^\d{14}$/.test((body.cnpj || '').replace(/\D/g, ''))) throw new BadRequestException('CNPJ inválido');
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(body.competencia || '')) throw new BadRequestException('Competência inválida (use AAAA-MM)');
     const tiposValidos = [
-      'simples', 'pis_cofins', 'irpj_csll', 'federal_outros',
+      'simples', 'pgdas', 'pis_cofins', 'irpj_csll', 'federal_outros',
       'icms_antecipado', 'icms_st', 'icms_normal', 'estadual_outros',
       'iss',
     ];

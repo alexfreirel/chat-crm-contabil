@@ -98,6 +98,7 @@ const IMPOSTOS_TITULOS: Record<string, { titulo: string; grupo: string }> = {
   pis_cofins:      { titulo: 'PIS e COFINS',                    grupo: 'Federal' },
   irpj_csll:       { titulo: 'IRPJ e CSLL',                     grupo: 'Federal' },
   federal_outros:  { titulo: 'Outros',                          grupo: 'Federal' },
+  pgdas:           { titulo: 'PGDAS-D Simples Nacional',        grupo: 'Federal' },
   icms_antecipado: { titulo: 'ICMS Antecipado e FECOEP',        grupo: 'Estadual' },
   icms_st:         { titulo: 'ICMS Subst. Tributária e FECOEP', grupo: 'Estadual' },
   icms_normal:     { titulo: 'ICMS Normal',                     grupo: 'Estadual' },

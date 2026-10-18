@@ -23,7 +23,7 @@ const GRUPOS: ImpostoGrupo[] = [
       { tipo: 'simples',        titulo: 'Simples Nacional' },
       { tipo: 'pis_cofins',     titulo: 'PIS e COFINS' },
       { tipo: 'irpj_csll',      titulo: 'IRPJ e CSLL' },
-      { tipo: 'federal_outros', titulo: 'PGDAS-D Simples Nacional', acumula: true },
+      { tipo: 'pgdas',          titulo: 'PGDAS-D Simples Nacional' },
     ],
   },
   {
