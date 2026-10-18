@@ -2375,7 +2375,7 @@ export default function Dashboard() {
               onShowDetails={() => setShowDetailsPanel(true)}
               onSetClientPanelLeadId={setClientPanelLeadId}
               onLightbox={setLightbox}
-              onCreateTask={openTaskModal}
+              onCreateTask={() => router.push('/atendimento/agenda?tab=tasks')}
               onSyncHistory={async () => {
                 if (!selectedId) return;
                 try {

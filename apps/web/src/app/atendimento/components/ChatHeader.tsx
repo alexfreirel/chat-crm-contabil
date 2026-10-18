@@ -281,30 +281,10 @@ export function ChatHeader({
               {hasPendingTransfer ? 'Aguardando...' : 'Transferir'}
             </button>
           )}
-          {selected?.originAssignedUserId && selected?.assignedAgentId === currentUserId && !isClosed && (
-            <>
-              <button
-                onClick={() => onOpenReasonPopup('return', selected?.originAssignedUserName || 'atendente de origem')}
-                title="Devolver conversa ao atendente de origem"
-                className="px-3 py-2 text-sm font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl hover:bg-amber-500/20 transition-colors flex items-center gap-2"
-              >
-                <CornerDownLeft size={16} />
-                Devolver
-              </button>
-              <button
-                onClick={onKeepInInbox}
-                title="Manter conversa no meu inbox"
-                className="px-3 py-2 text-sm font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl hover:bg-emerald-500/20 transition-colors flex items-center gap-2"
-              >
-                <Inbox size={16} />
-                Manter Aqui
-              </button>
-            </>
-          )}
           {selected?.leadId && isRealConvo && !isClosed && (
             <button
               onClick={onCreateTask}
-              title="Criar tarefa"
+              title="Abrir aba Tarefas"
               className="px-3 py-2 text-sm font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl hover:bg-amber-500/20 transition-colors flex items-center gap-2"
             >
               <ClipboardList size={16} />
