@@ -571,54 +571,6 @@ export function TasksPanel({ viewAllTasks = false }: { viewAllTasks?: boolean } 
         </div>
       )}
 
-      {/* ── Sprint 4: Painel NBA (Next-Best-Action por IA) ── */}
-      <div className="shrink-0 px-6 py-3 border-b border-border bg-gradient-to-r from-primary/5 to-transparent">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Sparkles size={13} className="text-primary" />
-            <span className="font-semibold text-foreground">Próxima Ação IA</span>
-          </div>
-
-          {!nba && !nbaLoading && (
-            <button
-              onClick={fetchNba}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 transition-colors"
-            >
-              <Zap size={11} />
-              Analisar tarefas
-            </button>
-          )}
-
-          {nbaLoading && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Loader2 size={12} className="animate-spin" />
-              Consultando IA...
-            </div>
-          )}
-
-          {nba && nba.acao && (
-            <div className="flex-1 flex items-center gap-3 min-w-0">
-              <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                nba.urgencia === 'alta' ? 'bg-red-500/15 text-red-400' :
-                nba.urgencia === 'media' ? 'bg-amber-500/15 text-amber-400' :
-                'bg-green-500/15 text-green-400'
-              }`}>
-                {nba.urgencia === 'alta' ? '🔴' : nba.urgencia === 'media' ? '🟡' : '🟢'} {nba.urgencia.charAt(0).toUpperCase() + nba.urgencia.slice(1)}
-              </span>
-              <span className="text-xs font-semibold text-foreground truncate">{nba.acao}</span>
-              <span className="text-[10px] text-muted-foreground truncate hidden sm:block">{nba.justificativa}</span>
-              <button onClick={() => setNba(null)} className="shrink-0 text-muted-foreground hover:text-foreground ml-auto">
-                <X size={12} />
-              </button>
-            </div>
-          )}
-
-          {nba && !nba.acao && (
-            <span className="text-xs text-muted-foreground">{nba.justificativa}</span>
-          )}
-        </div>
-      </div>
-
       {/* ── Formulário nova tarefa ── */}
       {showNew && (
         <div className="shrink-0 px-6 py-4 border-b border-border bg-accent/20">
