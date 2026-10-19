@@ -19,7 +19,7 @@ export function UpcomingEvents({ events }: Props) {
     <WidgetCard
       title="Proximos Compromissos"
       icon={<Calendar size={15} className="text-primary" />}
-      linkLabel="Ver agenda"
+      linkLabel="Ver tarefas"
       linkHref="/atendimento/agenda"
     >
       <div className="space-y-2">

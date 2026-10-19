@@ -59,30 +59,30 @@ export class TeamPerformanceService {
       stagesAdvanced, stagesAdvancedPrev,
     ] = await Promise.all([
       // ── Tasks (ALL) ──
-      this.prisma.calendarEvent.groupBy({
+      this.prisma.task.groupBy({
         by: ['assigned_user_id'],
         _count: true,
-        where: { type: 'TAREFA', status: 'CONCLUIDO', assigned_user_id: { in: allIds }, ...tw },
+        where: { status: 'CONCLUIDA', assigned_user_id: { in: allIds }, ...tw },
       }),
-      this.prisma.calendarEvent.groupBy({
+      this.prisma.task.groupBy({
         by: ['assigned_user_id'],
         _count: true,
-        where: { type: 'TAREFA', status: { in: ['AGENDADO', 'CONFIRMADO'] }, assigned_user_id: { in: allIds }, ...tw },
+        where: { status: { notIn: ['CONCLUIDA', 'CANCELADA'] }, assigned_user_id: { in: allIds }, ...tw },
       }),
-      this.prisma.calendarEvent.groupBy({
+      this.prisma.task.groupBy({
         by: ['assigned_user_id'],
         _count: true,
-        where: { type: 'TAREFA', status: { in: ['AGENDADO', 'CONFIRMADO'] }, start_at: { lt: now }, assigned_user_id: { in: allIds }, ...tw },
+        where: { status: { notIn: ['CONCLUIDA', 'CANCELADA'] }, due_at: { lt: now }, assigned_user_id: { in: allIds }, ...tw },
       }),
-      this.prisma.calendarEvent.groupBy({
+      this.prisma.task.groupBy({
         by: ['assigned_user_id'],
         _count: true,
-        where: { type: 'TAREFA', status: 'CONCLUIDO', assigned_user_id: { in: allIds }, created_at: { gte: prevStart, lte: prevEnd }, ...tw },
+        where: { status: 'CONCLUIDA', assigned_user_id: { in: allIds }, created_at: { gte: prevStart, lte: prevEnd }, ...tw },
       }),
-      this.prisma.calendarEvent.groupBy({
+      this.prisma.task.groupBy({
         by: ['assigned_user_id'],
         _count: true,
-        where: { type: 'TAREFA', status: { in: ['AGENDADO', 'CONFIRMADO'] }, assigned_user_id: { in: allIds }, created_at: { gte: prevStart, lte: prevEnd }, ...tw },
+        where: { status: { notIn: ['CONCLUIDA', 'CANCELADA'] }, assigned_user_id: { in: allIds }, created_at: { gte: prevStart, lte: prevEnd }, ...tw },
       }),
 
       // ── ESPECIALISTA: Clientes Contábeis ──

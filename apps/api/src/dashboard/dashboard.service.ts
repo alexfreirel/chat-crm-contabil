@@ -47,10 +47,14 @@ export class DashboardService {
 
     // ─── Task filters (modelo Task — o mesmo da tela de tarefas) ──
     const OPEN_TASK = { notIn: ['CONCLUIDA', 'CANCELADA'] };
+    // Mesma visibilidade da tela de tarefas: ADMIN/CONTADOR veem todas; os demais veem as suas + sem responsável
+    const seesAllTasks = roleArr.some((r) => ['ADMIN', 'CONTADOR'].includes(r));
     const taskWhere = (status: any, extra: object = {}) => ({
       status,
-      ...(isAdmin ? {} : { assigned_user_id: userId }),
-      ...tw,
+      AND: [
+        tw,
+        ...(seesAllTasks ? [] : [{ OR: [{ assigned_user_id: userId }, { assigned_user_id: null }] }]),
+      ],
       ...extra,
     });
 

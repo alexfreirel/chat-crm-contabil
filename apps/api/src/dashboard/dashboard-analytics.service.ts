@@ -158,19 +158,24 @@ export class DashboardAnalyticsService {
   /* ─── Task Completion ─── */
   async taskCompletion(userId: string, roles: string | string[], tenantId?: string, startDate?: string, endDate?: string) {
     const roleArr = Array.isArray(roles) ? roles : (roles ? [roles] : []);
-    const isAdmin = roleArr.includes('ADMIN');
+    const seesAll = roleArr.some((r) => ['ADMIN', 'CONTADOR'].includes(r));
     const tw = this.tenantWhere(tenantId);
-    const baseWhere: any = { type: 'TAREFA', ...tw };
-    if (!isAdmin) baseWhere.assigned_user_id = userId;
+    // Modelo Task (mesmo da tela de tarefas); ADMIN/CONTADOR veem todas, demais: suas + sem responsável
+    const baseWhere: any = {
+      AND: [
+        tw,
+        ...(seesAll ? [] : [{ OR: [{ assigned_user_id: userId }, { assigned_user_id: null }] }]),
+      ],
+    };
     if (startDate && endDate) {
       baseWhere.created_at = { gte: new Date(startDate), lte: new Date(endDate) };
     }
 
     const [completed, pending, overdue] = await Promise.all([
-      this.prisma.calendarEvent.count({ where: { ...baseWhere, status: 'CONCLUIDO' } }),
-      this.prisma.calendarEvent.count({ where: { ...baseWhere, status: { in: ['AGENDADO', 'CONFIRMADO'] } } }),
-      this.prisma.calendarEvent.count({
-        where: { ...baseWhere, status: { in: ['AGENDADO', 'CONFIRMADO'] }, start_at: { lt: new Date() } },
+      this.prisma.task.count({ where: { ...baseWhere, status: 'CONCLUIDA' } }),
+      this.prisma.task.count({ where: { ...baseWhere, status: { notIn: ['CONCLUIDA', 'CANCELADA'] } } }),
+      this.prisma.task.count({
+        where: { ...baseWhere, status: { notIn: ['CONCLUIDA', 'CANCELADA'] }, due_at: { lt: new Date() } },
       }),
     ]);
 

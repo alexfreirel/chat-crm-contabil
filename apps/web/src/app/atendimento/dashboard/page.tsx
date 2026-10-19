@@ -148,6 +148,13 @@ export default function DashboardPage() {
           </MotionWidget>
         )}
 
+        {/* Próximos compromissos */}
+        {showEvents && (
+          <MotionWidget delay={0.075}>
+            <UpcomingEvents events={data.upcomingEvents} />
+          </MotionWidget>
+        )}
+
         {/* Row 3: Performance Strip (ADMIN + CONTADOR) */}
         {aggressive && (
           <MotionWidget delay={0.08}>
@@ -189,7 +196,7 @@ export default function DashboardPage() {
         <MotionWidget delay={0.18}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {showFunnel && <LeadFunnelChart data={funnel.data} loading={funnel.loading} />}
-            {showSources ? <LeadSourcesChart data={sources.data} loading={sources.loading} /> : showTasks && <TaskCompletionChart data={tasks.data} loading={tasks.loading} />}
+            {showSources && <LeadSourcesChart data={sources.data} loading={sources.loading} />}
           </div>
         </MotionWidget>
 
@@ -207,13 +214,6 @@ export default function DashboardPage() {
         {showPipeline && (
           <MotionWidget delay={0.25}>
             <LeadPipeline pipeline={data.leadPipeline} />
-          </MotionWidget>
-        )}
-
-        {/* Row 9: Task Completion (se nao foi mostrado acima) */}
-        {showTasks && showSources && (
-          <MotionWidget delay={0.28}>
-            <TaskCompletionChart data={tasks.data} loading={tasks.loading} />
           </MotionWidget>
         )}
 
@@ -255,17 +255,17 @@ export default function DashboardPage() {
           </MotionWidget>
         )}
 
-        {/* Row 14: Events */}
-        {showEvents && (
-          <MotionWidget delay={0.42}>
-            <UpcomingEvents events={data.upcomingEvents} />
-          </MotionWidget>
-        )}
-
         {/* Row 16: Equipe Online (ADMIN only) */}
         {isAdmin && (
           <MotionWidget delay={0.5}>
             <TeamOnline />
+          </MotionWidget>
+        )}
+
+        {/* Gráfico de tarefas por último */}
+        {showTasks && (
+          <MotionWidget delay={0.55}>
+            <TaskCompletionChart data={tasks.data} loading={tasks.loading} />
           </MotionWidget>
         )}
       </div>
