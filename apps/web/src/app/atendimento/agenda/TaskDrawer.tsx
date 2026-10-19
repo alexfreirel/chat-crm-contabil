@@ -188,7 +188,8 @@ export function TaskDrawer({
   };
 
   const startEdit = (field: EditField) => {
-    if (!task) return;
+    // Depois de criada, só ADMIN/CONTADOR editam a tarefa
+    if (!task || !canManageTasks) return;
     setEditingField(field);
     if (field === 'due_at') {
       // datetime-local format: YYYY-MM-DDTHH:mm

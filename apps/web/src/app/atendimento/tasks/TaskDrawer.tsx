@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import api from '@/lib/api';
 import { showError, showSuccess } from '@/lib/toast';
+import { useRole } from '@/lib/useRole';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -62,6 +63,9 @@ export function TaskDrawer({
   onClose: () => void;
   onStatusChange?: (id: string, status: string) => void;
 }) {
+  const { isAdmin, isContador } = useRole();
+  const canManageTasks = isAdmin || isContador;
+
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -147,7 +151,8 @@ export function TaskDrawer({
   };
 
   const startEdit = (field: EditField) => {
-    if (!task) return;
+    // Depois de criada, só ADMIN/CONTADOR editam a tarefa
+    if (!task || !canManageTasks) return;
     setEditingField(field);
     if (field === 'due_at') {
       // datetime-local format: YYYY-MM-DDTHH:mm

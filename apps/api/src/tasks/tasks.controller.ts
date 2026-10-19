@@ -12,6 +12,17 @@ const TASK_CREATOR_ROLES = ['ADMIN', 'CONTADOR', 'ASSISTENTE'];
 export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
+  private rolesOf(req: any): string[] {
+    return Array.isArray(req.user?.roles) ? req.user.roles : (req.user?.role ? [req.user.role] : []);
+  }
+
+  // Depois de criada, a tarefa só pode ser editada por ADMIN/CONTADOR
+  private assertManager(roles: string[], acao: string) {
+    if (!roles.some(r => TASK_MANAGER_ROLES.includes(r))) {
+      throw new ForbiddenException('Apenas administradores e contadores podem ' + acao + ' tarefas.');
+    }
+  }
+
   // Sprint 4: Carga de trabalho por usuário (deve vir ANTES de :id)
   @Get('workload')
   getWorkload(@Request() req: any) {
@@ -162,6 +173,7 @@ export class TasksController {
   @Patch(':id')
   async update(@Param('id') id: string, @Body() data: UpdateTaskDto, @Request() req: any) {
     const roles: string[] = Array.isArray(req.user?.roles) ? req.user.roles : (req.user?.role ? [req.user.role] : []);
+    this.assertManager(roles, 'editar');
     await this.tasksService.assertCanCancel(id, data.status, roles.includes('ADMIN'));
     return this.tasksService.update(id, data, req.user?.tenant_id);
   }
@@ -185,6 +197,7 @@ export class TasksController {
   // Sprint 5: Checklist CRUD
   @Post(':id/checklist')
   addChecklistItem(@Param('id') id: string, @Body('text') text: string, @Request() req: any) {
+    this.assertManager(this.rolesOf(req), 'editar');
     return this.tasksService.addChecklistItem(id, text, req.user?.tenant_id);
   }
 
@@ -200,6 +213,7 @@ export class TasksController {
 
   @Delete(':id/checklist/:itemId')
   deleteChecklistItem(@Param('id') id: string, @Param('itemId') itemId: string, @Request() req: any) {
+    this.assertManager(this.rolesOf(req), 'editar');
     return this.tasksService.deleteChecklistItem(id, itemId, req.user?.tenant_id);
   }
 
