@@ -357,6 +357,9 @@ export default function ChatPage({ params }: { params: { id: string } }) {
     const tag = (e.target as HTMLElement).tagName;
     if (['BUTTON', 'A', 'INPUT', 'TEXTAREA', 'IMG', 'VIDEO', 'AUDIO'].includes(tag)) return;
     if ((e.target as HTMLElement).closest('button, a, input, textarea')) return;
+    // Não roubar o foco se o usuário está selecionando texto (permite copiar)
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed && sel.toString().length > 0) return;
     inputRef.current?.focus();
   }, []);
 
