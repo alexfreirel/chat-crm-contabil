@@ -6,7 +6,7 @@ import {
   ShieldCheck, Building2,
   RefreshCw, CheckCircle2,
   XCircle, ExternalLink, Loader2,
-  Users, ArrowRight, Server, Upload, HardDrive, Save,
+  Users, ArrowRight, Server, Upload, HardDrive, Save, ChevronDown,
 } from 'lucide-react';
 import { API_BASE_URL } from '@/lib/api';
 import { abrirAnexo } from '@/lib/abrirAnexo';
@@ -104,6 +104,7 @@ export default function AgenteCertidoesPage() {
   // ── CNPJs (fonte: Clientes Contábeis) ──
   const [cnpjs, setCnpjs] = useState<CnpjEntry[]>([]);
   const [carregandoCnpjs, setCarregandoCnpjs] = useState(false);
+  const [expandido, setExpandido] = useState<string | null>(null);
   const [totalClientes, setTotalClientes] = useState(0);
   const [clientesSemCnpj, setClientesSemCnpj] = useState(0);
 
@@ -496,77 +497,86 @@ export default function AgenteCertidoesPage() {
                 </button>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-[13px]">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/30">
-                      <th className="text-left px-5 py-3 font-semibold text-muted-foreground sticky left-0 bg-muted/30 z-10">Empresa / CNPJ</th>
-                      {CERTIDOES.map(col => (
-                        <th key={col.tipo} className="text-center px-3 py-3 font-semibold text-muted-foreground whitespace-nowrap">
-                          <div>{col.titulo}</div>
-                          <div className="text-[10px] font-normal opacity-70 mt-0.5">{col.subtitulo}</div>
-                          <button
-                            onClick={() => abrirPortal(col.tipo)}
-                            className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                            title={`Abrir portal — ${col.titulo} (${col.subtitulo})`}
-                          >
-                            <ExternalLink size={12} /> Abrir
-                          </button>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cnpjs.map(c => (
-                      <tr key={c.cnpj} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
-                        <td className="px-5 py-3 sticky left-0 bg-card hover:bg-muted/20 z-10 min-w-[260px]">
+              <div>
+                {cnpjs.map(c => {
+                  const aberto = expandido === c.cnpj;
+                  const enviados = CERTIDOES.filter(col => ultimaAnexada.get(statusKey(c.cnpj, col.tipo))).length;
+                  return (
+                    <div key={c.cnpj} className="border-b border-border/50 last:border-b-0">
+                      <div className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-muted/20 transition-colors">
+                        <div className="min-w-0">
                           <div className="text-[13px] font-medium truncate">{c.nome || '—'}</div>
                           <div className="text-[11px] text-muted-foreground font-mono">{fmtCnpj(c.cnpj)}</div>
-                        </td>
-                        {CERTIDOES.map(col => {
-                          const key = statusKey(c.cnpj, col.tipo);
-                          const enviando = !!uploading[key];
-                          const anexo = ultimaAnexada.get(key);
-                          return (
-                            <td key={col.tipo} className="px-3 py-3 text-center">
-                              <div className="inline-flex flex-col items-center gap-1">
-                                <div className="inline-flex items-center gap-1.5">
-                                  <button
-                                    onClick={() => iniciarAnexo(c, col)}
-                                    disabled={enviando}
-                                    className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
-                                    title={anexo ? `Substituir pela certidão nova — ${col.titulo}` : `Anexar ${col.titulo}`}
-                                  >
-                                    {enviando
-                                      ? <><Loader2 size={12} className="animate-spin" /> Enviando…</>
-                                      : anexo
-                                        ? <><RefreshCw size={12} /> Atualizar</>
-                                        : <><Upload size={12} /> Anexar</>
-                                    }
-                                  </button>
-                                  {anexo && (
+                        </div>
+                        <button
+                          onClick={() => setExpandido(aberto ? null : c.cnpj)}
+                          className={`shrink-0 inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border transition-colors ${aberto ? 'border-primary text-primary bg-primary/10' : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'}`}
+                        >
+                          <Upload size={12} /> Anexar
+                          {enviados > 0 && <span className="text-[10px] px-1.5 rounded-full bg-primary/15 text-primary">{enviados}/{CERTIDOES.length}</span>}
+                          <ChevronDown size={12} className={`transition-transform ${aberto ? 'rotate-180' : ''}`} />
+                        </button>
+                      </div>
+                      {aberto && (
+                        <div className="px-5 pb-4 pt-1 bg-muted/20">
+                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                            {CERTIDOES.map(col => {
+                              const key = statusKey(c.cnpj, col.tipo);
+                              const enviando = !!uploading[key];
+                              const anexo = ultimaAnexada.get(key);
+                              return (
+                                <div key={col.tipo} className="rounded-lg border border-border bg-card px-3 py-2.5 flex flex-col items-start gap-2">
+                                  <div className="w-full flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <div className="text-[12px] font-semibold">{col.titulo}</div>
+                                      <div className="text-[10px] text-muted-foreground">{col.subtitulo}</div>
+                                    </div>
                                     <button
-                                      onClick={() => verAnexo(anexo.id)}
-                                      className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                                      title="Abrir a certidão anexada"
+                                      onClick={() => abrirPortal(col.tipo)}
+                                      className="shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                                      title={`Abrir portal — ${col.titulo} (${col.subtitulo})`}
                                     >
-                                      <ExternalLink size={12} /> Ver
+                                      <ExternalLink size={11} /> Portal
                                     </button>
+                                  </div>
+                                  <div className="inline-flex items-center gap-1.5">
+                                    <button
+                                      onClick={() => iniciarAnexo(c, col)}
+                                      disabled={enviando}
+                                      className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
+                                      title={anexo ? `Substituir pela certidão nova — ${col.titulo}` : `Anexar ${col.titulo}`}
+                                    >
+                                      {enviando
+                                        ? <><Loader2 size={12} className="animate-spin" /> Enviando…</>
+                                        : anexo
+                                          ? <><RefreshCw size={12} /> Atualizar</>
+                                          : <><Upload size={12} /> Anexar</>
+                                      }
+                                    </button>
+                                    {anexo && (
+                                      <button
+                                        onClick={() => verAnexo(anexo.id)}
+                                        className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                                        title="Abrir a certidão anexada"
+                                      >
+                                        <ExternalLink size={12} /> Ver
+                                      </button>
+                                    )}
+                                  </div>
+                                  {anexo && (anexo.modifiedTime || anexo.createdTime) && (
+                                    <span className="text-[10px] text-muted-foreground" title="Data em que foi anexada ou atualizada">
+                                      {new Date((anexo.modifiedTime || anexo.createdTime)!).toLocaleDateString('pt-BR')}
+                                    </span>
                                   )}
                                 </div>
-                                {anexo && (anexo.modifiedTime || anexo.createdTime) && (
-                                  <span className="text-[10px] text-muted-foreground" title="Data em que foi anexada ou atualizada">
-                                    {new Date((anexo.modifiedTime || anexo.createdTime)!).toLocaleDateString('pt-BR')}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
