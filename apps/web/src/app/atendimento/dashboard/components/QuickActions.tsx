@@ -1,15 +1,17 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { MessageSquare, Calculator, Calendar, Briefcase, BookOpen, Settings, LayoutDashboard, HelpCircle } from 'lucide-react';
+import { MessageSquare, Calculator, Calendar, Briefcase, BookOpen, Settings, LayoutDashboard, HelpCircle, ClipboardList, Receipt } from 'lucide-react';
 import type { RoleInfo } from '@/lib/useRole';
 
 const ALL_ACTIONS = [
-  { label: 'Atendimento', icon: MessageSquare, href: '/atendimento', color: 'text-blue-500 bg-blue-500/10', roles: ['ADMIN', 'CONTADOR', 'ASSISTENTE', 'FINANCEIRO'] },
+  { label: 'Inbox WhatsApp', icon: MessageSquare, href: '/atendimento', color: 'text-blue-500 bg-blue-500/10', roles: ['ADMIN', 'CONTADOR', 'ASSISTENTE', 'FINANCEIRO'] },
   { label: 'Novo Cliente', icon: Calculator, href: '/atendimento/clientes', color: 'text-purple-500 bg-purple-500/10', roles: ['ADMIN', 'CONTADOR'] },
-  { label: 'Agenda', icon: Calendar, href: '/atendimento/agenda', color: 'text-rose-500 bg-rose-500/10', roles: ['ADMIN', 'CONTADOR', 'ASSISTENTE'] },
+  { label: 'Tarefas', icon: Calendar, href: '/atendimento/agenda', color: 'text-rose-500 bg-rose-500/10', roles: ['ADMIN', 'CONTADOR', 'ASSISTENTE'] },
   { label: 'CRM', icon: Briefcase, href: '/atendimento/crm', color: 'text-amber-500 bg-amber-500/10', roles: ['ADMIN', 'CONTADOR'] },
-  { label: 'Clientes', icon: BookOpen, href: '/atendimento/clientes', color: 'text-teal-500 bg-teal-500/10', roles: ['ADMIN', 'CONTADOR', 'ASSISTENTE'] },
+  { label: 'Clientes Contábeis', icon: BookOpen, href: '/atendimento/clientes', color: 'text-teal-500 bg-teal-500/10', roles: ['ADMIN', 'CONTADOR', 'ASSISTENTE'] },
+  { label: 'Meu Painel', icon: ClipboardList, href: '/atendimento/assistente', color: 'text-indigo-500 bg-indigo-500/10', roles: ['ADMIN', 'CONTADOR', 'ASSISTENTE'] },
+  { label: 'Impostos', icon: Receipt, href: '/atendimento/impostos', color: 'text-orange-500 bg-orange-500/10', roles: ['ADMIN', 'CONTADOR', 'ASSISTENTE'] },
   { label: 'Financeiro', icon: Settings, href: '/atendimento/financeiro', color: 'text-emerald-500 bg-emerald-500/10', roles: ['ADMIN', 'FINANCEIRO'] },
   { label: 'Manual', icon: HelpCircle, href: '/atendimento/manual', color: 'text-violet-500 bg-violet-500/10', roles: ['ADMIN', 'CONTADOR', 'ASSISTENTE', 'FINANCEIRO'] },
   { label: 'Ajustes', icon: Settings, href: '/atendimento/settings', color: 'text-gray-400 bg-gray-500/10', roles: ['ADMIN', 'CONTADOR'] },
@@ -23,7 +25,7 @@ export function QuickActions({ roleInfo }: Props) {
   const router = useRouter();
   const actions = roleInfo.role
     ? ALL_ACTIONS.filter((a) => a.roles.includes(roleInfo.role!))
-    : ALL_ACTIONS.slice(0, 6);
+    : ALL_ACTIONS.slice(0, 8);
 
   return (
     <div>

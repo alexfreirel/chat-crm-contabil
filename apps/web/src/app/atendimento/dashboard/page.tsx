@@ -129,6 +129,11 @@ export default function DashboardPage() {
           />
         </MotionWidget>
 
+        {/* Acesso rápido */}
+        <MotionWidget delay={0.055}>
+          <QuickActions roleInfo={roleInfo} />
+        </MotionWidget>
+
         {/* Controle: tempo de execução x ociosidade (gestor vê todos os assistentes; assistente vê o próprio) */}
         {(aggressive || isAssistente) && (
           <MotionWidget delay={0.06}>
@@ -256,11 +261,6 @@ export default function DashboardPage() {
             <UpcomingEvents events={data.upcomingEvents} />
           </MotionWidget>
         )}
-
-        {/* Row 15: Quick Actions */}
-        <MotionWidget delay={0.45}>
-          <QuickActions roleInfo={roleInfo} />
-        </MotionWidget>
 
         {/* Row 16: Equipe Online (ADMIN only) */}
         {isAdmin && (
