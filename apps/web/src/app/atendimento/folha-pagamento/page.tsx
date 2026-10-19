@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Banknote, Building2, RefreshCw, CheckCircle2, XCircle, ExternalLink,
-  Loader2, Upload, ChevronLeft, ChevronRight, Search, HardDrive,
+  Loader2, Upload, ChevronLeft, ChevronRight, ChevronDown, Search, HardDrive,
 } from 'lucide-react';
 import { API_BASE_URL } from '@/lib/api';
 import { abrirAnexo } from '@/lib/abrirAnexo';
@@ -79,6 +79,7 @@ export default function FolhaPagamentoPage() {
   const [loading, setLoading] = useState(true);
   const [competencia, setCompetencia] = useState(competenciaAtual());
   const [busca, setBusca] = useState('');
+  const [expandido, setExpandido] = useState<string | null>(null);
 
   const [cnpjs, setCnpjs] = useState<CnpjEntry[]>([]);
   const [carregandoCnpjs, setCarregandoCnpjs] = useState(false);
@@ -313,44 +314,41 @@ export default function FolhaPagamentoPage() {
                 <p>Nenhuma empresa encontrada.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-[13px]">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/30">
-                      <th rowSpan={2} className="text-left px-5 py-3 font-semibold text-muted-foreground sticky left-0 bg-muted/30 z-10 min-w-[260px]">
-                        Empresa / CNPJ
-                      </th>
-                      {GRUPOS.map(g => (
-                        <th key={g.id} colSpan={g.cols.length}
-                          className="text-center px-3 py-2 text-[11px] uppercase tracking-wider font-bold text-primary border-l border-border">
-                          {g.titulo}
-                        </th>
-                      ))}
-                    </tr>
-                    <tr className="border-b border-border bg-muted/30">
-                      {GRUPOS.flatMap(g => g.cols.map((col, i) => (
-                        <th key={col.tipo}
-                          className={`text-center px-3 py-2 font-semibold text-muted-foreground whitespace-nowrap text-[12px] ${i === 0 ? 'border-l border-border' : ''}`}>
-                          {col.titulo}
-                        </th>
-                      )))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lista.map(c => (
-                      <tr key={c.cnpj} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
-                        <td className="px-5 py-3 sticky left-0 bg-card z-10 min-w-[260px]">
+              <div>
+                {lista.map(c => {
+                  const aberto = expandido === c.cnpj;
+                  const enviados = GRUPOS.flatMap(g => g.cols).filter(col => (porCelula.get(`${c.cnpj}|${col.tipo}`) || []).length > 0).length;
+                  return (
+                    <div key={c.cnpj} className="border-b border-border/50 last:border-b-0">
+                      <div className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-muted/20 transition-colors">
+                        <div className="min-w-0">
                           <div className="text-[13px] font-medium truncate">{c.nome}</div>
                           <div className="text-[11px] text-muted-foreground font-mono">{fmtCnpj(c.cnpj)}</div>
-                        </td>
-                        {GRUPOS.flatMap(g => g.cols.map((col, i) => {
-                          const key = `${c.cnpj}|${col.tipo}`;
-                          const arquivos = porCelula.get(key) || [];
-                          const ultimo = arquivos[0];
-                          const enviando = !!uploading[key];
-                          return (
-                            <td key={col.tipo} className={`px-3 py-3 text-center ${i === 0 ? 'border-l border-border/60' : ''}`}>
-                              <div className="inline-flex flex-col items-center gap-1">
+                        </div>
+                        <button
+                          onClick={() => setExpandido(aberto ? null : c.cnpj)}
+                          className={`shrink-0 inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border transition-colors ${aberto ? 'border-primary text-primary bg-primary/10' : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'}`}
+                        >
+                          <Upload size={12} /> Anexar
+                          {enviados > 0 && <span className="text-[10px] px-1.5 rounded-full bg-primary/15 text-primary">{enviados}</span>}
+                          <ChevronDown size={12} className={`transition-transform ${aberto ? 'rotate-180' : ''}`} />
+                        </button>
+                      </div>
+                      {aberto && (
+                        <div className="px-5 pb-4 pt-1 bg-muted/20 grid gap-4">
+                          {GRUPOS.map(g => (
+                            <div key={g.id}>
+                              <div className="text-[11px] uppercase tracking-wider font-bold text-primary mb-2">{g.titulo}</div>
+                              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                {g.cols.map(col => {
+                                  const key = `${c.cnpj}|${col.tipo}`;
+                                  const arquivos = porCelula.get(key) || [];
+                                  const ultimo = arquivos[0];
+                                  const enviando = !!uploading[key];
+                                  return (
+                                    <div key={col.tipo} className="rounded-lg border border-border bg-card px-3 py-2.5 flex flex-col items-start gap-2">
+                                      <span className="text-[12px] font-semibold">{col.titulo}</span>
+                              <div className="inline-flex flex-col items-start gap-1">
                                 <div className="inline-flex items-center gap-1.5">
                                   <button
                                     onClick={() => iniciarAnexo(c, col)}
@@ -376,9 +374,9 @@ export default function FolhaPagamentoPage() {
                                   )}
                                 </div>
 
-                                {/* Admissão/Rescisão/Férias: vários arquivos no mês, cada um com seu link */}
+                                {/* "Outros": vários arquivos no mês, cada um com seu link */}
                                 {col.acumula && arquivos.length > 0 && (
-                                  <div className="flex flex-wrap justify-center gap-1 max-w-[190px]">
+                                  <div className="flex flex-wrap gap-1 max-w-[190px]">
                                     {arquivos.map((a, n) => (
                                       <button
                                         key={a.id}
@@ -398,13 +396,17 @@ export default function FolhaPagamentoPage() {
                                   </span>
                                 )}
                               </div>
-                            </td>
-                          );
-                        }))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
