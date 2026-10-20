@@ -6,7 +6,7 @@ import {
   ShieldCheck, Building2,
   RefreshCw, CheckCircle2,
   XCircle, ExternalLink, Loader2,
-  Users, ArrowRight, Server, Upload, HardDrive, Save, ChevronDown,
+  Users, ArrowRight, Server, Upload, ChevronDown, Search, X,
 } from 'lucide-react';
 import { API_BASE_URL } from '@/lib/api';
 import { abrirAnexo } from '@/lib/abrirAnexo';
@@ -105,6 +105,7 @@ export default function AgenteCertidoesPage() {
   const [cnpjs, setCnpjs] = useState<CnpjEntry[]>([]);
   const [carregandoCnpjs, setCarregandoCnpjs] = useState(false);
   const [expandido, setExpandido] = useState<string | null>(null);
+  const [busca, setBusca] = useState('');
   const [totalClientes, setTotalClientes] = useState(0);
   const [clientesSemCnpj, setClientesSemCnpj] = useState(0);
 
@@ -330,6 +331,12 @@ export default function AgenteCertidoesPage() {
     </div>
   );
 
+  // Filtro de busca por nome ou CNPJ
+  const termo = busca.trim().toLowerCase();
+  const termoDigitos = termo.replace(/\D/g, '');
+  const filtrados = !termo ? cnpjs : cnpjs.filter(c =>
+    c.nome.toLowerCase().includes(termo) || (termoDigitos && c.cnpj.includes(termoDigitos)));
+
   // Última certidão anexada por (cnpj, tipo) — a lista já vem da mais recente para a mais antiga
   const ultimaAnexada = new Map<string, CertidaoDrive>();
   for (const a of anexadas) {
@@ -375,28 +382,6 @@ export default function AgenteCertidoesPage() {
       <div className="flex-1 overflow-y-auto p-6">
         <div className="max-w-[1400px] mx-auto space-y-4">
 
-          {/* Banner explicativo */}
-          <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 flex items-start gap-3">
-            <Building2 size={20} className="text-primary mt-0.5 shrink-0" />
-            <div className="flex-1">
-              <p className="text-[13px] font-semibold">Lista sincronizada automaticamente</p>
-              <p className="text-[12px] text-muted-foreground mt-0.5">
-                Os CNPJs vêm direto da tela <strong>Clientes Contábeis</strong> (apenas pessoas jurídicas com CNPJ válido).
-                Para adicionar, remover ou editar, gerencie no cadastro de clientes — qualquer alteração aparece aqui em seguida.
-              </p>
-            </div>
-            <button
-              onClick={carregarCnpjs}
-              disabled={carregandoCnpjs}
-              className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-border hover:bg-accent text-muted-foreground transition-colors disabled:opacity-50"
-            >
-              {carregandoCnpjs
-                ? <><Loader2 size={12} className="animate-spin" /> Atualizando…</>
-                : <><RefreshCw size={12} /> Atualizar</>
-              }
-            </button>
-          </div>
-
           {/* Resumo numérico */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="rounded-xl border border-border bg-card px-4 py-3">
@@ -413,72 +398,27 @@ export default function AgenteCertidoesPage() {
             </div>
           </div>
 
-          {/* Google Drive — pasta das certidões */}
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-start gap-3">
-              <HardDrive size={20} className="text-primary mt-0.5 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-semibold">Google Drive — pasta das certidões</p>
-                {!driveCfg ? (
-                  <p className="text-[12px] text-muted-foreground mt-0.5">Carregando…</p>
-                ) : !driveCfg.driveReady ? (
-                  <p className="text-[12px] text-amber-600 mt-0.5">
-                    O Google Drive ainda não está conectado. O administrador precisa conectar em Configurações › Google Drive.
-                  </p>
-                ) : driveCfg.configured && !editandoPasta ? (
-                  <p className="text-[12px] text-muted-foreground mt-0.5">
-                    As certidões anexadas são salvas em{' '}
-                    <a href={driveCfg.folderUrl || '#'} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary hover:underline">
-                      {driveCfg.folderName || 'pasta configurada'}
-                    </a>
-                    , em uma subpasta por empresa.
-                  </p>
-                ) : (
-                  <p className="text-[12px] text-muted-foreground mt-0.5">
-                    {canConfigDrive
-                      ? 'Cole o link (ou ID) da pasta do Drive onde as certidões serão salvas. Ela precisa estar acessível à conta conectada ao Drive.'
-                      : 'A pasta de certidões ainda não foi configurada. Peça ao administrador ou contador.'}
-                  </p>
-                )}
-
-                {canConfigDrive && driveCfg?.driveReady && (!driveCfg.configured || editandoPasta) && (
-                  <div className="flex items-center gap-2 mt-2">
-                    <input
-                      value={folderInput}
-                      onChange={e => setFolderInput(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') salvarPasta(); }}
-                      placeholder="https://drive.google.com/drive/folders/..."
-                      className="flex-1 min-w-0 text-[12px] px-3 py-2 rounded-lg border border-border bg-background outline-none focus:border-primary"
-                    />
-                    <button
-                      onClick={salvarPasta}
-                      disabled={savingFolder || !folderInput.trim()}
-                      className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-lg bg-primary text-primary-foreground disabled:opacity-50"
-                    >
-                      {savingFolder ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Salvar
-                    </button>
-                    {editandoPasta && (
-                      <button onClick={() => { setEditandoPasta(false); setFolderInput(''); }}
-                        className="text-[12px] px-3 py-2 rounded-lg border border-border text-muted-foreground hover:bg-accent">
-                        Cancelar
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-              {canConfigDrive && driveCfg?.configured && !editandoPasta && (
-                <button onClick={() => setEditandoPasta(true)}
-                  className="text-[12px] px-3 py-1.5 rounded-lg border border-border hover:bg-accent text-muted-foreground transition-colors">
-                  Alterar pasta
-                </button>
-              )}
-            </div>
+          {/* Busca */}
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={busca}
+              onChange={e => setBusca(e.target.value)}
+              placeholder="Buscar empresa por nome ou CNPJ…"
+              className="w-full text-[13px] pl-9 pr-9 py-2.5 rounded-xl border border-border bg-card outline-none focus:border-primary"
+            />
+            {busca && (
+              <button onClick={() => setBusca('')} title="Limpar busca"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X size={14} />
+              </button>
+            )}
           </div>
 
           {/* Tabela unificada */}
           <div className="rounded-xl border border-border bg-card overflow-hidden">
             <div className="px-5 py-4 border-b border-border font-semibold flex items-center justify-between">
-              <span>Empresas {cnpjs.length ? `(${cnpjs.length})` : ''}</span>
+              <span>Empresas {cnpjs.length ? `(${filtrados.length})` : ''}</span>
               {carregandoCnpjs && (
                 <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-normal">
                   <Loader2 size={12} className="animate-spin" /> Sincronizando…
@@ -496,9 +436,11 @@ export default function AgenteCertidoesPage() {
                   <Users size={13} /> Cadastrar cliente <ArrowRight size={12} />
                 </button>
               </div>
+            ) : !filtrados.length ? (
+              <div className="text-center py-10 text-muted-foreground text-[13px]">Nenhuma empresa encontrada para "{busca}".</div>
             ) : (
               <div>
-                {cnpjs.map(c => {
+                {filtrados.map(c => {
                   const aberto = expandido === c.cnpj;
                   const enviados = CERTIDOES.filter(col => ultimaAnexada.get(statusKey(c.cnpj, col.tipo))).length;
                   return (
@@ -608,7 +550,7 @@ export default function AgenteCertidoesPage() {
               <div className="text-center py-10 text-muted-foreground text-[13px]">Nenhuma empresa cadastrada.</div>
             ) : (
               <div className="divide-y divide-border/50">
-                {cnpjs.map(c => {
+                {filtrados.map(c => {
                   const docs = contratos
                     .filter(d => d.cnpj === c.cnpj)
                     .sort((x, y) => (x.createdTime || '').localeCompare(y.createdTime || ''));
@@ -667,7 +609,7 @@ export default function AgenteCertidoesPage() {
               <div className="text-center py-10 text-muted-foreground text-[13px]">Nenhuma empresa cadastrada.</div>
             ) : (
               <div className="divide-y divide-border/50">
-                {cnpjs.map(c => {
+                {filtrados.map(c => {
                   const key = statusKey(c.cnpj, ALVARA.tipo);
                   const enviando = !!uploading[key];
                   const anexo = ultimaAnexada.get(key);

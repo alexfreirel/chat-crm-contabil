@@ -307,32 +307,6 @@ function CreateClienteModal({ onClose, onCreated }: { onClose: () => void; onCre
             Preencha o CNPJ (ou nome) para diferenciar empresas do mesmo contato.
           </p>
 
-          {/* Tipo de serviço */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
-              Tipo de serviço <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={serviceType}
-              onChange={e => setServiceType(e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
-            >
-              <optgroup label="Pacote completo">
-                <option value="CLIENTE_EFETIVO">⭐ Cliente Efetivo — BPO Fiscal + Contábil + DP + IRPJ</option>
-              </optgroup>
-              <optgroup label="Serviços individuais">
-                {SERVICE_TYPES.filter(s => !['CLIENTE_EFETIVO','BPO_FISCAL','BPO_CONTABIL','DP','IR_PJ'].includes(s)).map(s => (
-                  <option key={s} value={s}>{SERVICE_ICONS[s]} {SERVICE_LABELS[s]}</option>
-                ))}
-              </optgroup>
-            </select>
-            {serviceType === 'CLIENTE_EFETIVO' && (
-              <p className="text-xs text-primary mt-1">
-                ✅ Inclui: BPO Fiscal · BPO Contábil · Departamento Pessoal · IRPJ
-              </p>
-            )}
-          </div>
-
           {/* Regime tributário */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Regime tributário</label>
