@@ -6,7 +6,7 @@ import type { Cliente } from '@/lib/pgdas';
 import { useParams, useRouter } from 'next/navigation';
 import {
   CheckCircle2, AlertTriangle, Clock, FileText,
-  CreditCard, Building2, User, RefreshCw, MessageCircle,
+  Building2, User, RefreshCw, MessageCircle,
   ChevronRight, Calendar, DollarSign, ShieldCheck, Download, FileSignature,
   Palette, Check, LogOut, Receipt, Banknote,
 } from 'lucide-react';
@@ -492,36 +492,6 @@ export default function PortalClientePage() {
           {/* ─── Resumo ──────────────────────────────────────────────── */}
           {tab === 'resumo' && (
             <>
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { label: 'Total de Obrigações', value: resumo.totalObrigacoes, color: 'text-foreground' },
-                  { label: 'Pendentes', value: resumo.pendentes, color: 'text-amber-500' },
-                  { label: 'Vencidas', value: resumo.vencidas, color: 'text-red-500' },
-                  { label: 'Concluídas', value: resumo.concluidas, color: 'text-emerald-500' },
-                ].map(s => (
-                  <div key={s.label} className={`${card} p-4`}>
-                    <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className={`${card} p-4`}>
-                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                  <CreditCard size={15} className="text-primary" /> Situação Financeira
-                </h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Total em Aberto</p>
-                    <p className="text-lg font-bold text-amber-500">{fmtBRL(resumo.totalPendente)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Total Pago</p>
-                    <p className="text-lg font-bold text-emerald-500">{fmtBRL(resumo.totalPago)}</p>
-                  </div>
-                </div>
-              </div>
-
               {resumo.vencidas > 0 && (
                 <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-start gap-3">
                   <AlertTriangle size={18} className="text-red-500 shrink-0 mt-0.5" />
@@ -535,8 +505,6 @@ export default function PortalClientePage() {
                   </div>
                 </div>
               )}
-
-              {analise && <RelatorioPgdas S={analise} />}
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {([
@@ -554,6 +522,8 @@ export default function PortalClientePage() {
                   </button>
                 ))}
               </div>
+
+              {analise && <RelatorioPgdas S={analise} />}
             </>
           )}
 
