@@ -108,8 +108,11 @@ export interface PgdasLido {
 
 export function parsePGDAS(raw: string): PgdasLido {
   const t = raw.replace(/ /g, ' ');
-  let m = t.match(/Per[ií]odo de Apura[çc][ãa]o[^\d\n]{0,40}(\d{2})\/(\d{4})/i) || t.match(/\(PA\)[^\d\n]{0,20}(\d{2})\/(\d{4})/);
-  const pa = m ? mk(+m[2], +m[1]) : null;
+  // Cabeçalho: "Período de Apuração: 01/09/2026 a 30/09/2026" (intervalo) ou "... 09/2026"
+  let m = t.match(/Per[ií]odo de Apura[çc][ãa]o[^\d\n]{0,40}\d{2}\/(\d{2})\/(\d{4})/i)
+    || t.match(/Per[ií]odo de Apura[çc][ãa]o[^\d\n]{0,40}(\d{2})\/(\d{4})/i)
+    || t.match(/\(PA\)[^\d\n]{0,20}(\d{2})\/(\d{4})/);
+  const pa = m && +m[1] >= 1 && +m[1] <= 12 ? mk(+m[2], +m[1]) : null;
   m = t.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/);
   const cnpj = m ? m[0] : null;
   m = t.match(/Nome empresarial\s*:?\s*([^\n]+)/i);
@@ -132,6 +135,13 @@ export function parsePGDAS(raw: string): PgdasLido {
     }
     if (das == null) { const tot = t.slice(idx).match(/Total[^\n]*?(\d{1,3}(?:\.\d{3})*,\d{2})/); if (tot) das = parseBR(tot[1]); }
   }
+  // 2.6) Resumo da Declaração: "Receita Bruta Auferida | Valor Total do Débito Declarado" → DAS da competência
+  const i26 = t.search(/Valor Total do D[ée]bito Declarado/i);
+  if (i26 >= 0) {
+    const n = nums(t.slice(i26, i26 + 300));
+    const v = n.length >= 2 ? n[1] : null;
+    if (v != null && v > 0) das = v;
+  }
   const anexos = [...new Set((t.match(/Anexo\s+(?:V|IV|III|II|I)\b/gi) || []).map(a => a.split(/\s+/)[1].toUpperCase()))];
   const L = t.split('\n');
   const any = (re: RegExp, not?: RegExp) => L.some(l => re.test(l) && !(not && not.test(l)));
@@ -141,9 +151,13 @@ export function parsePGDAS(raw: string): PgdasLido {
     ret: any(/\bcom reten[çc][ãa]o|ISS retido|\bretido\b/i, /\bsem reten/i),
     exp: any(/\bpara o exterior\b/i, /exceto para o exterior/i),
   };
+  const rpa = rowTotal(t, /Receita Bruta do PA[^\n\d]*/i);
+  // Sem cabeçalho legível: o PA é o mês seguinte ao último das receitas anteriores
+  const hk = Object.keys(hist).sort();
+  const paFinal = pa ?? (rpa != null && hk.length ? addM(hk[hk.length - 1], 1) : null);
   return {
-    pa, cnpj, nome,
-    rpa: rowTotal(t, /Receita Bruta do PA[^\n\d]*/i),
+    pa: paFinal, cnpj, nome,
+    rpa,
     rbt12: rowTotal(t, /\(RBT12\)/),
     rba: rowTotal(t, /\(RBA\)/),
     hist, folha, fatorR, trib, das, anexos, flags,
