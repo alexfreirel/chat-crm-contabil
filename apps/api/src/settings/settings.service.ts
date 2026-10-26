@@ -126,13 +126,20 @@ export class SettingsService {
     await this.set('CANNED_RESPONSES', JSON.stringify(responses));
   }
 
+  /** Aceita a URL salva sem protocolo (ex.: "api.exemplo.com.br") — sem ele o axios falha com "Invalid URL". */
+  private static withProtocol(url?: string | null): string | undefined {
+    const u = (url || '').trim();
+    if (!u) return undefined;
+    return /^https?:\/\//i.test(u) ? u : `https://${u}`;
+  }
+
   async getWhatsAppConfig() {
     const dbApiUrl = await this.get('EVOLUTION_API_URL');
     const dbApiKey = await this.get('EVOLUTION_GLOBAL_APIKEY');
     const dbWebhookUrl = await this.get('WEBHOOK_URL');
 
     return {
-      apiUrl: dbApiUrl || process.env.EVOLUTION_API_URL,
+      apiUrl: SettingsService.withProtocol(dbApiUrl || process.env.EVOLUTION_API_URL),
       apiKey: dbApiKey || process.env.EVOLUTION_GLOBAL_APIKEY,
       webhookUrl: dbWebhookUrl || `${process.env.PUBLIC_API_URL || 'https://lexconassessoriacontabil.com.br/api'}/webhooks/evolution`,
     };
