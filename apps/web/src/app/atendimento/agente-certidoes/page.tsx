@@ -206,15 +206,25 @@ export default function AgenteCertidoesPage() {
 
   // ─── Google Drive: config + certidões anexadas ────────────────────────────
   const loadDrive = useCallback(async () => {
+    const get = async (path: string) => {
+      const res = await fetch(`${API_BASE_URL}/google-drive/${path}`, { headers: authHeaders() });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.message || 'Não foi possível ler o Google Drive.');
+      }
+      return res.json();
+    };
     try {
-      const cfg = await fetch(`${API_BASE_URL}/google-drive/certidoes/config`, { headers: authHeaders() });
-      if (cfg.ok) setDriveCfg(await cfg.json());
-      const arq = await fetch(`${API_BASE_URL}/google-drive/certidoes/arquivos`, { headers: authHeaders() });
-      if (arq.ok) setAnexadas(await arq.json());
-      const cc = await fetch(`${API_BASE_URL}/google-drive/contratos/config`, { headers: authHeaders() });
-      if (cc.ok) setContratosCfg(await cc.json());
-      const ca = await fetch(`${API_BASE_URL}/google-drive/contratos/arquivos`, { headers: authHeaders() });
-      if (ca.ok) setContratos(await ca.json());
+      const [cfg, arq, cc, ca] = await Promise.allSettled([
+        get('certidoes/config'), get('certidoes/arquivos'),
+        get('contratos/config'), get('contratos/arquivos'),
+      ]);
+      if (cfg.status === 'fulfilled') setDriveCfg(cfg.value);
+      if (arq.status === 'fulfilled') setAnexadas(arq.value);
+      if (cc.status === 'fulfilled') setContratosCfg(cc.value);
+      if (ca.status === 'fulfilled') setContratos(ca.value);
+      const falha = [arq, ca].find(r => r.status === 'rejected') as PromiseRejectedResult | undefined;
+      if (falha) toast(falha.reason?.message || 'Não foi possível ler o Google Drive.', 'err');
     } catch { /* offline */ }
   }, []);
 

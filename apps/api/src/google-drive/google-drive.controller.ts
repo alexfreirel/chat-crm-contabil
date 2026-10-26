@@ -24,6 +24,18 @@ import { Public } from '../auth/decorators/public.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { encryptValue, isSensitiveKey } from '../common/utils/crypto.util';
 
+/** Traduz erros da API do Google em mensagens que o usuário consegue agir. */
+function driveErrorMessage(err: any): string {
+  const raw = `${err?.message || ''} ${err?.response?.data?.error || ''}`;
+  if (/invalid_grant|invalid_rapt|unauthorized_client|Token has been expired or revoked/i.test(raw)) {
+    return 'A conexão com o Google Drive expirou ou foi revogada. Peça ao administrador para reconectar em Configurações > Google Drive.';
+  }
+  if (/File not found|notFound|404/i.test(raw)) {
+    return 'Pasta do Google Drive não encontrada ou sem acesso para a conta conectada. Reconfigure a pasta Documentos Empresas.';
+  }
+  return err?.message || 'Falha ao acessar o Google Drive.';
+}
+
 @UseGuards(JwtAuthGuard)
 @Controller('google-drive')
 export class GoogleDriveController {
@@ -244,7 +256,7 @@ export class GoogleDriveController {
       return await this.driveService.listCertidoes();
     } catch (err: any) {
       this.logger.warn(`[DRIVE] Erro ao listar certidões: ${err.message}`);
-      return [];
+      throw new BadRequestException(driveErrorMessage(err));
     }
   }
 
@@ -270,7 +282,7 @@ export class GoogleDriveController {
       });
     } catch (err: any) {
       this.logger.error(`[DRIVE] Upload de certidão falhou: ${err.message}`);
-      throw new BadRequestException(err.message);
+      throw new BadRequestException(driveErrorMessage(err));
     }
   }
 
@@ -297,7 +309,7 @@ export class GoogleDriveController {
       return await this.driveService.listContratos();
     } catch (err: any) {
       this.logger.warn(`[DRIVE] Erro ao listar contratos: ${err.message}`);
-      return [];
+      throw new BadRequestException(driveErrorMessage(err));
     }
   }
 
@@ -319,7 +331,7 @@ export class GoogleDriveController {
       });
     } catch (err: any) {
       this.logger.error(`[DRIVE] Upload de contrato falhou: ${err.message}`);
-      throw new BadRequestException(err.message);
+      throw new BadRequestException(driveErrorMessage(err));
     }
   }
 
