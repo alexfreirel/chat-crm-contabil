@@ -644,29 +644,168 @@ export class GoogleDriveService {
     };
   }
 
-  /** Lista as certidões anexadas pelo agente (todas as empresas, ou só a do CNPJ informado), mais recentes primeiro. */
+  /**
+   * Lista as certidões/alvarás (todas as empresas, ou só a do CNPJ informado), mais recentes primeiro.
+   * Inclui tanto os anexados pelo sistema quanto os colocados direto na pasta "NOME - CNPJ" do Drive.
+   */
   async listCertidoes(cnpj?: string) {
-    const drive = await this.getDriveClientForFiles();
     const cnpjDigits = (cnpj || '').replace(/\D/g, '');
-    const filtroCnpj = cnpjDigits ? ` and appProperties has { key='cnpj' and value='${cnpjDigits}' }` : '';
-    const res = await drive.files.list({
-      q: `appProperties has { key='origem' and value='${GoogleDriveService.CERTIDAO_ORIGEM}' }${filtroCnpj} and trashed=false`,
-      fields: 'files(id,name,webViewLink,createdTime,modifiedTime,appProperties)',
-      spaces: 'drive',
-      pageSize: 1000,
-      orderBy: 'modifiedTime desc',
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true,
-    });
-    return (res.data.files || []).map(f => ({
-      id: f.id!,
-      name: f.name!,
-      webViewLink: f.webViewLink || null,
-      createdTime: f.createdTime || null,
-      modifiedTime: f.modifiedTime || null,
-      cnpj: f.appProperties?.cnpj || '',
-      tipo: f.appProperties?.tipo || '',
-    }));
+    const todos = await this.listDocumentosEmpresas(cnpjDigits || undefined);
+    return todos
+      .filter(f => f.origem === GoogleDriveService.CERTIDAO_ORIGEM && f.tipo)
+      .sort((a, b) => (b.modifiedTime || '').localeCompare(a.modifiedTime || ''))
+      .map(f => ({
+        id: f.id,
+        name: f.name,
+        webViewLink: f.webViewLink,
+        createdTime: f.createdTime,
+        modifiedTime: f.modifiedTime,
+        cnpj: f.cnpj,
+        tipo: f.tipo!,
+      }));
+  }
+
+  // ─── Varredura da pasta "Documentos Empresas" (arquivos colocados manualmente) ───
+
+  /** Lista todas as páginas de um files.list. */
+  private async listAllFiles(q: string, fields: string): Promise<drive_v3.Schema$File[]> {
+    const drive = await this.getDriveClientForFiles();
+    const out: drive_v3.Schema$File[] = [];
+    let pageToken: string | undefined;
+    do {
+      const res = await drive.files.list({
+        q,
+        fields: `nextPageToken, files(${fields})`,
+        pageSize: 1000,
+        pageToken,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      });
+      out.push(...(res.data.files || []));
+      pageToken = res.data.nextPageToken || undefined;
+    } while (pageToken);
+    return out;
+  }
+
+  /** Extrai o CNPJ (14 dígitos) de "NOME - 04.467.921-0001-10" ou de "Titulo - 04467921000110 - 2026-10-17.pdf". */
+  private static extrairCnpj(nome: string): string {
+    const partes = (nome || '').split(' - ').map(p => p.replace(/\D/g, ''));
+    const exato = [...partes].reverse().find(d => d.length === 14);
+    if (exato) return exato;
+    const m = (nome || '').match(/\d{2}\.?\d{3}\.?\d{3}[\/.-]?\d{4}-?\d{2}/);
+    return m ? m[0].replace(/\D/g, '') : '';
+  }
+
+  /** Classifica um arquivo pelo nome: contrato/alteração ou tipo de certidão. */
+  private static classificarPorNome(nome: string): { origem: string; tipo?: string; titulo?: string } | null {
+    const n = (nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const titulo = (nome || '').replace(/\.[a-zA-Z0-9]{1,6}$/, '').split(' - ')[0].trim();
+    if (/contrato|alteracao|constituicao|distrato|estatuto|requerimento de empresario|ccmei/.test(n)) {
+      return { origem: GoogleDriveService.CONTRATO_ORIGEM, titulo };
+    }
+    const regras: Array<[string, RegExp]> = [
+      ['alvara', /alvara/],
+      ['fgts', /fgts|\bcrf\b/],
+      ['trabalhista', /trabalhist|cndt|\btst\b/],
+      ['falencia', /falencia|recuperacao judicial/],
+      ['estadual', /estadual|sefaz/],
+      ['municipal', /municipal|prefeitura/],
+      ['cnd', /\bcnd\b|federal|receita|pgfn/],
+    ];
+    for (const [tipo, re] of regras) {
+      if (re.test(n)) return { origem: GoogleDriveService.CERTIDAO_ORIGEM, tipo };
+    }
+    return null;
+  }
+
+  /**
+   * Lê os arquivos das subpastas "NOME - CNPJ" da pasta Documentos Empresas.
+   * Arquivos sem metadados (colocados direto no Drive / Drive para Computador) são
+   * classificados pelo nome e recebem os appProperties, para que a abertura pela API
+   * e o portal do cliente funcionem como nos anexados pelo sistema.
+   */
+  private async listDocumentosEmpresas(cnpjFiltro?: string) {
+    const rootId = await this.getEmpresasFolderId();
+    const result: Array<{
+      id: string; name: string; webViewLink: string | null; createdTime: string | null;
+      modifiedTime: string | null; cnpj: string; origem: string; tipo?: string; titulo?: string;
+    }> = [];
+    if (!rootId) return result;
+
+    const pastas = (await this.listAllFiles(
+      `'${rootId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      'id,name',
+    ))
+      .map(f => ({ id: f.id!, cnpj: GoogleDriveService.extrairCnpj(f.name || '') }))
+      .filter(f => f.cnpj && (!cnpjFiltro || f.cnpj === cnpjFiltro));
+    if (!pastas.length) return result;
+
+    const cnpjDaPasta = new Map(pastas.map(p => [p.id, p.cnpj]));
+    const fields = 'id,name,webViewLink,createdTime,modifiedTime,parents,appProperties';
+    const arquivos: drive_v3.Schema$File[] = [];
+    for (let i = 0; i < pastas.length; i += 40) {
+      const lote = pastas.slice(i, i + 40).map(p => `'${p.id}' in parents`).join(' or ');
+      arquivos.push(...await this.listAllFiles(
+        `(${lote}) and mimeType!='application/vnd.google-apps.folder' and trashed=false`,
+        fields,
+      ));
+    }
+
+    const drive = await this.getDriveClientForFiles();
+    const adotar: Array<{ id: string; props: Record<string, string> }> = [];
+    for (const f of arquivos) {
+      const props = f.appProperties || {};
+      const pastaCnpj = (f.parents || []).map(p => cnpjDaPasta.get(p)).find(Boolean) || '';
+      let origem = props.origem;
+      let tipo: string | undefined = props.tipo;
+      let titulo: string | undefined = props.titulo;
+      const cnpj = props.cnpj || pastaCnpj || GoogleDriveService.extrairCnpj(f.name || '');
+      if (!origem) {
+        const c = GoogleDriveService.classificarPorNome(f.name || '');
+        if (!c || !cnpj) continue;
+        origem = c.origem; tipo = c.tipo; titulo = c.titulo;
+        const novas: Record<string, string> = { origem, cnpj };
+        if (tipo) novas.tipo = tipo;
+        if (titulo) novas.titulo = titulo;
+        adotar.push({ id: f.id!, props: novas });
+      }
+      if (origem !== GoogleDriveService.CERTIDAO_ORIGEM && origem !== GoogleDriveService.CONTRATO_ORIGEM) continue;
+      result.push({
+        id: f.id!, name: f.name!, webViewLink: f.webViewLink || null,
+        createdTime: f.createdTime || null, modifiedTime: f.modifiedTime || null,
+        cnpj, origem, tipo, titulo: titulo || f.name || '',
+      });
+    }
+
+    // Grava os metadados nos arquivos manuais (best-effort; falha não impede a listagem).
+    for (let i = 0; i < adotar.length; i += 10) {
+      await Promise.all(adotar.slice(i, i + 10).map(a =>
+        drive.files.update({ fileId: a.id, requestBody: { appProperties: a.props }, supportsAllDrives: true })
+          .catch(err => this.logger.warn(`[DRIVE] Não foi possível marcar ${a.id}: ${err.message}`)),
+      ));
+    }
+    if (adotar.length) this.logger.log(`[DRIVE] ${adotar.length} documento(s) manuais do Drive reconhecidos`);
+
+    // Também inclui anexos do sistema que estejam fora das subpastas (compatibilidade).
+    const ids = new Set(result.map(r => r.id));
+    const filtroCnpj = cnpjFiltro ? ` and appProperties has { key='cnpj' and value='${cnpjFiltro}' }` : '';
+    for (const origem of [GoogleDriveService.CERTIDAO_ORIGEM, GoogleDriveService.CONTRATO_ORIGEM]) {
+      const extras = await this.listAllFiles(
+        `appProperties has { key='origem' and value='${origem}' }${filtroCnpj} and trashed=false`,
+        'id,name,webViewLink,createdTime,modifiedTime,appProperties',
+      );
+      for (const f of extras) {
+        if (ids.has(f.id!)) continue;
+        ids.add(f.id!);
+        result.push({
+          id: f.id!, name: f.name!, webViewLink: f.webViewLink || null,
+          createdTime: f.createdTime || null, modifiedTime: f.modifiedTime || null,
+          cnpj: f.appProperties?.cnpj || '', origem,
+          tipo: f.appProperties?.tipo, titulo: f.appProperties?.titulo || f.name || '',
+        });
+      }
+    }
+    return result;
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -717,28 +856,21 @@ export class GoogleDriveService {
     };
   }
 
-  /** Lista os contratos anexados (todas as empresas, ou só a do CNPJ informado), do mais antigo para o mais recente. */
+  /** Lista os contratos (todas as empresas, ou só a do CNPJ informado), do mais antigo para o mais recente. */
   async listContratos(cnpj?: string) {
-    const drive = await this.getDriveClientForFiles();
     const cnpjDigits = (cnpj || '').replace(/\D/g, '');
-    const filtroCnpj = cnpjDigits ? ` and appProperties has { key='cnpj' and value='${cnpjDigits}' }` : '';
-    const res = await drive.files.list({
-      q: `appProperties has { key='origem' and value='${GoogleDriveService.CONTRATO_ORIGEM}' }${filtroCnpj} and trashed=false`,
-      fields: 'files(id,name,webViewLink,createdTime,appProperties)',
-      spaces: 'drive',
-      pageSize: 1000,
-      orderBy: 'createdTime',
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true,
-    });
-    return (res.data.files || []).map(f => ({
-      id: f.id!,
-      name: f.name!,
-      webViewLink: f.webViewLink || null,
-      createdTime: f.createdTime || null,
-      cnpj: f.appProperties?.cnpj || '',
-      titulo: f.appProperties?.titulo || f.name || '',
-    }));
+    const todos = await this.listDocumentosEmpresas(cnpjDigits || undefined);
+    return todos
+      .filter(f => f.origem === GoogleDriveService.CONTRATO_ORIGEM)
+      .sort((x, y) => (x.createdTime || '').localeCompare(y.createdTime || ''))
+      .map(f => ({
+        id: f.id,
+        name: f.name,
+        webViewLink: f.webViewLink,
+        createdTime: f.createdTime,
+        cnpj: f.cnpj,
+        titulo: f.titulo || f.name,
+      }));
   }
 
   // ═══════════════════════════════════════════════════════════════
