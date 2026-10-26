@@ -3236,7 +3236,7 @@ export default function Dashboard() {
               </div>
             </div>
             {/* Content */}
-            {docPreview.mime.includes('pdf') ? (
+            {(docPreview.mime.includes('pdf') || /\.pdf$/i.test(docPreview.name)) ? (
               <iframe
                 src={docPreview.url}
                 className="flex-1 w-full"

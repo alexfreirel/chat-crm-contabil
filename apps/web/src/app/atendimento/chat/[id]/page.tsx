@@ -1146,7 +1146,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                 </button>
               </div>
             </div>
-            {docPreview.mime.includes('pdf') ? (
+            {(docPreview.mime.includes('pdf') || /\.pdf$/i.test(docPreview.name)) ? (
               <iframe src={docPreview.url} className="flex-1 w-full" title={docPreview.name} />
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center p-8">

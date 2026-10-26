@@ -277,7 +277,14 @@ export class MediaController {
         throw new NotFoundException('Arquivo não encontrado no storage e sem URL de origem');
       }
 
-      const { stream, contentType, contentLength } = s3Result!;
+      const { stream, contentLength } = s3Result!;
+      // O S3 pode devolver o tipo genérico (octet-stream) e o navegador então baixa/ignora o PDF
+      // no preview. Nesse caso usa o mime salvo no banco ou deduz pela extensão do arquivo.
+      let contentType = s3Result!.contentType;
+      if (!contentType || contentType === 'application/octet-stream' || contentType === 'binary/octet-stream') {
+        const byName = /\.pdf$/i.test(media.original_name || media.s3_key) ? 'application/pdf' : '';
+        contentType = (media.mime_type && media.mime_type !== 'application/octet-stream' ? media.mime_type : '') || byName || contentType || 'application/octet-stream';
+      }
 
       // Extrai extensão da s3_key, limpando possíveis parâmetros residuais
       const ext = (media.s3_key.split('.').pop() || 'bin').split(';')[0].trim();
