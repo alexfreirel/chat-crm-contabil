@@ -449,6 +449,8 @@ export function TasksPanel({ viewAllTasks = false }: { viewAllTasks?: boolean } 
 
   const hasFilters = statusFilter || dueFilter || assignedFilter || search;
   const selectedCliente = clientes.find(c => c.id === selectedClienteId) ?? null;
+  // Na visão geral, ao clicar em um card de estatística (ex.: Vencidas) lista as tarefas de todos os clientes
+  const showTaskList = !!selectedClienteId || !!statusFilter || !!dueFilter;
   const filteredClientes = clientes.filter(c => {
     const q = clienteSearch.trim().toLowerCase();
     return !q || c.nome.toLowerCase().includes(q) || (c.documento || '').includes(q);
@@ -473,10 +475,12 @@ export function TasksPanel({ viewAllTasks = false }: { viewAllTasks?: boolean } 
               <p className="text-xs text-muted-foreground">
                 {selectedCliente
                   ? `${total} tarefa${total !== 1 ? 's' : ''} ${hasFilters ? 'filtradas' : 'do cliente'}`
+                  : showTaskList
+                  ? `${total} tarefa${total !== 1 ? 's' : ''} filtradas · todos os clientes`
                   : `${clientes.length} cliente${clientes.length !== 1 ? 's' : ''} · ${stats.total} tarefa${stats.total !== 1 ? 's' : ''}`}
               </p>
             </div>
-            {selectedCliente && (
+            {(selectedCliente || showTaskList) && (
               <button
                 onClick={() => { setSelectedClienteId(null); resetFilters(); }}
                 className="ml-2 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
@@ -735,7 +739,7 @@ export function TasksPanel({ viewAllTasks = false }: { viewAllTasks?: boolean } 
       </div>
 
       {/* ── Painel de clientes (tarefas são cadastradas por cliente) ── */}
-      {!selectedClienteId && (
+      {!showTaskList && (
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           <div className="px-6 py-3 border-b border-border bg-card/20">
             <div className="relative max-w-sm">
@@ -786,7 +790,7 @@ export function TasksPanel({ viewAllTasks = false }: { viewAllTasks?: boolean } 
         </div>
       )}
 
-      {selectedClienteId && (<>
+      {showTaskList && (<>
       {/* ── Filtros ── */}
       <div className="shrink-0 px-6 py-3 border-b border-border bg-card/20 flex flex-wrap items-center gap-2">
         {/* Status tabs */}
@@ -988,6 +992,12 @@ export function TasksPanel({ viewAllTasks = false }: { viewAllTasks?: boolean } 
                         <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                           <User size={10} />
                           {task.assigned_user.name}
+                        </span>
+                      )}
+                      {!selectedClienteId && task.cliente_contabil_id && (
+                        <span className="flex items-center gap-1 text-[11px] font-semibold text-foreground/70">
+                          <Briefcase size={10} />
+                          {clientes.find(c => c.id === task.cliente_contabil_id)?.nome ?? 'Cliente'}
                         </span>
                       )}
                       {task.lead && (
