@@ -146,6 +146,23 @@ export class UsersService {
   async remove(id: string, tenantId?: string, transferToId?: string): Promise<void> {
     await this.verifyTenantOwnership(id, tenantId);
 
+    if (transferToId) {
+      if (transferToId === id) {
+        throw new ForbiddenException('Não é possível transferir para o próprio usuário');
+      }
+      await this.verifyTenantOwnership(transferToId, tenantId);
+
+      await this.prisma.$transaction([
+        this.prisma.clienteContabil.updateMany({ where: { accountant_id: id }, data: { accountant_id: transferToId } }),
+        this.prisma.conversation.updateMany({ where: { assigned_user_id: id }, data: { assigned_user_id: transferToId } }),
+        this.prisma.conversation.updateMany({ where: { assigned_accountant_id: id }, data: { assigned_accountant_id: transferToId } }),
+        this.prisma.calendarEvent.updateMany({ where: { assigned_user_id: id }, data: { assigned_user_id: transferToId } }),
+        this.prisma.calendarEvent.updateMany({ where: { created_by_id: id }, data: { created_by_id: transferToId } }),
+        this.prisma.lead.updateMany({ where: { cs_user_id: id }, data: { cs_user_id: transferToId } }),
+        this.prisma.broadcastJob.updateMany({ where: { created_by_id: id }, data: { created_by_id: transferToId } }),
+      ]);
+    }
+
     // Verificar se o usuario possui registros que impedem exclusao (FKs required)
     const [caseCount, createdEventCount] = await Promise.all([
       this.prisma.clienteContabil.count({ where: { accountant_id: id } }),
